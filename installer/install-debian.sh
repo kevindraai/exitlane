@@ -137,9 +137,16 @@ Stop en start de LXC daarna volledig."
 }
 
 check_network_administration() {
-  local test_interface="exitlane-preflight-$$"
+  log "WireGuard-functionaliteit controleren"
 
-  if ! ip link add "${test_interface}" type wireguard >/dev/null 2>&1; then
+  local test_interface="elwg$$"
+  local output=""
+
+  # Verwijder een eventueel achtergebleven testinterface.
+  ip link delete "${test_interface}" >/dev/null 2>&1 || true
+
+  if ! output="$(ip link add "${test_interface}" type wireguard 2>&1)"; then
+    [[ -n "${output}" ]] && echo "${output}"
     fail "De container kan geen WireGuard-interface aanmaken.
 
 Controleer of de LXC voldoende NET_ADMIN-rechten heeft en bij voorkeur
@@ -147,6 +154,7 @@ privileged draait."
   fi
 
   ip link delete "${test_interface}" >/dev/null 2>&1 || true
+
   success "WireGuard-interface kan worden aangemaakt"
 }
 
