@@ -1,10 +1,43 @@
+# Python
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
 .venv/
-.pytest_cache/
-.ruff_cache/
+venv/
+
+# Build
+build/
+dist/
 *.egg-info/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Runtime
+/var/
+/tmp/
+
+# Environment
 .env
-*.db
-*.key
-*.pem
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node (voor de frontend)
+node_modules/
+
+# Exitlane runtime
+/etc/exitlane/
+/var/lib/exitlane/
+/var/log/exitlane/
