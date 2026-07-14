@@ -1,10 +1,18 @@
 import { api } from "./api.js";
+import {
+  frontendConfig,
+  loadPublicConfig,
+} from "./config.js";
 import { initialiseNotificationControls } from "./notifications.js";
 import {
   initialiseProviderControls,
   refreshProvider,
 } from "./provider.js";
-import { select, setStatusPill, showMessage } from "./ui.js";
+import {
+  select,
+  setStatusPill,
+  showMessage,
+} from "./ui.js";
 import {
   initialiseWizardNavigation,
   refreshSetup,
@@ -12,44 +20,55 @@ import {
 import { initialiseWireGuardControls } from "./wireguard.js";
 
 async function refreshApplication() {
-  try {
-    const health = await api("/api/health");
+  const health = await api("/api/health");
 
-    setStatusPill(
-      select("#api-status"),
-      health.ok ? "API online" : "API offline",
-      health.ok ? "success" : "danger",
-    );
+  setStatusPill(
+    select("#api-status"),
+    health.ok ? "API online" : "API offline",
+    health.ok ? "success" : "danger",
+  );
 
-    select("#app-version").textContent = health.version
-      ? `v${health.version}`
-      : "";
+  select("#app-version").textContent = health.version
+    ? `v${health.version}`
+    : "";
 
-    await Promise.all([
-      refreshSetup(),
-      refreshProvider(),
-    ]);
-  } catch (error) {
-    setStatusPill(select("#api-status"), "API-fout", "danger");
-    showMessage(error.message, "error");
-  }
+  await Promise.all([
+    refreshSetup(),
+    refreshProvider(),
+  ]);
 }
 
-function initialise() {
+async function initialise() {
   initialiseWizardNavigation();
   initialiseProviderControls();
   initialiseWireGuardControls();
   initialiseNotificationControls();
 
-  refreshApplication();
+  try {
+    await loadPublicConfig();
+    await refreshApplication();
+  } catch (error) {
+    setStatusPill(
+      select("#api-status"),
+      "API-fout",
+      "danger",
+    );
+
+    showMessage(error.message, "error");
+    return;
+  }
 
   window.setInterval(async () => {
     try {
       await refreshProvider();
     } catch {
-      setStatusPill(select("#connection-state"), "Statusfout", "danger");
+      setStatusPill(
+        select("#connection-state"),
+        "Statusfout",
+        "danger",
+      );
     }
-  }, 5000);
+  }, frontendConfig.providerRefreshIntervalSeconds * 1000);
 }
 
 initialise();

@@ -754,3 +754,17 @@ pre {
     flex: 1;
   }
 }
+.helper-text{
+    display:block;
+    margin-top:6px;
+    font-size:.9rem;
+    color:#94a3b8;
+}
+
+.helper-text.ok{
+    color:#2ecc71;
+}
+
+.helper-text.error{
+    color:#ef4444;
+}

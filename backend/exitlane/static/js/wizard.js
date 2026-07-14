@@ -221,6 +221,36 @@ export async function refreshSetup() {
   return setup;
 }
 
+function updatePasswordMatchState() {
+  const password = select("#admin-password");
+  const confirmation = select("#admin-password-confirm");
+  const status = select("#password-match");
+  const submitButton = select(
+    '#admin-form button[type="submit"]',
+  );
+
+  const minimumLength = Number(password.minLength || 8);
+  const passwordValid =
+    password.value.length >= minimumLength;
+  const matches =
+    confirmation.value.length > 0 &&
+    password.value === confirmation.value;
+
+  status.classList.remove("ok", "error");
+
+  if (!confirmation.value) {
+    status.textContent = "Herhaal het wachtwoord";
+  } else if (matches) {
+    status.textContent = "✓ Wachtwoorden komen overeen";
+    status.classList.add("ok");
+  } else {
+    status.textContent = "✕ Wachtwoorden komen nog niet overeen";
+    status.classList.add("error");
+  }
+
+  submitButton.disabled = !(passwordValid && matches);
+}
+
 export function initialiseWizardNavigation() {
   selectAll("#wizard-steps button").forEach((button) => {
     button.addEventListener("click", () => {
@@ -240,4 +270,12 @@ export function initialiseWizardNavigation() {
   select("#diagnostics-button").addEventListener("click", runDiagnostics);
   select("#admin-form").addEventListener("submit", createAdmin);
   select("#complete-button").addEventListener("click", completeSetup);
+
+  const password = select("#admin-password");
+  const confirmation = select("#admin-password-confirm");
+
+  password.addEventListener("input", updatePasswordMatchState);
+  confirmation.addEventListener("input", updatePasswordMatchState);
+
+  updatePasswordMatchState();
 }

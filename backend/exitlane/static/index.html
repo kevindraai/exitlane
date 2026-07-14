@@ -135,11 +135,10 @@
               name="password"
               type="password"
               autocomplete="new-password"
-              minlength="12"
               maxlength="256"
               required
             >
-            <small>Minimaal 12 tekens.</small>
+            <small id="password-requirement">Wachtwoordvereisten ophalen…</small>
           </label>
 
           <label>
@@ -149,17 +148,17 @@
               name="password-confirm"
               type="password"
               autocomplete="new-password"
-              minlength="12"
               maxlength="256"
               required
             >
+	    <small id="password-match" class="helper-text">Herhaal het wachtwoord</small>
           </label>
 
           <div class="step-actions">
             <button type="button" class="button button-secondary" data-back="1">
               Terug
             </button>
-            <button type="submit" class="button button-primary">
+            <button type="submit" class="button button-primary" disabled>
               Beheerder aanmaken
             </button>
           </div>
