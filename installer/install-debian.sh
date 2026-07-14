@@ -6,11 +6,11 @@ IFS=$'\n\t'
 readonly INSTALLER_VERSION="0.1.0-alpha.1"
 
 # De repository waarin dit script staat.
-readonly SOURCE_DIR="$(
+SOURCE_DIR="$(
   cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1
   pwd
 )"
-
+readonly SOURCE_DIR
 # Overschrijfbaar voor testdoeleinden:
 # TARGET=/tmp/exitlane-test ./installer/install-debian.sh
 readonly TARGET="${TARGET:-/opt/exitlane}"
