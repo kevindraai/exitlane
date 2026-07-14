@@ -195,31 +195,95 @@ async function restoreInstallStatus() {
 
 async function applyDefaults() {
   const button = select("#provider-defaults");
+  const resultPanel = select("#provider-defaults-result");
+  const resultList = select("#provider-defaults-list");
+
   setBusy(button, true, "Toepassen…");
   clearInlineError();
+
+  resultPanel.hidden = false;
+  resultList.innerHTML = "";
+
+  setStatusPill(
+    select("#provider-defaults-state"),
+    "Bezig",
+    "neutral",
+  );
 
   try {
     const result = await postJson(
       "/api/providers/nordvpn/configure-defaults",
     );
 
+    const operations = result.operations || [];
+
+    resultList.innerHTML = operations
+      .map((operation) => {
+        const label = formatSettingName(operation.setting);
+        const stateClass = operation.ok
+          ? "success"
+          : "failure";
+        const stateLabel = operation.ok
+          ? "Toegepast"
+          : "Mislukt";
+
+        return `
+          <div class="settings-result-item">
+            <span>${label}</span>
+            <span class="${stateClass}">
+              ${operation.ok ? "✓" : "✕"} ${stateLabel}
+            </span>
+          </div>
+        `;
+      })
+      .join("");
+
     if (result.ok) {
-      showMessage("Gatewayinstellingen toegepast.");
+      setStatusPill(
+        select("#provider-defaults-state"),
+        "Toegepast",
+        "success",
+      );
+
+      showMessage("Gatewayinstellingen zijn toegepast.");
     } else {
-      const failed = (result.operations || [])
-        .filter((operation) => !operation.ok)
-        .map((operation) => operation.setting)
-        .join(", ");
+      setStatusPill(
+        select("#provider-defaults-state"),
+        "Deels mislukt",
+        "danger",
+      );
 
       showInlineError(
-        `Niet alle providerinstellingen zijn toegepast${failed ? `: ${failed}` : "."}`,
+        "Niet alle gatewayinstellingen konden worden toegepast.",
       );
     }
+
+    await refreshProvider();
   } catch (error) {
+    setStatusPill(
+      select("#provider-defaults-state"),
+      "Mislukt",
+      "danger",
+    );
+
     showInlineError(error.message);
   } finally {
     setBusy(button, false);
   }
+}
+
+function formatSettingName(setting) {
+  const labels = {
+    technology: "Technologie: NordLynx",
+    routing: "Routing",
+    "lan-discovery": "LAN Discovery",
+    firewall: "Firewall",
+    killswitch: "Kill Switch",
+    ipv6: "IPv6 uitschakelen",
+    analytics: "Analytics uitschakelen",
+  };
+
+  return labels[setting] || setting;
 }
 
 async function loginWithToken(event) {

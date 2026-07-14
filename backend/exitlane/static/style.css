@@ -768,3 +768,47 @@ pre {
 .helper-text.error{
     color:#ef4444;
 }
+.settings-result {
+  margin: 14px 0;
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: rgba(8, 14, 26, 0.28);
+}
+
+.settings-result-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-result-list {
+  margin-top: 12px;
+  display: grid;
+  gap: 7px;
+}
+
+.settings-result-item {
+  padding: 9px 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+
+.settings-result-item span:first-child {
+  color: var(--muted);
+}
+
+.settings-result-item .success {
+  color: var(--success);
+  font-weight: 750;
+}
+
+.settings-result-item .failure {
+  color: var(--danger);
+  font-weight: 750;
+}

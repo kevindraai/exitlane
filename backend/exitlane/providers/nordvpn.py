@@ -285,31 +285,96 @@ echo "Installatie afgerond"
         }
 
     async def defaults(self):
-        results = []
-
-        settings = [
-            ("technology", "NordLynx"),
-            ("routing", "on"),
-            ("lan-discovery", "on"),
-            ("firewall", "on"),
-            ("killswitch", "off"),
-            ("ipv6", "off"),
-            ("analytics", "off"),
+        requested_settings = [
+            {
+                "setting": "technology",
+                "value": "NordLynx",
+                "expected_key": "Technology",
+                "expected_value": "NORDLYNX",
+            },
+            {
+                "setting": "routing",
+                "value": "on",
+                "expected_key": "Routing",
+                "expected_value": "enabled",
+            },
+            {
+                "setting": "lan-discovery",
+                "value": "on",
+                "expected_key": "LAN Discovery",
+                "expected_value": "enabled",
+            },
+            {
+                "setting": "firewall",
+                "value": "on",
+                "expected_key": "Firewall",
+                "expected_value": "enabled",
+            },
+            {
+                "setting": "killswitch",
+                "value": "off",
+                "expected_key": "Kill Switch",
+                "expected_value": "disabled",
+            },
+            {
+                "setting": "analytics",
+                "value": "off",
+                "expected_key": "User Consent",
+                "expected_value": "disabled",
+            },
         ]
 
-        for key, value in settings:
+        command_results = {}
+
+        for item in requested_settings:
             rc, out, err = await command(
                 "nordvpn",
                 "set",
-                key,
-                value,
+                item["setting"],
+                item["value"],
             )
+
+            command_results[item["setting"]] = {
+                "return_code": rc,
+                "output": (out or err).strip(),
+            }
+
+        settings_rc, settings_out, settings_err = await command(
+            "nordvpn",
+            "settings",
+        )
+
+        if settings_rc != 0:
+            return [
+                {
+                    "setting": item["setting"],
+                    "ok": False,
+                    "output": (settings_err or settings_out or "Could not read NordVPN settings"),
+                }
+                for item in requested_settings
+            ]
+
+        actual_settings = parse(settings_out)
+        results = []
+
+        for item in requested_settings:
+            actual_value = actual_settings.get(
+                item["expected_key"],
+                "",
+            )
+
+            verified = actual_value.casefold() == item["expected_value"].casefold()
+
+            command_result = command_results[item["setting"]]
 
             results.append(
                 {
-                    "setting": key,
-                    "ok": rc == 0,
-                    "output": out or err,
+                    "setting": item["setting"],
+                    "ok": verified,
+                    "requested": item["value"],
+                    "actual": actual_value,
+                    "output": command_result["output"],
+                    "return_code": command_result["return_code"],
                 }
             )
 
