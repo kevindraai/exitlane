@@ -230,7 +230,12 @@ async def diagnostic_checks() -> dict:
 
 @app.post("/api/providers/nordvpn/install")
 async def install_nordvpn() -> dict:
-    return await provider.install()
+    return await provider.start_install()
+
+
+@app.get("/api/providers/nordvpn/install/status")
+async def nordvpn_install_status() -> dict:
+    return provider.install_status()
 
 
 @app.post("/api/providers/nordvpn/login/token")

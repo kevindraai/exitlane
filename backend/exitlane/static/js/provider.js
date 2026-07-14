@@ -59,21 +59,137 @@ export async function refreshProvider() {
   return response.status;
 }
 
+let installPollTimer = null;
+
 async function installProvider() {
   const button = select("#provider-install");
+
   setBusy(button, true, "Installeren…");
   clearInlineError();
 
+  select("#provider-install-progress").hidden = false;
+  select("#provider-install-log").textContent = "";
+  select("#provider-install-message").textContent =
+    "NordVPN-installatie wordt gestart.";
+
+  setStatusPill(
+    select("#provider-install-state"),
+    "Starten",
+    "neutral",
+  );
+
   try {
-    const result = await postJson("/api/providers/nordvpn/install");
-    showMessage(
-      result.message || result.stdout || result.stderr || "Installatie afgerond.",
+    const result = await postJson(
+      "/api/providers/nordvpn/install",
     );
-    await Promise.all([refreshProvider(), refreshSetup()]);
+
+    if (!result.ok) {
+      throw new Error(
+        result.message || "Installatie kon niet worden gestart.",
+      );
+    }
+
+    await pollInstallStatus();
   } catch (error) {
     showInlineError(error.message);
-  } finally {
     setBusy(button, false);
+
+    setStatusPill(
+      select("#provider-install-state"),
+      "Mislukt",
+      "danger",
+    );
+  }
+}
+
+async function pollInstallStatus() {
+  window.clearTimeout(installPollTimer);
+
+  try {
+    const status = await api(
+      "/api/providers/nordvpn/install/status",
+    );
+
+    select("#provider-install-progress").hidden = false;
+    select("#provider-install-message").textContent =
+      status.message || "Installatie wordt uitgevoerd.";
+
+    select("#provider-install-log").textContent =
+      (status.logs || []).join("\n");
+
+    const logElement = select("#provider-install-log");
+    logElement.scrollTop = logElement.scrollHeight;
+
+    if (status.running) {
+      setStatusPill(
+        select("#provider-install-state"),
+        "Bezig",
+        "neutral",
+      );
+
+      installPollTimer = window.setTimeout(
+        pollInstallStatus,
+        1000,
+      );
+      return;
+    }
+
+    setBusy(select("#provider-install"), false);
+
+    if (status.finished && status.ok) {
+      setStatusPill(
+        select("#provider-install-state"),
+        "Geslaagd",
+        "success",
+      );
+
+      showMessage(
+        status.message || "NordVPN is geïnstalleerd.",
+      );
+
+      await Promise.all([
+        refreshProvider(),
+        refreshSetup(),
+      ]);
+      return;
+    }
+
+    if (status.finished) {
+      setStatusPill(
+        select("#provider-install-state"),
+        "Mislukt",
+        "danger",
+      );
+
+      showInlineError(
+        status.message || "NordVPN-installatie mislukt.",
+      );
+    }
+  } catch (error) {
+    setBusy(select("#provider-install"), false);
+
+    setStatusPill(
+      select("#provider-install-state"),
+      "Statusfout",
+      "danger",
+    );
+
+    showInlineError(error.message);
+  }
+}
+
+async function restoreInstallStatus() {
+  try {
+    const status = await api(
+      "/api/providers/nordvpn/install/status",
+    );
+
+    if (status.running || status.finished) {
+      select("#provider-install-progress").hidden = false;
+      await pollInstallStatus();
+    }
+  } catch {
+    // Er is nog geen installatiejob of de status is niet beschikbaar.
   }
 }
 
@@ -217,4 +333,5 @@ export function initialiseProviderControls() {
   select("#callback-form").addEventListener("submit", loginWithCallback);
   select("#connect-form").addEventListener("submit", connectProvider);
   select("#disconnect-button").addEventListener("click", disconnectProvider);
+  restoreInstallStatus();
 }
