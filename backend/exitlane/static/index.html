@@ -1,1 +1,414 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Exitlane</title><link rel="stylesheet" href="/assets/style.css"></head><body><header><div class="brand"><span>⇢</span><div><b>Exitlane</b><small>Smart egress for every network</small></div></div><i id="health">loading</i></header><main><section><p class="eyebrow">FIRST-RUN WIZARD</p><h1>Build your first exit lane</h1><nav><button onclick="step(1)">1 System</button><button onclick="step(2)">2 Admin</button><button onclick="step(3)">3 Provider</button><button onclick="step(4)">4 WireGuard</button><button onclick="step(5)">5 Complete</button></nav><article id="s1"><h2>Diagnostics</h2><button class="primary" onclick="diagnostics()">Run checks</button><div id="checks"></div></article><article id="s2"><h2>Administrator</h2><input id="user" value="admin" placeholder="username"><input id="password" type="password" placeholder="minimum 12 characters"><button class="primary" onclick="admin()">Create</button></article><article id="s3"><h2>NordVPN</h2><div id="provider">not loaded</div><button onclick="installProvider()">Install</button><button onclick="defaults()">Apply defaults</button><input id="token" type="password" placeholder="Nord Account token"><button class="primary" onclick="login()">Login</button></article><article id="s4"><h2>WireGuard ingress</h2><input id="endpoint" placeholder="management IP"><input id="subnet" value="10.99.99.0/24"><input id="client" value="router"><button class="primary" onclick="wireguard()">Generate</button><pre id="wg"></pre></article><article id="s5"><h2>Ready</h2><p>Import the client configuration into your router and route one test device through it.</p><button class="primary" onclick="finish()">Finish</button></article></section><section><p class="eyebrow">LIVE STATUS</p><div id="status">—</div><div class="row"><input id="target" placeholder="Netherlands, Germany, nl1234…"><button class="primary" onclick="connect()">Connect</button><button onclick="disconnect()">Disconnect</button></div></section></main><aside id="toast" hidden></aside><script src="/assets/app.js"></script></body></html>
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Exitlane, smart egress for every network.">
+  <title>Exitlane</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="/" aria-label="Exitlane">
+      <span class="brand-mark" aria-hidden="true">⇢</span>
+      <span>
+        <strong>Exitlane</strong>
+        <small>Smart egress for every network</small>
+      </span>
+    </a>
+
+    <div class="header-status">
+      <span id="api-status" class="status-pill status-neutral">API controleren…</span>
+      <span id="app-version" class="version-label"></span>
+    </div>
+  </header>
+
+  <main class="page">
+    <section id="wizard-panel" class="panel wizard-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">FIRST-RUN WIZARD</p>
+          <h1>Build your first exit lane</h1>
+          <p class="lead">
+            Configureer je systeem, VPN-provider en WireGuard-ingang zonder
+            losse configuratiebestanden te bewerken.
+          </p>
+        </div>
+        <div id="wizard-progress" class="progress-summary">Stap 1 van 5</div>
+      </div>
+
+      <nav id="wizard-steps" class="wizard-steps" aria-label="Installatiestappen">
+        <button type="button" data-step="1" data-step-name="system">
+          <span class="step-number">1</span>
+          <span class="step-label">Systeem</span>
+        </button>
+        <button type="button" data-step="2" data-step-name="admin">
+          <span class="step-number">2</span>
+          <span class="step-label">Beheerder</span>
+        </button>
+        <button type="button" data-step="3" data-step-name="provider">
+          <span class="step-number">3</span>
+          <span class="step-label">Provider</span>
+        </button>
+        <button type="button" data-step="4" data-step-name="wireguard">
+          <span class="step-number">4</span>
+          <span class="step-label">WireGuard</span>
+        </button>
+        <button type="button" data-step="5" data-step-name="complete">
+          <span class="step-number">5</span>
+          <span class="step-label">Afronden</span>
+        </button>
+      </nav>
+
+      <div id="wizard-error" class="message message-error" hidden></div>
+
+      <article id="step-1" class="wizard-step">
+        <div class="step-heading">
+          <div>
+            <p class="step-kicker">Stap 1</p>
+            <h2>Systeemcontrole</h2>
+            <p>
+              Exitlane controleert de Linux-omgeving, netwerktoegang,
+              WireGuard en de benodigde systeemcomponenten.
+            </p>
+          </div>
+          <button id="diagnostics-button" type="button" class="button button-primary">
+            Controles uitvoeren
+          </button>
+        </div>
+
+        <div id="diagnostics-summary" class="health-summary" hidden>
+          <div>
+            <strong id="diagnostics-score">0 / 0</strong>
+            <span>controles geslaagd</span>
+          </div>
+          <div class="health-bar" aria-hidden="true">
+            <span id="diagnostics-progress"></span>
+          </div>
+        </div>
+
+        <div id="diagnostics-list" class="check-list">
+          <div class="empty-state">
+            Voer de systeemcontrole uit om verder te gaan.
+          </div>
+        </div>
+
+        <div class="step-actions">
+          <span></span>
+          <button id="system-next" type="button" class="button button-primary" disabled>
+            Volgende
+          </button>
+        </div>
+      </article>
+
+      <article id="step-2" class="wizard-step" hidden>
+        <div class="step-heading">
+          <div>
+            <p class="step-kicker">Stap 2</p>
+            <h2>Lokale beheerder</h2>
+            <p>
+              Maak het eerste lokale beheeraccount aan. Authenticatie wordt
+              in een volgende alpha ook daadwerkelijk voor alle pagina’s afgedwongen.
+            </p>
+          </div>
+        </div>
+
+        <form id="admin-form" class="form-card">
+          <label>
+            Gebruikersnaam
+            <input
+              id="admin-username"
+              name="username"
+              autocomplete="username"
+              value="admin"
+              minlength="3"
+              maxlength="64"
+              required
+            >
+          </label>
+
+          <label>
+            Wachtwoord
+            <input
+              id="admin-password"
+              name="password"
+              type="password"
+              autocomplete="new-password"
+              minlength="12"
+              maxlength="256"
+              required
+            >
+            <small>Minimaal 12 tekens.</small>
+          </label>
+
+          <label>
+            Wachtwoord herhalen
+            <input
+              id="admin-password-confirm"
+              name="password-confirm"
+              type="password"
+              autocomplete="new-password"
+              minlength="12"
+              maxlength="256"
+              required
+            >
+          </label>
+
+          <div class="step-actions">
+            <button type="button" class="button button-secondary" data-back="1">
+              Terug
+            </button>
+            <button type="submit" class="button button-primary">
+              Beheerder aanmaken
+            </button>
+          </div>
+        </form>
+      </article>
+
+      <article id="step-3" class="wizard-step" hidden>
+        <div class="step-heading">
+          <div>
+            <p class="step-kicker">Stap 3</p>
+            <h2>VPN-provider</h2>
+            <p>
+              NordVPN is de eerste providerimplementatie. Exitlane houdt de
+              onderliggende architectuur provideronafhankelijk.
+            </p>
+          </div>
+          <span id="provider-state" class="status-pill status-neutral">
+            Status ophalen…
+          </span>
+        </div>
+
+        <section class="provider-card">
+          <div class="provider-header">
+            <div>
+              <strong>NordVPN</strong>
+              <p id="provider-description">Linux-client nog niet gecontroleerd.</p>
+            </div>
+            <button id="provider-install" type="button" class="button button-secondary">
+              Installeren
+            </button>
+          </div>
+
+          <div class="provider-actions">
+            <button id="provider-defaults" type="button" class="button button-secondary">
+              Gatewayinstellingen toepassen
+            </button>
+          </div>
+
+          <form id="token-form" class="form-card form-compact">
+            <label>
+              Nord Account access token
+              <input
+                id="nord-token"
+                type="password"
+                autocomplete="off"
+                minlength="20"
+                maxlength="512"
+                placeholder="Plak hier je access token"
+                required
+              >
+              <small>Het token wordt niet door Exitlane opgeslagen.</small>
+            </label>
+            <button type="submit" class="button button-primary">
+              Aanmelden met token
+            </button>
+          </form>
+
+          <details class="details-card">
+            <summary>Aanmelden met browsercallback</summary>
+            <form id="callback-form" class="form-card form-compact">
+              <label>
+                Callback-URL
+                <input
+                  id="nord-callback"
+                  type="url"
+                  minlength="20"
+                  maxlength="2048"
+                  placeholder="nordvpn://… of https://…"
+                  required
+                >
+              </label>
+              <button type="submit" class="button button-secondary">
+                Callback verwerken
+              </button>
+            </form>
+          </details>
+        </section>
+
+        <div class="step-actions">
+          <button type="button" class="button button-secondary" data-back="2">
+            Terug
+          </button>
+          <button id="provider-next" type="button" class="button button-primary" disabled>
+            Volgende
+          </button>
+        </div>
+      </article>
+
+      <article id="step-4" class="wizard-step" hidden>
+        <div class="step-heading">
+          <div>
+            <p class="step-kicker">Stap 4</p>
+            <h2>WireGuard-ingang</h2>
+            <p>
+              Genereer een generieke WireGuard-clientconfiguratie voor je router.
+              UniFi, MikroTik, OPNsense en andere routers kunnen deze tunnel gebruiken.
+            </p>
+          </div>
+        </div>
+
+        <form id="wireguard-form" class="form-grid">
+          <label>
+            Endpoint van deze LXC
+            <input
+              id="wg-endpoint"
+              name="endpoint"
+              placeholder="172.16.130.129"
+              required
+            >
+          </label>
+
+          <label>
+            Tunnelnetwerk
+            <input id="wg-subnet" name="subnet" value="10.99.99.0/24" required>
+          </label>
+
+          <label>
+            UDP-poort
+            <input
+              id="wg-port"
+              name="port"
+              type="number"
+              min="1"
+              max="65535"
+              value="51820"
+              required
+            >
+          </label>
+
+          <label>
+            Interfacenaam
+            <input id="wg-interface" name="interface" value="wg0" maxlength="15" required>
+          </label>
+
+          <label>
+            Clientnaam
+            <input id="wg-client" name="client" value="router" maxlength="64" required>
+          </label>
+
+          <div class="form-submit">
+            <button type="submit" class="button button-primary">
+              Configuraties genereren
+            </button>
+          </div>
+        </form>
+
+        <section id="wireguard-result" class="result-card" hidden>
+          <div class="result-heading">
+            <div>
+              <strong>Clientconfiguratie gereed</strong>
+              <p>Importeer deze configuratie in je router.</p>
+            </div>
+            <div class="result-actions">
+              <button id="wireguard-copy" type="button" class="button button-secondary">
+                Kopiëren
+              </button>
+              <a id="wireguard-download" class="button button-secondary" href="#">
+                Downloaden
+              </a>
+            </div>
+          </div>
+          <pre id="wireguard-config"></pre>
+        </section>
+
+        <div class="step-actions">
+          <button type="button" class="button button-secondary" data-back="3">
+            Terug
+          </button>
+          <button id="wireguard-next" type="button" class="button button-primary" disabled>
+            Volgende
+          </button>
+        </div>
+      </article>
+
+      <article id="step-5" class="wizard-step" hidden>
+        <div class="completion-card">
+          <span class="completion-icon" aria-hidden="true">✓</span>
+          <p class="step-kicker">Stap 5</p>
+          <h2>Exitlane is bijna gereed</h2>
+          <p>
+            Importeer de WireGuard-client in je router en routeer eerst één
+            testapparaat via Exitlane. Rond daarna de installatie af.
+          </p>
+
+          <div id="completion-checks" class="completion-checks"></div>
+
+          <button id="complete-button" type="button" class="button button-primary">
+            Setup afronden
+          </button>
+        </div>
+      </article>
+    </section>
+
+    <section id="dashboard-panel" class="panel dashboard-panel">
+      <div class="panel-heading compact">
+        <div>
+          <p class="eyebrow">PROVIDER STATUS</p>
+          <h2>NordVPN</h2>
+        </div>
+        <span id="connection-state" class="status-pill status-neutral">
+          Status ophalen…
+        </span>
+      </div>
+
+      <div id="provider-metrics" class="metric-grid">
+        <div class="metric"><span>Land</span><strong id="metric-country">—</strong></div>
+        <div class="metric"><span>Stad</span><strong id="metric-city">—</strong></div>
+        <div class="metric"><span>Server</span><strong id="metric-server">—</strong></div>
+        <div class="metric"><span>Extern IP</span><strong id="metric-ip">—</strong></div>
+      </div>
+
+      <form id="connect-form" class="connect-form">
+        <label>
+          Land, stad of server
+          <input id="connect-target" placeholder="Bijv. Netherlands of nl1234">
+        </label>
+        <button type="submit" class="button button-primary">Verbinden</button>
+        <button id="disconnect-button" type="button" class="button button-danger">
+          Verbreken
+        </button>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading compact">
+        <div>
+          <p class="eyebrow">NOTIFICATIES</p>
+          <h2>Generic webhook</h2>
+        </div>
+      </div>
+
+      <form id="webhook-form" class="form-grid">
+        <label>
+          Naam
+          <input id="webhook-name" value="Home Assistant" required>
+        </label>
+        <label>
+          URL
+          <input id="webhook-url" type="url" placeholder="https://…" required>
+        </label>
+        <div class="form-submit">
+          <button type="submit" class="button button-secondary">Webhook toevoegen</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <div id="toast-region" class="toast-region" aria-live="polite"></div>
+
+  <script type="module" src="/assets/js/app.js"></script>
+</body>
+</html>
