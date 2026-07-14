@@ -8,3 +8,8 @@ __pycache__/
 *.db
 *.key
 *.pem
+venv/
+__pycache__
+exitlane.db
+*.log
+
