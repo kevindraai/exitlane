@@ -32,10 +32,11 @@ async function refreshApplication() {
     ? `v${health.version}`
     : "";
 
-  await Promise.all([
-    refreshSetup(),
-    refreshProvider(),
-  ]);
+  await refreshProvider();
+
+  await refreshSetup({
+  runAutomaticDiagnostics: true,
+  });
 }
 
 async function initialise() {

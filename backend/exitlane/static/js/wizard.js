@@ -113,25 +113,44 @@ function renderCompletionChecks(setup) {
   ).every(Boolean);
 }
 
-export async function runDiagnostics() {
+export async function runDiagnostics(
+  { automatic = false } = {},
+) {
   const button = select("#diagnostics-button");
-  setBusy(button, true, "Controleren…");
+
+  setBusy(
+    button,
+    true,
+    automatic ? "Automatisch controleren…" : "Controleren…",
+  );
+
   clearInlineError();
 
   try {
     const result = await api("/api/diagnostics");
     appState.diagnostics = result;
+
     renderDiagnostics(result);
-    await refreshSetup();
+
+    const setup = await api("/api/setup/state");
+    renderSetupState(setup);
 
     if (result.ok) {
-      showMessage("Alle systeemcontroles zijn geslaagd.");
+      if (!automatic) {
+        showMessage(
+          "Alle systeemcontroles zijn geslaagd.",
+        );
+      }
     } else {
+      showStep(1, { force: true });
+
       showInlineError(
-        "Niet alle systeemcontroles zijn geslaagd. Los de rode controles eerst op.",
+        "Exitlane heeft een probleem in de systeemcontrole gevonden. " +
+          "Los de rode controle op en voer de controles opnieuw uit.",
       );
     }
   } catch (error) {
+    showStep(1, { force: true });
     showInlineError(error.message);
   } finally {
     setBusy(button, false);
@@ -215,9 +234,22 @@ export async function completeSetup() {
   }
 }
 
-export async function refreshSetup() {
+export async function refreshSetup({
+  runAutomaticDiagnostics = false,
+} = {}) {
   const setup = await api("/api/setup/state");
   renderSetupState(setup);
+
+  if (
+    runAutomaticDiagnostics &&
+    !setup.steps.system
+  ) {
+    showStep(1, { force: true });
+    await runDiagnostics({
+      automatic: true,
+    });
+  }
+
   return setup;
 }
 

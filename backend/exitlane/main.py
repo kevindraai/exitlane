@@ -22,6 +22,16 @@ from exitlane.core import (
 from exitlane.providers.nordvpn import provider
 from exitlane.services.diagnostics import run as diagnostics
 from exitlane.services.wireguard import create as create_wireguard
+from exitlane.config import (
+    DEFAULT_WIREGUARD_CLIENT,
+    DEFAULT_WIREGUARD_INTERFACE,
+    DEFAULT_WIREGUARD_PORT,
+    DEFAULT_WIREGUARD_SUBNET,
+    MAX_PASSWORD_LENGTH,
+    MIN_PASSWORD_LENGTH,
+    PROVIDER_REFRESH_INTERVAL_SECONDS,
+    validate_config,
+)
 
 
 class Admin(BaseModel):
@@ -31,8 +41,8 @@ class Admin(BaseModel):
         pattern=r"^[A-Za-z0-9_.-]+$",
     )
     password: str = Field(
-        min_length=12,
-        max_length=256,
+        min_length=MIN_PASSWORD_LENGTH,
+        max_length=MAX_PASSWORD_LENGTH,
     )
 
 
@@ -62,18 +72,18 @@ class WireGuard(BaseModel):
         min_length=1,
         max_length=255,
     )
-    subnet: str = "10.99.99.0/24"
+    subnet: str = DEFAULT_WIREGUARD_SUBNET
     port: int = Field(
-        default=51820,
+        default=DEFAULT_WIREGUARD_PORT,
         ge=1,
         le=65535,
     )
     interface: str = Field(
-        default="wg0",
+        default=DEFAULT_WIREGUARD_INTERFACE,
         pattern=r"^[A-Za-z0-9-]{1,15}$",
     )
     client: str = Field(
-        default="router",
+        default=DEFAULT_WIREGUARD_CLIENT,
         pattern=r"^[A-Za-z0-9_-]{1,64}$",
     )
 
@@ -91,6 +101,7 @@ class Webhook(BaseModel):
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    validate_config()
     init()
     yield
 
@@ -131,15 +142,33 @@ async def setup_state() -> dict:
 
     provider_status = await provider.status()
 
+    steps = {
+        "system": bool(setting("setup_system_complete", False)),
+        "admin": admin_count > 0,
+        "provider": bool(provider_status.get("authenticated", False)),
+        "wireguard": bool(setting("wireguard_configured", False)),
+    }
+
+    if not steps["system"]:
+        current_step = 1
+    elif not steps["admin"]:
+        current_step = 2
+    elif not steps["provider"]:
+        current_step = 3
+    elif not steps["wireguard"]:
+        current_step = 4
+    else:
+        current_step = 5
+
+    stored_step = int(setting("setup_current_step", current_step))
+
+    if stored_step != current_step:
+        set_setting("setup_current_step", current_step)
+
     return {
         "complete": bool(setting("setup_complete", False)),
-        "current_step": int(setting("setup_current_step", 1)),
-        "steps": {
-            "system": bool(setting("setup_system_complete", False)),
-            "admin": admin_count > 0,
-            "provider": bool(provider_status.get("authenticated", False)),
-            "wireguard": bool(setting("wireguard_configured", False)),
-        },
+        "current_step": current_step,
+        "steps": steps,
         "provider": provider_status,
     }
 
@@ -352,4 +381,23 @@ async def complete_setup() -> dict:
     return {
         "ok": True,
         "message": "Exitlane setup completed",
+    }
+
+
+@app.get("/api/config/public")
+async def public_config() -> dict:
+    return {
+        "password": {
+            "minimum_length": MIN_PASSWORD_LENGTH,
+            "maximum_length": MAX_PASSWORD_LENGTH,
+        },
+        "wireguard": {
+            "default_interface": DEFAULT_WIREGUARD_INTERFACE,
+            "default_subnet": DEFAULT_WIREGUARD_SUBNET,
+            "default_port": DEFAULT_WIREGUARD_PORT,
+            "default_client": DEFAULT_WIREGUARD_CLIENT,
+        },
+        "frontend": {
+            "provider_refresh_interval_seconds": (PROVIDER_REFRESH_INTERVAL_SECONDS),
+        },
     }

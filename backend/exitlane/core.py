@@ -5,6 +5,7 @@ import json
 import os
 import sqlite3
 from pathlib import Path
+from exitlane.config import MIN_PASSWORD_LENGTH
 
 DATA = Path(os.getenv("EXITLANE_DATA_DIR", "/etc/exitlane"))
 DB = DATA / "exitlane.db"
@@ -35,8 +36,8 @@ def set_setting(key, value):
 
 
 def hash_password(password, salt=None):
-    if len(password) < 12:
-        raise ValueError("Password must have at least 12 characters")
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise ValueError(f"Password must have at least {MIN_PASSWORD_LENGTH} characters")
     salt = salt or os.urandom(16)
     digest = hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1, dklen=64)
     return digest.hex(), salt.hex()
