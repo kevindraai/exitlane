@@ -1,0 +1,12 @@
+services:
+  exitlane:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    cap_add: [NET_ADMIN]
+    devices: [/dev/net/tun:/dev/net/tun]
+    ports: ["8787:8787", "51820:51820/udp"]
+    volumes: [exitlane-data:/data]
+    restart: unless-stopped
+volumes:
+  exitlane-data:
