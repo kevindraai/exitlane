@@ -20,6 +20,7 @@ def parse(output: str) -> dict[str, str]:
 
     return result
 
+
 _install_job: dict[str, Any] = {
     "running": False,
     "finished": False,
@@ -291,7 +292,7 @@ echo "Installatie afgerond"
             ("routing", "on"),
             ("lan-discovery", "on"),
             ("firewall", "on"),
-            ("killswitch", "on"),
+            ("killswitch", "off"),
             ("ipv6", "off"),
             ("analytics", "off"),
         ]
