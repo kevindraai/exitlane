@@ -380,6 +380,34 @@ echo "Installatie afgerond"
 
         return results
 
+    async def start_browser_login(self):
+        rc, out, err = await command(
+            "nordvpn",
+            "login",
+            timeout=30,
+        )
+
+        output = out or err
+
+        match = re.search(
+            r"https://api\.nordvpn\.com/\S+",
+            output,
+        )
+
+        login_url = match.group(0).rstrip(".,)") if match else None
+
+        return {
+            "ok": login_url is not None,
+            "login_url": login_url,
+            "stdout": out,
+            "stderr": err,
+            "message": (
+                "Open de aanmeldlink in je browser."
+                if login_url
+                else "NordVPN-aanmeldlink kon niet worden gevonden."
+            ),
+        }
+
     async def countries(self):
         rc, out, _ = await command(
             "nordvpn",

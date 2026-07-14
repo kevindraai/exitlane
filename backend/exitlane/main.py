@@ -14,6 +14,7 @@ from exitlane import __version__
 from exitlane.core import (
     DB,
     WG_DIR,
+    command,
     hash_password,
     init,
     set_setting,
@@ -210,6 +211,69 @@ async def create_admin(req: Admin) -> dict:
     }
 
 
+@app.get("/api/system/network")
+async def system_network() -> dict:
+    route_rc, route_out, route_err = await command(
+        "ip",
+        "-4",
+        "route",
+        "show",
+        "table",
+        "main",
+        "default",
+    )
+
+    if route_rc != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=(route_err or "Could not determine the management interface"),
+        )
+
+    route_tokens = route_out.split()
+
+    try:
+        interface = route_tokens[route_tokens.index("dev") + 1]
+    except (ValueError, IndexError) as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Could not parse the management interface",
+        ) from error
+
+    address_rc, address_out, address_err = await command(
+        "ip",
+        "-4",
+        "-o",
+        "address",
+        "show",
+        "dev",
+        interface,
+        "scope",
+        "global",
+    )
+
+    if address_rc != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=(address_err or "Could not determine the management address"),
+        )
+
+    address_tokens = address_out.split()
+
+    try:
+        endpoint = address_tokens[address_tokens.index("inet") + 1].split("/", 1)[0]
+    except (ValueError, IndexError) as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Could not parse the management address",
+        ) from error
+
+    return {
+        "interface": interface,
+        "endpoint": endpoint,
+        "source": "main-default-route",
+    }
+
+
 @app.get("/api/diagnostics")
 async def diagnostic_checks() -> dict:
     checks = await diagnostics()
@@ -292,6 +356,11 @@ async def connect_nordvpn(req: Connect) -> dict:
 @app.post("/api/providers/nordvpn/disconnect")
 async def disconnect_nordvpn() -> dict:
     return await provider.disconnect()
+
+
+@app.post("/api/providers/nordvpn/login/browser/start")
+async def start_browser_login() -> dict:
+    return await provider.start_browser_login()
 
 
 @app.post("/api/ingress/wireguard")

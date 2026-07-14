@@ -226,45 +226,181 @@
   ></div>
 </section>
 
-          <form id="token-form" class="form-card form-compact">
-            <label>
-              Nord Account access token
-              <input
-                id="nord-token"
-                type="password"
-                autocomplete="off"
-                minlength="20"
-                maxlength="512"
-                placeholder="Plak hier je access token"
-                required
-              >
-              <small>Het token wordt niet door Exitlane opgeslagen.</small>
-            </label>
-            <button type="submit" class="button button-primary">
-              Aanmelden met token
-            </button>
-          </form>
+<section class="login-methods">
+  <div class="login-method-heading">
+    <div>
+      <strong>Aanmelden bij NordVPN</strong>
+      <p>
+        Kies een aanmeldmethode. Voor een permanente gateway is een
+        access token het eenvoudigst.
+      </p>
+    </div>
+  </div>
 
-          <details class="details-card">
-            <summary>Aanmelden met browsercallback</summary>
-            <form id="callback-form" class="form-card form-compact">
-              <label>
-                Callback-URL
-                <input
-                  id="nord-callback"
-                  type="url"
-                  minlength="20"
-                  maxlength="2048"
-                  placeholder="nordvpn://… of https://…"
-                  required
-                >
-              </label>
-              <button type="submit" class="button button-secondary">
-                Callback verwerken
-              </button>
-            </form>
-          </details>
-        </section>
+  <div class="login-method-tabs" role="tablist">
+    <button
+      id="login-method-token"
+      class="login-method-tab active"
+      type="button"
+      role="tab"
+      aria-selected="true"
+      aria-controls="login-panel-token"
+      data-login-method="token"
+    >
+      Access token
+      <small>Aanbevolen</small>
+    </button>
+
+    <button
+      id="login-method-browser"
+      class="login-method-tab"
+      type="button"
+      role="tab"
+      aria-selected="false"
+      aria-controls="login-panel-browser"
+      data-login-method="browser"
+    >
+      Browserlogin
+      <small>Alternatief</small>
+    </button>
+  </div>
+
+  <section
+    id="login-panel-token"
+    class="login-method-panel"
+    role="tabpanel"
+    aria-labelledby="login-method-token"
+  >
+<ol class="instruction-list">
+  <li>
+    Open Nord Account en meld je aan.
+  </li>
+  <li>
+    Klik in het menu links op <strong>NordVPN</strong>.
+  </li>
+  <li>
+    Scroll naar beneden naar <strong>Get access token</strong>.
+  </li>
+  <li>
+    Genereer een nieuw token en kopieer het direct.
+  </li>
+  <li>
+    Plak het token hieronder in Exitlane.
+  </li>
+</ol>
+
+    <div class="notice-card">
+      <strong>Advies voor Exitlane</strong>
+      <p>
+        Kies een niet-verlopend token voor een vaste gateway en beveilig
+        je Nord Account met multifactorauthenticatie.
+      </p>
+    </div>
+
+    <a
+      class="button button-secondary"
+      href="https://my.nordaccount.com/"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      Nord Account openen ↗
+    </a>
+
+    <form id="token-form" class="form-card form-compact">
+      <label>
+        Access token
+        <input
+          id="nord-token"
+          type="password"
+          autocomplete="off"
+          minlength="20"
+          maxlength="512"
+          placeholder="Plak hier het token"
+          required
+        >
+        <small>
+          Exitlane gebruikt het token alleen voor de lokale NordVPN-login
+          en slaat het niet op.
+        </small>
+      </label>
+
+      <button type="submit" class="button button-primary">
+        Aanmelden met token
+      </button>
+    </form>
+  </section>
+
+  <section
+    id="login-panel-browser"
+    class="login-method-panel"
+    role="tabpanel"
+    aria-labelledby="login-method-browser"
+    hidden
+  >
+    <ol class="instruction-list">
+      <li>Klik hieronder op <strong>Browserlogin starten</strong>.</li>
+      <li>Open de getoonde NordVPN-link in je browser.</li>
+      <li>Meld je aan bij Nord Account.</li>
+      <li>
+        Klik niet normaal op <strong>Continue</strong>, maar kopieer de
+        achterliggende link en plak die hieronder.
+      </li>
+    </ol>
+
+    <button
+      id="browser-login-start"
+      type="button"
+      class="button button-secondary"
+    >
+      Browserlogin starten
+    </button>
+
+    <section id="browser-login-instruction" class="result-card" hidden>
+      <strong>Open deze NordVPN-aanmeldlink</strong>
+
+      <div class="copy-field">
+        <input id="browser-login-url" type="text" readonly>
+        <button
+          id="browser-login-copy"
+          type="button"
+          class="button button-secondary"
+        >
+          Kopiëren
+        </button>
+        <a
+          id="browser-login-open"
+          class="button button-secondary"
+          href="#"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Openen ↗
+        </a>
+      </div>
+    </section>
+
+    <form id="callback-form" class="form-card form-compact">
+      <label>
+        Callback-URL
+        <input
+          id="nord-callback"
+          type="text"
+          minlength="20"
+          maxlength="2048"
+          placeholder="nordvpn://…"
+          required
+        >
+        <small>
+          Plak hier de link achter de knop Continue.
+        </small>
+      </label>
+
+      <button type="submit" class="button button-primary">
+        Browserlogin afronden
+      </button>
+    </form>
+  </section>
+</section>
 
         <div class="step-actions">
           <button type="button" class="button button-secondary" data-back="2">
@@ -290,14 +426,28 @@
 
         <form id="wireguard-form" class="form-grid">
           <label>
-            Endpoint van deze LXC
-            <input
-              id="wg-endpoint"
-              name="endpoint"
-              placeholder="172.16.130.129"
-              required
-            >
-          </label>
+
+  Endpoint van deze LXC
+
+  <input
+
+    id="wg-endpoint"
+
+    name="endpoint"
+
+    placeholder="Automatisch detecteren…"
+
+    required
+
+  >
+
+  <small id="wg-endpoint-help">
+
+    Lokaal IP-adres wordt automatisch bepaald.
+
+  </small>
+
+</label>
 
           <label>
             Tunnelnetwerk

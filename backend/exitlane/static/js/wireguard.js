@@ -1,4 +1,4 @@
-import { postJson } from "./api.js";
+import { api, postJson } from "./api.js";
 import { appState } from "./state.js";
 import {
   clearInlineError,
@@ -8,6 +8,28 @@ import {
   showMessage,
 } from "./ui.js";
 import { refreshSetup } from "./wizard.js";
+
+async function loadDetectedEndpoint() {
+  const endpointInput = select("#wg-endpoint");
+  const helpText = select("#wg-endpoint-help");
+
+  if (endpointInput.value.trim()) {
+    return;
+  }
+
+  try {
+    const network = await api("/api/system/network");
+
+    endpointInput.value = network.endpoint;
+    helpText.textContent =
+      `Automatisch gedetecteerd via ${network.interface}.`;
+  } catch (error) {
+    helpText.textContent =
+      "Automatische detectie is mislukt. Vul het lokale IP-adres handmatig in.";
+
+    showMessage(error.message, "error");
+  }
+}
 
 async function generateWireGuard(event) {
   event.preventDefault();
@@ -63,4 +85,5 @@ async function copyWireGuardConfig() {
 export function initialiseWireGuardControls() {
   select("#wireguard-form").addEventListener("submit", generateWireGuard);
   select("#wireguard-copy").addEventListener("click", copyWireGuardConfig);
+  loadDetectedEndpoint();
 }

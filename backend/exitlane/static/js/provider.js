@@ -272,6 +272,62 @@ async function applyDefaults() {
   }
 }
 
+function selectLoginMethod(method) {
+  document
+    .querySelectorAll("[data-login-method]")
+    .forEach((button) => {
+      const selected = button.dataset.loginMethod === method;
+
+      button.classList.toggle("active", selected);
+      button.setAttribute("aria-selected", String(selected));
+    });
+
+  select("#login-panel-token").hidden = method !== "token";
+  select("#login-panel-browser").hidden = method !== "browser";
+}
+
+async function startBrowserLogin() {
+  const button = select("#browser-login-start");
+
+  setBusy(button, true, "Aanmeldlink ophalen…");
+  clearInlineError();
+
+  try {
+    const result = await postJson(
+      "/api/providers/nordvpn/login/browser/start",
+    );
+
+    if (!result.ok || !result.login_url) {
+      throw new Error(
+        result.message ||
+          result.stderr ||
+          "Aanmeldlink kon niet worden opgehaald.",
+      );
+    }
+
+    select("#browser-login-url").value = result.login_url;
+    select("#browser-login-open").href = result.login_url;
+    select("#browser-login-instruction").hidden = false;
+
+    showMessage("NordVPN-aanmeldlink is gereed.");
+  } catch (error) {
+    showInlineError(error.message);
+  } finally {
+    setBusy(button, false);
+  }
+}
+
+async function copyBrowserLoginUrl() {
+  const url = select("#browser-login-url").value;
+
+  try {
+    await navigator.clipboard.writeText(url);
+    showMessage("Aanmeldlink gekopieerd.");
+  } catch {
+    showMessage("Selecteer en kopieer de link handmatig.", "error");
+  }
+}
+
 function formatSettingName(setting) {
   const labels = {
     technology: "Technologie: NordLynx",
@@ -389,13 +445,54 @@ async function disconnectProvider() {
     setBusy(button, false);
   }
 }
-
 export function initialiseProviderControls() {
-  select("#provider-install").addEventListener("click", installProvider);
-  select("#provider-defaults").addEventListener("click", applyDefaults);
-  select("#token-form").addEventListener("submit", loginWithToken);
-  select("#callback-form").addEventListener("submit", loginWithCallback);
-  select("#connect-form").addEventListener("submit", connectProvider);
-  select("#disconnect-button").addEventListener("click", disconnectProvider);
+  select("#provider-install").addEventListener(
+    "click",
+    installProvider,
+  );
+
+  select("#provider-defaults").addEventListener(
+    "click",
+    applyDefaults,
+  );
+
+  select("#token-form").addEventListener(
+    "submit",
+    loginWithToken,
+  );
+
+  select("#callback-form").addEventListener(
+    "submit",
+    loginWithCallback,
+  );
+
+  select("#connect-form").addEventListener(
+    "submit",
+    connectProvider,
+  );
+
+  select("#disconnect-button").addEventListener(
+    "click",
+    disconnectProvider,
+  );
+
+  document
+    .querySelectorAll("[data-login-method]")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        selectLoginMethod(button.dataset.loginMethod);
+      });
+    });
+
+  select("#browser-login-start").addEventListener(
+    "click",
+    startBrowserLogin,
+  );
+
+  select("#browser-login-copy").addEventListener(
+    "click",
+    copyBrowserLoginUrl,
+  );
+
   restoreInstallStatus();
 }

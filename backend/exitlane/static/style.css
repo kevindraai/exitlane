@@ -812,3 +812,84 @@ pre {
   color: var(--danger);
   font-weight: 750;
 }
+.login-methods {
+  margin-top: 18px;
+}
+
+.login-method-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+}
+
+.login-method-tabs {
+  margin: 18px 0 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.login-method-tab {
+  padding: 14px;
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  background: rgba(8, 14, 26, 0.28);
+  text-align: left;
+  cursor: pointer;
+}
+
+.login-method-tab small {
+  color: var(--muted);
+}
+
+.login-method-tab.active {
+  border-color: rgba(110, 140, 255, 0.72);
+  background: rgba(110, 140, 255, 0.14);
+}
+
+.login-method-panel {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(8, 14, 26, 0.22);
+}
+
+.instruction-list {
+  margin: 0 0 18px;
+  padding-left: 22px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.instruction-list li + li {
+  margin-top: 8px;
+}
+
+.notice-card {
+  margin-bottom: 15px;
+  padding: 13px;
+  border: 1px solid rgba(110, 140, 255, 0.35);
+  border-radius: 11px;
+  background: rgba(110, 140, 255, 0.08);
+}
+
+.notice-card p {
+  margin: 5px 0 0;
+  color: var(--muted);
+}
+
+.copy-field {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+}
+
+@media (max-width: 650px) {
+  .login-method-tabs,
+  .copy-field {
+    grid-template-columns: 1fr;
+  }
+}
