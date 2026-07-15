@@ -191,21 +191,45 @@
             </button>
           </div>
 
-	<section id="provider-install-progress" class="result-card" hidden>
-	  <div class="result-heading">
-	    <div>
-	       <strong id="provider-install-title">NordVPN installeren</strong>
-	       <p id="provider-install-message">
-		Installatie voorbereiden…
-	       </p>
-	    </div>
-	    <span id="provider-install-state" class="status-pill status-neutral">
-    	    Wachten
-	    </span>
-	  </div>
-  	  <pre id="provider-install-log"></pre>
-	</section>
+<section id="provider-install-progress" class="result-card" hidden>
+  <div class="result-heading">
+    <div>
+      <strong id="provider-install-title">
+        NordVPN installeren
+      </strong>
 
+      <p id="provider-install-message">
+        Installatie voorbereiden...
+      </p>
+    </div>
+
+    <span
+      id="provider-install-state"
+      class="status-pill status-neutral"
+    >
+      Wachten
+    </span>
+  </div>
+
+  <div class="provider-install-log">
+    <button
+      id="provider-install-log-toggle"
+      type="button"
+      class="log-toggle"
+      aria-expanded="false"
+      aria-controls="provider-install-log"
+      hidden
+    >
+      Installatielog tonen
+    </button>
+
+    <pre
+      id="provider-install-log"
+      class="install-log"
+      hidden
+    ></pre>
+  </div>
+</section>
           <div class="provider-actions">
             <button id="provider-defaults" type="button" class="button button-secondary">
               Gatewayinstellingen toepassen

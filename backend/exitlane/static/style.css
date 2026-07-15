@@ -962,3 +962,35 @@ pre {
     width: 100%;
   }
 }
+.provider-install-log {
+  margin-top: 14px;
+}
+
+.log-toggle {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.log-toggle:hover {
+  color: var(--text);
+}
+
+.log-toggle::before {
+  content: "›";
+  display: inline-block;
+  margin-right: 7px;
+  transition: transform 0.18s ease;
+}
+
+.log-toggle[aria-expanded="true"]::before {
+  transform: rotate(90deg);
+}
+
+.install-log {
+  margin-top: 12px;
+}

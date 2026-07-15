@@ -53,6 +53,29 @@ function renderDashboard(status) {
   select("#metric-ip").textContent = status.external_ip || "—";
 }
 
+function setProviderInstallLogExpanded(expanded) {
+  const log = select("#provider-install-log");
+  const button = select("#provider-install-log-toggle");
+
+  log.hidden = !expanded;
+  button.hidden = false;
+
+  button.setAttribute(
+    "aria-expanded",
+    String(expanded),
+  );
+
+  button.textContent = expanded
+    ? "Installatielog verbergen"
+    : "Installatielog tonen";
+}
+
+function toggleProviderInstallLog() {
+  const log = select("#provider-install-log");
+
+  setProviderInstallLogExpanded(log.hidden);
+}
+
 export async function refreshProvider() {
   const response = await api("/api/providers/nordvpn/status");
   renderProviderStatus(response.status);
@@ -493,6 +516,11 @@ export function initialiseProviderControls() {
     "click",
     copyBrowserLoginUrl,
   );
+
+select("#provider-install-log-toggle").addEventListener(
+  "click",
+  toggleProviderInstallLog,
+);
 
   restoreInstallStatus();
 }
