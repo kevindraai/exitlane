@@ -453,7 +453,21 @@
             Tunnelnetwerk
             <input id="wg-subnet" name="subnet" value="10.99.99.0/24" required>
           </label>
-
+<label>
+  DNS-server
+  <input
+    id="wg-dns"
+    name="dns"
+    type="text"
+    inputmode="decimal"
+    autocomplete="off"
+    value="1.1.1.1"
+    required
+  >
+  <small>
+    Wordt opgenomen in de configuratie voor je router.
+  </small>
+</label>
           <label>
             UDP-poort
             <input
@@ -512,23 +526,129 @@
         </div>
       </article>
 
-      <article id="step-5" class="wizard-step" hidden>
-        <div class="completion-card">
-          <span class="completion-icon" aria-hidden="true">✓</span>
-          <p class="step-kicker">Stap 5</p>
-          <h2>Exitlane is bijna gereed</h2>
-          <p>
-            Importeer de WireGuard-client in je router en routeer eerst één
-            testapparaat via Exitlane. Rond daarna de installatie af.
+<article id="step-5" class="wizard-step" hidden>
+  <div class="completion-card">
+    <span class="completion-icon" aria-hidden="true">✓</span>
+
+    <p class="step-kicker">Stap 5</p>
+    <h2>Exitlane is bijna gereed</h2>
+
+    <p>
+      Download de WireGuard-configuratie en importeer deze in je
+      router. Exitlane controleert automatisch of de tunnel verbinding
+      maakt.
+    </p>
+
+    <section class="handoff-card">
+      <div class="handoff-heading">
+        <div>
+          <strong>WireGuard-configuratie</strong>
+          <p id="finish-config-filename">
+            exitlane-router.conf
           </p>
-
-          <div id="completion-checks" class="completion-checks"></div>
-
-          <button id="complete-button" type="button" class="button button-primary">
-            Setup afronden
-          </button>
         </div>
-      </article>
+
+        <span
+          id="finish-config-state"
+          class="status-pill status-success"
+        >
+          Gereed
+        </span>
+      </div>
+
+      <div class="handoff-actions">
+        <a
+          id="finish-download"
+          class="button button-primary"
+          href="#"
+          download
+        >
+          Download .conf
+        </a>
+
+        <button
+          id="finish-copy"
+          type="button"
+          class="button button-secondary"
+        >
+          Kopiëren
+        </button>
+
+        <button
+          id="finish-view"
+          type="button"
+          class="button button-secondary"
+        >
+          Bekijken
+        </button>
+      </div>
+
+      <pre id="finish-config-preview" hidden></pre>
+    </section>
+
+    <section class="connection-card">
+      <div class="connection-heading">
+        <div>
+          <strong>Verbindingsstatus</strong>
+          <p id="wireguard-connection-message">
+            Wachten op de eerste WireGuard-verbinding…
+          </p>
+        </div>
+
+        <span
+          id="wireguard-connection-state"
+          class="status-pill status-neutral"
+        >
+          Wachten
+        </span>
+      </div>
+
+      <div
+        id="wireguard-connection-details"
+        class="connection-details"
+        hidden
+      >
+        <div>
+          <span>Client</span>
+          <strong id="wireguard-status-client">—</strong>
+        </div>
+
+        <div>
+          <span>Endpoint</span>
+          <strong id="wireguard-status-endpoint">—</strong>
+        </div>
+
+        <div>
+          <span>Ontvangen</span>
+          <strong id="wireguard-status-received">—</strong>
+        </div>
+
+        <div>
+          <span>Verzonden</span>
+          <strong id="wireguard-status-sent">—</strong>
+        </div>
+      </div>
+
+      <button
+        id="wireguard-status-refresh"
+        type="button"
+        class="button button-secondary"
+      >
+        Opnieuw controleren
+      </button>
+    </section>
+
+    <div id="completion-checks" class="completion-checks"></div>
+
+    <button
+      id="complete-button"
+      type="button"
+      class="button button-primary"
+    >
+      Setup afronden
+    </button>
+  </div>
+</article>
     </section>
 
     <section id="dashboard-panel" class="panel dashboard-panel">

@@ -18,6 +18,7 @@ import {
   refreshSetup,
 } from "./wizard.js";
 import { initialiseWireGuardControls } from "./wireguard.js";
+import { initialiseFinishControls } from "./finish.js";
 
 async function refreshApplication() {
   const health = await api("/api/health");
@@ -43,6 +44,7 @@ async function initialise() {
   initialiseWizardNavigation();
   initialiseProviderControls();
   initialiseWireGuardControls();
+  initialiseFinishControls();
   initialiseNotificationControls();
 
   try {

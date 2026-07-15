@@ -8,6 +8,7 @@ import {
   showMessage,
 } from "./ui.js";
 import { refreshSetup } from "./wizard.js";
+import { prepareFinishStep } from "./finish.js";
 
 async function loadDetectedEndpoint() {
   const endpointInput = select("#wg-endpoint");
@@ -33,33 +34,54 @@ async function loadDetectedEndpoint() {
 
 async function generateWireGuard(event) {
   event.preventDefault();
+
   const form = event.currentTarget;
   const button = form.querySelector('button[type="submit"]');
+
   setBusy(button, true, "Genereren…");
   clearInlineError();
 
   try {
     const client = select("#wg-client").value.trim();
 
-    const result = await postJson("/api/ingress/wireguard", {
-      endpoint: select("#wg-endpoint").value.trim(),
-      subnet: select("#wg-subnet").value.trim(),
-      port: Number(select("#wg-port").value),
-      interface: select("#wg-interface").value.trim(),
-      client,
+    const result = await postJson(
+      "/api/ingress/wireguard",
+      {
+        endpoint: select("#wg-endpoint").value.trim(),
+        subnet: select("#wg-subnet").value.trim(),
+        dns: select("#wg-dns").value.trim(),
+        port: Number(select("#wg-port").value),
+        interface: select("#wg-interface").value.trim(),
+        client,
+      },
+    );
+
+    appState.generatedClientName =
+      result.client_name || client;
+
+    appState.generatedClientConfig =
+      result.client_config;
+
+    prepareFinishStep({
+      clientName: appState.generatedClientName,
+      clientConfig: result.client_config,
     });
 
-    appState.generatedClientName = result.client_name || client;
+    select("#wireguard-config").textContent =
+      result.client_config;
 
-    select("#wireguard-config").textContent = result.client_config;
     select("#wireguard-download").href =
       `/api/ingress/wireguard/client/${encodeURIComponent(
         appState.generatedClientName,
       )}`;
+
     select("#wireguard-result").hidden = false;
     select("#wireguard-next").disabled = false;
 
-    showMessage("WireGuard-configuraties gegenereerd.");
+    showMessage(
+      "WireGuard-configuraties gegenereerd.",
+    );
+
     await refreshSetup();
   } catch (error) {
     showInlineError(error.message);

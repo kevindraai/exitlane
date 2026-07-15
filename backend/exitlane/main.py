@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -26,6 +26,7 @@ from exitlane.services.wireguard import create as create_wireguard
 from exitlane.config import (
     DEFAULT_WIREGUARD_CLIENT,
     DEFAULT_WIREGUARD_INTERFACE,
+    DEFAULT_WIREGUARD_DNS,
     DEFAULT_WIREGUARD_PORT,
     DEFAULT_WIREGUARD_SUBNET,
     MAX_PASSWORD_LENGTH,
@@ -33,6 +34,8 @@ from exitlane.config import (
     PROVIDER_REFRESH_INTERVAL_SECONDS,
     validate_config,
 )
+
+SYSTEM_WIREGUARD_DIR = Path("/etc/wireguard")
 
 
 class Admin(BaseModel):
@@ -74,6 +77,11 @@ class WireGuard(BaseModel):
         max_length=255,
     )
     subnet: str = DEFAULT_WIREGUARD_SUBNET
+    dns: str = Field(
+        default=DEFAULT_WIREGUARD_DNS,
+        min_length=1,
+        max_length=45,
+    )
     port: int = Field(
         default=DEFAULT_WIREGUARD_PORT,
         ge=1,
@@ -363,34 +371,124 @@ async def start_browser_login() -> dict:
     return await provider.start_browser_login()
 
 
+async def activate_wireguard_interface(interface: str) -> None:
+    source_config = WG_DIR / f"{interface}.conf"
+    system_config = SYSTEM_WIREGUARD_DIR / f"{interface}.conf"
+    service_name = f"wg-quick@{interface}.service"
+
+    if not source_config.exists():
+        raise RuntimeError(f"WireGuard-configuratie ontbreekt: {source_config}")
+
+    SYSTEM_WIREGUARD_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    source_config.chmod(0o600)
+
+    if system_config.is_symlink():
+        if system_config.resolve() != source_config.resolve():
+            system_config.unlink()
+            system_config.symlink_to(source_config)
+    elif system_config.exists():
+        raise RuntimeError(f"{system_config} bestaat al en is geen symlink.")
+    else:
+        system_config.symlink_to(source_config)
+
+    enable_rc, _, enable_error = await command(
+        "systemctl",
+        "enable",
+        service_name,
+    )
+
+    if enable_rc != 0:
+        raise RuntimeError(enable_error or "De WireGuard-service kon niet worden ingeschakeld.")
+
+    service_rc, _, _ = await command(
+        "systemctl",
+        "is-active",
+        "--quiet",
+        service_name,
+    )
+
+    if service_rc != 0:
+        link_rc, _, _ = await command(
+            "ip",
+            "link",
+            "show",
+            "dev",
+            interface,
+        )
+
+        if link_rc == 0:
+            await command(
+                "wg-quick",
+                "down",
+                str(source_config),
+            )
+
+    restart_rc, _, restart_error = await command(
+        "systemctl",
+        "restart",
+        service_name,
+    )
+
+    if restart_rc != 0:
+        raise RuntimeError(restart_error or "De WireGuard-service kon niet worden gestart.")
+
+    active_rc, _, active_error = await command(
+        "systemctl",
+        "is-active",
+        "--quiet",
+        service_name,
+    )
+
+    if active_rc != 0:
+        raise RuntimeError(active_error or "De WireGuard-service is niet actief geworden.")
+
+
 @app.post("/api/ingress/wireguard")
 async def create_wireguard_ingress(req: WireGuard) -> dict:
     try:
         result = await create_wireguard(
             endpoint=req.endpoint,
             subnet=req.subnet,
+            dns=req.dns,
             port=req.port,
             interface=req.interface,
             client=req.client,
         )
-    except (ValueError, RuntimeError) as error:
+    except ValueError as error:
         raise HTTPException(
             status_code=400,
+            detail=str(error),
+        ) from error
+    except RuntimeError as error:
+        raise HTTPException(
+            status_code=500,
+            detail=str(error),
+        ) from error
+
+    try:
+        await activate_wireguard_interface(
+            req.interface,
+        )
+    except RuntimeError as error:
+        raise HTTPException(
+            status_code=500,
             detail=str(error),
         ) from error
 
     set_setting("wireguard_configured", True)
     set_setting("wireguard_client_name", req.client)
+    set_setting("wireguard_interface", req.interface)
     set_setting("setup_current_step", 5)
 
     return result
 
 
-@app.get(
-    "/api/ingress/wireguard/client/{name}",
-    response_class=PlainTextResponse,
-)
-async def wireguard_client_config(name: str) -> str:
+@app.get("/api/ingress/wireguard/client/{name}")
+async def wireguard_client_config(name: str) -> FileResponse:
     if not name.replace("-", "").replace("_", "").isalnum():
         raise HTTPException(
             status_code=400,
@@ -405,7 +503,104 @@ async def wireguard_client_config(name: str) -> str:
             detail="WireGuard client configuration not found",
         )
 
-    return path.read_text(encoding="utf-8")
+    return FileResponse(
+        path=path,
+        media_type="application/x-wireguard-profile",
+        filename=f"exitlane-{name}.conf",
+    )
+
+
+@app.get("/api/ingress/wireguard/status")
+async def wireguard_status() -> dict:
+    interface = setting(
+        "wireguard_interface",
+        DEFAULT_WIREGUARD_INTERFACE,
+    )
+    client_name = setting(
+        "wireguard_client_name",
+        DEFAULT_WIREGUARD_CLIENT,
+    )
+
+    service_name = f"wg-quick@{interface}.service"
+
+    service_rc, _, _ = await command(
+        "systemctl",
+        "is-active",
+        "--quiet",
+        service_name,
+    )
+
+    service_active = service_rc == 0
+
+    rc, out, err = await command(
+        "wg",
+        "show",
+        interface,
+        "dump",
+    )
+
+    if rc != 0:
+        return {
+            "configured": bool(
+                setting(
+                    "wireguard_configured",
+                    False,
+                )
+            ),
+            "active": False,
+            "service_active": service_active,
+            "connected": False,
+            "interface": interface,
+            "client": client_name,
+            "message": (err or "De WireGuard-interface is niet actief."),
+        }
+
+    lines = [line for line in out.splitlines() if line.strip()]
+
+    peers = []
+
+    for line in lines[1:]:
+        columns = line.split("\t")
+
+        if len(columns) < 8:
+            continue
+
+        public_key = columns[0]
+        endpoint = columns[2]
+        latest_handshake = int(columns[4] or 0)
+        received_bytes = int(columns[5] or 0)
+        sent_bytes = int(columns[6] or 0)
+
+        peers.append(
+            {
+                "public_key": public_key,
+                "endpoint": endpoint,
+                "latest_handshake": latest_handshake,
+                "received_bytes": received_bytes,
+                "sent_bytes": sent_bytes,
+            }
+        )
+
+    latest_handshake = max(
+        (peer["latest_handshake"] for peer in peers),
+        default=0,
+    )
+
+    return {
+        "configured": bool(
+            setting(
+                "wireguard_configured",
+                False,
+            )
+        ),
+        "active": True,
+        "service_active": service_active,
+        "connected": latest_handshake > 0,
+        "interface": interface,
+        "client": client_name,
+        "latest_handshake": latest_handshake,
+        "peers": peers,
+    }
 
 
 @app.post("/api/notifications/webhook")

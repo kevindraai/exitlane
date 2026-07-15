@@ -893,3 +893,72 @@ pre {
     grid-template-columns: 1fr;
   }
 }
+.handoff-card,
+.connection-card {
+  margin: 20px 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(8, 14, 26, 0.28);
+  text-align: left;
+}
+
+.handoff-heading,
+.connection-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.handoff-heading p,
+.connection-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+}
+
+.handoff-actions {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.connection-details {
+  margin: 16px 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.connection-details > div {
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.connection-details span,
+.connection-details strong {
+  display: block;
+}
+
+.connection-details span {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+@media (max-width: 650px) {
+  .handoff-heading,
+  .connection-heading {
+    flex-direction: column;
+  }
+
+  .connection-details {
+    grid-template-columns: 1fr;
+  }
+
+  .handoff-actions .button {
+    width: 100%;
+  }
+}

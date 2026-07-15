@@ -4,6 +4,7 @@ export const appState = {
   diagnostics: null,
   visibleStep: 1,
   generatedClientName: null,
+  generatedClientConfig: null
 };
 
 export const stepNames = {
