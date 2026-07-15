@@ -188,6 +188,7 @@ install_system_packages() {
   apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
+    gnupg \
     iproute2 \
     nftables \
     python3 \
