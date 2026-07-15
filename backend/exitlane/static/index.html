@@ -6,6 +6,30 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="Exitlane, smart egress for every network.">
   <title>Exitlane</title>
+  <script>
+    (() => {
+      const storageKey = "exitlane-color-scheme";
+      const preference =
+        localStorage.getItem(storageKey) || "system";
+
+      const systemDark = window.matchMedia(
+        "(prefers-color-scheme: dark)",
+      ).matches;
+
+      const resolved =
+        preference === "system"
+          ? systemDark
+            ? "dark"
+            : "light"
+          : preference;
+
+      document.documentElement.dataset.colorScheme =
+        resolved;
+
+      document.documentElement.dataset.colorSchemePreference =
+        preference;
+    })();
+  </script>
   <link rel="stylesheet" href="/assets/style.css">
 </head>
 <body>
@@ -19,6 +43,72 @@
     </a>
 
     <div class="header-status">
+<div class="color-scheme-menu">
+  <button
+    id="color-scheme-trigger"
+    type="button"
+    class="color-scheme-trigger"
+    aria-haspopup="true"
+    aria-expanded="false"
+    aria-controls="color-scheme-options"
+  >
+    <span class="color-scheme-trigger-label">
+      Kleurenschema
+    </span>
+
+    <span id="color-scheme-current">
+      Systeem
+    </span>
+
+    <span class="color-scheme-chevron" aria-hidden="true">
+      ▾
+    </span>
+  </button>
+
+  <div
+    id="color-scheme-options"
+    class="color-scheme-options"
+    role="menu"
+    hidden
+  >
+    <span class="color-scheme-menu-heading">
+      Kleurenschema
+    </span>
+
+    <button
+      type="button"
+      class="color-scheme-option"
+      data-color-scheme-value="system"
+      role="menuitemradio"
+      aria-checked="false"
+    >
+      <span>Systeem</span>
+      <span class="color-scheme-check" aria-hidden="true">✓</span>
+    </button>
+
+    <button
+      type="button"
+      class="color-scheme-option"
+      data-color-scheme-value="light"
+      role="menuitemradio"
+      aria-checked="false"
+    >
+      <span>Licht</span>
+      <span class="color-scheme-check" aria-hidden="true">✓</span>
+    </button>
+
+    <button
+      type="button"
+      class="color-scheme-option"
+      data-color-scheme-value="dark"
+      role="menuitemradio"
+      aria-checked="false"
+    >
+      <span>Donker</span>
+      <span class="color-scheme-check" aria-hidden="true">✓</span>
+    </button>
+  </div>
+</div>
       <span id="api-status" class="status-pill status-neutral">API controleren…</span>
       <span id="app-version" class="version-label"></span>
     </div>
