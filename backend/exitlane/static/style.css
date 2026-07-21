@@ -1350,3 +1350,118 @@ pre {
   display: flex;
   justify-content: flex-start;
 }
+.language-menu {
+  position: relative;
+}
+
+.language-trigger {
+  min-height: 36px;
+  padding: 7px 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  background: var(--surface);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.language-trigger:hover {
+  border-color: var(--border-strong);
+}
+
+.language-trigger-label {
+  color: var(--muted);
+}
+
+.language-chevron {
+  color: var(--muted);
+  transition: transform 0.16s ease;
+}
+
+.language-trigger[aria-expanded="true"]
+  .language-chevron {
+  transform: rotate(180deg);
+}
+
+.language-options {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  min-width: 190px;
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.language-options[hidden] {
+  display: none;
+}
+
+.language-menu-heading {
+  display: block;
+  padding: 7px 9px 6px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.language-option {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 0;
+  border-radius: 9px;
+  color: var(--text);
+  background: transparent;
+  font: inherit;
+  font-size: 0.84rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.language-option:hover {
+  background: var(--surface-translucent);
+}
+
+.language-option.is-active {
+  background: var(--accent-soft);
+}
+
+.language-check {
+  color: var(--accent);
+  opacity: 0;
+}
+
+.language-option.is-active
+  .language-check {
+  opacity: 1;
+}
+
+.language-trigger:focus-visible,
+.language-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 650px) {
+  .language-options {
+    right: 0;
+    min-width: 180px;
+  }
+
+  .language-trigger-label {
+    display: none;
+  }
+}

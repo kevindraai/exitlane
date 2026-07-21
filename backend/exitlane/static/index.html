@@ -52,14 +52,42 @@
         <small>Smart egress for every network</small>
       </span>
     </a>
+<div class="language-menu">
+    <button aria-controls="language-options" aria-expanded="false" aria-haspopup="true" class="language-trigger" id="language-trigger" type="button">
+     <span class="language-trigger-label" data-i18n="language.label">
+      Language
+     </span>
+     <span id="language-current">
+      English
+     </span>
+     <span aria-hidden="true" class="language-chevron">
+      ▾
+     </span>
+    </button>
+    <div class="language-options" hidden="" id="language-options" role="menu">
+     <span class="language-menu-heading" data-i18n="language.label">
+      Language
+     </span>
+     <button aria-checked="false" class="language-option" data-language-value="en" role="menuitemradio" type="button">
+      <span>
+       English
+      </span>
+      <span aria-hidden="true" class="language-check">
+       ✓
+      </span>
+     </button>
+     <button aria-checked="false" class="language-option" data-language-value="nl" role="menuitemradio" type="button">
+      <span>
+       Nederlands
+      </span>
+      <span aria-hidden="true" class="language-check">
+       ✓
+      </span>
+     </button>
+    </div>
+   </div>
 
-    <div class="header-status">
-      <label class="language-selector">
-        <select id="language-selector">
-            <option value="en">English</option>
-            <option value="nl">Nederlands</option>
-        </select>
-    </label>
+<div class="header-status">   
 <div class="color-scheme-menu">
   <button
     id="color-scheme-trigger"
