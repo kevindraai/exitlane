@@ -63,12 +63,20 @@ function updateApplicationMode(setup) {
   const wizard = select("#wizard-panel");
   const dashboard = select("#dashboard-panel");
   const sidebar = select("#sidebar");
+  const shell = document.querySelector(
+    ".app-shell",
+  );
 
   const complete = Boolean(setup.complete);
 
   wizard.hidden = complete;
   dashboard.hidden = !complete;
   sidebar.hidden = !complete;
+
+  shell?.classList.toggle(
+    "has-sidebar",
+    complete,
+  );
 }
 export function renderSetupState(setup) {
   appState.setup = setup;

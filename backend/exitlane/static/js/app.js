@@ -8,6 +8,7 @@ import { initialiseWireGuardControls } from "./wireguard.js";
 import { initialiseFinishControls } from "./finish.js";
 import { initialiseColorScheme, } from "./theme.js";
 import { initialiseNavigation, } from "./navigation.js";
+import { initialiseWireGuardManagement, } from "./wireguard-management.js";
 async function refreshApplication() {
   const health = await api("/api/health");
 
@@ -36,6 +37,7 @@ async function initialise() {
   initialiseWireGuardControls();
   initialiseFinishControls();
   initialiseNotificationControls();
+  initialiseWireGuardManagement();
 
   try {
     await loadPublicConfig();

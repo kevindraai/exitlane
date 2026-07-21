@@ -929,9 +929,86 @@
       </div>
     </div>
 
-    <div class="empty-state">
-      WireGuard-beheer wordt in een volgende versie toegevoegd.
+<section class="wireguard-overview">
+  <div class="connection-card">
+    <div class="connection-heading">
+      <div>
+        <strong>Routertunnel</strong>
+        <p id="management-wireguard-message">
+          WireGuard-status ophalen...
+        </p>
+      </div>
+
+      <span
+        id="management-wireguard-state"
+        class="status-pill status-neutral"
+      >
+        Controleren
+      </span>
     </div>
+
+    <div
+      id="management-wireguard-details"
+      class="connection-details"
+      hidden
+    >
+      <div>
+        <span>Client</span>
+        <strong id="management-wireguard-client">—</strong>
+      </div>
+
+      <div>
+        <span>Endpoint</span>
+        <strong id="management-wireguard-endpoint">—</strong>
+      </div>
+
+      <div>
+        <span>Ontvangen</span>
+        <strong id="management-wireguard-received">—</strong>
+      </div>
+
+      <div>
+        <span>Verzonden</span>
+        <strong id="management-wireguard-sent">—</strong>
+      </div>
+    </div>
+
+    <div class="view-actions">
+      <button
+        id="management-wireguard-refresh"
+        type="button"
+        class="button button-secondary"
+      >
+        Opnieuw controleren
+      </button>
+    </div>
+  </div>
+
+  <section class="panel">
+    <div class="panel-heading compact">
+      <div>
+        <p class="eyebrow">TUNNELS</p>
+        <h2>WireGuard-clients</h2>
+        <p>
+          Beheer hier straks router- en applicatietunnels.
+        </p>
+      </div>
+
+      <button
+        type="button"
+        class="button button-primary"
+        disabled
+      >
+        Nieuwe tunnel
+      </button>
+    </div>
+
+    <div class="empty-state">
+      Exitlane gebruikt momenteel één routertunnel. Ondersteuning voor
+      meerdere peers en applicatietunnels volgt later.
+    </div>
+  </section>
+</section>
   </section>
 </section>
 

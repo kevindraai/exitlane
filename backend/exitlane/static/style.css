@@ -1199,9 +1199,13 @@ pre {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 24px;
   align-items: start;
+}
+
+.app-shell.has-sidebar {
+  grid-template-columns: 220px minmax(0, 1fr);
 }
 
 .app-content {
@@ -1257,7 +1261,7 @@ pre {
 }
 
 @media (max-width: 900px) {
-  .app-shell {
+  .app-shell.has-sidebar {
     grid-template-columns: 1fr;
   }
 
@@ -1339,4 +1343,14 @@ pre {
   .dashboard-summary-grid {
     grid-template-columns: 1fr;
   }
+}
+.wireguard-overview {
+  display: grid;
+  gap: 20px;
+}
+
+.view-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-start;
 }
