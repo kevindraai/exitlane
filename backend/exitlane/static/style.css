@@ -155,16 +155,12 @@ summary:focus-visible {
   text-decoration: none;
 }
 
-.brand-mark {
+.brand-icon {
   width: 46px;
   height: 46px;
-  display: grid;
-  place-items: center;
-  border-radius: 14px;
-  background: linear-gradient(145deg, #7792ff, #5877f0);
-  box-shadow: 0 14px 32px rgba(82, 112, 235, 0.26);
-  font-size: 1.7rem;
-  font-weight: 800;
+  flex: 0 0 auto;
+  display: block;
+  border-radius: 13px;
 }
 
 .brand strong,
