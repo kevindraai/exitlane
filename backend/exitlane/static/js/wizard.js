@@ -62,11 +62,13 @@ export function showStep(stepNumber, { force = false } = {}) {
 function updateApplicationMode(setup) {
   const wizard = select("#wizard-panel");
   const dashboard = select("#dashboard-panel");
+  const sidebar = select("#sidebar");
 
   const complete = Boolean(setup.complete);
 
   wizard.hidden = complete;
   dashboard.hidden = !complete;
+  sidebar.hidden = !complete;
 }
 export function renderSetupState(setup) {
   appState.setup = setup;

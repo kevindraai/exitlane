@@ -115,7 +115,60 @@
   </header>
 
   <main class="page">
-    <section id="wizard-panel" class="panel wizard-panel">
+  <div class="app-shell">
+    <aside id="sidebar" class="sidebar" hidden>
+      <button
+        type="button"
+        class="sidebar-item active"
+        data-view="dashboard"
+      >
+        <span aria-hidden="true">🏠</span>
+        <span>Dashboard</span>
+      </button>
+
+      <button
+        type="button"
+        class="sidebar-item"
+        data-view="vpn"
+        disabled
+      >
+        <span aria-hidden="true">🌍</span>
+        <span>VPN</span>
+      </button>
+
+      <button
+        type="button"
+        class="sidebar-item"
+        data-view="wireguard"
+        disabled
+      >
+        <span aria-hidden="true">🔑</span>
+        <span>WireGuard</span>
+      </button>
+
+      <button
+        type="button"
+        class="sidebar-item"
+        data-view="security"
+        disabled
+      >
+        <span aria-hidden="true">🔒</span>
+        <span>Security</span>
+      </button>
+
+      <button
+        type="button"
+        class="sidebar-item"
+        data-view="settings"
+        disabled
+      >
+        <span aria-hidden="true">⚙️</span>
+        <span>Settings</span>
+      </button>
+    </aside>
+
+    <div class="app-content">
+      <section id="wizard-panel" class="panel wizard-panel">
       <div class="panel-heading">
         <div>
           <p class="eyebrow">FIRST-RUN WIZARD</p>
@@ -816,7 +869,9 @@
         </div>
       </form>
     </section>
-  </main>
+    </div>
+  </div>
+</main>
 
   <div id="toast-region" class="toast-region" aria-live="polite"></div>
 
