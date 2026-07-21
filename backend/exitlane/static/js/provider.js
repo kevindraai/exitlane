@@ -9,6 +9,7 @@ import {
   showMessage,
 } from "./ui.js";
 import { refreshSetup } from "./wizard.js";
+import { t } from "./i18n.js";
 
 export function renderProviderStatus(status) {
   appState.provider = status;
@@ -120,7 +121,11 @@ let installPollTimer = null;
 async function installProvider() {
   const button = select("#provider-install");
 
-  setBusy(button, true, "Installeren…");
+  setBusy(
+  button,
+  true,
+  t("busy.installing", {}, "Installing…"),
+);
   clearInlineError();
 
   select("#provider-install-progress").hidden = false;
@@ -254,7 +259,11 @@ async function applyDefaults() {
   const resultPanel = select("#provider-defaults-result");
   const resultList = select("#provider-defaults-list");
 
-  setBusy(button, true, "Toepassen…");
+  setBusy(
+  button,
+  true,
+  t("busy.applying", {}, "Applying…"),
+);
   clearInlineError();
 
   resultPanel.hidden = false;
@@ -301,7 +310,13 @@ async function applyDefaults() {
         "success",
       );
 
-      showMessage("Gatewayinstellingen zijn toegepast.");
+      showMessage(
+  t(
+    "messages.gateway_settings_applied",
+    {},
+    "Gateway settings applied.",
+  ),
+);
     } else {
       setStatusPill(
         select("#provider-defaults-state"),
@@ -345,7 +360,15 @@ function selectLoginMethod(method) {
 async function startBrowserLogin() {
   const button = select("#browser-login-start");
 
-  setBusy(button, true, "Aanmeldlink ophalen…");
+  setBusy(
+  button,
+  true,
+  t(
+    "busy.loading_login_link",
+    {},
+    "Loading login link…",
+  ),
+);
   clearInlineError();
 
   try {
@@ -365,7 +388,13 @@ async function startBrowserLogin() {
     select("#browser-login-open").href = result.login_url;
     select("#browser-login-instruction").hidden = false;
 
-    showMessage("NordVPN-aanmeldlink is gereed.");
+    showMessage(
+  t(
+    "messages.login_link_ready",
+    {},
+    "The NordVPN login link is ready.",
+  ),
+);
   } catch (error) {
     showInlineError(error.message);
   } finally {
@@ -378,9 +407,22 @@ async function copyBrowserLoginUrl() {
 
   try {
     await navigator.clipboard.writeText(url);
-    showMessage("Aanmeldlink gekopieerd.");
+    showMessage(
+  t(
+    "messages.login_link_copied",
+    {},
+    "Login link copied.",
+  ),
+);
   } catch {
-    showMessage("Selecteer en kopieer de link handmatig.", "error");
+    showMessage(
+  t(
+    "messages.copy_link_manually",
+    {},
+    "Select and copy the link manually.",
+  ),
+  "error",
+);
   }
 }
 
@@ -402,7 +444,11 @@ async function loginWithToken(event) {
   event.preventDefault();
   const button = event.currentTarget.querySelector('button[type="submit"]');
   const input = select("#nord-token");
-  setBusy(button, true, "Aanmelden…");
+  setBusy(
+  button,
+  true,
+  t("busy.signing_in", {}, "Signing in…"),
+);
   clearInlineError();
 
   try {
@@ -431,7 +477,11 @@ async function loginWithToken(event) {
 async function loginWithCallback(event) {
   event.preventDefault();
   const button = event.currentTarget.querySelector('button[type="submit"]');
-  setBusy(button, true, "Verwerken…");
+  setBusy(
+  button,
+  true,
+  t("busy.connecting", {}, "Connecting…"),
+);
   clearInlineError();
 
   try {
@@ -482,7 +532,15 @@ async function connectProvider(event) {
 
 async function disconnectProvider() {
   const button = select("#disconnect-button");
-  setBusy(button, true, "Verbreken…");
+  setBusy(
+  button,
+  true,
+  t(
+    "busy.disconnecting",
+    {},
+    "Disconnecting…",
+  ),
+);
 
   try {
     const result = await postJson("/api/providers/nordvpn/disconnect");

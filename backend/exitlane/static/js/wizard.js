@@ -191,7 +191,17 @@ export async function runDiagnostics(
   setBusy(
     button,
     true,
-    automatic ? "Automatisch controleren…" : "Controleren…",
+    automatic
+  ? t(
+      "busy.checking_automatic",
+      {},
+      "Checking automatically…",
+    )
+  : t(
+      "busy.checking",
+      {},
+      "Checking…",
+    ),
   );
 
   clearInlineError();
@@ -208,16 +218,23 @@ export async function runDiagnostics(
     if (result.ok) {
       if (!automatic) {
         showMessage(
-          "Alle systeemcontroles zijn geslaagd.",
-        );
+  t(
+    "messages.system_checks_passed",
+    {},
+    "All system checks passed.",
+  ),
+);
       }
     } else {
       showStep(1, { force: true });
 
       showInlineError(
-        "Exitlane heeft een probleem in de systeemcontrole gevonden. " +
-          "Los de rode controle op en voer de controles opnieuw uit.",
-      );
+  t(
+    "messages.system_check_failed",
+    {},
+    "Exitlane found a problem during the system check.",
+  ),
+);
     }
   } catch (error) {
     showStep(1, { force: true });
@@ -265,11 +282,25 @@ export async function createAdmin(event) {
   clearInlineError();
 
   if (password !== confirmation) {
-    showInlineError("De ingevoerde wachtwoorden komen niet overeen.");
+    showInlineError(
+  t(
+    "messages.passwords_do_not_match",
+    {},
+    "The entered passwords do not match.",
+  ),
+);
     return;
   }
 
-  setBusy(submitButton, true, "Aanmaken…");
+  setBusy(
+  submitButton,
+  true,
+  t(
+    "busy.creating",
+    {},
+    "Creating…",
+  ),
+);
 
   try {
     await postJson("/api/setup/admin", {
@@ -279,7 +310,13 @@ export async function createAdmin(event) {
 
     select("#admin-password").value = "";
     select("#admin-password-confirm").value = "";
-    showMessage("Beheerder aangemaakt.");
+    showMessage(
+  t(
+    "messages.admin_created",
+    {},
+    "Administrator created.",
+  ),
+);
     await refreshSetup();
   } catch (error) {
     showInlineError(error.message);
@@ -291,7 +328,15 @@ export async function createAdmin(event) {
 export async function completeSetup() {
   const button = select("#complete-button");
 
-  setBusy(button, true, "Afronden…");
+  setBusy(
+  button,
+  true,
+  t(
+    "busy.finishing",
+    {},
+    "Finishing…",
+  ),
+);
   clearInlineError();
 
   try {
@@ -300,8 +345,13 @@ export async function completeSetup() {
     );
 
     showMessage(
-      result.message || "Setup afgerond.",
-    );
+  result.message ||
+    t(
+      "messages.setup_completed",
+      {},
+      "Setup completed.",
+    ),
+);
 
     // Eerst het dashboard zichtbaar maken.
     await refreshSetup();

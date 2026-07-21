@@ -185,5 +185,33 @@
     "wireguard": "WireGuard",
     "security": "Security",
     "settings": "Settings"
-  }  
+  },
+"busy": {
+  "default": "Working…",
+  "checking": "Checking…",
+  "checking_automatic": "Checking automatically…",
+  "creating": "Creating…",
+  "finishing": "Finishing…",
+  "installing": "Installing…",
+  "applying": "Applying…",
+  "loading_login_link": "Loading login link…",
+  "signing_in": "Signing in…",
+  "processing": "Processing…",
+  "connecting": "Connecting…",
+  "disconnecting": "Disconnecting…",
+  "generating": "Generating…",
+  "adding": "Adding…"
+},
+"messages": {
+  "system_checks_passed": "All system checks passed.",
+  "system_check_failed": "Exitlane found a problem during the system check. Resolve the failed check and run the checks again.",
+  "passwords_do_not_match": "The entered passwords do not match.",
+  "admin_created": "Administrator created.",
+  "setup_completed": "Setup completed.",
+  "gateway_settings_applied": "Gateway settings applied.",
+  "login_link_ready": "The NordVPN login link is ready.",
+  "login_link_copied": "Login link copied.",
+  "copy_link_manually": "Select and copy the link manually.",
+  "wireguard_config_copied": "WireGuard configuration copied."
+}  
 }

@@ -9,6 +9,7 @@ import {
 } from "./ui.js";
 import { refreshSetup } from "./wizard.js";
 import { prepareFinishStep } from "./finish.js";
+import { t } from "./i18n.js";
 
 async function loadDetectedEndpoint() {
   const endpointInput = select("#wg-endpoint");
@@ -38,7 +39,11 @@ async function generateWireGuard(event) {
   const form = event.currentTarget;
   const button = form.querySelector('button[type="submit"]');
 
-  setBusy(button, true, "Genereren…");
+  setBusy(
+  button,
+  true,
+  t("busy.generating", {}, "Generating…"),
+);
   clearInlineError();
 
   try {
@@ -95,7 +100,13 @@ async function copyWireGuardConfig() {
 
   try {
     await navigator.clipboard.writeText(configuration);
-    showMessage("WireGuard-configuratie gekopieerd.");
+    showMessage(
+  t(
+    "messages.wireguard_config_copied",
+    {},
+    "WireGuard configuration copied.",
+  ),
+);
   } catch {
     showMessage(
       "Kopiëren via de browser is niet gelukt. Selecteer de configuratie handmatig.",

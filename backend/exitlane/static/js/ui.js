@@ -6,7 +6,11 @@ export function selectAll(selector) {
   return [...document.querySelectorAll(selector)];
 }
 
-export function setBusy(element, busy, busyLabel = "Bezig…") {
+export function setBusy(
+  element,
+  busy,
+  busyLabel = "Working…",
+) {
   if (!element) {
     return;
   }

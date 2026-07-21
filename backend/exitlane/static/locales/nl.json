@@ -185,5 +185,33 @@
     "wireguard": "WireGuard",
     "security": "Beveiliging",
     "settings": "Instellingen"
-  }  
+  },
+  "busy": {
+    "default": "Bezig…",
+    "checking": "Controleren…",
+    "checking_automatic": "Automatisch controleren…",
+    "creating": "Aanmaken…",
+    "finishing": "Afronden…",
+    "installing": "Installeren…",
+    "applying": "Toepassen…",
+    "loading_login_link": "Aanmeldlink ophalen…",
+    "signing_in": "Aanmelden…",
+    "processing": "Verwerken…",
+    "connecting": "Verbinden…",
+    "disconnecting": "Verbreken…",
+    "generating": "Genereren…",
+    "adding": "Toevoegen…"
+},
+"messages": {
+  "system_checks_passed": "Alle systeemcontroles zijn geslaagd.",
+  "system_check_failed": "Exitlane heeft een probleem in de systeemcontrole gevonden. Los de rode controle op en voer de controles opnieuw uit.",
+  "passwords_do_not_match": "De ingevoerde wachtwoorden komen niet overeen.",
+  "admin_created": "Beheerder aangemaakt.",
+  "setup_completed": "Setup afgerond.",
+  "gateway_settings_applied": "Gatewayinstellingen zijn toegepast.",
+  "login_link_ready": "NordVPN-aanmeldlink is gereed.",
+  "login_link_copied": "Aanmeldlink gekopieerd.",
+  "copy_link_manually": "Selecteer en kopieer de link handmatig.",
+  "wireguard_config_copied": "WireGuard-configuratie gekopieerd."
+} 
 }

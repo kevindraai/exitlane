@@ -4,6 +4,7 @@ import {
   setBusy,
   setStatusPill,
 } from "./ui.js";
+import { t } from "./i18n.js";
 
 function formatBytes(bytes) {
   const value = Number(bytes || 0);
@@ -104,10 +105,14 @@ export async function refreshManagedWireGuard() {
   );
 
   setBusy(
-    button,
-    true,
-    "Controleren...",
-  );
+  button,
+  true,
+  t(
+    "busy.checking",
+    {},
+    "Checking…",
+  ),
+);
 
   try {
     const status = await api(
