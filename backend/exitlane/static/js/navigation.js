@@ -1,4 +1,5 @@
 import {
+  select,
   selectAll,
 } from "./ui.js";
 
@@ -7,6 +8,37 @@ const STORAGE_KEY =
 
 const DEFAULT_VIEW =
   "dashboard";
+
+const APPLICATION_MODES = new Set([
+  "wizard",
+  "login",
+  "dashboard",
+]);
+
+export function setApplicationMode(mode) {
+  if (!APPLICATION_MODES.has(mode)) {
+    throw new Error(
+      `Unknown application mode: ${mode}`,
+    );
+  }
+
+  const shell = select(".app-shell");
+
+  select("#wizard-panel").hidden =
+    mode !== "wizard";
+  select("#login-panel").hidden =
+    mode !== "login";
+  select("#dashboard-panel").hidden =
+    mode !== "dashboard";
+  select("#sidebar").hidden =
+    mode !== "dashboard";
+
+  shell.dataset.applicationMode = mode;
+  shell.classList.toggle(
+    "has-sidebar",
+    mode === "dashboard",
+  );
+}
 
 function viewExists(name) {
   return Boolean(

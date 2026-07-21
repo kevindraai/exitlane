@@ -1,6 +1,7 @@
 import { postJson, api } from "./api.js";
 import { t } from "./i18n.js";
 import { appState } from "./state.js";
+import { setApplicationMode } from "./navigation.js";
 import {
   select,
   setBusy,
@@ -9,23 +10,17 @@ import {
 let refreshApplication;
 
 export function showLogin() {
-  select("#login-panel").hidden = false;
-  select("#wizard-panel").hidden = true;
-  select("#dashboard-panel").hidden = true;
-  select("#sidebar").hidden = true;
+  setApplicationMode("login");
   select("#logout-button").hidden = true;
 }
 
-function hideLogin() {
-  select("#login-panel").hidden = true;
+function updateLogoutVisibility() {
   select("#logout-button").hidden = !appState.session?.authenticated;
 }
 
 export async function refreshSession() {
   appState.session = await api("/api/auth/session");
-  if (appState.session.authenticated) {
-    hideLogin();
-  }
+  updateLogoutVisibility();
   return appState.session;
 }
 
@@ -41,7 +36,6 @@ async function login(event) {
       password: select("#login-password").value,
     });
     select("#login-password").value = "";
-    hideLogin();
     await refreshApplication();
   } catch {
     errorElement.textContent = t(

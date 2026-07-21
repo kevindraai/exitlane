@@ -1,6 +1,7 @@
 import { api, postJson } from "./api.js";
 import { showLogin } from "./auth.js";
 import { t } from "./i18n.js";
+import { setApplicationMode } from "./navigation.js";
 import { refreshProvider } from "./provider.js";
 import { appState, stepNames } from "./state.js";
 import {
@@ -78,22 +79,9 @@ export function showStep(stepNumber, { force = false } = {}) {
   clearInlineError();
 }
 function updateApplicationMode(setup) {
-  const wizard = select("#wizard-panel");
-  const dashboard = select("#dashboard-panel");
-  const sidebar = select("#sidebar");
-  const shell = document.querySelector(
-    ".app-shell",
-  );
-
   const complete = Boolean(setup.complete);
-
-  wizard.hidden = complete;
-  dashboard.hidden = !complete;
-  sidebar.hidden = !complete;
-
-  shell?.classList.toggle(
-    "has-sidebar",
-    complete,
+  setApplicationMode(
+    complete ? "dashboard" : "wizard",
   );
 }
 export function renderSetupState(setup) {
