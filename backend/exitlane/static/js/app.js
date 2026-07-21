@@ -1,26 +1,13 @@
 import { api } from "./api.js";
-import {
-  frontendConfig,
-  loadPublicConfig,
-} from "./config.js";
+import { frontendConfig, loadPublicConfig, } from "./config.js";
 import { initialiseNotificationControls } from "./notifications.js";
-import {
-  initialiseProviderControls,
-  refreshProvider,
-} from "./provider.js";
-import {
-  select,
-  setStatusPill,
-  showMessage,
-} from "./ui.js";
-import {
-  initialiseWizardNavigation,
-  refreshSetup,
-} from "./wizard.js";
+import { initialiseProviderControls, refreshProvider, } from "./provider.js";
+import { select, setStatusPill, showMessage, } from "./ui.js";
+import { initialiseWizardNavigation, refreshSetup, } from "./wizard.js";
 import { initialiseWireGuardControls } from "./wireguard.js";
 import { initialiseFinishControls } from "./finish.js";
 import { initialiseColorScheme, } from "./theme.js";
-
+import { initialiseNavigation, } from "./navigation.js";
 async function refreshApplication() {
   const health = await api("/api/health");
 
@@ -44,6 +31,7 @@ async function refreshApplication() {
 async function initialise() {
   initialiseColorScheme();
   initialiseWizardNavigation();
+  initialiseNavigation();
   initialiseProviderControls();
   initialiseWireGuardControls();
   initialiseFinishControls();

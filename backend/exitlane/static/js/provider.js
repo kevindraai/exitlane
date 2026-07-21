@@ -39,6 +39,18 @@ export function renderProviderStatus(status) {
 
   renderDashboard(status);
 }
+function setTextIfPresent(
+  selector,
+  value,
+) {
+  const element =
+    document.querySelector(selector);
+
+  if (element) {
+    element.textContent = value;
+  }
+}
+
 
 function renderDashboard(status) {
   setStatusPill(
@@ -51,6 +63,27 @@ function renderDashboard(status) {
   select("#metric-city").textContent = status.city || "—";
   select("#metric-server").textContent = status.server || "—";
   select("#metric-ip").textContent = status.external_ip || "—";
+setTextIfPresent(
+  "#dashboard-vpn-state",
+  status.connected
+    ? "Connected"
+    : "Not connected",
+);
+
+setTextIfPresent(
+  "#dashboard-vpn-country",
+  status.country || "—",
+);
+
+setTextIfPresent(
+  "#dashboard-vpn-server",
+  status.server || "—",
+);
+
+setTextIfPresent(
+  "#dashboard-external-ip",
+  status.external_ip || "—",
+);
 }
 
 function setProviderInstallLogExpanded(expanded) {

@@ -130,7 +130,7 @@
         type="button"
         class="sidebar-item"
         data-view="vpn"
-        disabled
+        
       >
         <span aria-hidden="true">🌍</span>
         <span>VPN</span>
@@ -140,7 +140,7 @@
         type="button"
         class="sidebar-item"
         data-view="wireguard"
-        disabled
+        
       >
         <span aria-hidden="true">🔑</span>
         <span>WireGuard</span>
@@ -150,7 +150,7 @@
         type="button"
         class="sidebar-item"
         data-view="security"
-        disabled
+        
       >
         <span aria-hidden="true">🔒</span>
         <span>Security</span>
@@ -160,7 +160,7 @@
         type="button"
         class="sidebar-item"
         data-view="settings"
-        disabled
+        
       >
         <span aria-hidden="true">⚙️</span>
         <span>Settings</span>
@@ -817,7 +817,71 @@
 </article>
     </section>
 
-    <section id="dashboard-panel" class="panel dashboard-panel" hidden>
+    <section id="dashboard-panel" class="dashboard-panel" hidden>
+<section
+  id="view-dashboard"
+  class="app-view"
+  data-view-panel="dashboard"
+>
+  <section class="panel">
+    <div class="panel-heading compact">
+      <div>
+        <p class="eyebrow">DASHBOARD</p>
+        <h1>Exitlane</h1>
+        <p class="lead">
+          Overzicht van je VPN-gateway en verbonden diensten.
+        </p>
+      </div>
+    </div>
+
+    <div class="dashboard-summary-grid">
+      <article class="summary-card">
+        <span>VPN-status</span>
+        <strong id="dashboard-vpn-state">
+          Status ophalen…
+        </strong>
+
+        <button
+          type="button"
+          class="summary-link"
+          data-open-view="vpn"
+        >
+          VPN beheren →
+        </button>
+      </article>
+
+      <article class="summary-card">
+        <span>Locatie</span>
+        <strong id="dashboard-vpn-country">—</strong>
+        <small id="dashboard-vpn-server">—</small>
+      </article>
+
+      <article class="summary-card">
+        <span>Extern IP</span>
+        <strong id="dashboard-external-ip">—</strong>
+      </article>
+
+      <article class="summary-card">
+        <span>WireGuard</span>
+        <strong>Geconfigureerd</strong>
+
+        <button
+          type="button"
+          class="summary-link"
+          data-open-view="wireguard"
+        >
+          Tunnels beheren →
+        </button>
+      </article>
+    </div>
+  </section>
+</section>
+    <section
+    id="view-vpn"
+    class="app-view"
+    data-view-panel="vpn"
+    hidden
+>
       <div class="panel-heading compact">
         <div>
           <p class="eyebrow">PROVIDER STATUS</p>
@@ -846,7 +910,59 @@
         </button>
       </form>
     </section>
+    </section>
+ 
+ <section
+  id="view-wireguard"
+  class="app-view"
+  data-view-panel="wireguard"
+  hidden
+>
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">WIREGUARD</p>
+        <h1>WireGuard</h1>
+        <p class="lead">
+          Beheer router- en applicatietunnels.
+        </p>
+      </div>
+    </div>
 
+    <div class="empty-state">
+      WireGuard-beheer wordt in een volgende versie toegevoegd.
+    </div>
+  </section>
+</section>
+
+<section
+  id="view-security"
+  class="app-view"
+  data-view-panel="security"
+  hidden
+>
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">SECURITY</p>
+        <h1>Beveiliging</h1>
+        <p class="lead">
+          Beheer authenticatie, wachtwoorden, MFA en actieve sessies.
+        </p>
+      </div>
+    </div>
+
+    <div class="empty-state">
+      Beveiligingsbeheer wordt in een volgende versie toegevoegd.
+    </div>
+  </section>
+</section>   
+<section
+    id="view-settings"
+    class="app-view"
+    data-view-panel="settings"
+    hidden
+>
     <section class="panel">
       <div class="panel-heading compact">
         <div>
@@ -868,6 +984,7 @@
           <button type="submit" class="button button-secondary">Webhook toevoegen</button>
         </div>
       </form>
+    </section>
     </section>
     </div>
   </div>
