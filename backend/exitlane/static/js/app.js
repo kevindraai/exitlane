@@ -1,58 +1,155 @@
+import {
+  initialiseI18n,
+  t,
+} from "./i18n.js";
 import { api } from "./api.js";
-import { frontendConfig, loadPublicConfig, } from "./config.js";
-import { initialiseI18n, } from "./i18n.js";
-import { initialiseNotificationControls } from "./notifications.js";
-import { initialiseProviderControls, refreshProvider, } from "./provider.js";
-import { select, setStatusPill, showMessage, } from "./ui.js";
-import { initialiseWizardNavigation, refreshSetup, } from "./wizard.js";
-import { initialiseWireGuardControls } from "./wireguard.js";
-import { initialiseFinishControls } from "./finish.js";
-import { initialiseColorScheme, } from "./theme.js";
-import { initialiseNavigation, } from "./navigation.js";
-import { initialiseWireGuardManagement, } from "./wireguard-management.js";
-async function refreshApplication() {
-  const health = await api("/api/health");
+import {
+  frontendConfig,
+  loadPublicConfig,
+} from "./config.js";
+import {
+  initialiseNavigation,
+} from "./navigation.js";
+import {
+  initialiseNotificationControls,
+} from "./notifications.js";
+import {
+  initialiseProviderControls,
+  refreshProvider,
+} from "./provider.js";
+import {
+  select,
+  setStatusPill,
+  showMessage,
+} from "./ui.js";
+import {
+  initialiseWizardNavigation,
+  refreshSetup,
+} from "./wizard.js";
+import {
+  initialiseWireGuardControls,
+} from "./wireguard.js";
+import {
+  initialiseWireGuardManagement,
+} from "./wireguard-management.js";
+import {
+  initialiseFinishControls,
+} from "./finish.js";
+import {
+  initialiseColorScheme,
+} from "./theme.js";
+
+let apiState = "checking";
+
+function renderApiStatus() {
+  const states = {
+    checking: {
+      key: "app.api_checking",
+      fallback: "Checking API...",
+      style: "neutral",
+    },
+    online: {
+      key: "app.api_online",
+      fallback: "API online",
+      style: "success",
+    },
+    offline: {
+      key: "app.api_offline",
+      fallback: "API unavailable",
+      style: "danger",
+    },
+  };
+
+  const state = states[apiState];
 
   setStatusPill(
     select("#api-status"),
-    health.ok ? "API online" : "API offline",
-    health.ok ? "success" : "danger",
+    t(
+      state.key,
+      {},
+      state.fallback,
+    ),
+    state.style,
   );
+}
 
-  select("#app-version").textContent = health.version
-    ? `v${health.version}`
-    : "";
+function renderProviderStatusError() {
+  setStatusPill(
+    select("#connection-state"),
+    t(
+      "common.status_error",
+      {},
+      "Status error",
+    ),
+    "danger",
+  );
+}
 
-  await refreshProvider();
+async function refreshApplication() {
+  apiState = "checking";
+  renderApiStatus();
 
+  const health = await api("/api/health");
+
+  apiState = health.ok
+    ? "online"
+    : "offline";
+
+  renderApiStatus();
+
+  select("#app-version").textContent =
+    health.version
+      ? `v${health.version}`
+      : "";
+
+  // De setupstatus bepaalt welk scherm zichtbaar moet zijn.
+  // Een providerfout mag de wizard of het dashboard niet blokkeren.
   await refreshSetup({
-  runAutomaticDiagnostics: true,
+    runAutomaticDiagnostics: true,
   });
+
+  try {
+    await refreshProvider();
+  } catch {
+    renderProviderStatusError();
+  }
 }
 
 async function initialise() {
-  initialiseColorScheme();
-  await initialiseI18n();
-  
-  initialiseWizardNavigation();
-  initialiseNavigation();
-  initialiseProviderControls();
-  initialiseWireGuardControls();
-  initialiseFinishControls();
-  initialiseNotificationControls();
-  initialiseWireGuardManagement();
-
   try {
+    initialiseColorScheme();
+    await initialiseI18n();
+
+    window.addEventListener(
+      "exitlane:languagechange",
+      renderApiStatus,
+    );
+
+    initialiseWizardNavigation();
+    initialiseNavigation();
+    initialiseProviderControls();
+    initialiseWireGuardControls();
+    initialiseWireGuardManagement();
+    initialiseFinishControls();
+    initialiseNotificationControls();
+
     await loadPublicConfig();
     await refreshApplication();
   } catch (error) {
-    setStatusPill(
-      select("#api-status"),
-      "API-fout",
-      "danger",
+    console.error(
+      "Exitlane initialization failed:",
+      error,
     );
 
-    showMessage(error.message, "error");
+    apiState = "offline";
+    renderApiStatus();
+
+    showMessage(
+      error.message ||
+        "Exitlane could not be initialized.",
+      "error",
+    );
+
     return;
   }
 
@@ -60,11 +157,7 @@ async function initialise() {
     try {
       await refreshProvider();
     } catch {
-      setStatusPill(
-        select("#connection-state"),
-        "Statusfout",
-        "danger",
-      );
+      renderProviderStatusError();
     }
   }, frontendConfig.providerRefreshIntervalSeconds * 1000);
 }
