@@ -1,5 +1,6 @@
 import { api } from "./api.js";
 import { frontendConfig, loadPublicConfig, } from "./config.js";
+import { initialiseI18n, } from "./i18n.js";
 import { initialiseNotificationControls } from "./notifications.js";
 import { initialiseProviderControls, refreshProvider, } from "./provider.js";
 import { select, setStatusPill, showMessage, } from "./ui.js";
@@ -31,6 +32,8 @@ async function refreshApplication() {
 
 async function initialise() {
   initialiseColorScheme();
+  await initialiseI18n();
+  
   initialiseWizardNavigation();
   initialiseNavigation();
   initialiseProviderControls();
