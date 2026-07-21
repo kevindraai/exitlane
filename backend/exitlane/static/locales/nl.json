@@ -1,0 +1,179 @@
+{
+  "app": {
+    "tagline": "Slimme internetuitgang voor elk netwerk",
+    "api_checking": "API controleren...",
+    "api_online": "API online",
+    "api_offline": "API niet bereikbaar"
+  },
+  "language": {
+    "label": "Taal",
+    "english": "Engels",
+    "dutch": "Nederlands"
+  },
+  "theme": {
+    "label": "Kleurenschema",
+    "system": "Systeem",
+    "light": "Licht",
+    "dark": "Donker"
+  },
+  "wizard": {
+    "eyebrow": "EERSTE CONFIGURATIE",
+    "title": "Bouw je eerste exit lane",
+    "subtitle": "Configureer je systeem, VPN-provider en WireGuard-ingang zonder losse configuratiebestanden te bewerken.",
+    "steps_aria": "Installatiestappen",
+    "progress": "Stap {current} van {total}",
+    "complete_current_first": "Rond eerst de huidige stap af."
+  },
+  "steps": {
+    "system": "Systeem",
+    "admin": "Beheerder",
+    "provider": "Provider",
+    "wireguard": "WireGuard",
+    "finish": "Afronden"
+  },
+  "completion": {
+    "system": "Systeemcontrole",
+    "admin": "Lokale beheerder",
+    "provider": "VPN-provider",
+    "wireguard": "WireGuard-ingang",
+    "ready": "Gereed"
+  },
+  "password": {
+    "repeat": "Herhaal het wachtwoord",
+    "matches": "✓ Wachtwoorden komen overeen",
+    "no_match": "✕ Wachtwoorden komen nog niet overeen"
+  },
+  "common": {
+    "next": "Volgende",
+    "back": "Terug",
+    "copy": "Kopiëren",
+    "download": "Downloaden",
+    "open": "Openen",
+    "view": "Bekijken",
+    "ready": "Gereed",
+    "waiting": "Wachten",
+    "loading_status": "Status ophalen...",
+    "recommended": "Aanbevolen",
+    "alternative": "Alternatief",
+    "check_again": "Opnieuw controleren",
+    "status_error": "Statusfout",
+    "hide": "Verbergen"
+  },
+  "step1": {
+    "kicker": "Stap 1",
+    "title": "Systeemcontrole",
+    "description": "Exitlane controleert de Linux-omgeving, netwerktoegang, WireGuard en de benodigde systeemcomponenten.",
+    "run_checks": "Controles uitvoeren",
+    "checks_passed": "controles geslaagd",
+    "empty": "Voer de systeemcontrole uit om verder te gaan."
+  },
+  "step2": {
+    "kicker": "Stap 2",
+    "title": "Lokale beheerder",
+    "description": "Maak het eerste lokale beheeraccount aan. Authenticatie wordt in een volgende alpha ook daadwerkelijk voor alle pagina’s afgedwongen.",
+    "username": "Gebruikersnaam",
+    "password": "Wachtwoord",
+    "password_confirm": "Wachtwoord herhalen",
+    "password_requirements_loading": "Wachtwoordvereisten ophalen...",
+    "password_repeat_hint": "Herhaal het wachtwoord",
+    "create_admin": "Beheerder aanmaken"
+  },
+  "step3": {
+    "kicker": "Stap 3",
+    "title": "VPN-provider",
+    "description": "NordVPN is de eerste providerimplementatie. Exitlane houdt de onderliggende architectuur provideronafhankelijk."
+  },
+  "provider": {
+    "not_checked": "Linux-client nog niet gecontroleerd.",
+    "install": "Installeren",
+    "installing_title": "NordVPN installeren",
+    "preparing": "Installatie voorbereiden...",
+    "show_log": "Installatielog tonen",
+    "apply_gateway_settings": "Gatewayinstellingen toepassen",
+    "gateway_settings": "Gatewayinstellingen",
+    "not_applied": "Nog niet toegepast",
+    "sign_in_title": "Aanmelden bij NordVPN",
+    "sign_in_description": "Kies een aanmeldmethode. Voor een permanente gateway is een access token het eenvoudigst.",
+    "access_token": "Access token",
+    "browser_login": "Browserlogin",
+    "token_step1": "Open Nord Account en meld je aan.",
+    "token_step2": "Klik in het menu links op NordVPN.",
+    "token_step3": "Scroll naar beneden naar Get access token.",
+    "token_step4": "Genereer een nieuw token en kopieer het direct.",
+    "token_step5": "Plak het token hieronder in Exitlane.",
+    "advice_title": "Advies voor Exitlane",
+    "advice_text": "Kies een niet-verlopend token voor een vaste gateway en beveilig je Nord Account met multifactorauthenticatie.",
+    "open_nord_account": "Nord Account openen ↗",
+    "token_privacy": "Exitlane gebruikt het token alleen voor de lokale NordVPN-login en slaat het niet op.",
+    "sign_in_with_token": "Aanmelden met token",
+    "browser_step1": "Klik hieronder op Browserlogin starten.",
+    "browser_step2": "Open de getoonde NordVPN-link in je browser.",
+    "browser_step3": "Meld je aan bij Nord Account.",
+    "browser_step4": "Klik niet normaal op Continue, maar kopieer de achterliggende link en plak die hieronder.",
+    "browser_login_start": "Browserlogin starten",
+    "open_login_link": "Open deze NordVPN-aanmeldlink",
+    "callback_url": "Callback-URL",
+    "callback_hint": "Plak hier de link achter de knop Continue.",
+    "finish_browser_login": "Browserlogin afronden",
+    "token_placeholder": "Plak hier het token"
+  },
+  "step4": {
+    "kicker": "Stap 4",
+    "title": "WireGuard-ingang",
+    "description": "Genereer een generieke WireGuard-clientconfiguratie voor je router. UniFi, MikroTik, OPNsense en andere routers kunnen deze tunnel gebruiken."
+  },
+  "wireguard": {
+    "endpoint": "Endpoint van deze LXC",
+    "endpoint_help": "Lokaal IP-adres wordt automatisch bepaald.",
+    "tunnel_network": "Tunnelnetwerk",
+    "dns_server": "DNS-server",
+    "dns_help": "Wordt opgenomen in de configuratie voor je router.",
+    "udp_port": "UDP-poort",
+    "interface_name": "Interfacenaam",
+    "client_name": "Clientnaam",
+    "generate": "Configuraties genereren",
+    "client_ready": "Clientconfiguratie gereed",
+    "import_hint": "Importeer deze configuratie in je router.",
+    "endpoint_placeholder": "Automatisch detecteren..."
+  },
+  "step5": {
+    "kicker": "Stap 5",
+    "title": "Exitlane is bijna gereed",
+    "description": "Download de WireGuard-configuratie en importeer deze in je router. Exitlane controleert automatisch of de tunnel verbinding maakt.",
+    "wireguard_config": "WireGuard-configuratie",
+    "download_conf": "Download .conf",
+    "connection_status": "Verbindingsstatus",
+    "waiting_for_connection": "Wachten op de eerste WireGuard-verbinding...",
+    "client": "Client",
+    "endpoint": "Endpoint",
+    "received": "Ontvangen",
+    "sent": "Verzonden",
+    "complete_setup": "Setup afronden"
+  },
+  "dashboard": {
+    "provider_status": "PROVIDERSTATUS",
+    "country": "Land",
+    "city": "Stad",
+    "server": "Server",
+    "external_ip": "Extern IP",
+    "target": "Land, stad of server",
+    "connect": "Verbinden",
+    "disconnect": "Verbreken",
+    "target_placeholder": "Bijv. Netherlands of nl1234"
+  },
+  "notifications": {
+    "eyebrow": "NOTIFICATIES",
+    "name": "Naam",
+    "add_webhook": "Webhook toevoegen"
+  },
+  "finish": {
+    "config_unavailable": "The WireGuard configuration is unavailable.",
+    "config_copied": "WireGuard configuration copied.",
+    "copy_failed": "Copying failed. View and copy the configuration manually.",
+    "inactive": "Inactive",
+    "interface_inactive": "The WireGuard interface is not active yet.",
+    "no_handshake": "No WireGuard handshake has been received yet.",
+    "connected": "Connected",
+    "router_connected": "The router has connected successfully."
+  }
+}

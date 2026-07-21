@@ -1,4 +1,5 @@
 import { api } from "./api.js";
+import { t } from "./i18n.js";
 import { appState } from "./state.js";
 import {
   select,
@@ -7,6 +8,7 @@ import {
 } from "./ui.js";
 
 let statusTimer = null;
+let latestWireGuardStatus = null;
 
 function formatBytes(bytes) {
   const value = Number(bytes || 0);
@@ -33,11 +35,16 @@ export function prepareFinishStep({
 
   const filename = `exitlane-${name}.conf`;
 
-  select("#finish-config-filename").textContent = filename;
+  select("#finish-config-filename").textContent =
+    filename;
 
   const download = select("#finish-download");
+
   download.href =
-    `/api/ingress/wireguard/client/${encodeURIComponent(name)}`;
+    `/api/ingress/wireguard/client/${encodeURIComponent(
+      name,
+    )}`;
+
   download.download = filename;
 
   select("#finish-config-preview").textContent =
@@ -53,47 +60,102 @@ async function copyConfiguration() {
 
   if (!configuration) {
     showMessage(
-      "De WireGuard-configuratie is niet beschikbaar.",
+      t(
+        "finish.config_unavailable",
+        {},
+        "The WireGuard configuration is unavailable.",
+      ),
       "error",
     );
     return;
   }
 
   try {
-    await navigator.clipboard.writeText(configuration);
-    showMessage("WireGuard-configuratie gekopieerd.");
+    await navigator.clipboard.writeText(
+      configuration,
+    );
+
+    showMessage(
+      t(
+        "finish.config_copied",
+        {},
+        "WireGuard configuration copied.",
+      ),
+    );
   } catch {
     showMessage(
-      "Kopiëren is niet gelukt. Bekijk en kopieer de configuratie handmatig.",
+      t(
+        "finish.copy_failed",
+        {},
+        "Copying failed. View and copy the configuration manually.",
+      ),
       "error",
     );
   }
 }
 
+function renderPreviewButton() {
+  const preview = select(
+    "#finish-config-preview",
+  );
+
+  select("#finish-view").textContent =
+    preview.hidden
+      ? t(
+          "common.view",
+          {},
+          "View",
+        )
+      : t(
+          "common.hide",
+          {},
+          "Hide",
+        );
+}
+
 function togglePreview() {
-  const preview = select("#finish-config-preview");
+  const preview = select(
+    "#finish-config-preview",
+  );
+
   preview.hidden = !preview.hidden;
 
-  select("#finish-view").textContent = preview.hidden
-    ? "Bekijken"
-    : "Verbergen";
+  renderPreviewButton();
 }
 
 function renderWireGuardStatus(status) {
-  const state = select("#wireguard-connection-state");
-  const message = select("#wireguard-connection-message");
-  const details = select("#wireguard-connection-details");
+  latestWireGuardStatus = status;
+
+  const state = select(
+    "#wireguard-connection-state",
+  );
+
+  const message = select(
+    "#wireguard-connection-message",
+  );
+
+  const details = select(
+    "#wireguard-connection-details",
+  );
 
   if (!status.active) {
     setStatusPill(
       state,
-      "Niet actief",
+      t(
+        "finish.inactive",
+        {},
+        "Inactive",
+      ),
       "danger",
     );
 
     message.textContent =
       status.message ||
-      "De WireGuard-interface is nog niet actief.";
+      t(
+        "finish.interface_inactive",
+        {},
+        "The WireGuard interface is not active yet.",
+      );
 
     details.hidden = true;
     return;
@@ -102,12 +164,19 @@ function renderWireGuardStatus(status) {
   if (!status.connected) {
     setStatusPill(
       state,
-      "Wachten",
+      t(
+        "common.waiting",
+        {},
+        "Waiting",
+      ),
       "neutral",
     );
 
-    message.textContent =
-      "Nog geen WireGuard-handshake ontvangen.";
+    message.textContent = t(
+      "finish.no_handshake",
+      {},
+      "No WireGuard handshake has been received yet.",
+    );
 
     details.hidden = true;
     return;
@@ -117,12 +186,19 @@ function renderWireGuardStatus(status) {
 
   setStatusPill(
     state,
-    "Verbonden",
+    t(
+      "finish.connected",
+      {},
+      "Connected",
+    ),
     "success",
   );
 
-  message.textContent =
-    "De router heeft succesvol verbinding gemaakt.";
+  message.textContent = t(
+    "finish.router_connected",
+    {},
+    "The router has connected successfully.",
+  );
 
   select("#wireguard-status-client").textContent =
     status.client || "router";
@@ -147,13 +223,21 @@ export async function refreshWireGuardStatus() {
 
     renderWireGuardStatus(status);
   } catch (error) {
+    latestWireGuardStatus = null;
+
     setStatusPill(
       select("#wireguard-connection-state"),
-      "Statusfout",
+      t(
+        "common.status_error",
+        {},
+        "Status error",
+      ),
       "danger",
     );
 
-    select("#wireguard-connection-message").textContent =
+    select(
+      "#wireguard-connection-message",
+    ).textContent =
       error.message;
   }
 }
@@ -174,6 +258,16 @@ export function stopWireGuardStatusPolling() {
   statusTimer = null;
 }
 
+function rerenderFinishStep() {
+  renderPreviewButton();
+
+  if (latestWireGuardStatus) {
+    renderWireGuardStatus(
+      latestWireGuardStatus,
+    );
+  }
+}
+
 export function initialiseFinishControls() {
   select("#finish-copy").addEventListener(
     "click",
@@ -185,8 +279,17 @@ export function initialiseFinishControls() {
     togglePreview,
   );
 
-  select("#wireguard-status-refresh").addEventListener(
+  select(
+    "#wireguard-status-refresh",
+  ).addEventListener(
     "click",
     refreshWireGuardStatus,
   );
+
+  window.addEventListener(
+    "exitlane:languagechange",
+    rerenderFinishStep,
+  );
+
+  renderPreviewButton();
 }

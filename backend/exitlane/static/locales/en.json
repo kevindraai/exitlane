@@ -1,0 +1,179 @@
+{
+  "app": {
+    "tagline": "Smart egress for every network",
+    "api_checking": "Checking API...",
+    "api_online": "API online",
+    "api_offline": "API unavailable"
+  },
+  "language": {
+    "label": "Language",
+    "english": "English",
+    "dutch": "Dutch"
+  },
+  "theme": {
+    "label": "Color scheme",
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "wizard": {
+    "eyebrow": "FIRST-RUN WIZARD",
+    "title": "Build your first exit lane",
+    "subtitle": "Configure your system, VPN provider and WireGuard ingress without editing separate configuration files.",
+    "steps_aria": "Installation steps",
+    "progress": "Step {current} of {total}",
+    "complete_current_first": "Complete the current step first."
+  },
+  "password": {
+    "repeat": "Repeat the password",
+    "matches": "✓ Passwords match",
+    "no_match": "✕ Passwords do not match yet"
+  },
+  "steps": {
+    "system": "System",
+    "admin": "Administrator",
+    "provider": "Provider",
+    "wireguard": "WireGuard",
+    "finish": "Finish"
+  },
+  "completion": {
+    "system": "System check",
+    "admin": "Local administrator",
+    "provider": "VPN provider",
+    "wireguard": "WireGuard ingress",
+    "ready": "Ready"
+  },
+  "common": {
+    "next": "Next",
+    "back": "Back",
+    "copy": "Copy",
+    "download": "Download",
+    "open": "Open",
+    "view": "View",
+    "ready": "Ready",
+    "waiting": "Waiting",
+    "loading_status": "Loading status...",
+    "recommended": "Recommended",
+    "alternative": "Alternative",
+    "check_again": "Check again",
+    "status_error": "Status error",
+    "hide": "Hide"
+  },
+  "step1": {
+    "kicker": "Step 1",
+    "title": "System check",
+    "description": "Exitlane checks the Linux environment, network access, WireGuard and the required system components.",
+    "run_checks": "Run checks",
+    "checks_passed": "checks passed",
+    "empty": "Run the system check to continue."
+  },
+  "step2": {
+    "kicker": "Step 2",
+    "title": "Local administrator",
+    "description": "Create the first local administrator account. Authentication will be enforced across all pages in a future alpha release.",
+    "username": "Username",
+    "password": "Password",
+    "password_confirm": "Repeat password",
+    "password_requirements_loading": "Loading password requirements...",
+    "password_repeat_hint": "Repeat the password",
+    "create_admin": "Create administrator"
+  },
+  "step3": {
+    "kicker": "Step 3",
+    "title": "VPN provider",
+    "description": "NordVPN is the first provider implementation. Exitlane keeps the underlying architecture provider-independent."
+  },
+  "provider": {
+    "not_checked": "Linux client has not been checked yet.",
+    "install": "Install",
+    "installing_title": "Install NordVPN",
+    "preparing": "Preparing installation...",
+    "show_log": "Show installation log",
+    "apply_gateway_settings": "Apply gateway settings",
+    "gateway_settings": "Gateway settings",
+    "not_applied": "Not applied yet",
+    "sign_in_title": "Sign in to NordVPN",
+    "sign_in_description": "Choose a sign-in method. For a permanent gateway, an access token is the simplest option.",
+    "access_token": "Access token",
+    "browser_login": "Browser login",
+    "token_step1": "Open Nord Account and sign in.",
+    "token_step2": "In the menu on the left, click NordVPN.",
+    "token_step3": "Scroll down to Get access token.",
+    "token_step4": "Generate a new token and copy it immediately.",
+    "token_step5": "Paste the token into Exitlane below.",
+    "advice_title": "Advice for Exitlane",
+    "advice_text": "Choose a non-expiring token for a permanent gateway and secure your Nord Account with multi-factor authentication.",
+    "open_nord_account": "Open Nord Account ↗",
+    "token_privacy": "Exitlane only uses the token for the local NordVPN login and does not store it.",
+    "sign_in_with_token": "Sign in with token",
+    "browser_step1": "Click Start browser login below.",
+    "browser_step2": "Open the displayed NordVPN link in your browser.",
+    "browser_step3": "Sign in to Nord Account.",
+    "browser_step4": "Do not click Continue normally; copy the underlying link and paste it below.",
+    "browser_login_start": "Start browser login",
+    "open_login_link": "Open this NordVPN sign-in link",
+    "callback_url": "Callback URL",
+    "callback_hint": "Paste the link behind the Continue button here.",
+    "finish_browser_login": "Finish browser login",
+    "token_placeholder": "Paste the token here"
+  },
+  "step4": {
+    "kicker": "Step 4",
+    "title": "WireGuard ingress",
+    "description": "Generate a generic WireGuard client configuration for your router. UniFi, MikroTik, OPNsense and other routers can use this tunnel."
+  },
+  "wireguard": {
+    "endpoint": "Endpoint of this LXC",
+    "endpoint_help": "The local IP address is detected automatically.",
+    "tunnel_network": "Tunnel network",
+    "dns_server": "DNS server",
+    "dns_help": "Included in the configuration for your router.",
+    "udp_port": "UDP port",
+    "interface_name": "Interface name",
+    "client_name": "Client name",
+    "generate": "Generate configurations",
+    "client_ready": "Client configuration ready",
+    "import_hint": "Import this configuration into your router.",
+    "endpoint_placeholder": "Detect automatically..."
+  },
+  "step5": {
+    "kicker": "Step 5",
+    "title": "Exitlane is almost ready",
+    "description": "Download the WireGuard configuration and import it into your router. Exitlane automatically checks whether the tunnel connects.",
+    "wireguard_config": "WireGuard configuration",
+    "download_conf": "Download .conf",
+    "connection_status": "Connection status",
+    "waiting_for_connection": "Waiting for the first WireGuard connection...",
+    "client": "Client",
+    "endpoint": "Endpoint",
+    "received": "Received",
+    "sent": "Sent",
+    "complete_setup": "Complete setup"
+  },
+  "dashboard": {
+    "provider_status": "PROVIDER STATUS",
+    "country": "Country",
+    "city": "City",
+    "server": "Server",
+    "external_ip": "External IP",
+    "target": "Country, city or server",
+    "connect": "Connect",
+    "disconnect": "Disconnect",
+    "target_placeholder": "For example Netherlands or nl1234"
+  },
+  "notifications": {
+    "eyebrow": "NOTIFICATIONS",
+    "name": "Name",
+    "add_webhook": "Add webhook"
+  },
+  "finish": {
+    "config_unavailable": "The WireGuard configuration is unavailable.",
+    "config_copied": "WireGuard configuration copied.",
+    "copy_failed": "Copying failed. View and copy the configuration manually.",
+    "inactive": "Inactive",
+    "interface_inactive": "The WireGuard interface is not active yet.",
+    "no_handshake": "No WireGuard handshake has been received yet.",
+    "connected": "Connected",
+    "router_connected": "The router has connected successfully."
+  }
+}
