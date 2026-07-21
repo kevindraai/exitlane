@@ -175,5 +175,12 @@
     "no_handshake": "No WireGuard handshake has been received yet.",
     "connected": "Connected",
     "router_connected": "The router has connected successfully."
-  }
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "vpn": "VPN",
+    "wireguard": "WireGuard",
+    "security": "Security",
+    "settings": "Settings"
+  }  
 }
