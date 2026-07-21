@@ -18,7 +18,7 @@ Exitlane is a self-hosted egress gateway for routers, VLANs and applications. Th
 
 > Early alpha. Keep the management interface on a trusted network.
 
-## Install on Debian 12 LXC
+## Install on Debian 13 LXC
 
 The LXC needs `/dev/net/tun`; a privileged LXC is the currently tested path.
 
