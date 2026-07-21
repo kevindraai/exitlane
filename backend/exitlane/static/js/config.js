@@ -1,5 +1,6 @@
 import { api } from "./api.js";
 import { select } from "./ui.js";
+import { t } from "./i18n.js";
 
 export const frontendConfig = {
   password: {
@@ -38,7 +39,15 @@ export async function loadPublicConfig() {
   applyPublicConfig();
   return frontendConfig;
 }
-
+function renderPasswordRequirement() {
+  select("#password-requirement").textContent = t(
+    "password.minimum_length",
+    {
+      length: frontendConfig.password.minimumLength,
+    },
+    `Minimum ${frontendConfig.password.minimumLength} characters.`,
+  );
+}
 function applyPublicConfig() {
   const password = select("#admin-password");
   const confirmation = select("#admin-password-confirm");
@@ -49,8 +58,7 @@ function applyPublicConfig() {
   confirmation.minLength = frontendConfig.password.minimumLength;
   confirmation.maxLength = frontendConfig.password.maximumLength;
 
-  select("#password-requirement").textContent =
-    `Minimaal ${frontendConfig.password.minimumLength} tekens.`;
+  renderPasswordRequirement();
 
   select("#wg-subnet").value =
     frontendConfig.wireguard.defaultSubnet;
@@ -60,4 +68,8 @@ function applyPublicConfig() {
     frontendConfig.wireguard.defaultInterface;
   select("#wg-client").value =
     frontendConfig.wireguard.defaultClient;
+  window.addEventListener(
+  "exitlane:languagechange",
+  renderPasswordRequirement,
+);
 }

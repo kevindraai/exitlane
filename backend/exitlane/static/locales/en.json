@@ -27,7 +27,8 @@
   "password": {
     "repeat": "Repeat the password",
     "matches": "✓ Passwords match",
-    "no_match": "✕ Passwords do not match yet"
+    "no_match": "✕ Passwords do not match yet",
+    "minimum_length": "Minimum {length} characters."
   },
   "steps": {
     "system": "System",

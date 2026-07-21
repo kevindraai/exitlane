@@ -43,7 +43,8 @@
   "password": {
     "repeat": "Herhaal het wachtwoord",
     "matches": "✓ Wachtwoorden komen overeen",
-    "no_match": "✕ Wachtwoorden komen nog niet overeen"
+    "no_match": "✕ Wachtwoorden komen nog niet overeen",
+    "minimum_length": "Minimaal {length} tekens."
   },
   "common": {
     "next": "Volgende",
