@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Exitlane</title>
+  <desc id="desc">Two white lanes with a blue exit lane curving to the upper right.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#142747"/>
+      <stop offset="1" stop-color="#07111f"/>
+    </linearGradient>
+    <linearGradient id="lane" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#1e40af"/>
+      <stop offset="0.55" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bg)"/>
+  <rect x="16.5" y="16.5" width="479" height="479" rx="111.5" fill="none" stroke="#36527d" stroke-opacity=".75"/>
+  <path d="M148 392 C155 330 160 270 160 116" fill="none" stroke="#ffffff" stroke-width="34" stroke-linecap="round"/>
+  <path d="M238 294 C242 236 241 177 238 116" fill="none" stroke="#ffffff" stroke-width="30" stroke-linecap="round"/>
+  <path d="M244 392 C248 315 270 249 315 207 C349 175 386 158 420 154"
+        fill="none" stroke="url(#lane)" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M404 116 L466 150 L413 198 Z" fill="#3b82f6"/>
+</svg>
