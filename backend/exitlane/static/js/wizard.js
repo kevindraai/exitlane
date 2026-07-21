@@ -1,4 +1,5 @@
 import { api, postJson } from "./api.js";
+import { refreshProvider } from "./provider.js";
 import { appState, stepNames } from "./state.js";
 import {
   clearInlineError,
@@ -58,9 +59,18 @@ export function showStep(stepNumber, { force = false } = {}) {
   select("#wizard-progress").textContent = `Stap ${number} van 5`;
   clearInlineError();
 }
+function updateApplicationMode(setup) {
+  const wizard = select("#wizard-panel");
+  const dashboard = select("#dashboard-panel");
 
+  const complete = Boolean(setup.complete);
+
+  wizard.hidden = complete;
+  dashboard.hidden = !complete;
+}
 export function renderSetupState(setup) {
   appState.setup = setup;
+  updateApplicationMode(setup);
 
   selectAll("#wizard-steps button").forEach((button) => {
     const number = Number(button.dataset.step);
@@ -226,6 +236,7 @@ export async function completeSetup() {
   try {
     const result = await postJson("/api/setup/complete");
     showMessage(result.message || "Setup afgerond.");
+    await refreshProvider();
     await refreshSetup();
   } catch (error) {
     showInlineError(error.message);
