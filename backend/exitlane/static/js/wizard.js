@@ -1,4 +1,5 @@
 import { api, postJson } from "./api.js";
+import { t } from "./i18n.js";
 import { refreshProvider } from "./provider.js";
 import { appState, stepNames } from "./state.js";
 import {
@@ -34,12 +35,28 @@ function canOpenStep(stepNumber) {
     isStepComplete(stepNumber)
   );
 }
-
+function renderWizardProgress() {
+  select("#wizard-progress").textContent = t(
+    "wizard.progress",
+    {
+      current: appState.visibleStep,
+      total: 5,
+    },
+    `Step ${appState.visibleStep} of 5`,
+  );
+}
 export function showStep(stepNumber, { force = false } = {}) {
   const number = Number(stepNumber);
 
   if (!force && !canOpenStep(number)) {
-    showMessage("Rond eerst de huidige stap af.", "error");
+    showMessage(
+  t(
+    "wizard.complete_current_first",
+    {},
+    "Complete the current step first.",
+  ),
+  "error",
+);
     return;
   }
 
@@ -56,7 +73,7 @@ export function showStep(stepNumber, { force = false } = {}) {
     );
   });
 
-  select("#wizard-progress").textContent = `Stap ${number} van 5`;
+  renderWizardProgress();
   clearInlineError();
 }
 function updateApplicationMode(setup) {
@@ -110,27 +127,60 @@ export function renderSetupState(setup) {
 
 function renderCompletionChecks(setup) {
   const labels = {
-    system: "Systeemcontrole",
-    admin: "Lokale beheerder",
-    provider: "VPN-provider",
-    wireguard: "WireGuard-ingang",
+    system: t(
+      "completion.system",
+      {},
+      "System check",
+    ),
+    admin: t(
+      "completion.admin",
+      {},
+      "Local administrator",
+    ),
+    provider: t(
+      "completion.provider",
+      {},
+      "VPN provider",
+    ),
+    wireguard: t(
+      "completion.wireguard",
+      {},
+      "WireGuard ingress",
+    ),
   };
 
-  select("#completion-checks").innerHTML = Object.entries(labels)
-    .map(([key, label]) => {
-      const complete = Boolean(setup.steps?.[key]);
-      return `
-        <div class="completion-check">
-          <span>${escapeHtml(label)}</span>
-          <span>${complete ? "Gereed" : "Niet gereed"}</span>
-        </div>
-      `;
-    })
-    .join("");
+  select("#completion-checks").innerHTML =
+    Object.entries(labels)
+      .map(([key, label]) => {
+        const complete = Boolean(
+          setup.steps?.[key],
+        );
 
-  select("#complete-button").disabled = !Object.values(
-    setup.steps || {},
-  ).every(Boolean);
+        const status = complete
+          ? t(
+              "completion.ready",
+              {},
+              "Ready",
+            )
+          : t(
+              "completion.not_ready",
+              {},
+              "Not ready",
+            );
+
+        return `
+          <div class="completion-check">
+            <span>${escapeHtml(label)}</span>
+            <span>${escapeHtml(status)}</span>
+          </div>
+        `;
+      })
+      .join("");
+
+  select("#complete-button").disabled =
+    !Object.values(
+      setup.steps || {},
+    ).every(Boolean);
 }
 
 export async function runDiagnostics(
@@ -240,14 +290,28 @@ export async function createAdmin(event) {
 
 export async function completeSetup() {
   const button = select("#complete-button");
+
   setBusy(button, true, "Afronden…");
   clearInlineError();
 
   try {
-    const result = await postJson("/api/setup/complete");
-    showMessage(result.message || "Setup afgerond.");
-    await refreshProvider();
+    const result = await postJson(
+      "/api/setup/complete",
+    );
+
+    showMessage(
+      result.message || "Setup afgerond.",
+    );
+
+    // Eerst het dashboard zichtbaar maken.
     await refreshSetup();
+
+    // Providerstatus mag de overgang niet blokkeren.
+    try {
+      await refreshProvider();
+    } catch {
+      // De reguliere statusrefresh toont later de foutstatus.
+    }
   } catch (error) {
     showInlineError(error.message);
   } finally {
@@ -292,14 +356,28 @@ function updatePasswordMatchState() {
   status.classList.remove("ok", "error");
 
   if (!confirmation.value) {
-    status.textContent = "Herhaal het wachtwoord";
-  } else if (matches) {
-    status.textContent = "✓ Wachtwoorden komen overeen";
-    status.classList.add("ok");
-  } else {
-    status.textContent = "✕ Wachtwoorden komen nog niet overeen";
-    status.classList.add("error");
-  }
+  status.textContent = t(
+    "password.repeat",
+    {},
+    "Repeat the password",
+  );
+} else if (matches) {
+  status.textContent = t(
+    "password.matches",
+    {},
+    "✓ Passwords match",
+  );
+
+  status.classList.add("ok");
+} else {
+  status.textContent = t(
+    "password.no_match",
+    {},
+    "✕ Passwords do not match yet",
+  );
+
+  status.classList.add("error");
+}
 
   submitButton.disabled = !(passwordValid && matches);
 }
@@ -331,4 +409,19 @@ export function initialiseWizardNavigation() {
   confirmation.addEventListener("input", updatePasswordMatchState);
 
   updatePasswordMatchState();
+  renderWizardProgress();
+
+window.addEventListener(
+  "exitlane:languagechange",
+  () => {
+    renderWizardProgress();
+    updatePasswordMatchState();
+
+    if (appState.setup) {
+      renderCompletionChecks(
+        appState.setup,
+      );
+    }
+  },
+);
 }

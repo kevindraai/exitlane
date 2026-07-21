@@ -34,14 +34,16 @@
     "admin": "Administrator",
     "provider": "Provider",
     "wireguard": "WireGuard",
-    "finish": "Finish"
+    "finish": "Finish",
+    "current": "Step {0}"
   },
   "completion": {
     "system": "System check",
     "admin": "Local administrator",
     "provider": "VPN provider",
     "wireguard": "WireGuard ingress",
-    "ready": "Ready"
+    "ready": "Ready",
+    "not_ready": "Not ready"
   },
   "common": {
     "next": "Next",

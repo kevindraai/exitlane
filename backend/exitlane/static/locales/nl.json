@@ -29,14 +29,16 @@
     "admin": "Beheerder",
     "provider": "Provider",
     "wireguard": "WireGuard",
-    "finish": "Afronden"
+    "finish": "Afronden",
+    "current": "Stap {0}"
   },
   "completion": {
     "system": "Systeemcontrole",
     "admin": "Lokale beheerder",
     "provider": "VPN-provider",
     "wireguard": "WireGuard-ingang",
-    "ready": "Gereed"
+    "ready": "Gereed",
+    "not_ready": "Niet gereed"
   },
   "password": {
     "repeat": "Herhaal het wachtwoord",

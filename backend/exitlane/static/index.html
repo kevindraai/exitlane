@@ -1,13 +1,15 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="nl">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-    <meta name="color-scheme" content="dark">
-  <meta name="description" content="Exitlane, smart egress for every network.">
-  <title>Exitlane</title>
+ <head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width,initial-scale=1" name="viewport"/>
+  <meta content="dark" name="color-scheme"/>
+  <meta content="Exitlane, smart egress for every network." name="description"/>
+  <title>
+   Exitlane
+  </title>
   <script>
-    (() => {
+   (() => {
       const storageKey = "exitlane-color-scheme";
       const preference =
         localStorage.getItem(storageKey) || "system";
@@ -31,28 +33,27 @@
     })();
   </script>
   <!-- Exitlane icons -->
-  <link rel="icon" href="/assets/icons/favicon.ico" sizes="any">
-  <link rel="icon" type="image/svg+xml" href="/assets/icons/favicon.svg">
-  <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
-  <link rel="manifest" href="/assets/icons/site.webmanifest">
-  <meta name="theme-color" content="#14203a">
-  <link rel="stylesheet" href="/assets/style.css">
-</head>
-<body>
+  <link href="/assets/icons/favicon.ico" rel="icon" sizes="any"/>
+  <link href="/assets/icons/favicon.svg" rel="icon" type="image/svg+xml"/>
+  <link href="/assets/icons/apple-touch-icon.png" rel="apple-touch-icon"/>
+  <link href="/assets/icons/site.webmanifest" rel="manifest"/>
+  <meta content="#14203a" name="theme-color"/>
+  <link href="/assets/style.css" rel="stylesheet"/>
+ </head>
+ <body>
   <header class="app-header">
-    <a class="brand" href="/" aria-label="Exitlane">
-      <img
-  class="brand-icon"
-  src="/assets/icons/favicon.svg"
-  alt=""
-  aria-hidden="true"
->
-      <span>
-        <strong>Exitlane</strong>
-        <small data-i18n="app.tagline">Smart egress for every network</small>
-      </span>
-    </a>
-<div class="language-menu">
+   <a aria-label="Exitlane" class="brand" href="/">
+    <img alt="" aria-hidden="true" class="brand-icon" src="/assets/icons/favicon.svg"/>
+    <span>
+     <strong>
+      Exitlane
+     </strong>
+     <small data-i18n="app.tagline">
+      Smart egress for every network
+     </small>
+    </span>
+   </a>
+   <div class="language-menu">
     <button aria-controls="language-options" aria-expanded="false" aria-haspopup="true" class="language-trigger" id="language-trigger" type="button">
      <span class="language-trigger-label" data-i18n="language.label">
       Language
@@ -61,7 +62,7 @@
       English
      </span>
      <span aria-hidden="true" class="language-chevron">
-      ▾
+      &dtrif;
      </span>
     </button>
     <div class="language-options" hidden="" id="language-options" role="menu">
@@ -69,1051 +70,970 @@
       Language
      </span>
      <button aria-checked="false" class="language-option" data-language-value="en" role="menuitemradio" type="button">
-      <span>
+      <span data-i18n="language.english">
        English
       </span>
       <span aria-hidden="true" class="language-check">
-       ✓
+       &checkmark;
       </span>
      </button>
      <button aria-checked="false" class="language-option" data-language-value="nl" role="menuitemradio" type="button">
-      <span>
+      <span data-i18n="language.dutch">
        Nederlands
       </span>
       <span aria-hidden="true" class="language-check">
-       ✓
+       &checkmark;
       </span>
      </button>
     </div>
    </div>
-
-<div class="header-status">   
-<div class="color-scheme-menu">
-  <button
-    id="color-scheme-trigger"
-    type="button"
-    class="color-scheme-trigger"
-    aria-haspopup="true"
-    aria-expanded="false"
-    aria-controls="color-scheme-options"
-  >
-    <span class="color-scheme-trigger-label" data-i18n="theme.label">
-      Colors
-    </span>
-
-    <span id="color-scheme-current">
-      Systeem
-    </span>
-
-    <span class="color-scheme-chevron" aria-hidden="true">
-      ▾
-    </span>
-  </button>
-
-  <div
-    id="color-scheme-options"
-    class="color-scheme-options"
-    role="menu"
-    hidden
-  >
-    <span class="color-scheme-menu-heading" data-i18n="theme.label">
-      Colors
-    </span>
-
-    <button
-      type="button"
-      class="color-scheme-option"
-      data-color-scheme-value="system"
-      role="menuitemradio"
-      aria-checked="false"
-    >
-      <span data-i18n="theme.system">Systeem</span>
-      <span class="color-scheme-check" aria-hidden="true">✓</span>
-    </button>
-
-    <button
-      type="button"
-      class="color-scheme-option"
-      data-color-scheme-value="light"
-      role="menuitemradio"
-      aria-checked="false"
-    >
-      <span data-i18n="theme.light">Light</span>
-      <span class="color-scheme-check" aria-hidden="true">✓</span>
-    </button>
-
-    <button
-      type="button"
-      class="color-scheme-option"
-      data-color-scheme-value="dark"
-      role="menuitemradio"
-      aria-checked="false"
-    >
-      <span data-i18n="theme.dark">Dark</span>
-      <span class="color-scheme-check" aria-hidden="true">✓</span>
-    </button>
-  </div>
-</div>
-      <span id="api-status" class="status-pill status-neutral" data-i18n="app.api_checking">API controleren…</span>
-      <span id="app-version" class="version-label"></span>
-    </div>
-  </header>
-
-  <main class="page">
-  <div class="app-shell">
-    <aside id="sidebar" class="sidebar" hidden>
-      <button
-        type="button"
-        class="sidebar-item active"
-        data-view="dashboard"
-      >
-        <span aria-hidden="true">🏠</span>
-        <span data-i18n="nav.dashboard">Dashboard</span>
-      </button>
-
-      <button
-        type="button"
-        class="sidebar-item"
-        data-view="vpn"
-        
-      >
-        <span aria-hidden="true">🌍</span>
-        <span data-i18n="nav.vpn">VPN</span>
-      </button>
-
-      <button
-        type="button"
-        class="sidebar-item"
-        data-view="wireguard"
-        
-      >
-        <span aria-hidden="true">🔑</span>
-        <span data-i18n="nav.wireguard">WireGuard</span>
-      </button>
-
-      <button
-        type="button"
-        class="sidebar-item"
-        data-view="security"
-        
-      >
-        <span aria-hidden="true">🔒</span>
-        <span data-i18n="nav.security">Security</span>
-      </button>
-
-      <button
-        type="button"
-        class="sidebar-item"
-        data-view="settings"
-        
-      >
-        <span aria-hidden="true">⚙️</span>
-        <span data-i18n="nav.settings">Settings</span>
-      </button>
-    </aside>
-
-    <div class="app-content">
-      <section id="wizard-panel" class="panel wizard-panel">
-      <div class="panel-heading">
-        <div>
-          <p class="eyebrow">FIRST-RUN WIZARD</p>
-          <h1>Build your first exit lane</h1>
-          <p class="lead">
-            Configureer je systeem, VPN-provider en WireGuard-ingang zonder
-            losse configuratiebestanden te bewerken.
-          </p>
-        </div>
-        <div id="wizard-progress" class="progress-summary">Stap 1 van 5</div>
-      </div>
-
-      <nav id="wizard-steps" class="wizard-steps" aria-label="Installatiestappen">
-        <button type="button" data-step="1" data-step-name="system">
-          <span class="step-number">1</span>
-          <span class="step-label">Systeem</span>
-        </button>
-        <button type="button" data-step="2" data-step-name="admin">
-          <span class="step-number">2</span>
-          <span class="step-label">Beheerder</span>
-        </button>
-        <button type="button" data-step="3" data-step-name="provider">
-          <span class="step-number">3</span>
-          <span class="step-label">Provider</span>
-        </button>
-        <button type="button" data-step="4" data-step-name="wireguard">
-          <span class="step-number">4</span>
-          <span class="step-label">WireGuard</span>
-        </button>
-        <button type="button" data-step="5" data-step-name="complete">
-          <span class="step-number">5</span>
-          <span class="step-label">Afronden</span>
-        </button>
-      </nav>
-
-      <div id="wizard-error" class="message message-error" hidden></div>
-
-      <article id="step-1" class="wizard-step">
-        <div class="step-heading">
-          <div>
-            <p class="step-kicker">Stap 1</p>
-            <h2>Systeemcontrole</h2>
-            <p>
-              Exitlane controleert de Linux-omgeving, netwerktoegang,
-              WireGuard en de benodigde systeemcomponenten.
-            </p>
-          </div>
-          <button id="diagnostics-button" type="button" class="button button-primary">
-            Controles uitvoeren
-          </button>
-        </div>
-
-        <div id="diagnostics-summary" class="health-summary" hidden>
-          <div>
-            <strong id="diagnostics-score">0 / 0</strong>
-            <span>controles geslaagd</span>
-          </div>
-          <div class="health-bar" aria-hidden="true">
-            <span id="diagnostics-progress"></span>
-          </div>
-        </div>
-
-        <div id="diagnostics-list" class="check-list">
-          <div class="empty-state">
-            Voer de systeemcontrole uit om verder te gaan.
-          </div>
-        </div>
-
-        <div class="step-actions">
-          <span></span>
-          <button id="system-next" type="button" class="button button-primary" disabled>
-            Volgende
-          </button>
-        </div>
-      </article>
-
-      <article id="step-2" class="wizard-step" hidden>
-        <div class="step-heading">
-          <div>
-            <p class="step-kicker">Stap 2</p>
-            <h2>Lokale beheerder</h2>
-            <p>
-              Maak het eerste lokale beheeraccount aan. Authenticatie wordt
-              in een volgende alpha ook daadwerkelijk voor alle pagina’s afgedwongen.
-            </p>
-          </div>
-        </div>
-
-        <form id="admin-form" class="form-card">
-          <label>
-            Gebruikersnaam
-            <input
-              id="admin-username"
-              name="username"
-              autocomplete="username"
-              value="admin"
-              minlength="3"
-              maxlength="64"
-              required
-            >
-          </label>
-
-          <label>
-            Wachtwoord
-            <input
-              id="admin-password"
-              name="password"
-              type="password"
-              autocomplete="new-password"
-              maxlength="256"
-              required
-            >
-            <small id="password-requirement">Wachtwoordvereisten ophalen…</small>
-          </label>
-
-          <label>
-            Wachtwoord herhalen
-            <input
-              id="admin-password-confirm"
-              name="password-confirm"
-              type="password"
-              autocomplete="new-password"
-              maxlength="256"
-              required
-            >
-	    <small id="password-match" class="helper-text">Herhaal het wachtwoord</small>
-          </label>
-
-          <div class="step-actions">
-            <button type="button" class="button button-secondary" data-back="1">
-              Terug
-            </button>
-            <button type="submit" class="button button-primary" disabled>
-              Beheerder aanmaken
-            </button>
-          </div>
-        </form>
-      </article>
-
-      <article id="step-3" class="wizard-step" hidden>
-        <div class="step-heading">
-          <div>
-            <p class="step-kicker">Stap 3</p>
-            <h2>VPN-provider</h2>
-            <p>
-              NordVPN is de eerste providerimplementatie. Exitlane houdt de
-              onderliggende architectuur provideronafhankelijk.
-            </p>
-          </div>
-          <span id="provider-state" class="status-pill status-neutral">
-            Status ophalen…
-          </span>
-        </div>
-
-        <section class="provider-card">
-          <div class="provider-header">
-            <div>
-              <strong>NordVPN</strong>
-              <p id="provider-description">Linux-client nog niet gecontroleerd.</p>
-            </div>
-            <button id="provider-install" type="button" class="button button-secondary">
-              Installeren
-            </button>
-          </div>
-
-<section id="provider-install-progress" class="result-card" hidden>
-  <div class="result-heading">
-    <div>
-      <strong id="provider-install-title">
-        NordVPN installeren
-      </strong>
-
-      <p id="provider-install-message">
-        Installatie voorbereiden...
-      </p>
-    </div>
-
-    <span
-      id="provider-install-state"
-      class="status-pill status-neutral"
-    >
-      Wachten
-    </span>
-  </div>
-
-  <div class="provider-install-log">
-    <button
-      id="provider-install-log-toggle"
-      type="button"
-      class="log-toggle"
-      aria-expanded="false"
-      aria-controls="provider-install-log"
-    >
-      Installatielog tonen
-    </button>
-
-    <pre
-      id="provider-install-log"
-      class="install-log"
-      hidden
-    ></pre>
-  </div>
-</section>
-          <div class="provider-actions">
-            <button id="provider-defaults" type="button" class="button button-secondary">
-              Gatewayinstellingen toepassen
-            </button>
-          </div>
-	<section id="provider-defaults-result" class="settings-result" hidden>
-  <div class="settings-result-header">
-    <strong>Gatewayinstellingen</strong>
-
-    <span id="provider-defaults-state" class="status-pill status-neutral">
-      Nog niet toegepast
-    </span>
-  </div>
-
-  <div
-    id="provider-defaults-list"
-    class="settings-result-list"
-  ></div>
-</section>
-
-<section class="login-methods">
-  <div class="login-method-heading">
-    <div>
-      <strong>Aanmelden bij NordVPN</strong>
-      <p>
-        Kies een aanmeldmethode. Voor een permanente gateway is een
-        access token het eenvoudigst.
-      </p>
-    </div>
-  </div>
-
-  <div class="login-method-tabs" role="tablist">
-    <button
-      id="login-method-token"
-      class="login-method-tab active"
-      type="button"
-      role="tab"
-      aria-selected="true"
-      aria-controls="login-panel-token"
-      data-login-method="token"
-    >
-      Access token
-      <small>Aanbevolen</small>
-    </button>
-
-    <button
-      id="login-method-browser"
-      class="login-method-tab"
-      type="button"
-      role="tab"
-      aria-selected="false"
-      aria-controls="login-panel-browser"
-      data-login-method="browser"
-    >
-      Browserlogin
-      <small>Alternatief</small>
-    </button>
-  </div>
-
-  <section
-    id="login-panel-token"
-    class="login-method-panel"
-    role="tabpanel"
-    aria-labelledby="login-method-token"
-  >
-<ol class="instruction-list">
-  <li>
-    Open Nord Account en meld je aan.
-  </li>
-  <li>
-    Klik in het menu links op <strong>NordVPN</strong>.
-  </li>
-  <li>
-    Scroll naar beneden naar <strong>Get access token</strong>.
-  </li>
-  <li>
-    Genereer een nieuw token en kopieer het direct.
-  </li>
-  <li>
-    Plak het token hieronder in Exitlane.
-  </li>
-</ol>
-
-    <div class="notice-card">
-      <strong>Advies voor Exitlane</strong>
-      <p>
-        Kies een niet-verlopend token voor een vaste gateway en beveilig
-        je Nord Account met multifactorauthenticatie.
-      </p>
-    </div>
-
-    <a
-      class="button button-secondary"
-      href="https://my.nordaccount.com/"
-      target="_blank"
-      rel="noopener noreferrer"
-    >
-      Nord Account openen ↗
-    </a>
-
-    <form id="token-form" class="form-card form-compact">
-      <label>
-        Access token
-        <input
-          id="nord-token"
-          type="password"
-          autocomplete="off"
-          minlength="20"
-          maxlength="512"
-          placeholder="Plak hier het token"
-          required
-        >
-        <small>
-          Exitlane gebruikt het token alleen voor de lokale NordVPN-login
-          en slaat het niet op.
-        </small>
-      </label>
-
-      <button type="submit" class="button button-primary">
-        Aanmelden met token
-      </button>
-    </form>
-  </section>
-
-  <section
-    id="login-panel-browser"
-    class="login-method-panel"
-    role="tabpanel"
-    aria-labelledby="login-method-browser"
-    hidden
-  >
-    <ol class="instruction-list">
-      <li>Klik hieronder op <strong>Browserlogin starten</strong>.</li>
-      <li>Open de getoonde NordVPN-link in je browser.</li>
-      <li>Meld je aan bij Nord Account.</li>
-      <li>
-        Klik niet normaal op <strong>Continue</strong>, maar kopieer de
-        achterliggende link en plak die hieronder.
-      </li>
-    </ol>
-
-    <button
-      id="browser-login-start"
-      type="button"
-      class="button button-secondary"
-    >
-      Browserlogin starten
-    </button>
-
-    <section id="browser-login-instruction" class="result-card" hidden>
-      <strong>Open deze NordVPN-aanmeldlink</strong>
-
-      <div class="copy-field">
-        <input id="browser-login-url" type="text" readonly>
-        <button
-          id="browser-login-copy"
-          type="button"
-          class="button button-secondary"
-        >
-          Kopiëren
-        </button>
-        <a
-          id="browser-login-open"
-          class="button button-secondary"
-          href="#"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Openen ↗
-        </a>
-      </div>
-    </section>
-
-    <form id="callback-form" class="form-card form-compact">
-      <label>
-        Callback-URL
-        <input
-          id="nord-callback"
-          type="text"
-          minlength="20"
-          maxlength="2048"
-          placeholder="nordvpn://…"
-          required
-        >
-        <small>
-          Plak hier de link achter de knop Continue.
-        </small>
-      </label>
-
-      <button type="submit" class="button button-primary">
-        Browserlogin afronden
-      </button>
-    </form>
-  </section>
-</section>
-
-        <div class="step-actions">
-          <button type="button" class="button button-secondary" data-back="2">
-            Terug
-          </button>
-          <button id="provider-next" type="button" class="button button-primary" disabled>
-            Volgende
-          </button>
-        </div>
-      </article>
-
-      <article id="step-4" class="wizard-step" hidden>
-        <div class="step-heading">
-          <div>
-            <p class="step-kicker">Stap 4</p>
-            <h2>WireGuard-ingang</h2>
-            <p>
-              Genereer een generieke WireGuard-clientconfiguratie voor je router.
-              UniFi, MikroTik, OPNsense en andere routers kunnen deze tunnel gebruiken.
-            </p>
-          </div>
-        </div>
-
-        <form id="wireguard-form" class="form-grid">
-          <label>
-
-  Endpoint van deze LXC
-
-  <input
-
-    id="wg-endpoint"
-
-    name="endpoint"
-
-    placeholder="Automatisch detecteren…"
-
-    required
-
-  >
-
-  <small id="wg-endpoint-help">
-
-    Lokaal IP-adres wordt automatisch bepaald.
-
-  </small>
-
-</label>
-
-          <label>
-            Tunnelnetwerk
-            <input id="wg-subnet" name="subnet" value="10.99.99.0/24" required>
-          </label>
-<label>
-  DNS-server
-  <input
-    id="wg-dns"
-    name="dns"
-    type="text"
-    inputmode="decimal"
-    autocomplete="off"
-    value="1.1.1.1"
-    required
-  >
-  <small>
-    Wordt opgenomen in de configuratie voor je router.
-  </small>
-</label>
-          <label>
-            UDP-poort
-            <input
-              id="wg-port"
-              name="port"
-              type="number"
-              min="1"
-              max="65535"
-              value="51820"
-              required
-            >
-          </label>
-
-          <label>
-            Interfacenaam
-            <input id="wg-interface" name="interface" value="wg0" maxlength="15" required>
-          </label>
-
-          <label>
-            Clientnaam
-            <input id="wg-client" name="client" value="router" maxlength="64" required>
-          </label>
-
-          <div class="form-submit">
-            <button type="submit" class="button button-primary">
-              Configuraties genereren
-            </button>
-          </div>
-        </form>
-
-        <section id="wireguard-result" class="result-card" hidden>
-          <div class="result-heading">
-            <div>
-              <strong>Clientconfiguratie gereed</strong>
-              <p>Importeer deze configuratie in je router.</p>
-            </div>
-            <div class="result-actions">
-              <button id="wireguard-copy" type="button" class="button button-secondary">
-                Kopiëren
-              </button>
-              <a id="wireguard-download" class="button button-secondary" href="#">
-                Downloaden
-              </a>
-            </div>
-          </div>
-          <pre id="wireguard-config"></pre>
-        </section>
-
-        <div class="step-actions">
-          <button type="button" class="button button-secondary" data-back="3">
-            Terug
-          </button>
-          <button id="wireguard-next" type="button" class="button button-primary" disabled>
-            Volgende
-          </button>
-        </div>
-      </article>
-
-<article id="step-5" class="wizard-step" hidden>
-  <div class="completion-card">
-    <span class="completion-icon" aria-hidden="true">✓</span>
-
-    <p class="step-kicker">Stap 5</p>
-    <h2>Exitlane is bijna gereed</h2>
-
-    <p>
-      Download de WireGuard-configuratie en importeer deze in je
-      router. Exitlane controleert automatisch of de tunnel verbinding
-      maakt.
-    </p>
-
-    <section class="handoff-card">
-      <div class="handoff-heading">
-        <div>
-          <strong>WireGuard-configuratie</strong>
-          <p id="finish-config-filename">
-            exitlane-router.conf
-          </p>
-        </div>
-
-        <span
-          id="finish-config-state"
-          class="status-pill status-success"
-        >
-          Gereed
-        </span>
-      </div>
-
-      <div class="handoff-actions">
-        <a
-          id="finish-download"
-          class="button button-primary"
-          href="#"
-          download
-        >
-          Download .conf
-        </a>
-
-        <button
-          id="finish-copy"
-          type="button"
-          class="button button-secondary"
-        >
-          Kopiëren
-        </button>
-
-        <button
-          id="finish-view"
-          type="button"
-          class="button button-secondary"
-        >
-          Bekijken
-        </button>
-      </div>
-
-      <pre id="finish-config-preview" hidden></pre>
-    </section>
-
-    <section class="connection-card">
-      <div class="connection-heading">
-        <div>
-          <strong>Verbindingsstatus</strong>
-          <p id="wireguard-connection-message">
-            Wachten op de eerste WireGuard-verbinding…
-          </p>
-        </div>
-
-        <span
-          id="wireguard-connection-state"
-          class="status-pill status-neutral"
-        >
-          Wachten
-        </span>
-      </div>
-
-      <div
-        id="wireguard-connection-details"
-        class="connection-details"
-        hidden
-      >
-        <div>
-          <span>Client</span>
-          <strong id="wireguard-status-client">—</strong>
-        </div>
-
-        <div>
-          <span>Endpoint</span>
-          <strong id="wireguard-status-endpoint">—</strong>
-        </div>
-
-        <div>
-          <span>Ontvangen</span>
-          <strong id="wireguard-status-received">—</strong>
-        </div>
-
-        <div>
-          <span>Verzonden</span>
-          <strong id="wireguard-status-sent">—</strong>
-        </div>
-      </div>
-
-      <button
-        id="wireguard-status-refresh"
-        type="button"
-        class="button button-secondary"
-      >
-        Opnieuw controleren
-      </button>
-    </section>
-
-    <div id="completion-checks" class="completion-checks"></div>
-
-    <button
-      id="complete-button"
-      type="button"
-      class="button button-primary"
-    >
-      Setup afronden
-    </button>
-  </div>
-</article>
-    </section>
-
-    <section id="dashboard-panel" class="dashboard-panel" hidden>
-<section
-  id="view-dashboard"
-  class="app-view"
-  data-view-panel="dashboard"
->
-  <section class="panel">
-    <div class="panel-heading compact">
-      <div>
-        <p class="eyebrow">DASHBOARD</p>
-        <h1>Exitlane</h1>
-        <p class="lead">
-          Overzicht van je VPN-gateway en verbonden diensten.
-        </p>
-      </div>
-    </div>
-
-    <div class="dashboard-summary-grid">
-      <article class="summary-card">
-        <span>VPN-status</span>
-        <strong id="dashboard-vpn-state">
-          Status ophalen…
-        </strong>
-
-        <button
-          type="button"
-          class="summary-link"
-          data-open-view="vpn"
-        >
-          VPN beheren →
-        </button>
-      </article>
-
-      <article class="summary-card">
-        <span>Locatie</span>
-        <strong id="dashboard-vpn-country">—</strong>
-        <small id="dashboard-vpn-server">—</small>
-      </article>
-
-      <article class="summary-card">
-        <span>Extern IP</span>
-        <strong id="dashboard-external-ip">—</strong>
-      </article>
-
-      <article class="summary-card">
-        <span>WireGuard</span>
-        <strong>Geconfigureerd</strong>
-
-        <button
-          type="button"
-          class="summary-link"
-          data-open-view="wireguard"
-        >
-          Tunnels beheren →
-        </button>
-      </article>
-    </div>
-  </section>
-</section>
-    <section
-    id="view-vpn"
-    class="app-view"
-    data-view-panel="vpn"
-    hidden
->
-      <div class="panel-heading compact">
-        <div>
-          <p class="eyebrow">PROVIDER STATUS</p>
-          <h2>NordVPN</h2>
-        </div>
-        <span id="connection-state" class="status-pill status-neutral">
-          Status ophalen…
-        </span>
-      </div>
-
-      <div id="provider-metrics" class="metric-grid">
-        <div class="metric"><span>Land</span><strong id="metric-country">—</strong></div>
-        <div class="metric"><span>Stad</span><strong id="metric-city">—</strong></div>
-        <div class="metric"><span>Server</span><strong id="metric-server">—</strong></div>
-        <div class="metric"><span>Extern IP</span><strong id="metric-ip">—</strong></div>
-      </div>
-
-      <form id="connect-form" class="connect-form">
-        <label>
-          Land, stad of server
-          <input id="connect-target" placeholder="Bijv. Netherlands of nl1234">
-        </label>
-        <button type="submit" class="button button-primary">Verbinden</button>
-        <button id="disconnect-button" type="button" class="button button-danger">
-          Verbreken
-        </button>
-      </form>
-    </section>
-    </section>
- 
- <section
-  id="view-wireguard"
-  class="app-view"
-  data-view-panel="wireguard"
-  hidden
->
-  <section class="panel">
-    <div class="panel-heading">
-      <div>
-        <p class="eyebrow">WIREGUARD</p>
-        <h1>WireGuard</h1>
-        <p class="lead">
-          Beheer router- en applicatietunnels.
-        </p>
-      </div>
-    </div>
-
-<section class="wireguard-overview">
-  <div class="connection-card">
-    <div class="connection-heading">
-      <div>
-        <strong>Routertunnel</strong>
-        <p id="management-wireguard-message">
-          WireGuard-status ophalen...
-        </p>
-      </div>
-
-      <span
-        id="management-wireguard-state"
-        class="status-pill status-neutral"
-      >
-        Controleren
+   <div class="header-status">
+    <div class="color-scheme-menu">
+     <button aria-controls="color-scheme-options" aria-expanded="false" aria-haspopup="true" class="color-scheme-trigger" id="color-scheme-trigger" type="button">
+      <span class="color-scheme-trigger-label" data-i18n="theme.label">
+       Colors
       </span>
-    </div>
-
-    <div
-      id="management-wireguard-details"
-      class="connection-details"
-      hidden
-    >
-      <div>
-        <span>Client</span>
-        <strong id="management-wireguard-client">—</strong>
-      </div>
-
-      <div>
-        <span>Endpoint</span>
-        <strong id="management-wireguard-endpoint">—</strong>
-      </div>
-
-      <div>
-        <span>Ontvangen</span>
-        <strong id="management-wireguard-received">—</strong>
-      </div>
-
-      <div>
-        <span>Verzonden</span>
-        <strong id="management-wireguard-sent">—</strong>
-      </div>
-    </div>
-
-    <div class="view-actions">
-      <button
-        id="management-wireguard-refresh"
-        type="button"
-        class="button button-secondary"
-      >
-        Opnieuw controleren
+      <span id="color-scheme-current">
+       Systeem
+      </span>
+      <span aria-hidden="true" class="color-scheme-chevron">
+       &dtrif;
+      </span>
+     </button>
+     <div class="color-scheme-options" hidden="" id="color-scheme-options" role="menu">
+      <span class="color-scheme-menu-heading" data-i18n="theme.label">
+       Colors
+      </span>
+      <button aria-checked="false" class="color-scheme-option" data-color-scheme-value="system" role="menuitemradio" type="button">
+       <span data-i18n="theme.system">
+        Systeem
+       </span>
+       <span aria-hidden="true" class="color-scheme-check">
+        &checkmark;
+       </span>
       </button>
-    </div>
-  </div>
-
-  <section class="panel">
-    <div class="panel-heading compact">
-      <div>
-        <p class="eyebrow">TUNNELS</p>
-        <h2>WireGuard-clients</h2>
-        <p>
-          Beheer hier straks router- en applicatietunnels.
-        </p>
-      </div>
-
-      <button
-        type="button"
-        class="button button-primary"
-        disabled
-      >
-        Nieuwe tunnel
+      <button aria-checked="false" class="color-scheme-option" data-color-scheme-value="light" role="menuitemradio" type="button">
+       <span data-i18n="theme.light">
+        Light
+       </span>
+       <span aria-hidden="true" class="color-scheme-check">
+        &checkmark;
+       </span>
       </button>
+      <button aria-checked="false" class="color-scheme-option" data-color-scheme-value="dark" role="menuitemradio" type="button">
+       <span data-i18n="theme.dark">
+        Dark
+       </span>
+       <span aria-hidden="true" class="color-scheme-check">
+        &checkmark;
+       </span>
+      </button>
+     </div>
     </div>
-
-    <div class="empty-state">
-      Exitlane gebruikt momenteel één routertunnel. Ondersteuning voor
-      meerdere peers en applicatietunnels volgt later.
-    </div>
-  </section>
-</section>
-  </section>
-</section>
-
-<section
-  id="view-security"
-  class="app-view"
-  data-view-panel="security"
-  hidden
->
-  <section class="panel">
-    <div class="panel-heading">
-      <div>
-        <p class="eyebrow">SECURITY</p>
-        <h1>Beveiliging</h1>
-        <p class="lead">
-          Beheer authenticatie, wachtwoorden, MFA en actieve sessies.
+    <span class="status-pill status-neutral" data-i18n="app.api_checking" id="api-status">
+     API controleren&hellip;
+    </span>
+    <span class="version-label" id="app-version">
+    </span>
+   </div>
+  </header>
+  <main class="page">
+   <div class="app-shell">
+    <aside class="sidebar" hidden="" id="sidebar">
+     <button class="sidebar-item active" data-view="dashboard" type="button">
+      <span aria-hidden="true">
+       🏠
+      </span>
+      <span data-i18n="nav.dashboard">
+       Dashboard
+      </span>
+     </button>
+     <button class="sidebar-item" data-view="vpn" type="button">
+      <span aria-hidden="true">
+       🌍
+      </span>
+      <span data-i18n="nav.vpn">
+       VPN
+      </span>
+     </button>
+     <button class="sidebar-item" data-view="wireguard" type="button">
+      <span aria-hidden="true">
+       🔑
+      </span>
+      <span data-i18n="nav.wireguard">
+       WireGuard
+      </span>
+     </button>
+     <button class="sidebar-item" data-view="security" type="button">
+      <span aria-hidden="true">
+       🔒
+      </span>
+      <span data-i18n="nav.security">
+       Security
+      </span>
+     </button>
+     <button class="sidebar-item" data-view="settings" type="button">
+      <span aria-hidden="true">
+       ⚙️
+      </span>
+      <span data-i18n="nav.settings">
+       Settings
+      </span>
+     </button>
+    </aside>
+    <div class="app-content">
+     <section class="panel wizard-panel" id="wizard-panel">
+      <div class="panel-heading">
+       <div>
+        <p class="eyebrow" data-i18n="wizard.eyebrow">
+         FIRST-RUN WIZARD
         </p>
+        <h1 data-i18n="wizard.title">
+         Build your first exit lane
+        </h1>
+        <p class="lead" data-i18n="wizard.subtitle">
+         Configureer je systeem, VPN-provider en WireGuard-ingang zonder
+            losse configuratiebestanden te bewerken.
+        </p>
+       </div>
+       <div class="progress-summary" id="wizard-progress">
+        Stap 1 van 5
+       </div>
       </div>
-    </div>
-
-    <div class="empty-state">
-      Beveiligingsbeheer wordt in een volgende versie toegevoegd.
-    </div>
-  </section>
-</section>   
-<section
-    id="view-settings"
-    class="app-view"
-    data-view-panel="settings"
-    hidden
->
-    <section class="panel">
-      <div class="panel-heading compact">
+      <nav aria-label="Installatiestappen" class="wizard-steps" data-i18n-aria-label="wizard.steps_aria" id="wizard-steps">
+       <button data-step="1" data-step-name="system" type="button">
+        <span class="step-number">
+         1
+        </span>
+        <span class="step-label" data-i18n="steps.system">
+         Systeem
+        </span>
+       </button>
+       <button data-step="2" data-step-name="admin" type="button">
+        <span class="step-number">
+         2
+        </span>
+        <span class="step-label" data-i18n="steps.admin">
+         Admin
+        </span>
+       </button>
+       <button data-step="3" data-step-name="provider" type="button">
+        <span class="step-number">
+         3
+        </span>
+        <span class="step-label" data-i18n="steps.provider">
+         Provider
+        </span>
+       </button>
+       <button data-step="4" data-step-name="wireguard" type="button">
+        <span class="step-number">
+         4
+        </span>
+        <span class="step-label" data-i18n="steps.wireguard">
+         WireGuard
+        </span>
+       </button>
+       <button data-step="5" data-step-name="complete" type="button">
+        <span class="step-number">
+         5
+        </span>
+        <span class="step-label" data-i18n="steps.finish">
+         Finish
+        </span>
+       </button>
+      </nav>
+      <div class="message message-error" hidden="" id="wizard-error">
+      </div>
+      <article class="wizard-step" id="step-1">
+       <div class="step-heading">
         <div>
-          <p class="eyebrow">NOTIFICATIES</p>
-          <h2>Generic webhook</h2>
+         <p class="step-kicker" data-i18n="step1.kicker" data-step="1">
+          Step 1
+         </p>
+         <h2 data-i18n="step1.title">
+          Systeemcontrole
+         </h2>
+         <p data-i18n="step1.description">
+          Exitlane controleert de Linux-omgeving, netwerktoegang,
+              WireGuard en de benodigde systeemcomponenten.
+         </p>
         </div>
-      </div>
-
-      <form id="webhook-form" class="form-grid">
+        <button class="button button-primary" data-i18n="step1.run_checks" id="diagnostics-button" type="button">
+         Controles uitvoeren
+        </button>
+       </div>
+       <div class="health-summary" hidden="" id="diagnostics-summary">
+        <div>
+         <strong id="diagnostics-score">
+          0 / 0
+         </strong>
+         <span data-i18n="step1.checks_passed">
+          controles geslaagd
+         </span>
+        </div>
+        <div aria-hidden="true" class="health-bar">
+         <span id="diagnostics-progress">
+         </span>
+        </div>
+       </div>
+       <div class="check-list" id="diagnostics-list">
+        <div class="empty-state" data-i18n="step1.empty">
+         Voer de systeemcontrole uit om verder te gaan.
+        </div>
+       </div>
+       <div class="step-actions">
+        <span>
+        </span>
+        <button class="button button-primary" data-i18n="common.next" disabled="" id="system-next" type="button">
+         Volgende
+        </button>
+       </div>
+      </article>
+      <article class="wizard-step" hidden="" id="step-2">
+       <div class="step-heading">
+        <div>
+         <p class="step-kicker" data-i18n="step2.kicker">
+          Stap 2
+         </p>
+         <h2 data-i18n="step2.title">
+          Lokale beheerder
+         </h2>
+         <p data-i18n="step2.description">
+          Maak het eerste lokale beheeraccount aan. Authenticatie wordt
+              in een volgende alpha ook daadwerkelijk voor alle pagina&rsquo;s afgedwongen.
+         </p>
+        </div>
+       </div>
+       <form class="form-card" id="admin-form">
         <label>
-          Naam
-          <input id="webhook-name" value="Home Assistant" required>
+         <span data-i18n="step2.username">
+          Gebruikersnaam
+         </span>
+         <input autocomplete="username" id="admin-username" maxlength="64" minlength="3" name="username" required="" value="admin"/>
         </label>
         <label>
-          URL
-          <input id="webhook-url" type="url" placeholder="https://…" required>
+         <span data-i18n="step2.password">
+          Wachtwoord
+         </span>
+         <input autocomplete="new-password" id="admin-password" maxlength="256" name="password" required="" type="password"/>
+         <small data-i18n="step2.password_requirements_loading" id="password-requirement">
+          Wachtwoordvereisten ophalen&hellip;
+         </small>
+        </label>
+        <label>
+         <span data-i18n="step2.password_confirm">
+          Wachtwoord herhalen
+         </span>
+         <input autocomplete="new-password" id="admin-password-confirm" maxlength="256" name="password-confirm" required="" type="password"/>
+         <small class="helper-text" data-i18n="step2.password_repeat_hint" id="password-match">
+          Herhaal het wachtwoord
+         </small>
+        </label>
+        <div class="step-actions">
+         <button class="button button-secondary" data-back="1" data-i18n="common.back" type="button">
+          Terug
+         </button>
+         <button class="button button-primary" data-i18n="step2.create_admin" disabled="" type="submit">
+          Beheerder aanmaken
+         </button>
+        </div>
+       </form>
+      </article>
+      <article class="wizard-step" hidden="" id="step-3">
+       <div class="step-heading">
+        <div>
+         <p class="step-kicker" data-i18n="step3.kicker">
+          Stap 3
+         </p>
+         <h2 data-i18n="step3.title">
+          VPN-provider
+         </h2>
+         <p data-i18n="step3.description">
+          NordVPN is de eerste providerimplementatie. Exitlane houdt de
+              onderliggende architectuur provideronafhankelijk.
+         </p>
+        </div>
+        <span class="status-pill status-neutral" data-i18n="common.loading_status" id="provider-state">
+         Status ophalen&hellip;
+        </span>
+       </div>
+       <section class="provider-card">
+        <div class="provider-header">
+         <div>
+          <strong>
+           NordVPN
+          </strong>
+          <p data-i18n="provider.not_checked" id="provider-description">
+           Linux-client nog niet gecontroleerd.
+          </p>
+         </div>
+         <button class="button button-secondary" data-i18n="provider.install" id="provider-install" type="button">
+          Installeren
+         </button>
+        </div>
+        <section class="result-card" hidden="" id="provider-install-progress">
+         <div class="result-heading">
+          <div>
+           <strong data-i18n="provider.installing_title" id="provider-install-title">
+            NordVPN installeren
+           </strong>
+           <p data-i18n="provider.preparing" id="provider-install-message">
+            Installatie voorbereiden...
+           </p>
+          </div>
+          <span class="status-pill status-neutral" data-i18n="common.waiting" id="provider-install-state">
+           Wachten
+          </span>
+         </div>
+         <div class="provider-install-log">
+          <button aria-controls="provider-install-log" aria-expanded="false" class="log-toggle" data-i18n="provider.show_log" id="provider-install-log-toggle" type="button">
+           Installatielog tonen
+          </button>
+          <pre class="install-log" hidden="" id="provider-install-log"></pre>
+         </div>
+        </section>
+        <div class="provider-actions">
+         <button class="button button-secondary" data-i18n="provider.apply_gateway_settings" id="provider-defaults" type="button">
+          Gatewayinstellingen toepassen
+         </button>
+        </div>
+        <section class="settings-result" hidden="" id="provider-defaults-result">
+         <div class="settings-result-header">
+          <strong data-i18n="provider.gateway_settings">
+           Gatewayinstellingen
+          </strong>
+          <span class="status-pill status-neutral" data-i18n="provider.not_applied" id="provider-defaults-state">
+           Nog niet toegepast
+          </span>
+         </div>
+         <div class="settings-result-list" id="provider-defaults-list">
+         </div>
+        </section>
+        <section class="login-methods">
+         <div class="login-method-heading">
+          <div>
+           <strong data-i18n="provider.sign_in_title">
+            Aanmelden bij NordVPN
+           </strong>
+           <p data-i18n="provider.sign_in_description">
+            Kies een aanmeldmethode. Voor een permanente gateway is een
+        access token het eenvoudigst.
+           </p>
+          </div>
+         </div>
+         <div class="login-method-tabs" role="tablist">
+          <button aria-controls="login-panel-token" aria-selected="true" class="login-method-tab active" data-login-method="token" id="login-method-token" role="tab" type="button">
+           <span data-i18n="provider.access_token">
+            Access token
+           </span>
+           <small data-i18n="common.recommended">
+            Aanbevolen
+           </small>
+          </button>
+          <button aria-controls="login-panel-browser" aria-selected="false" class="login-method-tab" data-login-method="browser" id="login-method-browser" role="tab" type="button">
+           <span data-i18n="provider.browser_login">
+            Browserlogin
+           </span>
+           <small data-i18n="common.alternative">
+            Alternatief
+           </small>
+          </button>
+         </div>
+         <section aria-labelledby="login-method-token" class="login-method-panel" id="login-panel-token" role="tabpanel">
+          <ol class="instruction-list">
+           <li data-i18n="provider.token_step1">
+            Open Nord Account en meld je aan.
+           </li>
+           <li data-i18n="provider.token_step2">
+            Klik in het menu links op
+            <strong>
+             NordVPN
+            </strong>
+            .
+           </li>
+           <li data-i18n="provider.token_step3">
+            Scroll naar beneden naar
+            <strong>
+             Get access token
+            </strong>
+            .
+           </li>
+           <li data-i18n="provider.token_step4">
+            Genereer een nieuw token en kopieer het direct.
+           </li>
+           <li data-i18n="provider.token_step5">
+            Plak het token hieronder in Exitlane.
+           </li>
+          </ol>
+          <div class="notice-card">
+           <strong data-i18n="provider.advice_title">
+            Advies voor Exitlane
+           </strong>
+           <p data-i18n="provider.advice_text">
+            Kies een niet-verlopend token voor een vaste gateway en beveilig
+        je Nord Account met multifactorauthenticatie.
+           </p>
+          </div>
+          <a class="button button-secondary" data-i18n="provider.open_nord_account" href="https://my.nordaccount.com/" rel="noopener noreferrer" target="_blank">
+           Nord Account openen &nearrow;
+          </a>
+          <form class="form-card form-compact" id="token-form">
+           <label>
+            <span data-i18n="provider.access_token">
+             Access token
+            </span>
+            <input autocomplete="off" data-i18n-placeholder="provider.token_placeholder" id="nord-token" maxlength="512" minlength="20" placeholder="Plak hier het token" required="" type="password"/>
+            <small data-i18n="provider.token_privacy">
+             Exitlane gebruikt het token alleen voor de lokale NordVPN-login
+          en slaat het niet op.
+            </small>
+           </label>
+           <button class="button button-primary" data-i18n="provider.sign_in_with_token" type="submit">
+            Aanmelden met token
+           </button>
+          </form>
+         </section>
+         <section aria-labelledby="login-method-browser" class="login-method-panel" hidden="" id="login-panel-browser" role="tabpanel">
+          <ol class="instruction-list">
+           <li data-i18n="provider.browser_step1">
+            Klik hieronder op
+            <strong>
+             Browserlogin starten
+            </strong>
+            .
+           </li>
+           <li data-i18n="provider.browser_step2">
+            Open de getoonde NordVPN-link in je browser.
+           </li>
+           <li data-i18n="provider.browser_step3">
+            Meld je aan bij Nord Account.
+           </li>
+           <li data-i18n="provider.browser_step4">
+            Klik niet normaal op
+            <strong>
+             Continue
+            </strong>
+            , maar kopieer de
+        achterliggende link en plak die hieronder.
+           </li>
+          </ol>
+          <button class="button button-secondary" data-i18n="provider.browser_login_start" id="browser-login-start" type="button">
+           Browserlogin starten
+          </button>
+          <section class="result-card" hidden="" id="browser-login-instruction">
+           <strong data-i18n="provider.open_login_link">
+            Open deze NordVPN-aanmeldlink
+           </strong>
+           <div class="copy-field">
+            <input id="browser-login-url" readonly="" type="text"/>
+            <button class="button button-secondary" data-i18n="common.copy" id="browser-login-copy" type="button">
+             Kopi&euml;ren
+            </button>
+            <a class="button button-secondary" data-i18n="common.open" href="#" id="browser-login-open" rel="noopener noreferrer" target="_blank">
+             Openen &nearrow;
+            </a>
+           </div>
+          </section>
+          <form class="form-card form-compact" id="callback-form">
+           <label>
+            <span data-i18n="provider.callback_url">
+             Callback-URL
+            </span>
+            <input id="nord-callback" maxlength="2048" minlength="20" placeholder="nordvpn://&hellip;" required="" type="text"/>
+            <small data-i18n="provider.callback_hint">
+             Plak hier de link achter de knop Continue.
+            </small>
+           </label>
+           <button class="button button-primary" data-i18n="provider.finish_browser_login" type="submit">
+            Browserlogin afronden
+           </button>
+          </form>
+         </section>
+        </section>
+        <div class="step-actions">
+         <button class="button button-secondary" data-back="2" data-i18n="common.back" type="button">
+          Terug
+         </button>
+         <button class="button button-primary" data-i18n="common.next" disabled="" id="provider-next" type="button">
+          Volgende
+         </button>
+        </div>
+       </section>
+      </article>
+      <article class="wizard-step" hidden="" id="step-4">
+       <div class="step-heading">
+        <div>
+         <p class="step-kicker" data-i18n="step4.kicker">
+          Stap 4
+         </p>
+         <h2 data-i18n="step4.title">
+          WireGuard-ingang
+         </h2>
+         <p data-i18n="step4.description">
+          Genereer een generieke WireGuard-clientconfiguratie voor je router.
+              UniFi, MikroTik, OPNsense en andere routers kunnen deze tunnel gebruiken.
+         </p>
+        </div>
+       </div>
+       <form class="form-grid" id="wireguard-form">
+        <label>
+         <span data-i18n="wireguard.endpoint">
+          Endpoint van deze LXC
+         </span>
+         <input data-i18n-placeholder="wireguard.endpoint_placeholder" id="wg-endpoint" name="endpoint" placeholder="Automatisch detecteren&hellip;" required=""/>
+         <small data-i18n="wireguard.endpoint_help" id="wg-endpoint-help">
+          Lokaal IP-adres wordt automatisch bepaald.
+         </small>
+        </label>
+        <label>
+         <span data-i18n="wireguard.tunnel_network">
+          Tunnelnetwerk
+         </span>
+         <input id="wg-subnet" name="subnet" required="" value="10.99.99.0/24"/>
+        </label>
+        <label>
+         <span data-i18n="wireguard.dns_server">
+          DNS-server
+         </span>
+         <input autocomplete="off" id="wg-dns" inputmode="decimal" name="dns" required="" type="text" value="1.1.1.1"/>
+         <small data-i18n="wireguard.dns_help">
+          Wordt opgenomen in de configuratie voor je router.
+         </small>
+        </label>
+        <label>
+         <span data-i18n="wireguard.udp_port">
+          UDP-poort
+         </span>
+         <input id="wg-port" max="65535" min="1" name="port" required="" type="number" value="51820"/>
+        </label>
+        <label>
+         <span data-i18n="wireguard.interface_name">
+          Interfacenaam
+         </span>
+         <input id="wg-interface" maxlength="15" name="interface" required="" value="wg0"/>
+        </label>
+        <label>
+         <span data-i18n="wireguard.client_name">
+          Clientnaam
+         </span>
+         <input id="wg-client" maxlength="64" name="client" required="" value="router"/>
         </label>
         <div class="form-submit">
-          <button type="submit" class="button button-secondary">Webhook toevoegen</button>
+         <button class="button button-primary" data-i18n="wireguard.generate" type="submit">
+          Configuraties genereren
+         </button>
         </div>
-      </form>
-    </section>
-    </section>
+       </form>
+       <section class="result-card" hidden="" id="wireguard-result">
+        <div class="result-heading">
+         <div>
+          <strong data-i18n="wireguard.client_ready">
+           Clientconfiguratie gereed
+          </strong>
+          <p data-i18n="wireguard.import_hint">
+           Importeer deze configuratie in je router.
+          </p>
+         </div>
+         <div class="result-actions">
+          <button class="button button-secondary" data-i18n="common.copy" id="wireguard-copy" type="button">
+           Kopi&euml;ren
+          </button>
+          <a class="button button-secondary" data-i18n="common.download" href="#" id="wireguard-download">
+           Downloaden
+          </a>
+         </div>
+        </div>
+        <pre id="wireguard-config"></pre>
+       </section>
+       <div class="step-actions">
+        <button class="button button-secondary" data-back="3" data-i18n="common.back" type="button">
+         Terug
+        </button>
+        <button class="button button-primary" data-i18n="common.next" disabled="" id="wireguard-next" type="button">
+         Volgende
+        </button>
+       </div>
+      </article>
+      <article class="wizard-step" hidden="" id="step-5">
+       <div class="completion-card">
+        <span aria-hidden="true" class="completion-icon">
+         &checkmark;
+        </span>
+        <p class="step-kicker" data-i18n="step5.kicker">
+         Stap 5
+        </p>
+        <h2 data-i18n="step5.title">
+         Exitlane is bijna gereed
+        </h2>
+        <p data-i18n="step5.description">
+         Download de WireGuard-configuratie en importeer deze in je
+      router. Exitlane controleert automatisch of de tunnel verbinding
+      maakt.
+        </p>
+        <section class="handoff-card">
+         <div class="handoff-heading">
+          <div>
+           <strong data-i18n="step5.wireguard_config">
+            WireGuard-configuratie
+           </strong>
+           <p id="finish-config-filename">
+            exitlane-router.conf
+           </p>
+          </div>
+          <span class="status-pill status-success" data-i18n="common.ready" id="finish-config-state">
+           Gereed
+          </span>
+         </div>
+         <div class="handoff-actions">
+          <a class="button button-primary" data-i18n="step5.download_conf" download="" href="#" id="finish-download">
+           Download .conf
+          </a>
+          <button class="button button-secondary" data-i18n="common.copy" id="finish-copy" type="button">
+           Kopi&euml;ren
+          </button>
+          <button class="button button-secondary" data-i18n="common.view" id="finish-view" type="button">
+           Bekijken
+          </button>
+         </div>
+         <pre hidden="" id="finish-config-preview"></pre>
+        </section>
+        <section class="connection-card">
+         <div class="connection-heading">
+          <div>
+           <strong data-i18n="step5.connection_status">
+            Verbindingsstatus
+           </strong>
+           <p data-i18n="step5.waiting_for_connection" id="wireguard-connection-message">
+            Wachten op de eerste WireGuard-verbinding&hellip;
+           </p>
+          </div>
+          <span class="status-pill status-neutral" data-i18n="common.waiting" id="wireguard-connection-state">
+           Wachten
+          </span>
+         </div>
+         <div class="connection-details" hidden="" id="wireguard-connection-details">
+          <div>
+           <span data-i18n="step5.client">
+            Client
+           </span>
+           <strong id="wireguard-status-client">
+            &mdash;
+           </strong>
+          </div>
+          <div>
+           <span data-i18n="step5.endpoint">
+            Endpoint
+           </span>
+           <strong id="wireguard-status-endpoint">
+            &mdash;
+           </strong>
+          </div>
+          <div>
+           <span data-i18n="step5.received">
+            Ontvangen
+           </span>
+           <strong id="wireguard-status-received">
+            &mdash;
+           </strong>
+          </div>
+          <div>
+           <span data-i18n="step5.sent">
+            Verzonden
+           </span>
+           <strong id="wireguard-status-sent">
+            &mdash;
+           </strong>
+          </div>
+         </div>
+         <button class="button button-secondary" data-i18n="common.check_again" id="wireguard-status-refresh" type="button">
+          Opnieuw controleren
+         </button>
+        </section>
+        <div class="completion-checks" id="completion-checks">
+        </div>
+        <button class="button button-primary" data-i18n="step5.complete_setup" id="complete-button" type="button">
+         Setup afronden
+        </button>
+       </div>
+      </article>
+     </section>
+     <section class="dashboard-panel" hidden="" id="dashboard-panel">
+      <section class="app-view" data-view-panel="dashboard" id="view-dashboard">
+       <section class="panel">
+        <div class="panel-heading compact">
+         <div>
+          <p class="eyebrow">
+           DASHBOARD
+          </p>
+          <h1>
+           Exitlane
+          </h1>
+          <p class="lead">
+           Overzicht van je VPN-gateway en verbonden diensten.
+          </p>
+         </div>
+        </div>
+        <div class="dashboard-summary-grid">
+         <article class="summary-card">
+          <span>
+           VPN-status
+          </span>
+          <strong id="dashboard-vpn-state">
+           Status ophalen&hellip;
+          </strong>
+          <button class="summary-link" data-open-view="vpn" type="button">
+           VPN beheren &rarr;
+          </button>
+         </article>
+         <article class="summary-card">
+          <span>
+           Locatie
+          </span>
+          <strong id="dashboard-vpn-country">
+           &mdash;
+          </strong>
+          <small id="dashboard-vpn-server">
+           &mdash;
+          </small>
+         </article>
+         <article class="summary-card">
+          <span>
+           Extern IP
+          </span>
+          <strong id="dashboard-external-ip">
+           &mdash;
+          </strong>
+         </article>
+         <article class="summary-card">
+          <span>
+           WireGuard
+          </span>
+          <strong>
+           Geconfigureerd
+          </strong>
+          <button class="summary-link" data-open-view="wireguard" type="button">
+           Tunnels beheren &rarr;
+          </button>
+         </article>
+        </div>
+       </section>
+      </section>
+      <section class="app-view" data-view-panel="vpn" hidden="" id="view-vpn">
+       <div class="panel-heading compact">
+        <div>
+         <p class="eyebrow" data-i18n="dashboard.provider_status">
+          PROVIDER STATUS
+         </p>
+         <h2>
+          NordVPN
+         </h2>
+        </div>
+        <span class="status-pill status-neutral" data-i18n="common.loading_status" id="connection-state">
+         Status ophalen&hellip;
+        </span>
+       </div>
+       <div class="metric-grid" id="provider-metrics">
+        <div class="metric">
+         <span data-i18n="dashboard.country">
+          Land
+         </span>
+         <strong id="metric-country">
+          &mdash;
+         </strong>
+        </div>
+        <div class="metric">
+         <span data-i18n="dashboard.city">
+          Stad
+         </span>
+         <strong id="metric-city">
+          &mdash;
+         </strong>
+        </div>
+        <div class="metric">
+         <span data-i18n="dashboard.server">
+          Server
+         </span>
+         <strong id="metric-server">
+          &mdash;
+         </strong>
+        </div>
+        <div class="metric">
+         <span data-i18n="dashboard.external_ip">
+          Extern IP
+         </span>
+         <strong id="metric-ip">
+          &mdash;
+         </strong>
+        </div>
+       </div>
+       <form class="connect-form" id="connect-form">
+        <label>
+         <span data-i18n="dashboard.target">
+          Land, stad of server
+         </span>
+         <input data-i18n-placeholder="dashboard.target_placeholder" id="connect-target" placeholder="Bijv. Netherlands of nl1234"/>
+        </label>
+        <button class="button button-primary" data-i18n="dashboard.connect" type="submit">
+         Verbinden
+        </button>
+        <button class="button button-danger" data-i18n="dashboard.disconnect" id="disconnect-button" type="button">
+         Verbreken
+        </button>
+       </form>
+      </section>
+     </section>
+     <section class="app-view" data-view-panel="wireguard" hidden="" id="view-wireguard">
+      <section class="panel">
+       <div class="panel-heading">
+        <div>
+         <p class="eyebrow">
+          WIREGUARD
+         </p>
+         <h1>
+          WireGuard
+         </h1>
+         <p class="lead">
+          Beheer router- en applicatietunnels.
+         </p>
+        </div>
+       </div>
+       <section class="wireguard-overview">
+        <div class="connection-card">
+         <div class="connection-heading">
+          <div>
+           <strong>
+            Routertunnel
+           </strong>
+           <p id="management-wireguard-message">
+            WireGuard-status ophalen...
+           </p>
+          </div>
+          <span class="status-pill status-neutral" id="management-wireguard-state">
+           Controleren
+          </span>
+         </div>
+         <div class="connection-details" hidden="" id="management-wireguard-details">
+          <div>
+           <span>
+            Client
+           </span>
+           <strong id="management-wireguard-client">
+            &mdash;
+           </strong>
+          </div>
+          <div>
+           <span>
+            Endpoint
+           </span>
+           <strong id="management-wireguard-endpoint">
+            &mdash;
+           </strong>
+          </div>
+          <div>
+           <span>
+            Ontvangen
+           </span>
+           <strong id="management-wireguard-received">
+            &mdash;
+           </strong>
+          </div>
+          <div>
+           <span>
+            Verzonden
+           </span>
+           <strong id="management-wireguard-sent">
+            &mdash;
+           </strong>
+          </div>
+         </div>
+         <div class="view-actions">
+          <button class="button button-secondary" id="management-wireguard-refresh" type="button">
+           Opnieuw controleren
+          </button>
+         </div>
+        </div>
+        <section class="panel">
+         <div class="panel-heading compact">
+          <div>
+           <p class="eyebrow">
+            TUNNELS
+           </p>
+           <h2>
+            WireGuard-clients
+           </h2>
+           <p>
+            Beheer hier straks router- en applicatietunnels.
+           </p>
+          </div>
+          <button class="button button-primary" disabled="" type="button">
+           Nieuwe tunnel
+          </button>
+         </div>
+         <div class="empty-state">
+          Exitlane gebruikt momenteel &eacute;&eacute;n routertunnel. Ondersteuning voor
+      meerdere peers en applicatietunnels volgt later.
+         </div>
+        </section>
+       </section>
+      </section>
+     </section>
+     <section class="app-view" data-view-panel="security" hidden="" id="view-security">
+      <section class="panel">
+       <div class="panel-heading">
+        <div>
+         <p class="eyebrow">
+          SECURITY
+         </p>
+         <h1>
+          Beveiliging
+         </h1>
+         <p class="lead">
+          Beheer authenticatie, wachtwoorden, MFA en actieve sessies.
+         </p>
+        </div>
+       </div>
+       <div class="empty-state">
+        Beveiligingsbeheer wordt in een volgende versie toegevoegd.
+       </div>
+      </section>
+     </section>
+     <section class="app-view" data-view-panel="settings" hidden="" id="view-settings">
+      <section class="panel">
+       <div class="panel-heading compact">
+        <div>
+         <p class="eyebrow" data-i18n="notifications.eyebrow">
+          NOTIFICATIES
+         </p>
+         <h2>
+          Generic webhook
+         </h2>
+        </div>
+       </div>
+       <form class="form-grid" id="webhook-form">
+        <label>
+         <span data-i18n="notifications.name">
+          Naam
+         </span>
+         <input id="webhook-name" required="" value="Home Assistant"/>
+        </label>
+        <label>
+         URL
+         <input id="webhook-url" placeholder="https://&hellip;" required="" type="url"/>
+        </label>
+        <div class="form-submit">
+         <button class="button button-secondary" data-i18n="notifications.add_webhook" type="submit">
+          Webhook toevoegen
+         </button>
+        </div>
+       </form>
+      </section>
+     </section>
     </div>
+   </div>
+  </main>
+  <div aria-live="polite" class="toast-region" id="toast-region">
   </div>
-</main>
-
-  <div id="toast-region" class="toast-region" aria-live="polite"></div>
-
-  <script type="module" src="/assets/js/app.js"></script>
-</body>
+  <script src="/assets/js/app.js" type="module">
+  </script>
+ </body>
 </html>
