@@ -43,8 +43,27 @@ import {
   refreshSession,
   showLogin,
 } from "./auth.js";
+import {
+  initialiseSettings,
+  loadSettings,
+} from "./settings.js";
 
 let apiState = "checking";
+let providerRefreshTimer = null;
+
+function scheduleProviderRefresh(intervalSeconds) {
+  if (providerRefreshTimer !== null) {
+    window.clearInterval(providerRefreshTimer);
+  }
+  frontendConfig.providerRefreshIntervalSeconds = intervalSeconds;
+  providerRefreshTimer = window.setInterval(async () => {
+    try {
+      await refreshProvider();
+    } catch {
+      renderProviderStatusError();
+    }
+  }, intervalSeconds * 1000);
+}
 
 function renderApiStatus() {
   const states = {
@@ -124,6 +143,10 @@ async function refreshApplication() {
 
   await loadPublicConfig();
 
+  if (!select("#view-settings").hidden) {
+    await loadSettings({ force: true });
+  }
+
   try {
     await refreshProvider();
   } catch {
@@ -142,6 +165,7 @@ async function initialise() {
     );
 
     initialiseWizardNavigation();
+    initialiseSettings();
     initialiseNavigation();
     initialiseProviderControls();
     initialiseWireGuardControls();
@@ -151,6 +175,7 @@ async function initialise() {
     initialiseAuth(refreshApplication);
 
     await refreshApplication();
+    scheduleProviderRefresh(frontendConfig.providerRefreshIntervalSeconds);
   } catch (error) {
     console.error(
       "Exitlane initialization failed:",
@@ -169,13 +194,9 @@ async function initialise() {
     return;
   }
 
-  window.setInterval(async () => {
-    try {
-      await refreshProvider();
-    } catch {
-      renderProviderStatusError();
-    }
-  }, frontendConfig.providerRefreshIntervalSeconds * 1000);
+  window.addEventListener("exitlane:settingschange", (event) => {
+    scheduleProviderRefresh(event.detail.providerRefreshIntervalSeconds);
+  });
 }
 
 initialise();

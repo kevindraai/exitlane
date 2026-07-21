@@ -5,6 +5,14 @@
     "api_online": "API online",
     "api_offline": "API niet bereikbaar"
   },
+  "setup": {
+    "preferences": {
+      "title": "Voorkeuren",
+      "description": "Kies hoe Exitlane in deze browser wordt weergegeven.",
+      "language": "Taal",
+      "color_scheme": "Kleurenschema"
+    }
+  },
   "language": {
     "label": "Taal",
     "english": "Engels",
@@ -15,6 +23,69 @@
     "system": "Systeem",
     "light": "Licht",
     "dark": "Donker"
+  },
+  "settings": {
+    "eyebrow": "INSTELLINGEN",
+    "title": "Instellingen",
+    "description": "Beheer deze Exitlane-installatie.",
+    "general": {
+      "eyebrow": "ALGEMEEN",
+      "title": "Algemeen",
+      "description": "Applicatie-identiteit en runtimegedrag.",
+      "timezone": "Tijdzone",
+      "timezone_help": "Geldige IANA-tijdzone. Voor alle afnemers kan een serviceherstart nodig zijn.",
+      "polling_interval": "Pollinginterval provider (seconden)",
+      "polling_interval_help": "Wordt direct toegepast in deze browser.",
+      "session_duration": "Sessieduur (seconden)",
+      "session_duration_help": "Wordt beheerd via EXITLANE_SESSION_MAX_AGE en kan hier niet worden verzwakt.",
+      "save": "Algemene instellingen opslaan"
+    },
+    "appearance": {
+      "eyebrow": "WEERGAVE",
+      "title": "Weergave",
+      "description": "Deze voorkeuren worden in deze browser opgeslagen.",
+      "language": "Taal",
+      "color_scheme": "Kleurenschema"
+    },
+    "notifications": {
+      "eyebrow": "NOTIFICATIES",
+      "title": "Webhook",
+      "description": "Stuur notificaties naar een HTTP-endpoint.",
+      "name": "Naam",
+      "url": "URL",
+      "add_webhook": "Webhook toevoegen",
+      "added": "Webhook {id} toegevoegd."
+    },
+    "about": {
+      "eyebrow": "OVER",
+      "title": "Over Exitlane",
+      "product": "Product",
+      "hostname": "Linux-hostname",
+      "system_timezone": "Systeemtijdzone",
+      "version": "Versie",
+      "runtime": "Runtime",
+      "python": "Python",
+      "platform": "Platform",
+      "setup_status": "Setupstatus",
+      "setup_complete": "Voltooid",
+      "setup_incomplete": "Onvoltooid",
+      "repository": "Repository",
+      "github_link": "GitHub ↗",
+      "license": "Licentie"
+    },
+    "future": {
+      "eyebrow": "TOEKOMSTIG",
+      "title": "Onderhoud en beveiliging",
+      "description": "HTTPS, certificaten, updates, backups en resetfuncties worden in een toekomstige release toegevoegd."
+    },
+    "messages": {
+      "saving": "Opslaan…",
+      "saved": "Instellingen opgeslagen."
+    },
+    "errors": {
+      "load": "Instellingen konden niet worden geladen.",
+      "save": "Instellingen konden niet worden opgeslagen: {message}"
+    }
   },
   "wizard": {
     "eyebrow": "EERSTE CONFIGURATIE",

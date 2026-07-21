@@ -1,3 +1,5 @@
+import { t } from "./i18n.js";
+
 const STORAGE_KEY = "exitlane-color-scheme";
 
 const VALID_PREFERENCES = new Set([
@@ -20,7 +22,7 @@ function resolveColorScheme(preference) {
   return preference;
 }
 
-function getStoredPreference() {
+export function getColorSchemePreference() {
   const stored = localStorage.getItem(
     STORAGE_KEY,
   );
@@ -31,16 +33,21 @@ function getStoredPreference() {
 }
 
 function preferenceLabel(preference) {
-  const labels = {
-    system: "Systeem",
-    light: "Licht",
-    dark: "Donker",
+  const keys = {
+    system: "theme.system",
+    light: "theme.light",
+    dark: "theme.dark",
   };
-
-  return labels[preference] || labels.system;
+  return t(keys[preference] || keys.system, {}, preference);
 }
 
 function updateControls(preference) {
+  document
+    .querySelectorAll("[data-color-scheme-select]")
+    .forEach((select) => {
+      select.value = preference;
+    });
+
   const current = document.querySelector(
     "#color-scheme-current",
   );
@@ -79,6 +86,10 @@ function setMenuOpen(open) {
     "#color-scheme-options",
   );
 
+  if (!trigger || !options) {
+    return;
+  }
+
   options.hidden = !open;
 
   trigger.setAttribute(
@@ -92,7 +103,9 @@ function toggleMenu() {
     "#color-scheme-options",
   );
 
-  setMenuOpen(options.hidden);
+  if (options) {
+    setMenuOpen(options.hidden);
+  }
 }
 
 function closeMenu() {
@@ -112,7 +125,7 @@ export function applyColorScheme(preference) {
   updateControls(preference);
 }
 
-function storeAndApply(preference) {
+export function setColorScheme(preference) {
   if (!VALID_PREFERENCES.has(preference)) {
     return;
   }
@@ -127,7 +140,7 @@ function storeAndApply(preference) {
 
 function handleSystemSchemeChange() {
   const preference =
-    getStoredPreference();
+    getColorSchemePreference();
 
   if (preference === "system") {
     applyColorScheme(preference);
@@ -136,7 +149,7 @@ function handleSystemSchemeChange() {
 
 export function initialiseColorScheme() {
   const preference =
-    getStoredPreference();
+    getColorSchemePreference();
 
   applyColorScheme(preference);
 
@@ -144,10 +157,20 @@ export function initialiseColorScheme() {
     "#color-scheme-trigger",
   );
 
-  trigger.addEventListener(
-    "click",
-    toggleMenu,
-  );
+  if (trigger) {
+    trigger.addEventListener(
+      "click",
+      toggleMenu,
+    );
+  }
+
+  document
+    .querySelectorAll("[data-color-scheme-select]")
+    .forEach((select) => {
+      select.addEventListener("change", () => {
+        setColorScheme(select.value);
+      });
+    });
 
   document
     .querySelectorAll(
@@ -157,7 +180,7 @@ export function initialiseColorScheme() {
       button.addEventListener(
         "click",
         () => {
-          storeAndApply(
+          setColorScheme(
             button.dataset.colorSchemeValue,
           );
 
@@ -173,7 +196,7 @@ export function initialiseColorScheme() {
         ".color-scheme-menu",
       );
 
-      if (!menu.contains(event.target)) {
+      if (menu && !menu.contains(event.target)) {
         closeMenu();
       }
     },
@@ -184,7 +207,9 @@ export function initialiseColorScheme() {
     (event) => {
       if (event.key === "Escape") {
         closeMenu();
-        trigger.focus();
+        if (trigger) {
+          trigger.focus();
+        }
       }
     },
   );

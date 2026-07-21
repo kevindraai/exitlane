@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from exitlane import __version__
 from exitlane.core import (
     DB,
+    SettingsStorageError,
     WG_DIR,
     command,
     hash_password,
@@ -25,6 +26,12 @@ from exitlane.core import (
     set_setting,
     setting,
     verify_password,
+)
+from exitlane.settings import (
+    SettingsUpdate,
+    current_general_settings,
+    settings_response,
+    update_settings,
 )
 from exitlane.providers.nordvpn import provider
 from exitlane.services.diagnostics import run as diagnostics
@@ -37,7 +44,6 @@ from exitlane.config import (
     DEFAULT_WIREGUARD_SUBNET,
     MAX_PASSWORD_LENGTH,
     MIN_PASSWORD_LENGTH,
-    PROVIDER_REFRESH_INTERVAL_SECONDS,
     SESSION_COOKIE_SECURE,
     SESSION_MAX_AGE_SECONDS,
     validate_config,
@@ -241,6 +247,19 @@ async def health() -> dict:
         "service": "exitlane",
         "version": __version__,
     }
+
+
+@app.get("/api/settings")
+async def get_settings() -> dict:
+    return settings_response()
+
+
+@app.put("/api/settings")
+async def put_settings(req: SettingsUpdate) -> dict:
+    try:
+        return update_settings(req)
+    except SettingsStorageError as error:
+        raise HTTPException(status_code=503, detail="Settings storage is temporarily unavailable") from error
 
 
 @app.post("/api/auth/login")
@@ -831,6 +850,8 @@ async def public_config() -> dict:
             "default_client": DEFAULT_WIREGUARD_CLIENT,
         },
         "frontend": {
-            "provider_refresh_interval_seconds": (PROVIDER_REFRESH_INTERVAL_SECONDS),
+            "provider_refresh_interval_seconds": (
+                current_general_settings().provider_refresh_interval_seconds
+            ),
         },
     }

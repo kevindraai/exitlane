@@ -38,14 +38,14 @@ export function showMessage(message, type = "info") {
   }, 5000);
 }
 
-export function showInlineError(message) {
-  const element = select("#wizard-error");
+export function showInlineError(message, selector = "#wizard-error") {
+  const element = select(selector);
   element.textContent = message;
   element.hidden = false;
 }
 
-export function clearInlineError() {
-  const element = select("#wizard-error");
+export function clearInlineError(selector = "#wizard-error") {
+  const element = select(selector);
   element.textContent = "";
   element.hidden = true;
 }

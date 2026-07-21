@@ -13,6 +13,10 @@ DB = DATA / "exitlane.db"
 WG_DIR = DATA / "wireguard"
 
 
+class SettingsStorageError(RuntimeError):
+    """Raised when a transactional settings write cannot be completed."""
+
+
 def init():
     DATA.mkdir(parents=True, exist_ok=True, mode=0o700)
     WG_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -70,6 +74,21 @@ def set_setting(key, value):
             "INSERT INTO settings VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (key, json.dumps(value)),
         )
+
+
+def set_settings(values: dict[str, object]) -> None:
+    """Persist a validated group of settings in one transaction."""
+    serialized = [(key, json.dumps(value)) for key, value in values.items()]
+    try:
+        with sqlite3.connect(DB, timeout=5.0) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.executemany(
+                """INSERT INTO settings(key, value) VALUES(?, ?)
+                   ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
+                serialized,
+            )
+    except sqlite3.DatabaseError as error:
+        raise SettingsStorageError("Settings could not be stored") from error
 
 
 def hash_password(password, salt=None):

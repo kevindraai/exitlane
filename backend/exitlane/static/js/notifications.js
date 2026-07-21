@@ -22,7 +22,7 @@ async function addWebhook(event) {
       url: select("#webhook-url").value.trim(),
     });
 
-    showMessage(`Webhook ${result.id} toegevoegd.`);
+    showMessage(t("settings.notifications.added", { id: result.id }, `Webhook ${result.id} added.`));
     select("#webhook-url").value = "";
   } catch (error) {
     showMessage(error.message, "error");

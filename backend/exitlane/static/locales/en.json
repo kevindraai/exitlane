@@ -5,6 +5,14 @@
     "api_online": "API online",
     "api_offline": "API unavailable"
   },
+  "setup": {
+    "preferences": {
+      "title": "Preferences",
+      "description": "Choose how Exitlane looks in this browser.",
+      "language": "Language",
+      "color_scheme": "Color scheme"
+    }
+  },
   "language": {
     "label": "Language",
     "english": "English",
@@ -15,6 +23,69 @@
     "system": "System",
     "light": "Light",
     "dark": "Dark"
+  },
+  "settings": {
+    "eyebrow": "SETTINGS",
+    "title": "Settings",
+    "description": "Manage this Exitlane installation.",
+    "general": {
+      "eyebrow": "GENERAL",
+      "title": "General",
+      "description": "Application identity and runtime behavior.",
+      "timezone": "Timezone",
+      "timezone_help": "Valid IANA timezone. A service restart may be needed for all consumers.",
+      "polling_interval": "Provider polling interval (seconds)",
+      "polling_interval_help": "Applied immediately in this browser.",
+      "session_duration": "Session duration (seconds)",
+      "session_duration_help": "Controlled by EXITLANE_SESSION_MAX_AGE and cannot be weakened here.",
+      "save": "Save general settings"
+    },
+    "appearance": {
+      "eyebrow": "APPEARANCE",
+      "title": "Appearance",
+      "description": "These preferences are stored in this browser.",
+      "language": "Language",
+      "color_scheme": "Color scheme"
+    },
+    "notifications": {
+      "eyebrow": "NOTIFICATIONS",
+      "title": "Webhook",
+      "description": "Send notifications to an HTTP endpoint.",
+      "name": "Name",
+      "url": "URL",
+      "add_webhook": "Add webhook",
+      "added": "Webhook {id} added."
+    },
+    "about": {
+      "eyebrow": "ABOUT",
+      "title": "About",
+      "product": "Product",
+      "hostname": "Linux hostname",
+      "system_timezone": "System timezone",
+      "version": "Version",
+      "runtime": "Runtime",
+      "python": "Python",
+      "platform": "Platform",
+      "setup_status": "Setup status",
+      "setup_complete": "Complete",
+      "setup_incomplete": "Incomplete",
+      "repository": "Repository",
+      "github_link": "GitHub ↗",
+      "license": "License"
+    },
+    "future": {
+      "eyebrow": "FUTURE",
+      "title": "Maintenance and security",
+      "description": "HTTPS, certificates, updates, backups and reset controls will be added in a future release."
+    },
+    "messages": {
+      "saving": "Saving…",
+      "saved": "Settings saved."
+    },
+    "errors": {
+      "load": "Could not load settings.",
+      "save": "Could not save settings: {message}"
+    }
   },
   "wizard": {
     "eyebrow": "FIRST-RUN WIZARD",

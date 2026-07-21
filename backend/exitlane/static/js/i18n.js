@@ -189,6 +189,12 @@ function languageLabel(language) {
 
 function updateLanguageControls() {
   document
+    .querySelectorAll("[data-language-select]")
+    .forEach((select) => {
+      select.value = currentLanguage;
+    });
+
+  document
     .querySelectorAll(
       "[data-language-value]",
     )
@@ -342,6 +348,14 @@ export async function initialiseI18n() {
       toggleLanguageMenu,
     );
   }
+
+  document
+    .querySelectorAll("[data-language-select]")
+    .forEach((select) => {
+      select.addEventListener("change", async () => {
+        await setLanguage(select.value);
+      });
+    });
 
   document
     .querySelectorAll(

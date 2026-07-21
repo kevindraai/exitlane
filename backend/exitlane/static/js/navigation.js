@@ -94,6 +94,10 @@ export function showView(
       requestedView,
     );
   }
+
+  window.dispatchEvent(new CustomEvent("exitlane:viewchange", {
+    detail: { view: requestedView },
+  }));
 }
 
 export function initialiseNavigation() {
