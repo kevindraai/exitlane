@@ -186,6 +186,17 @@
     "security": "Beveiliging",
     "settings": "Instellingen"
   },
+  "auth": {
+    "eyebrow": "AUTHENTICATIE",
+    "title": "Aanmelden bij Exitlane",
+    "description": "Gebruik je lokale beheerdersaccount.",
+    "username": "Gebruikersnaam",
+    "password": "Wachtwoord",
+    "login": "Aanmelden",
+    "logout": "Afmelden",
+    "logging_in": "Aanmelden…",
+    "invalid_credentials": "Ongeldige gebruikersnaam of ongeldig wachtwoord."
+  },
   "busy": {
     "default": "Bezig…",
     "checking": "Controleren…",

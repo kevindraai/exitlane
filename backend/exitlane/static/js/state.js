@@ -1,4 +1,5 @@
 export const appState = {
+  session: null,
   setup: null,
   provider: null,
   diagnostics: null,

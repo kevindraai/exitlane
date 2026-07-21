@@ -186,6 +186,17 @@
     "security": "Security",
     "settings": "Settings"
   },
+  "auth": {
+    "eyebrow": "AUTHENTICATION",
+    "title": "Sign in to Exitlane",
+    "description": "Use your local administrator account.",
+    "username": "Username",
+    "password": "Password",
+    "login": "Sign in",
+    "logout": "Log out",
+    "logging_in": "Signing in…",
+    "invalid_credentials": "Invalid username or password."
+  },
 "busy": {
   "default": "Working…",
   "checking": "Checking…",

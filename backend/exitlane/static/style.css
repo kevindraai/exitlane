@@ -1278,6 +1278,11 @@ pre {
   min-width: 0;
 }
 
+.login-panel {
+  max-width: 34rem;
+  margin: 3rem auto;
+}
+
 .app-view {
   display: grid;
   gap: 20px;

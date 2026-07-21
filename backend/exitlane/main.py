@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import sqlite3
+import hashlib
+import secrets
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
+from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -19,6 +24,7 @@ from exitlane.core import (
     init,
     set_setting,
     setting,
+    verify_password,
 )
 from exitlane.providers.nordvpn import provider
 from exitlane.services.diagnostics import run as diagnostics
@@ -32,6 +38,8 @@ from exitlane.config import (
     MAX_PASSWORD_LENGTH,
     MIN_PASSWORD_LENGTH,
     PROVIDER_REFRESH_INTERVAL_SECONDS,
+    SESSION_COOKIE_SECURE,
+    SESSION_MAX_AGE_SECONDS,
     validate_config,
 )
 
@@ -48,6 +56,11 @@ class Admin(BaseModel):
         min_length=MIN_PASSWORD_LENGTH,
         max_length=MAX_PASSWORD_LENGTH,
     )
+
+
+class Login(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
 
 
 class Token(BaseModel):
@@ -122,6 +135,92 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+SESSION_COOKIE = "exitlane_session"
+PUBLIC_API_ROUTES = {
+    ("GET", "/api/health"),
+    ("POST", "/api/auth/login"),
+    ("GET", "/api/auth/session"),
+}
+SETUP_API_ROUTES = {
+    ("GET", "/api/config/public"),
+    ("GET", "/api/setup/state"),
+    ("POST", "/api/setup/admin"),
+    ("POST", "/api/setup/complete"),
+    ("GET", "/api/system/network"),
+    ("GET", "/api/diagnostics"),
+    ("POST", "/api/providers/nordvpn/install"),
+    ("GET", "/api/providers/nordvpn/install/status"),
+    ("POST", "/api/providers/nordvpn/login/token"),
+    ("POST", "/api/providers/nordvpn/login/callback"),
+    ("POST", "/api/providers/nordvpn/login/browser/start"),
+    ("POST", "/api/providers/nordvpn/configure-defaults"),
+    ("GET", "/api/providers/nordvpn/status"),
+    ("POST", "/api/ingress/wireguard"),
+    ("GET", "/api/ingress/wireguard/status"),
+}
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+PROTECTED_APPLICATION_ROUTES = {"/docs", "/redoc", "/openapi.json"}
+
+
+def session_user(token: str | None) -> dict | None:
+    if not token:
+        return None
+    now = int(time.time())
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    with sqlite3.connect(DB) as connection:
+        connection.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
+        row = connection.execute(
+            """SELECT users.id, users.username FROM sessions
+               JOIN users ON users.id = sessions.user_id
+               WHERE sessions.token_hash = ? AND sessions.expires_at > ?""",
+            (token_hash, now),
+        ).fetchone()
+    return None if row is None else {"id": row[0], "username": row[1]}
+
+
+def request_has_trusted_origin(request: Request) -> bool:
+    """Reject browser cross-site writes; non-browser clients may omit these headers."""
+    origin = request.headers.get("origin")
+    referer = request.headers.get("referer")
+    source = origin or referer
+    if not source:
+        return True
+    parsed = urlsplit(source)
+    return parsed.scheme in {"http", "https"} and parsed.netloc == request.headers.get("host")
+
+
+def is_setup_client_download(method: str, path: str) -> bool:
+    prefix = "/api/ingress/wireguard/client/"
+    client_name = path.removeprefix(prefix)
+    return method == "GET" and path.startswith(prefix) and bool(client_name) and "/" not in client_name
+
+
+@app.middleware("http")
+async def require_authentication(request: Request, call_next):
+    path = request.url.path
+    route = (request.method, path)
+    if path.startswith("/api/") and request.method not in SAFE_METHODS:
+        # SameSite=Lax is the first CSRF boundary. Origin/Referer validation also
+        # protects deployments where an attacker controls another same-site origin.
+        if not request_has_trusted_origin(request):
+            return JSONResponse(status_code=403, content={"detail": "Request origin not allowed"})
+    if path in PROTECTED_APPLICATION_ROUTES:
+        user = session_user(request.cookies.get(SESSION_COOKIE))
+        if user:
+            request.state.user = user
+            return await call_next(request)
+        return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+    if not path.startswith("/api/") or route in PUBLIC_API_ROUTES:
+        return await call_next(request)
+
+    user = session_user(request.cookies.get(SESSION_COOKIE))
+    request.state.user = user
+    setup_complete = bool(setting("setup_complete", False))
+    setup_client_download = is_setup_client_download(request.method, path)
+    if user or (not setup_complete and (route in SETUP_API_ROUTES or setup_client_download)):
+        return await call_next(request)
+    return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+
 static_dir = Path(__file__).parent / "static"
 app.mount(
     "/assets",
@@ -141,6 +240,71 @@ async def health() -> dict:
         "ok": True,
         "service": "exitlane",
         "version": __version__,
+    }
+
+
+@app.post("/api/auth/login")
+async def login(req: Login, response: Response) -> dict:
+    with sqlite3.connect(DB) as connection:
+        row = connection.execute(
+            "SELECT id, username, password_hash, salt FROM users WHERE username = ?",
+            (req.username,),
+        ).fetchone()
+
+    # Always run scrypt, including for unknown users, to avoid a username timing oracle.
+    valid = verify_password(
+        req.password,
+        row[2] if row else "0" * 128,
+        row[3] if row else "0" * 32,
+    )
+    if row is None or not valid:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    token = secrets.token_urlsafe(32)
+    expires_at = int(time.time()) + SESSION_MAX_AGE_SECONDS
+    with sqlite3.connect(DB) as connection:
+        connection.execute(
+            "INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
+            (hashlib.sha256(token.encode()).hexdigest(), row[0], expires_at),
+        )
+
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        max_age=SESSION_MAX_AGE_SECONDS,
+        httponly=True,
+        secure=SESSION_COOKIE_SECURE,
+        samesite="lax",
+        path="/",
+    )
+    return {"authenticated": True, "user": {"username": row[1]}}
+
+
+@app.post("/api/auth/logout")
+async def logout(request: Request, response: Response) -> dict:
+    token = request.cookies.get(SESSION_COOKIE)
+    if token:
+        with sqlite3.connect(DB) as connection:
+            connection.execute(
+                "DELETE FROM sessions WHERE token_hash = ?",
+                (hashlib.sha256(token.encode()).hexdigest(),),
+            )
+    response.delete_cookie(
+        SESSION_COOKIE,
+        httponly=True,
+        secure=SESSION_COOKIE_SECURE,
+        samesite="lax",
+        path="/",
+    )
+    return {"ok": True}
+
+
+@app.get("/api/auth/session")
+async def auth_session(request: Request) -> dict:
+    user = session_user(request.cookies.get(SESSION_COOKIE))
+    return {
+        "authenticated": user is not None,
+        "user": None if user is None else {"username": user["username"]},
     }
 
 

@@ -38,6 +38,11 @@ import {
 import {
   initialiseColorScheme,
 } from "./theme.js";
+import {
+  initialiseAuth,
+  refreshSession,
+  showLogin,
+} from "./auth.js";
 
 let apiState = "checking";
 
@@ -102,11 +107,22 @@ async function refreshApplication() {
       ? `v${health.version}`
       : "";
 
-  // De setupstatus bepaalt welk scherm zichtbaar moet zijn.
-  // Een providerfout mag de wizard of het dashboard niet blokkeren.
-  await refreshSetup({
-    runAutomaticDiagnostics: true,
-  });
+  await refreshSession();
+
+  try {
+    // Before setup this remains public; afterwards a session is required.
+    await refreshSetup({
+      runAutomaticDiagnostics: true,
+    });
+  } catch (error) {
+    if (error.status === 401) {
+      showLogin();
+      return;
+    }
+    throw error;
+  }
+
+  await loadPublicConfig();
 
   try {
     await refreshProvider();
@@ -132,8 +148,8 @@ async function initialise() {
     initialiseWireGuardManagement();
     initialiseFinishControls();
     initialiseNotificationControls();
+    initialiseAuth(refreshApplication);
 
-    await loadPublicConfig();
     await refreshApplication();
   } catch (error) {
     console.error(

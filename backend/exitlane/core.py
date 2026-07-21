@@ -1,6 +1,7 @@
 from __future__ import annotations
 import asyncio
 import hashlib
+import hmac
 import json
 import os
 import sqlite3
@@ -17,7 +18,43 @@ def init():
     WG_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     with sqlite3.connect(DB) as c:
         c.executescript(
-            """CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,username TEXT UNIQUE,password_hash TEXT,salt TEXT); CREATE TABLE IF NOT EXISTS webhooks(id INTEGER PRIMARY KEY,name TEXT,url TEXT,enabled INTEGER DEFAULT 1);"""
+            """
+            CREATE TABLE IF NOT EXISTS settings(
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS users(
+                id INTEGER PRIMARY KEY,
+                username TEXT UNIQUE,
+                password_hash TEXT,
+                salt TEXT
+            );
+            CREATE TABLE IF NOT EXISTS webhooks(
+                id INTEGER PRIMARY KEY,
+                name TEXT,
+                url TEXT,
+                enabled INTEGER DEFAULT 1
+            );
+            CREATE TABLE IF NOT EXISTS sessions(
+                token_hash TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
+            CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions(expires_at);
+            CREATE TRIGGER IF NOT EXISTS delete_user_sessions
+            AFTER DELETE ON users
+            BEGIN
+                DELETE FROM sessions WHERE user_id = OLD.id;
+            END;
+            CREATE TRIGGER IF NOT EXISTS invalidate_sessions_after_password_change
+            AFTER UPDATE OF password_hash, salt ON users
+            WHEN OLD.password_hash IS NOT NEW.password_hash OR OLD.salt IS NOT NEW.salt
+            BEGIN
+                DELETE FROM sessions WHERE user_id = NEW.id;
+            END;
+            """
         )
 
 
@@ -41,6 +78,14 @@ def hash_password(password, salt=None):
     salt = salt or os.urandom(16)
     digest = hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1, dklen=64)
     return digest.hex(), salt.hex()
+
+
+def verify_password(password: str, password_hash: str, salt: str) -> bool:
+    try:
+        candidate, _ = hash_password(password, bytes.fromhex(salt))
+    except (TypeError, ValueError):
+        return False
+    return hmac.compare_digest(candidate, password_hash)
 
 
 async def command(*args, timeout=60, input_text=None):

@@ -32,7 +32,11 @@ export async function api(path, options = {}) {
         ? payload.detail || payload.message || `HTTP ${response.status}`
         : payload || `HTTP ${response.status}`;
 
-    throw new ApiError(message, response.status, payload);
+    const error = new ApiError(message, response.status, payload);
+    if (response.status === 401) {
+      window.dispatchEvent(new CustomEvent("exitlane:authenticationrequired"));
+    }
+    throw error;
   }
 
   return payload;

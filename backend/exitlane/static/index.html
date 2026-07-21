@@ -88,6 +88,9 @@
     </div>
    </div>
    <div class="header-status">
+    <button class="button button-secondary" data-i18n="auth.logout" hidden="" id="logout-button" type="button">
+     Log out
+    </button>
     <div class="color-scheme-menu">
      <button aria-controls="color-scheme-options" aria-expanded="false" aria-haspopup="true" class="color-scheme-trigger" id="color-scheme-trigger" type="button">
       <span class="color-scheme-trigger-label" data-i18n="theme.label">
@@ -182,7 +185,30 @@
      </button>
     </aside>
     <div class="app-content">
-     <section class="panel wizard-panel" id="wizard-panel">
+     <section class="panel login-panel" hidden="" id="login-panel">
+      <div class="panel-heading">
+       <div>
+        <p class="eyebrow" data-i18n="auth.eyebrow">AUTHENTICATION</p>
+        <h1 data-i18n="auth.title">Sign in to Exitlane</h1>
+        <p class="lead" data-i18n="auth.description">Use your local administrator account.</p>
+       </div>
+      </div>
+      <form class="form-grid" id="login-form">
+       <p class="inline-error" hidden="" id="login-error"></p>
+       <label>
+        <span data-i18n="auth.username">Username</span>
+        <input autocomplete="username" id="login-username" required=""/>
+       </label>
+       <label>
+        <span data-i18n="auth.password">Password</span>
+        <input autocomplete="current-password" id="login-password" required="" type="password"/>
+       </label>
+       <div class="form-submit">
+        <button class="button button-primary" data-i18n="auth.login" type="submit">Sign in</button>
+       </div>
+      </form>
+     </section>
+     <section class="panel wizard-panel" hidden="" id="wizard-panel">
       <div class="panel-heading">
        <div>
         <p class="eyebrow" data-i18n="wizard.eyebrow">

@@ -1,4 +1,5 @@
 import { api, postJson } from "./api.js";
+import { showLogin } from "./auth.js";
 import { t } from "./i18n.js";
 import { refreshProvider } from "./provider.js";
 import { appState, stepNames } from "./state.js";
@@ -319,6 +320,10 @@ export async function createAdmin(event) {
 );
     await refreshSetup();
   } catch (error) {
+    if (error.status === 401) {
+      showLogin();
+      return;
+    }
     showInlineError(error.message);
   } finally {
     setBusy(submitButton, false);
@@ -363,6 +368,10 @@ export async function completeSetup() {
       // De reguliere statusrefresh toont later de foutstatus.
     }
   } catch (error) {
+    if (error.status === 401) {
+      showLogin();
+      return;
+    }
     showInlineError(error.message);
   } finally {
     setBusy(button, false);

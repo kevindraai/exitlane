@@ -16,6 +16,18 @@ def environment_int(name: str, default: int) -> int:
         raise RuntimeError(f"Environment variable {name} must contain an integer") from error
 
 
+def environment_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise RuntimeError(f"Environment variable {name} must contain a boolean")
+
+
 APP_NAME = "Exitlane"
 
 WEB_HOST = os.getenv("EXITLANE_HOST", "0.0.0.0")
@@ -33,6 +45,8 @@ MAX_PASSWORD_LENGTH = environment_int(
     "EXITLANE_MAX_PASSWORD_LENGTH",
     256,
 )
+SESSION_MAX_AGE_SECONDS = environment_int("EXITLANE_SESSION_MAX_AGE", 86400)
+SESSION_COOKIE_SECURE = environment_bool("EXITLANE_SESSION_COOKIE_SECURE", False)
 
 DEFAULT_WIREGUARD_INTERFACE = os.getenv(
     "EXITLANE_WIREGUARD_INTERFACE",
@@ -87,3 +101,6 @@ def validate_config() -> None:
 
     if not 1 <= DEFAULT_WIREGUARD_PORT <= 65535:
         raise RuntimeError("EXITLANE_WIREGUARD_PORT must be between 1 and 65535")
+
+    if SESSION_MAX_AGE_SECONDS < 60:
+        raise RuntimeError("EXITLANE_SESSION_MAX_AGE must be at least 60 seconds")
