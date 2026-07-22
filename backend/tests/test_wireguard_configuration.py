@@ -333,3 +333,21 @@ def test_read_current_rejects_inconsistent_keys_and_handles_missing(tmp_path, mo
     with pytest.raises(wireguard.WireGuardConfigurationError) as error:
         asyncio.run(wireguard.read_current("wg0", "router"))
     assert error.value.code == "wireguard_configuration_invalid"
+
+
+@pytest.mark.parametrize(
+    ("interface", "client"),
+    [
+        ("../wg0", "router"),
+        ("wg0", "../router"),
+        ("wg0/peer", "router"),
+        ("wg0", "router.conf"),
+        ("wg0", "router%2fescape"),
+    ],
+)
+def test_configuration_paths_reject_untrusted_names(tmp_path, monkeypatch, interface, client):
+    monkeypatch.setattr(wireguard, "WG_DIR", tmp_path)
+    with pytest.raises(wireguard.WireGuardConfigurationError) as error:
+        asyncio.run(wireguard.read_current(interface, client))
+    assert error.value.code == "wireguard_configuration_invalid"
+    assert list(tmp_path.iterdir()) == []

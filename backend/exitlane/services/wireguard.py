@@ -27,6 +27,12 @@ class WireGuardConfigurationError(RuntimeError):
         self.code = code
 
 
+def _configuration_path(name: str) -> Path:
+    if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", name) is None:
+        raise WireGuardConfigurationError("wireguard_configuration_invalid")
+    return WG_DIR / f"{name}.conf"
+
+
 def _atomic_write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
@@ -73,8 +79,8 @@ async def _public_key(private_key: str) -> str:
 
 
 async def read_current(interface: str, client: str) -> dict | None:
-    server_path = WG_DIR / f"{interface}.conf"
-    client_path = WG_DIR / f"{client}.conf"
+    server_path = _configuration_path(interface)
+    client_path = _configuration_path(client)
     if not server_path.exists() and not client_path.exists():
         return None
     try:
@@ -105,7 +111,7 @@ async def parameters_from_current(interface: str, client: str) -> dict:
     if current is None:
         raise WireGuardConfigurationError("wireguard_configuration_missing")
     try:
-        server_config = (WG_DIR / f"{interface}.conf").read_text(encoding="utf-8")
+        server_config = _configuration_path(interface).read_text(encoding="utf-8")
     except (OSError, UnicodeError) as error:
         raise WireGuardConfigurationError("wireguard_configuration_invalid") from error
     client_config = current["client_config"]
@@ -255,8 +261,8 @@ PersistentKeepalive = {keepalive}
         mode=0o700,
     )
 
-    server_path = WG_DIR / f"{interface}.conf"
-    client_path = WG_DIR / f"{client}.conf"
+    server_path = _configuration_path(interface)
+    client_path = _configuration_path(client)
 
     _atomic_write(server_path, server_config)
     _atomic_write(client_path, client_config)
@@ -283,7 +289,7 @@ async def provision(
     allowed_ips: str = DEFAULT_WIREGUARD_ALLOWED_IPS,
     keepalive: int = DEFAULT_WIREGUARD_KEEPALIVE,
 ) -> dict:
-    paths = (WG_DIR / f"{interface}.conf", WG_DIR / f"{client}.conf")
+    paths = (_configuration_path(interface), _configuration_path(client))
     previous: dict[Path, str | None] = {}
     for path in paths:
         try:
