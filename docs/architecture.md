@@ -41,6 +41,12 @@ mature local client while presenting provider-neutral concepts where practical. 
 ingress boundary: routers and clients send selected traffic to Exitlane without requiring
 router-specific logic in the core.
 
+VPN mutations are serialized in the FastAPI process. A bounded CLI timeout is followed by a fresh
+provider status check; only a timed-out connect that is still disconnected may trigger the narrow
+NordVPN recovery path. That path restarts the fixed `nordvpnd.service`, performs a health check,
+and retries the original validated country once. Recovery is limited to two attempts per ten
+minutes. Analytics or journal messages are observability signals only and never trigger recovery.
+
 ## Design boundaries
 
 - The backend, not the browser, performs privileged host and network actions.

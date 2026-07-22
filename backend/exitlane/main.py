@@ -4,6 +4,7 @@ import asyncio
 import sqlite3
 import hashlib
 import base64
+import re
 import secrets
 import time
 import uuid
@@ -50,6 +51,7 @@ from exitlane.services.vpn_selection import (
     select_server,
     server_latency,
 )
+from exitlane.services import vpn_operations
 from exitlane.config import (
     DEFAULT_WIREGUARD_CLIENT,
     DEFAULT_WIREGUARD_INTERFACE,
@@ -78,6 +80,7 @@ SYSTEM_WIREGUARD_DIR = Path("/etc/wireguard")
 _system_started_databases: set[Path] = set()
 _wireguard_observed_state: tuple[bool, bool] | None = None
 _pending_provider_connection: dict | None = None
+NORDVPN_HOST_COUNTRY_CODES = {"UK": "GB"}
 
 
 class Admin(BaseModel):
@@ -694,7 +697,7 @@ async def configure_nordvpn_defaults() -> dict:
 @app.get("/api/providers/nordvpn/status")
 async def nordvpn_status() -> dict:
     global _pending_provider_connection
-    status = await provider.status()
+    status = await _fresh_vpn_status()
     if _pending_provider_connection and status.get("connected"):
         pending = _pending_provider_connection
         _pending_provider_connection = None
@@ -728,43 +731,74 @@ def _country_id(catalog: list[dict], country_code: str) -> int | None:
     )
 
 
-@app.get("/api/vpn/status")
-async def vpn_status() -> dict:
-    status = await provider.status()
-    catalog = await _vpn_catalog()
-    connected = next(
-        (
-            item["country_code"]
-            for item in catalog
-            if item["provider_name"].casefold() == status.get("country", "").casefold()
-        ),
-        None,
-    )
-    summary = country_summary(connected) if connected else {}
+def _vpn_snapshot(status: dict) -> dict:
+    hostname = status.get("server", "")
+    match = re.fullmatch(r"([a-z]{2})[0-9]+\.nordvpn\.com", hostname.lower())
+    connected = bool(status.get("connected"))
+    hostname_code = match.group(1).upper() if connected and match else None
+    country_code = NORDVPN_HOST_COUNTRY_CODES.get(hostname_code, hostname_code)
+    operation = vpn_operations.snapshot()
+    if operation["state"] not in vpn_operations.ACTIVE_STATES:
+        operation["state"] = (
+            "connected"
+            if connected
+            else "failed"
+            if operation.get("last_error_code")
+            else "idle"
+        )
     return {
         **status,
-        "country_code": connected,
-        "latency_ms": summary.get("latency_ms"),
-        "latency_measured_at": summary.get("latency_measured_at"),
+        "connected": connected,
+        "country_code": country_code,
+        "country": status.get("country") or None if connected else None,
+        "city": status.get("city") or None if connected else None,
+        "server": hostname or None if connected else None,
+        "hostname": hostname or None if connected else None,
+        "operation": operation,
     }
+
+
+async def _fresh_vpn_status() -> dict:
+    try:
+        return _vpn_snapshot(
+            await provider.status(timeout=vpn_operations.STATUS_TIMEOUT_SECONDS)
+        )
+    except Exception:
+        return _vpn_snapshot(
+            {
+                "available": False,
+                "connected": False,
+                "state": "error",
+                "error_code": "provider_status_unavailable",
+            }
+        )
+
+
+def _action_conflict() -> JSONResponse:
+    operation = vpn_operations.snapshot()
+    return JSONResponse(
+        status_code=409,
+        content={"error": "vpn_action_in_progress", **operation},
+    )
+
+
+@app.get("/api/vpn/status")
+async def vpn_status() -> dict:
+    status = await _fresh_vpn_status()
+    summary = country_summary(status["country_code"]) if status["country_code"] else {}
+    return {**status, "latency_ms": summary.get("latency_ms"), "latency_measured_at": summary.get("latency_measured_at")}
 
 
 @app.get("/api/vpn/countries")
 async def vpn_countries() -> dict:
-    catalog, status = await asyncio.gather(_vpn_catalog(), provider.status())
-    connected = next(
-        (
-            item["country_code"]
-            for item in catalog
-            if item["provider_name"].casefold() == status.get("country", "").casefold()
-        ),
-        None,
-    )
+    catalog, vpn = await asyncio.gather(_vpn_catalog(), _fresh_vpn_status())
+    connected = vpn["country_code"]
     codes = [item["country_code"] for item in catalog]
     last = setting("vpn.last_country")
     quick = list(dict.fromkeys(code for code in (connected, last, *QUICK_COUNTRIES) if code in codes))
     return {
         "quick_country_codes": quick,
+        "vpn": vpn,
         "countries": [
             country_summary(
                 item["country_code"],
@@ -787,6 +821,8 @@ async def vpn_country_servers(country_code: str) -> dict:
 
 @app.post("/api/vpn/countries/{country_code}/measure")
 async def measure_vpn_country(country_code: str) -> dict:
+    if vpn_operations.snapshot()["state"] in vpn_operations.ACTIVE_STATES:
+        return _action_conflict()
     code = country_code.upper()
     country_id = _country_id(await _vpn_catalog(), code)
     if country_id is None:
@@ -806,7 +842,11 @@ async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
     if country_id is None:
         raise HTTPException(404, "Unsupported country")
 
-    indication = await select_server(code, await provider.servers(country_id))
+    try:
+        vpn_operations.begin("connecting", country_code=code, timeout=125)
+    except vpn_operations.VPNActionInProgress:
+        return _action_conflict()
+
     actor = request_actor(request)
     correlation_id = str(uuid.uuid4())
     country_name = country_summary(code, provider_name=country["provider_name"])["name"]
@@ -817,16 +857,83 @@ async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
         metadata={"target": country_name, **technical},
         correlation_id=correlation_id,
     )
-    result = await provider.connect_country(code)
+    indication = None
+    result = {"ok": False, "exit_code": None, "error_code": "provider_connect_failed"}
+    status = None
+    recovered = False
     try:
-        status = await provider.status()
-    except Exception:  # Provider internals are intentionally not exposed through the API.
-        status = None
+        indication = await select_server(code, await provider.servers(country_id))
+        result = await provider.connect_country(
+            code, timeout=vpn_operations.CONNECT_TIMEOUT_SECONDS
+        )
+        status = await _fresh_vpn_status()
+
+        if (
+            result.get("error_code") == "vpn_connect_timeout"
+            and not status.get("connected")
+        ):
+            if vpn_operations.recovery_allowed():
+                vpn_operations.record_recovery()
+                vpn_operations.transition("recovering")
+                record_event(
+                    "provider.recovery_started",
+                    actor=actor,
+                    metadata={"country_code": code, "reason": "timeout"},
+                    correlation_id=correlation_id,
+                )
+                recovery = await provider.recover_daemon()
+                if recovery.get("ok"):
+                    recovered = True
+                    record_event(
+                        "provider.recovered",
+                        actor=actor,
+                        metadata={"country_code": code},
+                        correlation_id=correlation_id,
+                    )
+                    vpn_operations.transition("connecting")
+                    record_event(
+                        "provider.retry_started",
+                        actor=actor,
+                        metadata={"country_code": code},
+                        correlation_id=correlation_id,
+                    )
+                    result = await provider.connect_country(
+                        code, timeout=vpn_operations.CONNECT_TIMEOUT_SECONDS
+                    )
+                    status = await _fresh_vpn_status()
+                else:
+                    result = {**result, "error_code": recovery.get("error_code")}
+                    status = await _fresh_vpn_status()
+                    record_event(
+                        "provider.recovery_failed",
+                        actor=actor,
+                        metadata={"country_code": code, "reason": "healthcheck_failed"},
+                        correlation_id=correlation_id,
+                    )
+            else:
+                result = {**result, "error_code": "provider_recovery_rate_limited"}
+                record_event(
+                    "provider.recovery_rate_limited",
+                    actor=actor,
+                    metadata={"country_code": code, "reason": "timeout"},
+                    correlation_id=correlation_id,
+                )
+    except asyncio.CancelledError:
+        status = await _fresh_vpn_status()
+        vpn_operations.finish(
+            connected=status.get("connected", False),
+            error_code=None if status.get("connected") else "provider_connect_cancelled",
+        )
+        raise
+    except Exception:
+        result = {"ok": False, "exit_code": None, "error_code": "provider_connect_failed"}
+        status = await _fresh_vpn_status()
+
+    status = status or await _fresh_vpn_status()
 
     expected_country = country["provider_name"].casefold()
     proven = bool(
         result.get("ok")
-        and status
         and status.get("connected")
         and status.get("country", "").casefold() == expected_country
     )
@@ -849,10 +956,12 @@ async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
         _pending_provider_connection = None
     else:
         reason = (
-            "connection_failed"
+            "timeout"
+            if result.get("error_code") == "vpn_connect_timeout"
+            else "connection_failed"
             if not result.get("ok")
             else "provider_status_unavailable"
-            if status is None or status.get("available") is False
+            if status.get("available") is False
             else "not_connected"
             if not status.get("connected")
             else "wrong_country"
@@ -863,29 +972,80 @@ async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
             metadata={"target": country_name, "reason": reason, **event_technical},
             correlation_id=correlation_id,
         )
+    error_code = None if proven else result.get("error_code") or reason
+    operation = vpn_operations.finish(connected=proven, error_code=error_code)
+    status["operation"] = operation
     return {
         **result,
         "success": proven,
         "country_code": code,
-        "server": status.get("server") if status else None,
+        "server": status.get("server"),
         "latency_ms": indication["latency_ms"] if indication else None,
         "status": "connected" if proven else "error",
-        "error_code": None if proven else result.get("error_code") or reason,
+        "error": error_code,
+        "error_code": error_code,
+        "operation_state": operation["state"],
+        "recovered": recovered,
+        "vpn": status,
     }
 
 
 @app.post("/api/vpn/disconnect")
 async def disconnect_vpn(request: Request) -> dict:
-    return await disconnect_nordvpn(request)
+    try:
+        vpn_operations.begin("disconnecting", timeout=25)
+    except vpn_operations.VPNActionInProgress:
+        return _action_conflict()
+    correlation_id = str(uuid.uuid4())
+    actor = request_actor(request)
+    record_event("provider.disconnect_started", actor=actor, correlation_id=correlation_id)
+    try:
+        result = await provider.disconnect(timeout=15)
+    except asyncio.CancelledError:
+        status = await _fresh_vpn_status()
+        vpn_operations.finish(
+            connected=status.get("connected", False),
+            error_code="provider_disconnect_cancelled" if status.get("connected") else None,
+        )
+        raise
+    except Exception:
+        result = {"ok": False, "error_code": "provider_disconnect_failed"}
+    status = await _fresh_vpn_status()
+    success = not status.get("connected")
+    error_code = None if success else result.get("error_code") or "provider_disconnect_failed"
+    operation = vpn_operations.finish(connected=status.get("connected", False), error_code=error_code)
+    status["operation"] = operation
+    record_event(
+        "provider.disconnected" if success else "provider.disconnect_failed",
+        actor=actor,
+        metadata=None if success else {"reason": "connection_failed"},
+        correlation_id=correlation_id,
+    )
+    return {
+        **result,
+        "success": success,
+        "error": error_code,
+        "operation_state": operation["state"],
+        "vpn": status,
+    }
 
 
 @app.post("/api/providers/nordvpn/connect")
 async def connect_nordvpn(req: Connect, request: Request) -> dict:
     global _pending_provider_connection
+    if req.target and re.fullmatch(r"[A-Za-z]{2}", req.target):
+        return await connect_vpn_country(CountryConnect(country_code=req.target), request)
+    try:
+        vpn_operations.begin("connecting", timeout=50)
+    except vpn_operations.VPNActionInProgress:
+        return _action_conflict()
     correlation_id = str(uuid.uuid4())
     metadata = {"target": req.target or "recommended"}
     record_event("provider.connect_started", actor=request_actor(request), metadata=metadata, correlation_id=correlation_id)
-    result = await provider.connect(req.target)
+    try:
+        result = await provider.connect(req.target, timeout=vpn_operations.CONNECT_TIMEOUT_SECONDS)
+    except Exception:
+        result = {"ok": False, "error_code": "provider_connect_failed"}
     if result.get("ok"):
         try:
             status = await provider.status()
@@ -917,26 +1077,32 @@ async def connect_nordvpn(req: Connect, request: Request) -> dict:
                 "correlation_id": correlation_id,
             }
     else:
-        reason = "invalid_target" if result.get("error_code") == "invalid_target" else "connection_failed"
+        reason = (
+            "invalid_target"
+            if result.get("error_code") == "invalid_target"
+            else "timeout"
+            if result.get("error_code") == "vpn_connect_timeout"
+            else "connection_failed"
+        )
         record_event("provider.connect_failed", actor=request_actor(request), metadata={**metadata, "reason": reason}, correlation_id=correlation_id)
         _pending_provider_connection = None
-    return result
+    status = await _fresh_vpn_status()
+    proven = bool(result.get("ok") and status.get("connected"))
+    error_code = None if proven else result.get("error_code") or "connection_failed"
+    operation = vpn_operations.finish(connected=proven, error_code=error_code)
+    status["operation"] = operation
+    return {
+        **result,
+        "success": proven,
+        "error": error_code,
+        "operation_state": operation["state"],
+        "vpn": status,
+    }
 
 
 @app.post("/api/providers/nordvpn/disconnect")
 async def disconnect_nordvpn(request: Request) -> dict:
-    global _pending_provider_connection
-    correlation_id = str(uuid.uuid4())
-    record_event("provider.disconnect_started", actor=request_actor(request), correlation_id=correlation_id)
-    result = await provider.disconnect()
-    _pending_provider_connection = None
-    record_event(
-        "provider.disconnected" if result.get("ok") else "provider.disconnect_failed",
-        actor=request_actor(request),
-        metadata=None if result.get("ok") else {"reason": "connection_failed"},
-        correlation_id=correlation_id,
-    )
-    return result
+    return await disconnect_vpn(request)
 
 
 @app.post("/api/providers/nordvpn/login/browser/start")

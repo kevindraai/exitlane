@@ -64,7 +64,7 @@ async function refreshSlice(name, path, selectData = (value) => value, options =
   }
 }
 
-export const refreshProviderState = (options) => refreshSlice("provider", "/api/providers/nordvpn/status", (r) => r.status, options);
+export const refreshProviderState = (options) => refreshSlice("provider", "/api/vpn/status", undefined, options);
 export const refreshWireGuardState = (options) => refreshSlice("wireguard", "/api/ingress/wireguard/status", undefined, options);
 export async function refreshDashboardState(options) {
   const data = await refreshSlice("dashboard", "/api/dashboard", undefined, options);

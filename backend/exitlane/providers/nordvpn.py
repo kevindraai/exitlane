@@ -6,6 +6,7 @@ import asyncio
 import http.client
 import json
 import logging
+import time
 import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +17,16 @@ from .base import Provider
 
 logger = logging.getLogger(__name__)
 SERVER_HOSTNAME_PATTERN = re.compile(r"^([a-z]{2}[0-9]+)\.nordvpn\.com$")
+CONNECT_FAILURE_TIMEOUT_SECONDS = 25
+
+
+def _connect_timed_out(return_code: int, output: str, error: str, elapsed: float) -> bool:
+    provider_message = f"{output}\n{error}".casefold()
+    return (
+        return_code == 124
+        or "context deadline exceeded" in provider_message
+        or (return_code != 0 and elapsed >= CONNECT_FAILURE_TIMEOUT_SECONDS)
+    )
 
 
 def build_connect_target(country_code: str, server_hostname: str | None = None) -> str:
@@ -50,6 +61,7 @@ _install_job: dict[str, Any] = {
     "started_at": None,
     "finished_at": None,
 }
+_country_catalog_cache: list[dict] = []
 
 
 def _utc_now() -> str:
@@ -81,7 +93,7 @@ class NordVPN(Provider):
     id = "nordvpn"
     display_name = "NordVPN"
 
-    async def status(self):
+    async def status(self, *, timeout: float = 8):
         if not shutil.which("nordvpn"):
             in_container = Path("/.dockerenv").exists()
             return {
@@ -100,17 +112,20 @@ class NordVPN(Provider):
             "systemctl",
             "is-active",
             "nordvpnd",
+            timeout=timeout,
         )
 
         status_rc, status_out, status_err = await command(
             "nordvpn",
             "status",
+            timeout=timeout,
         )
         values = parse(status_out or status_err)
 
         account_rc, account_out, account_err = await command(
             "nordvpn",
             "account",
+            timeout=timeout,
         )
 
         account_output = account_out or account_err
@@ -438,14 +453,18 @@ echo "Installatie afgerond"
         }
 
     async def countries(self):
+        global _country_catalog_cache
         data = await self._api_json("/v1/servers/countries")
-        return sorted(
+        countries = sorted(
             (
                 {"id": item["id"], "country_code": item["code"].upper(), "provider_name": item["name"]}
                 for item in data if item.get("id") is not None and item.get("code")
             ),
             key=lambda item: item["provider_name"],
         )
+        if countries:
+            _country_catalog_cache = countries
+        return [dict(item) for item in (countries or _country_catalog_cache)]
 
     async def servers(self, country_id: int, *, limit: int = 5) -> list[dict]:
         query = urllib.parse.urlencode({"filters[country_id]": country_id, "limit": limit})
@@ -478,7 +497,7 @@ echo "Installatie afgerond"
         except (OSError, ValueError):
             return []
 
-    async def connect(self, target=None):
+    async def connect(self, target=None, *, timeout: float = 40):
         if not shutil.which("nordvpn"):
             return {
                 "ok": False,
@@ -501,24 +520,29 @@ echo "Installatie afgerond"
 
             args.append(target.lower())
 
-        rc, _out, err = await command(
+        started_at = time.monotonic()
+        rc, out, err = await command(
             *args,
-            timeout=90,
+            timeout=timeout,
         )
+        elapsed = time.monotonic() - started_at
         if rc != 0:
             safe_error = re.sub(r"[\r\n\t]+", " ", err).strip()[:300]
             logger.warning("NordVPN connect failed (exit %s): %s", rc, safe_error)
 
+        timed_out = _connect_timed_out(rc, out, err, elapsed)
         return {
             "ok": rc == 0,
             "action": "connect",
             "state": "connecting" if rc == 0 else "error",
             "target": target,
             "exit_code": rc,
-            "error_code": None if rc == 0 else "provider_connect_failed",
+            "error_code": (
+                None if rc == 0 else "vpn_connect_timeout" if timed_out else "provider_connect_failed"
+            ),
         }
 
-    async def connect_country(self, country_code: str) -> dict:
+    async def connect_country(self, country_code: str, *, timeout: float = 40) -> dict:
         try:
             target = build_connect_target(country_code)
         except ValueError:
@@ -530,9 +554,9 @@ echo "Installatie afgerond"
                 "exit_code": None,
                 "error_code": "invalid_target",
             }
-        return await self.connect(target)
+        return await self.connect(target, timeout=timeout)
 
-    async def disconnect(self):
+    async def disconnect(self, *, timeout: float = 15):
         if not shutil.which("nordvpn"):
             return {
                 "ok": False,
@@ -544,6 +568,7 @@ echo "Installatie afgerond"
         rc, _out, _err = await command(
             "nordvpn",
             "disconnect",
+            timeout=timeout,
         )
 
         return {
@@ -551,7 +576,31 @@ echo "Installatie afgerond"
             "action": "disconnect",
             "state": "disconnecting" if rc == 0 else "error",
             "target": None,
-            "error_code": None if rc == 0 else "provider_disconnect_failed",
+            "error_code": (
+                None if rc == 0 else "vpn_disconnect_timeout" if rc == 124 else "provider_disconnect_failed"
+            ),
+        }
+
+    async def recover_daemon(self) -> dict:
+        """Restart exactly nordvpnd; no user-controlled executable, unit, or arguments."""
+        rc, _out, _error = await command(
+            "/usr/bin/systemctl", "restart", "nordvpnd.service", timeout=15
+        )
+        if rc != 0:
+            return {"ok": False, "error_code": "provider_recovery_failed"}
+        active_rc, _, _ = await command(
+            "/usr/bin/systemctl", "is-active", "nordvpnd.service", timeout=5
+        )
+        if active_rc != 0:
+            return {"ok": False, "error_code": "provider_recovery_failed"}
+        status = await self.status(timeout=6)
+        responsive = status.get("available") is True and status.get("state") in {
+            "connected", "disconnected"
+        }
+        return {
+            "ok": responsive,
+            "error_code": None if responsive else "provider_recovery_healthcheck_failed",
+            "status": status,
         }
 
 

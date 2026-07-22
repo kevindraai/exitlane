@@ -2,6 +2,12 @@ import asyncio
 from types import SimpleNamespace
 
 import exitlane.main as main
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def reset_vpn_operation():
+    main.vpn_operations.reset_for_tests()
 
 
 def request():
@@ -18,7 +24,7 @@ def configure(monkeypatch, *, status):
     async def servers(_country_id):
         return [{"hostname": "nl1155.nordvpn.com", "station": "192.0.2.1"}]
 
-    async def connect_country(country_code):
+    async def connect_country(country_code, **_kwargs):
         calls.append(country_code)
         return {
             "ok": True,
@@ -29,7 +35,7 @@ def configure(monkeypatch, *, status):
             "error_code": None,
         }
 
-    async def provider_status():
+    async def provider_status(**_kwargs):
         return status
 
     async def selection(_code, _servers):

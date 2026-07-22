@@ -24,6 +24,24 @@ def test_connect_response_is_machine_readable_and_hides_cli_output(monkeypatch):
     assert "stderr" not in response
 
 
+@pytest.mark.parametrize(
+    ("return_code", "output", "error", "elapsed"),
+    [
+        (124, "", "timeout", 40),
+        (1, "", "context deadline exceeded", 2),
+        (1, "Whoops! Connection failed", "", 30),
+    ],
+)
+def test_provider_timeout_is_detected_from_exit_duration_or_safe_cli_output(
+    return_code, output, error, elapsed
+):
+    assert nordvpn._connect_timed_out(return_code, output, error, elapsed) is True
+
+
+def test_fast_provider_failure_is_not_misclassified_as_timeout():
+    assert nordvpn._connect_timed_out(1, "Connection failed", "", 2) is False
+
+
 def test_disconnect_failure_has_safe_error_code(monkeypatch):
     async def command(*args, **kwargs):
         return 1, "", "/private/path: secret"
@@ -72,6 +90,27 @@ def test_actions_fail_safely_when_cli_is_outside_runtime(monkeypatch):
     assert status["state"] == "unavailable"
     assert connect["error_code"] == "provider_cli_unavailable"
     assert disconnect["error_code"] == "provider_cli_unavailable"
+
+
+def test_country_catalog_survives_temporary_provider_dns_failure(monkeypatch):
+    responses = iter(
+        [
+            [{"id": 21, "code": "BE", "name": "Belgium"}],
+            [],
+        ]
+    )
+
+    async def api_json(_path):
+        return next(responses)
+
+    provider = nordvpn.NordVPN()
+    monkeypatch.setattr(provider, "_api_json", api_json)
+    monkeypatch.setattr(nordvpn, "_country_catalog_cache", [])
+
+    first = asyncio.run(provider.countries())
+    second = asyncio.run(provider.countries())
+
+    assert first == second == [{"id": 21, "country_code": "BE", "provider_name": "Belgium"}]
 
 
 @pytest.mark.parametrize(("country_code", "expected"), [("NL", "nl"), ("GB", "gb")])

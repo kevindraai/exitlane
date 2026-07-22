@@ -26,6 +26,11 @@ EVENT_DEFINITIONS = {
     "provider.connect_started": ("provider", "info", {"target", "country_code", "cli_action"}),
     "provider.connected": ("provider", "info", {"country", "city", "server", "country_code", "cli_action", "exit_code"}),
     "provider.connect_failed": ("provider", "error", {"target", "reason", "country_code", "cli_action", "exit_code"}),
+    "provider.recovery_started": ("provider", "warning", {"country_code", "reason"}),
+    "provider.recovered": ("provider", "info", {"country_code"}),
+    "provider.recovery_failed": ("provider", "error", {"country_code", "reason"}),
+    "provider.recovery_rate_limited": ("provider", "error", {"country_code", "reason"}),
+    "provider.retry_started": ("provider", "info", {"country_code"}),
     "provider.disconnect_started": ("provider", "info", set()),
     "provider.disconnected": ("provider", "info", set()),
     "provider.disconnect_failed": ("provider", "error", {"reason"}),
@@ -37,7 +42,7 @@ EVENT_DEFINITIONS = {
 }
 FILTER_CATEGORIES = frozenset(value[0] for value in EVENT_DEFINITIONS.values())
 FILTER_LEVELS = frozenset({"info", "warning", "error"})
-SAFE_REASONS = frozenset({"invalid_credentials", "timeout", "provider_unavailable", "provider_status_unavailable", "connection_failed", "not_connected", "wrong_country", "invalid_target", "unknown"})
+SAFE_REASONS = frozenset({"invalid_credentials", "timeout", "healthcheck_failed", "provider_unavailable", "provider_status_unavailable", "connection_failed", "not_connected", "wrong_country", "invalid_target", "unknown"})
 MAX_STRING = 160
 MAX_METADATA_BYTES = 2048
 

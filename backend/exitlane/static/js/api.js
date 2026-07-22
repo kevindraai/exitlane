@@ -81,8 +81,9 @@ async function performRequest(path, options) {
   return payload;
 }
 
-export function postJson(path, body = undefined) {
+export function postJson(path, body = undefined, options = {}) {
   return api(path, {
+    ...options,
     method: "POST",
     body: body === undefined ? undefined : JSON.stringify(body),
   });

@@ -151,4 +151,8 @@ async def command(*args, timeout=60, input_text=None):
         p.kill()
         await p.wait()
         return 124, "", "timeout"
+    except asyncio.CancelledError:
+        p.kill()
+        await p.wait()
+        raise
     return p.returncode, out.decode(errors="replace").strip(), err.decode(errors="replace").strip()
