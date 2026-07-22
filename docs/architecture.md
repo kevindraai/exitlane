@@ -15,6 +15,12 @@ navigation, dashboard, provider, and WireGuard status. Views render that state i
 maintaining independent copies. This reduces inconsistent screens and makes startup, logout, and
 refresh behavior explicit.
 
+Frontend markup is divided into functional HTML partials that the backend composes for `GET /`.
+The browser still receives one complete DOM before `app.js` initializes; partials are structural
+ownership boundaries rather than runtime components and never require client-side requests. New
+application views belong in their own view partial, new wizard steps in their own wizard partial,
+and global shell changes remain in `index.html`, `header.html`, or `sidebar.html`.
+
 SQLite stores local durable state. It fits the single-appliance model, avoids a separate database
 service, and supports transactional updates. The database is not intended as a coordination layer
 for multiple active Exitlane nodes.

@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 import exitlane.core as core
 import exitlane.main as main
+from exitlane.html import render_index
 import exitlane.settings as settings
 
 PASSWORD = "correct horse battery staple"
@@ -69,7 +70,7 @@ def test_system_timezone_falls_back_to_localtime_symlink(tmp_path):
 
 
 def test_product_name_is_fixed_and_header_has_no_preferences_or_instance_name():
-    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    html = render_index()
     javascript = (STATIC_DIR / "js" / "settings.js").read_text(encoding="utf-8")
     assert "<strong>\n      Exitlane\n     </strong>" in html
     header = html.split("</header>", 1)[0]
@@ -233,7 +234,7 @@ def test_browser_preferences_are_not_stored_in_sqlite(client):
 
 def test_setup_admin_payload_and_hostname_placement_are_unchanged():
     wizard = (STATIC_DIR / "js" / "wizard.js").read_text(encoding="utf-8")
-    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    html = render_index()
     admin_payload = wizard.split('postJson("/api/setup/admin"', 1)[1].split(");", 1)[0]
     assert "username" in admin_payload
     assert "password" in admin_payload

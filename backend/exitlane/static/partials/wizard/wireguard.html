@@ -1,0 +1,94 @@
+      <article class="wizard-step" hidden="" id="step-4">
+       <div class="step-heading">
+        <div>
+         <p class="step-kicker" data-i18n="step4.kicker">
+          Stap 4
+         </p>
+         <h2 data-i18n="step4.title">
+          WireGuard-ingang
+         </h2>
+         <p data-i18n="step4.description">
+          Genereer een generieke WireGuard-clientconfiguratie voor je router.
+              UniFi, MikroTik, OPNsense en andere routers kunnen deze tunnel gebruiken.
+         </p>
+        </div>
+       </div>
+       <form class="form-grid" id="wireguard-form">
+        <label>
+         <span data-i18n="wireguard.endpoint">
+          Endpoint van deze LXC
+         </span>
+         <input data-i18n-placeholder="wireguard.endpoint_placeholder" id="wg-endpoint" name="endpoint" placeholder="Automatisch detecteren&hellip;" required=""/>
+         <small data-i18n="wireguard.endpoint_help" id="wg-endpoint-help">
+          Lokaal IP-adres wordt automatisch bepaald.
+         </small>
+        </label>
+        <label>
+         <span data-i18n="wireguard.tunnel_network">
+          Tunnelnetwerk
+         </span>
+         <input id="wg-subnet" name="subnet" required="" value="10.99.99.0/24"/>
+        </label>
+        <label>
+         <span data-i18n="wireguard.dns_server">
+          DNS-server
+         </span>
+         <input autocomplete="off" id="wg-dns" inputmode="decimal" name="dns" required="" type="text" value="1.1.1.1"/>
+         <small data-i18n="wireguard.dns_help">
+          Wordt opgenomen in de configuratie voor je router.
+         </small>
+        </label>
+        <label>
+         <span data-i18n="wireguard.udp_port">
+          UDP-poort
+         </span>
+         <input id="wg-port" max="65535" min="1" name="port" required="" type="number" value="51820"/>
+        </label>
+        <label>
+         <span data-i18n="wireguard.interface_name">
+          Interfacenaam
+         </span>
+         <input id="wg-interface" maxlength="15" name="interface" required="" value="wg0"/>
+        </label>
+        <label>
+         <span data-i18n="wireguard.client_name">
+          Clientnaam
+         </span>
+         <input id="wg-client" maxlength="64" name="client" required="" value="router"/>
+        </label>
+        <div class="form-submit">
+         <button class="button button-primary" data-i18n="wireguard.generate" type="submit">
+          Configuraties genereren
+         </button>
+        </div>
+       </form>
+       <section class="result-card" hidden="" id="wireguard-result">
+        <div class="result-heading">
+         <div>
+          <strong data-i18n="wireguard.client_ready">
+           Clientconfiguratie gereed
+          </strong>
+          <p data-i18n="wireguard.import_hint">
+           Importeer deze configuratie in je router.
+          </p>
+         </div>
+         <div class="result-actions">
+          <button class="button button-secondary" data-i18n="common.copy" id="wireguard-copy" type="button">
+           Kopi&euml;ren
+          </button>
+          <a class="button button-secondary" data-i18n="common.download" href="#" id="wireguard-download">
+           Downloaden
+          </a>
+         </div>
+        </div>
+        <pre id="wireguard-config"></pre>
+       </section>
+       <div class="step-actions">
+        <button class="button button-secondary" data-back="3" data-i18n="common.back" type="button">
+         Terug
+        </button>
+        <button class="button button-primary" data-i18n="common.next" disabled="" id="wireguard-next" type="button">
+         Volgende
+        </button>
+       </div>
+      </article>

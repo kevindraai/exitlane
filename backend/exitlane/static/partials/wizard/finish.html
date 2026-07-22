@@ -1,0 +1,102 @@
+      <article class="wizard-step" hidden="" id="step-5">
+       <div class="completion-card">
+        <span aria-hidden="true" class="completion-icon">
+         &checkmark;
+        </span>
+        <p class="step-kicker" data-i18n="step5.kicker">
+         Stap 5
+        </p>
+        <h2 data-i18n="step5.title">
+         Exitlane is bijna gereed
+        </h2>
+        <p data-i18n="step5.description">
+         Download de WireGuard-configuratie en importeer deze in je
+      router. Exitlane controleert automatisch of de tunnel verbinding
+      maakt.
+        </p>
+        <section class="handoff-card">
+         <div class="handoff-heading">
+          <div>
+           <strong data-i18n="step5.wireguard_config">
+            WireGuard-configuratie
+           </strong>
+           <p id="finish-config-filename">
+            exitlane-router.conf
+           </p>
+          </div>
+          <span class="status-pill status-success" data-i18n="common.ready" id="finish-config-state">
+           Gereed
+          </span>
+         </div>
+         <div class="handoff-actions">
+          <a class="button button-primary" data-i18n="step5.download_conf" download="" href="#" id="finish-download">
+           Download .conf
+          </a>
+          <button class="button button-secondary" data-i18n="common.copy" id="finish-copy" type="button">
+           Kopi&euml;ren
+          </button>
+          <button class="button button-secondary" data-i18n="common.view" id="finish-view" type="button">
+           Bekijken
+          </button>
+         </div>
+         <pre hidden="" id="finish-config-preview"></pre>
+        </section>
+        <section class="connection-card">
+         <div class="connection-heading">
+          <div>
+           <strong data-i18n="step5.connection_status">
+            Verbindingsstatus
+           </strong>
+           <p data-i18n="step5.waiting_for_connection" id="wireguard-connection-message">
+            Wachten op de eerste WireGuard-verbinding&hellip;
+           </p>
+          </div>
+          <span class="status-pill status-neutral" data-i18n="common.waiting" id="wireguard-connection-state">
+           Wachten
+          </span>
+         </div>
+         <div class="connection-details" hidden="" id="wireguard-connection-details">
+          <div>
+           <span data-i18n="step5.client">
+            Client
+           </span>
+           <strong id="wireguard-status-client">
+            &mdash;
+           </strong>
+          </div>
+          <div>
+           <span data-i18n="step5.endpoint">
+            Endpoint
+           </span>
+           <strong id="wireguard-status-endpoint">
+            &mdash;
+           </strong>
+          </div>
+          <div>
+           <span data-i18n="step5.received">
+            Ontvangen
+           </span>
+           <strong id="wireguard-status-received">
+            &mdash;
+           </strong>
+          </div>
+          <div>
+           <span data-i18n="step5.sent">
+            Verzonden
+           </span>
+           <strong id="wireguard-status-sent">
+            &mdash;
+           </strong>
+          </div>
+         </div>
+         <button class="button button-secondary" data-i18n="common.check_again" id="wireguard-status-refresh" type="button">
+          Opnieuw controleren
+         </button>
+        </section>
+        <div class="completion-checks" id="completion-checks">
+        </div>
+        <button class="button button-primary" data-i18n="step5.complete_setup" id="complete-button" type="button">
+         Setup afronden
+        </button>
+       </div>
+      </article>

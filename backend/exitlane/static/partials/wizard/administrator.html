@@ -1,0 +1,71 @@
+      <article class="wizard-step" hidden="" id="step-2">
+       <div class="step-heading">
+        <div>
+         <p class="step-kicker" data-i18n="step2.kicker">
+          Stap 2
+         </p>
+         <h2 data-i18n="step2.title">
+          Lokale beheerder
+         </h2>
+         <p data-i18n="step2.description">
+          Maak het eerste lokale beheeraccount aan. Authenticatie wordt
+              in een volgende alpha ook daadwerkelijk voor alle pagina&rsquo;s afgedwongen.
+         </p>
+        </div>
+       </div>
+       <form class="form-card" id="admin-form">
+        <label>
+         <span data-i18n="step2.username">
+          Gebruikersnaam
+         </span>
+         <input autocomplete="username" id="admin-username" maxlength="64" minlength="3" name="username" required="" value="admin"/>
+        </label>
+        <label>
+         <span data-i18n="step2.password">
+          Wachtwoord
+         </span>
+         <input autocomplete="new-password" id="admin-password" maxlength="256" name="password" required="" type="password"/>
+         <small data-i18n="step2.password_requirements_loading" id="password-requirement">
+          Wachtwoordvereisten ophalen&hellip;
+         </small>
+        </label>
+        <label>
+         <span data-i18n="step2.password_confirm">
+          Wachtwoord herhalen
+         </span>
+         <input autocomplete="new-password" id="admin-password-confirm" maxlength="256" name="password-confirm" required="" type="password"/>
+         <small class="helper-text" data-i18n="step2.password_repeat_hint" id="password-match">
+          Herhaal het wachtwoord
+         </small>
+        </label>
+        <div class="step-actions">
+         <button class="button button-secondary" data-back="1" data-i18n="common.back" type="button">
+          Terug
+         </button>
+         <button class="button button-primary" data-i18n="step2.create_admin" disabled="" type="submit">
+          Beheerder aanmaken
+         </button>
+        </div>
+       </form>
+       <section class="preferences-card">
+        <h3 data-i18n="setup.preferences.title">Preferences</h3>
+        <p data-i18n="setup.preferences.description">Choose how Exitlane looks in this browser.</p>
+        <div class="form-grid">
+         <label>
+          <span data-i18n="setup.preferences.language">Language</span>
+          <select data-language-select="" id="setup-language">
+           <option data-i18n="language.english" value="en">English</option>
+           <option data-i18n="language.dutch" value="nl">Dutch</option>
+          </select>
+         </label>
+         <label>
+          <span data-i18n="setup.preferences.color_scheme">Color scheme</span>
+          <select data-color-scheme-select="" id="setup-color-scheme">
+           <option data-i18n="theme.system" value="system">System</option>
+           <option data-i18n="theme.light" value="light">Light</option>
+           <option data-i18n="theme.dark" value="dark">Dark</option>
+          </select>
+         </label>
+        </div>
+       </section>
+      </article>

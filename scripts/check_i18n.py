@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = ROOT / "backend" / "exitlane" / "static"
 LOCALES_DIR = STATIC_DIR / "locales"
 INDEX_FILE = STATIC_DIR / "index.html"
+PARTIALS_DIR = STATIC_DIR / "partials"
 JS_DIR = STATIC_DIR / "js"
 
 REFERENCE_LANGUAGE = "en"
@@ -107,9 +108,9 @@ def load_locales() -> dict[str, dict[str, str]]:
 
 def collect_html_keys() -> set[str]:
     parser = TranslationAttributeParser()
-    parser.feed(
-        INDEX_FILE.read_text(encoding="utf-8")
-    )
+    html_files = [INDEX_FILE, *sorted(PARTIALS_DIR.rglob("*.html"))]
+    for path in html_files:
+        parser.feed(path.read_text(encoding="utf-8"))
     return parser.keys
 
 

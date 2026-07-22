@@ -1,0 +1,95 @@
+     <section class="app-view" data-view-panel="wireguard" hidden="" id="view-wireguard">
+      <section class="panel">
+       <div class="panel-heading">
+        <div>
+         <p class="eyebrow">
+          WIREGUARD
+         </p>
+         <h1>
+          WireGuard
+         </h1>
+         <p class="lead">
+          Beheer router- en applicatietunnels.
+         </p>
+        </div>
+       </div>
+       <section class="wireguard-overview">
+        <div class="connection-card">
+         <div class="connection-heading">
+          <div>
+           <strong>
+            Routertunnel
+           </strong>
+           <p id="management-wireguard-message">
+            WireGuard-status ophalen...
+           </p>
+          </div>
+          <span class="status-pill status-neutral" id="management-wireguard-state">
+           Controleren
+          </span>
+         </div>
+         <div class="connection-details" hidden="" id="management-wireguard-details">
+          <div>
+           <span>
+            Client
+           </span>
+           <strong id="management-wireguard-client">
+            &mdash;
+           </strong>
+          </div>
+          <div>
+           <span>
+            Endpoint
+           </span>
+           <strong id="management-wireguard-endpoint">
+            &mdash;
+           </strong>
+          </div>
+          <div>
+           <span>
+            Ontvangen
+           </span>
+           <strong id="management-wireguard-received">
+            &mdash;
+           </strong>
+          </div>
+          <div>
+           <span>
+            Verzonden
+           </span>
+           <strong id="management-wireguard-sent">
+            &mdash;
+           </strong>
+          </div>
+         </div>
+         <div class="view-actions">
+          <button class="button button-secondary" id="management-wireguard-refresh" type="button">
+           Opnieuw controleren
+          </button>
+         </div>
+        </div>
+        <section class="panel">
+         <div class="panel-heading compact">
+          <div>
+           <p class="eyebrow">
+            TUNNELS
+           </p>
+           <h2>
+            WireGuard-clients
+           </h2>
+           <p>
+            Beheer hier straks router- en applicatietunnels.
+           </p>
+          </div>
+          <button class="button button-primary" disabled="" type="button">
+           Nieuwe tunnel
+          </button>
+         </div>
+         <div class="empty-state">
+          Exitlane gebruikt momenteel &eacute;&eacute;n routertunnel. Ondersteuning voor
+      meerdere peers en applicatietunnels volgt later.
+         </div>
+        </section>
+       </section>
+      </section>
+     </section>
