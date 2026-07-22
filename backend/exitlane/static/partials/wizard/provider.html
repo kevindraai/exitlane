@@ -1,0 +1,221 @@
+      <article class="wizard-step" hidden="" id="step-3">
+       <div class="step-heading">
+        <div>
+         <p class="step-kicker" data-i18n="step3.kicker">
+          Stap 3
+         </p>
+         <h2 data-i18n="step3.title">
+          VPN-provider
+         </h2>
+         <p data-i18n="step3.description">
+          NordVPN is de eerste providerimplementatie. Exitlane houdt de
+              onderliggende architectuur provideronafhankelijk.
+         </p>
+        </div>
+        <span class="status-pill status-neutral" data-i18n="common.loading_status" id="provider-state">
+         Status ophalen&hellip;
+        </span>
+       </div>
+       <section class="provider-card">
+        <div class="provider-header">
+         <div>
+          <strong>
+           NordVPN
+          </strong>
+          <p data-i18n="provider.not_checked" id="provider-description">
+           Linux-client nog niet gecontroleerd.
+          </p>
+         </div>
+         <button class="button button-secondary" data-i18n="provider.install" id="provider-install" type="button">
+          Installeren
+         </button>
+        </div>
+        <section class="result-card" hidden="" id="provider-install-progress">
+         <div class="result-heading">
+          <div>
+           <strong data-i18n="provider.installing_title" id="provider-install-title">
+            NordVPN installeren
+           </strong>
+           <p data-i18n="provider.preparing" id="provider-install-message">
+            Installatie voorbereiden...
+           </p>
+          </div>
+          <span class="status-pill status-neutral" data-i18n="common.waiting" id="provider-install-state">
+           Wachten
+          </span>
+         </div>
+         <div class="provider-install-log">
+          <button aria-controls="provider-install-log" aria-expanded="false" class="log-toggle" data-i18n="provider.show_log" id="provider-install-log-toggle" type="button">
+           Installatielog tonen
+          </button>
+          <pre class="install-log" hidden="" id="provider-install-log"></pre>
+         </div>
+        </section>
+        <div class="provider-actions">
+         <button class="button button-secondary" data-i18n="provider.apply_gateway_settings" id="provider-defaults" type="button">
+          Gatewayinstellingen toepassen
+         </button>
+        </div>
+        <section class="settings-result" hidden="" id="provider-defaults-result">
+         <div class="settings-result-header">
+          <strong data-i18n="provider.gateway_settings">
+           Gatewayinstellingen
+          </strong>
+          <span class="status-pill status-neutral" data-i18n="provider.not_applied" id="provider-defaults-state">
+           Nog niet toegepast
+          </span>
+         </div>
+         <div class="settings-result-list" id="provider-defaults-list">
+         </div>
+        </section>
+        <section class="login-methods">
+         <div class="login-method-heading">
+          <div>
+           <strong data-i18n="provider.sign_in_title">
+            Aanmelden bij NordVPN
+           </strong>
+           <p data-i18n="provider.sign_in_description">
+            Kies een aanmeldmethode. Voor een permanente gateway is een
+        access token het eenvoudigst.
+           </p>
+          </div>
+         </div>
+         <div class="login-method-tabs" role="tablist">
+          <button aria-controls="login-panel-token" aria-selected="true" class="login-method-tab active" data-login-method="token" id="login-method-token" role="tab" type="button">
+           <span data-i18n="provider.access_token">
+            Access token
+           </span>
+           <small data-i18n="common.recommended">
+            Aanbevolen
+           </small>
+          </button>
+          <button aria-controls="login-panel-browser" aria-selected="false" class="login-method-tab" data-login-method="browser" id="login-method-browser" role="tab" type="button">
+           <span data-i18n="provider.browser_login">
+            Browserlogin
+           </span>
+           <small data-i18n="common.alternative">
+            Alternatief
+           </small>
+          </button>
+         </div>
+         <section aria-labelledby="login-method-token" class="login-method-panel" id="login-panel-token" role="tabpanel">
+          <ol class="instruction-list">
+           <li data-i18n="provider.token_step1">
+            Open Nord Account en meld je aan.
+           </li>
+           <li data-i18n="provider.token_step2">
+            Klik in het menu links op
+            <strong>
+             NordVPN
+            </strong>
+            .
+           </li>
+           <li data-i18n="provider.token_step3">
+            Scroll naar beneden naar
+            <strong>
+             Get access token
+            </strong>
+            .
+           </li>
+           <li data-i18n="provider.token_step4">
+            Genereer een nieuw token en kopieer het direct.
+           </li>
+           <li data-i18n="provider.token_step5">
+            Plak het token hieronder in Exitlane.
+           </li>
+          </ol>
+          <div class="notice-card">
+           <strong data-i18n="provider.advice_title">
+            Advies voor Exitlane
+           </strong>
+           <p data-i18n="provider.advice_text">
+            Kies een niet-verlopend token voor een vaste gateway en beveilig
+        je Nord Account met multifactorauthenticatie.
+           </p>
+          </div>
+          <a class="button button-secondary" data-i18n="provider.open_nord_account" href="https://my.nordaccount.com/" rel="noopener noreferrer" target="_blank">
+           Nord Account openen &nearrow;
+          </a>
+          <form class="form-card form-compact" id="token-form">
+           <label>
+            <span data-i18n="provider.access_token">
+             Access token
+            </span>
+            <input autocomplete="off" data-i18n-placeholder="provider.token_placeholder" id="nord-token" maxlength="512" minlength="20" placeholder="Plak hier het token" required="" type="password"/>
+            <small data-i18n="provider.token_privacy">
+             Exitlane gebruikt het token alleen voor de lokale NordVPN-login
+          en slaat het niet op.
+            </small>
+           </label>
+           <button class="button button-primary" data-i18n="provider.sign_in_with_token" type="submit">
+            Aanmelden met token
+           </button>
+          </form>
+         </section>
+         <section aria-labelledby="login-method-browser" class="login-method-panel" hidden="" id="login-panel-browser" role="tabpanel">
+          <ol class="instruction-list">
+           <li data-i18n="provider.browser_step1">
+            Klik hieronder op
+            <strong>
+             Browserlogin starten
+            </strong>
+            .
+           </li>
+           <li data-i18n="provider.browser_step2">
+            Open de getoonde NordVPN-link in je browser.
+           </li>
+           <li data-i18n="provider.browser_step3">
+            Meld je aan bij Nord Account.
+           </li>
+           <li data-i18n="provider.browser_step4">
+            Klik niet normaal op
+            <strong>
+             Continue
+            </strong>
+            , maar kopieer de
+        achterliggende link en plak die hieronder.
+           </li>
+          </ol>
+          <button class="button button-secondary" data-i18n="provider.browser_login_start" id="browser-login-start" type="button">
+           Browserlogin starten
+          </button>
+          <section class="result-card" hidden="" id="browser-login-instruction">
+           <strong data-i18n="provider.open_login_link">
+            Open deze NordVPN-aanmeldlink
+           </strong>
+           <div class="copy-field">
+            <input id="browser-login-url" readonly="" type="text"/>
+            <button class="button button-secondary" data-i18n="common.copy" id="browser-login-copy" type="button">
+             Kopi&euml;ren
+            </button>
+            <a class="button button-secondary" data-i18n="common.open" href="#" id="browser-login-open" rel="noopener noreferrer" target="_blank">
+             Openen &nearrow;
+            </a>
+           </div>
+          </section>
+          <form class="form-card form-compact" id="callback-form">
+           <label>
+            <span data-i18n="provider.callback_url">
+             Callback-URL
+            </span>
+            <input id="nord-callback" maxlength="2048" minlength="20" placeholder="nordvpn://&hellip;" required="" type="text"/>
+            <small data-i18n="provider.callback_hint">
+             Plak hier de link achter de knop Continue.
+            </small>
+           </label>
+           <button class="button button-primary" data-i18n="provider.finish_browser_login" type="submit">
+            Browserlogin afronden
+           </button>
+          </form>
+         </section>
+        </section>
+        <div class="step-actions">
+         <button class="button button-secondary" data-back="2" data-i18n="common.back" type="button">
+          Terug
+         </button>
+         <button class="button button-primary" data-i18n="common.next" disabled="" id="provider-next" type="button">
+          Volgende
+         </button>
+        </div>
+       </section>
+      </article>

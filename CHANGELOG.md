@@ -12,6 +12,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Structured, persistent application events with bounded retention and privacy allowlists.
 - Protected cursor-paginated events API and a translated, lifecycle-aware Activity view.
 
+### Changed
+
+- Split the frontend HTML into server-composed functional partials without changing runtime
+  behavior.
+
 ## [0.2.0-alpha.1] - 2026-07-22
 
 ### Added

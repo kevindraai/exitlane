@@ -1,0 +1,63 @@
+      <section class="app-view" data-view-panel="vpn" hidden="" id="view-vpn">
+       <div class="panel-heading compact">
+        <div>
+         <p class="eyebrow" data-i18n="dashboard.provider_status">
+          PROVIDER STATUS
+         </p>
+         <h2>
+          NordVPN
+         </h2>
+        </div>
+        <span class="status-pill status-neutral" data-i18n="common.loading_status" id="connection-state">
+         Status ophalen&hellip;
+        </span>
+       </div>
+       <div class="metric-grid" id="provider-metrics">
+        <div class="metric">
+         <span data-i18n="dashboard.country">
+          Land
+         </span>
+         <strong id="metric-country">
+          &mdash;
+         </strong>
+        </div>
+        <div class="metric">
+         <span data-i18n="dashboard.city">
+          Stad
+         </span>
+         <strong id="metric-city">
+          &mdash;
+         </strong>
+        </div>
+        <div class="metric">
+         <span data-i18n="dashboard.server">
+          Server
+         </span>
+         <strong id="metric-server">
+          &mdash;
+         </strong>
+        </div>
+        <div class="metric">
+         <span data-i18n="dashboard.external_ip">
+          Extern IP
+         </span>
+         <strong id="metric-ip">
+          &mdash;
+         </strong>
+        </div>
+       </div>
+       <form class="connect-form" id="connect-form">
+        <label>
+         <span data-i18n="dashboard.target">
+          Land, stad of server
+         </span>
+         <input data-i18n-placeholder="dashboard.target_placeholder" id="connect-target" placeholder="Bijv. Netherlands of nl1234"/>
+        </label>
+        <button class="button button-primary" data-i18n="dashboard.connect" type="submit">
+         Verbinden
+        </button>
+        <button class="button button-danger" data-i18n="dashboard.disconnect" id="disconnect-button" type="button">
+         Verbreken
+        </button>
+       </form>
+      </section>

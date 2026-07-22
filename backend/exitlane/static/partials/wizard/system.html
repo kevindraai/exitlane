@@ -1,0 +1,45 @@
+      <article class="wizard-step" id="step-1">
+       <div class="step-heading">
+        <div>
+         <p class="step-kicker" data-i18n="step1.kicker" data-step="1">
+          Step 1
+         </p>
+         <h2 data-i18n="step1.title">
+          Systeemcontrole
+         </h2>
+         <p data-i18n="step1.description">
+          Exitlane controleert de Linux-omgeving, netwerktoegang,
+              WireGuard en de benodigde systeemcomponenten.
+         </p>
+        </div>
+        <button class="button button-primary" data-i18n="step1.run_checks" id="diagnostics-button" type="button">
+         Controles uitvoeren
+        </button>
+       </div>
+       <div class="health-summary" hidden="" id="diagnostics-summary">
+        <div>
+         <strong id="diagnostics-score">
+          0 / 0
+         </strong>
+         <span data-i18n="step1.checks_passed">
+          controles geslaagd
+         </span>
+        </div>
+        <div aria-hidden="true" class="health-bar">
+         <span id="diagnostics-progress">
+         </span>
+        </div>
+       </div>
+       <div class="check-list" id="diagnostics-list">
+        <div class="empty-state" data-i18n="step1.empty">
+         Voer de systeemcontrole uit om verder te gaan.
+        </div>
+       </div>
+       <div class="step-actions">
+        <span>
+        </span>
+        <button class="button button-primary" data-i18n="common.next" disabled="" id="system-next" type="button">
+         Volgende
+        </button>
+       </div>
+      </article>

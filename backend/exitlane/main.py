@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -59,6 +60,7 @@ from exitlane.events import (
     list_events,
     record_event,
 )
+from exitlane.html import render_index
 
 SYSTEM_WIREGUARD_DIR = Path("/etc/wireguard")
 _system_started_databases: set[Path] = set()
@@ -274,9 +276,9 @@ app.mount(
 )
 
 
-@app.get("/", include_in_schema=False)
-async def index() -> FileResponse:
-    return FileResponse(static_dir / "index.html")
+@app.get("/", include_in_schema=False, response_class=HTMLResponse)
+async def index() -> HTMLResponse:
+    return HTMLResponse(render_index())
 
 
 @app.get("/api/health")

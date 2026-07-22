@@ -1,0 +1,17 @@
+     <section class="app-view" data-view-panel="activity" hidden="" id="view-activity">
+      <section class="panel">
+       <div class="panel-heading"><div><p class="eyebrow" data-i18n="activity.eyebrow">ACTIVITY</p><h1 data-i18n="activity.title">Activity</h1><p class="lead" data-i18n="activity.description">Important events recorded by Exitlane.</p></div></div>
+       <div class="activity-toolbar">
+        <label><span data-i18n="activity.filters.category">Category</span><select id="activity-category"><option data-i18n="activity.filters.all" value="">All</option><option data-i18n="activity.category.auth" value="auth">Authentication</option><option data-i18n="activity.category.setup" value="setup">Setup</option><option data-i18n="activity.category.provider" value="provider">Provider</option><option data-i18n="activity.category.wireguard" value="wireguard">WireGuard</option><option data-i18n="activity.category.settings" value="settings">Settings</option><option data-i18n="activity.category.notifications" value="notifications">Notifications</option><option data-i18n="activity.category.system" value="system">System</option></select></label>
+        <label><span data-i18n="activity.filters.level">Level</span><select id="activity-level"><option data-i18n="activity.filters.all" value="">All</option><option data-i18n="activity.level.info" value="info">Info</option><option data-i18n="activity.level.warning" value="warning">Warning</option><option data-i18n="activity.level.error" value="error">Error</option></select></label>
+        <button class="button button-secondary" data-i18n="activity.actions.reset" id="activity-reset" type="button">Reset</button>
+        <button class="button button-secondary" data-i18n="activity.actions.refresh" id="activity-refresh" type="button">Refresh</button>
+       </div>
+       <p class="activity-status"><span data-i18n="activity.last_refresh">Last successful refresh</span>: <strong id="activity-updated">—</strong> <span data-i18n="activity.status.updating" hidden="" id="activity-updating">Updating…</span></p>
+       <p data-i18n="activity.status.loading" id="activity-loading">Loading activity…</p>
+       <p class="inline-error" data-i18n="activity.status.error" hidden="" id="activity-error">Activity could not be refreshed.</p>
+       <p class="empty-state" data-i18n="activity.status.empty" hidden="" id="activity-empty">No activity has been recorded yet.</p>
+       <ol class="activity-list" id="activity-list"></ol>
+       <button class="button button-secondary" data-i18n="activity.actions.load_more" hidden="" id="activity-load-more" type="button">Load more</button>
+      </section>
+     </section>
