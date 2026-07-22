@@ -73,6 +73,17 @@ def init():
             CREATE INDEX IF NOT EXISTS events_category_idx ON events(category);
             CREATE INDEX IF NOT EXISTS events_level_idx ON events(level);
             CREATE INDEX IF NOT EXISTS events_code_idx ON events(code);
+            CREATE TABLE IF NOT EXISTS vpn_latency_cache(
+                provider TEXT NOT NULL,
+                country_code TEXT NOT NULL,
+                server TEXT NOT NULL,
+                latency_ms INTEGER,
+                status TEXT NOT NULL CHECK(status IN ('reachable', 'unreachable', 'unknown')),
+                measured_at TEXT NOT NULL,
+                PRIMARY KEY(provider, server)
+            );
+            CREATE INDEX IF NOT EXISTS vpn_latency_country_idx
+                ON vpn_latency_cache(provider, country_code, measured_at);
             """
         )
 
@@ -123,12 +134,15 @@ def verify_password(password: str, password_hash: str, salt: str) -> bool:
 
 
 async def command(*args, timeout=60, input_text=None):
-    p = await asyncio.create_subprocess_exec(
-        *args,
-        stdin=asyncio.subprocess.PIPE if input_text else None,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    try:
+        p = await asyncio.create_subprocess_exec(
+            *args,
+            stdin=asyncio.subprocess.PIPE if input_text else None,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except FileNotFoundError:
+        return 127, "", "command not found"
     try:
         out, err = await asyncio.wait_for(
             p.communicate(input_text.encode() if input_text else None), timeout

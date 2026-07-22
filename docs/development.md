@@ -34,6 +34,10 @@ Runtime changes must also be exercised on the test LXC. `scripts/deploy_worktree
 copies the current working tree to the appliance and installs it as a candidate. For a pushed
 branch, deployment may instead be performed from the corresponding checkout on the test host.
 
+Use this native test-appliance path for NordVPN status, connect, disconnect, and latency tests.
+Running the application with `docker compose` is suitable for frontend/API development only and
+cannot test or control the NordVPN client installed on the Docker host.
+
 The LXC check catches systemd, permissions, TUN/WireGuard, NordVPN CLI, and host-integration
 problems that unit tests cannot represent. Record both automated and manual verification in the
 pull request before merge.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 import hashlib
 import base64
@@ -41,6 +42,14 @@ from exitlane.providers.nordvpn import provider
 from exitlane.services.diagnostics import run as diagnostics
 from exitlane.services.dashboard import DashboardResponse, build_dashboard, system_status
 from exitlane.services.wireguard import create as create_wireguard
+from exitlane.services.vpn_selection import (
+    QUICK_COUNTRIES,
+    country_summary,
+    measure_servers,
+    remember_country,
+    select_server,
+    server_latency,
+)
 from exitlane.config import (
     DEFAULT_WIREGUARD_CLIENT,
     DEFAULT_WIREGUARD_INTERFACE,
@@ -107,6 +116,10 @@ class Connect(BaseModel):
         default=None,
         max_length=80,
     )
+
+
+class CountryConnect(BaseModel):
+    country_code: str = Field(pattern=r"^[A-Za-z]{2}$")
 
 
 class WireGuard(BaseModel):
@@ -695,7 +708,7 @@ async def nordvpn_status() -> dict:
             },
             correlation_id=pending["correlation_id"],
         )
-    return {"status": status}
+    return {"status": {**status, **server_latency(status.get("server"))}}
 
 
 @app.get("/api/providers/nordvpn/countries")
@@ -703,6 +716,110 @@ async def nordvpn_countries() -> dict:
     return {
         "countries": await provider.countries(),
     }
+
+
+async def _vpn_catalog() -> list[dict]:
+    return await provider.countries()
+
+
+def _country_id(catalog: list[dict], country_code: str) -> int | None:
+    return next(
+        (item["id"] for item in catalog if item["country_code"] == country_code.upper()), None
+    )
+
+
+@app.get("/api/vpn/status")
+async def vpn_status() -> dict:
+    status = await provider.status()
+    catalog = await _vpn_catalog()
+    connected = next(
+        (
+            item["country_code"]
+            for item in catalog
+            if item["provider_name"].casefold() == status.get("country", "").casefold()
+        ),
+        None,
+    )
+    summary = country_summary(connected) if connected else {}
+    return {
+        **status,
+        "country_code": connected,
+        "latency_ms": summary.get("latency_ms"),
+        "latency_measured_at": summary.get("latency_measured_at"),
+    }
+
+
+@app.get("/api/vpn/countries")
+async def vpn_countries() -> dict:
+    catalog, status = await asyncio.gather(_vpn_catalog(), provider.status())
+    connected = next(
+        (
+            item["country_code"]
+            for item in catalog
+            if item["provider_name"].casefold() == status.get("country", "").casefold()
+        ),
+        None,
+    )
+    codes = [item["country_code"] for item in catalog]
+    last = setting("vpn.last_country")
+    quick = list(dict.fromkeys(code for code in (connected, last, *QUICK_COUNTRIES) if code in codes))
+    return {
+        "quick_country_codes": quick,
+        "countries": [
+            country_summary(
+                item["country_code"],
+                connected_code=connected,
+                provider_name=item["provider_name"],
+            )
+            for item in catalog
+        ],
+    }
+
+
+@app.get("/api/vpn/countries/{country_code}/servers")
+async def vpn_country_servers(country_code: str) -> dict:
+    code = country_code.upper()
+    country_id = _country_id(await _vpn_catalog(), code)
+    if country_id is None:
+        raise HTTPException(404, "Unsupported country")
+    return {"country_code": code, "servers": await provider.servers(country_id)}
+
+
+@app.post("/api/vpn/countries/{country_code}/measure")
+async def measure_vpn_country(country_code: str) -> dict:
+    code = country_code.upper()
+    country_id = _country_id(await _vpn_catalog(), code)
+    if country_id is None:
+        raise HTTPException(404, "Unsupported country")
+    servers = await provider.servers(country_id)
+    measurements = await measure_servers(code, servers, force=True)
+    return {**country_summary(code), "servers": measurements}
+
+
+@app.post("/api/vpn/connect")
+async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
+    code = req.country_code.upper()
+    country_id = _country_id(await _vpn_catalog(), code)
+    if country_id is None:
+        raise HTTPException(404, "Unsupported country")
+    selected = await select_server(code, await provider.servers(country_id))
+    target = selected["server"] if selected else code
+    result = await connect_nordvpn(Connect(target=target), request)
+    if result.get("ok"):
+        remember_country(code)
+    return {
+        **result,
+        "success": bool(result.get("ok")),
+        "country_code": code,
+        "server": selected["server"] if selected else None,
+        "latency_ms": selected["latency_ms"] if selected else None,
+        "status": result.get("state"),
+    }
+
+
+@app.post("/api/vpn/disconnect")
+async def disconnect_vpn(request: Request) -> dict:
+    return await disconnect_nordvpn(request)
 
 
 @app.post("/api/providers/nordvpn/connect")

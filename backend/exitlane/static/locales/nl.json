@@ -190,10 +190,11 @@
     "callback_hint": "Plak hier de link achter de knop Continue.",
     "finish_browser_login": "Browserlogin afronden",
     "token_placeholder": "Plak hier het token",
-    "status": { "connected": "Verbonden", "disconnected": "Niet verbonden", "authenticated": "Aangemeld", "signed_out": "Niet aangemeld", "not_installed": "Niet geïnstalleerd" },
+    "status": { "connected": "Verbonden", "disconnected": "Niet verbonden", "unavailable": "Niet beschikbaar", "authenticated": "Aangemeld", "signed_out": "Niet aangemeld", "not_installed": "Niet geïnstalleerd" },
     "action": { "connecting": "Verbinden…", "disconnecting": "Verbinding verbreken…" },
-    "notifications": { "connecting": "Verbinden met {target}…", "connected": "Verbonden met {target} {server}.", "connect_failed": "Kon niet verbinden met {target}.", "disconnecting": "Verbinding verbreken…", "disconnected": "Verbinding verbroken.", "disconnect_failed": "Kon de verbinding niet verbreken." },
-    "errors": { "target_required": "Kies een doel.", "timeout": "De statuscontrole duurde te lang." }
+    "notifications": { "connecting": "Verbinden met {target}…", "connected": "Verbonden met {target} {server}.", "country_connected": "Verbonden met {server}.", "connect_failed": "Kon niet verbinden met {target}.", "disconnecting": "Verbinding verbreken…", "disconnected": "Verbinding verbroken.", "disconnect_failed": "Kon de verbinding niet verbreken." },
+    "errors": { "target_required": "Kies een doel.", "timeout": "De statuscontrole duurde te lang.", "status_unavailable": "VPN-status is niet beschikbaar.", "provider_status_unavailable": "De NordVPN-status kon niet worden uitgelezen.", "provider_cli_unavailable": "De NordVPN-client is niet beschikbaar in de runtime van ExitLane.", "unsupported_container_runtime": "Deze Docker-runtime kan de NordVPN-client op de host niet besturen. Installeer ExitLane native in dezelfde LXC of VM als NordVPN." },
+    "country_selection": { "latency": "Latency", "reconnect": "Opnieuw verbinden", "quick_choice": "SNELLE KEUZE", "choose_country": "Kies een VPN-land", "measure_again": "Opnieuw meten", "all_countries": "Alle landen", "search_country": "Zoek land", "search_placeholder": "Bijv. Nederland", "measuring": "Meten…", "latency_ms": "{latency} ms", "connected_latency": "Verbonden · {latency}", "measure_failed": "Niet alle latencywaarden konden worden gemeten.", "load_failed": "Landen konden niet worden geladen." }
   },
   "step4": {
     "kicker": "Stap 4",

@@ -3,7 +3,11 @@ from __future__ import annotations
 import re
 import shutil
 import asyncio
+import http.client
+import json
+import urllib.parse
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from exitlane.core import command
 
@@ -63,12 +67,17 @@ class NordVPN(Provider):
 
     async def status(self):
         if not shutil.which("nordvpn"):
+            in_container = Path("/.dockerenv").exists()
             return {
                 "installed": False,
+                "available": False,
                 "daemon_active": False,
                 "authenticated": False,
                 "connected": False,
-                "state": "disconnected",
+                "state": "unavailable",
+                "error_code": (
+                    "unsupported_container_runtime" if in_container else "provider_cli_unavailable"
+                ),
             }
 
         daemon_rc, _, _ = await command(
@@ -92,10 +101,12 @@ class NordVPN(Provider):
 
         return {
             "installed": True,
+            "available": status_rc == 0,
             "daemon_active": daemon_rc == 0,
             "authenticated": (account_rc == 0 and "not logged in" not in account_output.lower()),
             "connected": (status_rc == 0 and values.get("Status", "").lower() == "connected"),
             "state": values.get("Status", "error").lower() if status_rc == 0 else "error",
+            "error_code": None if status_rc == 0 else "provider_status_unavailable",
             "country": values.get("Country", ""),
             "city": values.get("City", ""),
             "server": values.get(
@@ -411,17 +422,55 @@ echo "Installatie afgerond"
         }
 
     async def countries(self):
-        rc, out, _ = await command(
-            "nordvpn",
-            "countries",
+        data = await self._api_json("/v1/servers/countries")
+        return sorted(
+            (
+                {"id": item["id"], "country_code": item["code"].upper(), "provider_name": item["name"]}
+                for item in data if item.get("id") is not None and item.get("code")
+            ),
+            key=lambda item: item["provider_name"],
         )
 
-        if rc != 0:
+    async def servers(self, country_id: int, *, limit: int = 5) -> list[dict]:
+        query = urllib.parse.urlencode({"filters[country_id]": country_id, "limit": limit})
+        data = await self._api_json(f"/v1/servers/recommendations?{query}")
+        return [
+            {
+                "id": item.get("id"),
+                "hostname": item.get("hostname"),
+                "station": item.get("station"),
+                "load": item.get("load"),
+            }
+            for item in data if item.get("hostname")
+        ][:limit]
+
+    async def _api_json(self, path: str) -> list[dict]:
+        def fetch() -> list[dict]:
+            connection = http.client.HTTPSConnection("api.nordvpn.com", timeout=8)
+            try:
+                connection.request("GET", path, headers={"User-Agent": "ExitLane/0.2"})
+                response = connection.getresponse()
+                if response.status != 200:
+                    return []
+                payload = json.loads(response.read())
+            finally:
+                connection.close()
+            return payload if isinstance(payload, list) else []
+
+        try:
+            return await asyncio.to_thread(fetch)
+        except (OSError, ValueError):
             return []
 
-        return sorted(out.split())
-
     async def connect(self, target=None):
+        if not shutil.which("nordvpn"):
+            return {
+                "ok": False,
+                "action": "connect",
+                "state": "error",
+                "target": target,
+                "error_code": "provider_cli_unavailable",
+            }
         args = ["nordvpn", "connect"]
 
         if target:
@@ -453,6 +502,14 @@ echo "Installatie afgerond"
         }
 
     async def disconnect(self):
+        if not shutil.which("nordvpn"):
+            return {
+                "ok": False,
+                "action": "disconnect",
+                "state": "error",
+                "target": None,
+                "error_code": "provider_cli_unavailable",
+            }
         rc, _out, _err = await command(
             "nordvpn",
             "disconnect",

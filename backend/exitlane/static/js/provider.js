@@ -1,5 +1,5 @@
 import { api, postJson } from "./api.js";
-import { appState, failRefresh, getSlice, subscribe, updateSlice } from "./state.js";
+import { appState, getSlice, subscribe, updateSlice } from "./state.js";
 import { refreshProviderState } from "./lifecycle.js";
 import {
   clearInlineError,
@@ -43,16 +43,117 @@ export function renderProviderStatus(status) {
 }
 
 function renderVpnView(status) {
+  const runtimeError = select("#vpn-runtime-error");
+  runtimeError.hidden = !status.error_code;
+  runtimeError.textContent = status.error_code
+    ? t(`provider.errors.${status.error_code}`, {}, t("provider.errors.status_unavailable", {}, "VPN status is unavailable."))
+    : "";
   setStatusPill(
     select("#connection-state"),
-    status.connected ? "Verbonden" : "Niet verbonden",
-    status.connected ? "success" : "neutral",
+    status.connected
+      ? t("provider.status.connected", {}, "Connected")
+      : status.available === false
+        ? t("provider.status.unavailable", {}, "Unavailable")
+        : t("provider.status.disconnected", {}, "Disconnected"),
+    status.connected ? "success" : status.available === false ? "danger" : "neutral",
   );
 
   select("#metric-country").textContent = status.country || "—";
   select("#metric-city").textContent = status.city || "—";
   select("#metric-server").textContent = status.server || "—";
   select("#metric-ip").textContent = status.external_ip || "—";
+  select("#metric-latency").textContent = status.latency_ms == null ? "—" : `${status.latency_ms} ms`;
+}
+
+let vpnCountries = [];
+let quickCountryCodes = [];
+
+function countryCard(country) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `country-card${country.is_connected ? " active" : ""}`;
+  button.dataset.countryCode = country.country_code;
+  button.setAttribute("aria-pressed", String(country.is_connected));
+  button.disabled = appState.provider?.available === false;
+  const latency = country.latency_ms == null
+    ? t("provider.country_selection.measuring", {}, "Measuring…")
+    : t("provider.country_selection.latency_ms", { latency: country.latency_ms }, `${country.latency_ms} ms`);
+  const state = country.is_connected
+    ? t("provider.country_selection.connected_latency", { latency }, `Connected · ${latency}`)
+    : latency;
+  const flag = document.createElement("span");
+  flag.textContent = country.flag;
+  const name = document.createElement("strong");
+  name.className = "country-name";
+  name.textContent = country.name;
+  const detail = document.createElement("span");
+  detail.className = "country-latency";
+  detail.textContent = state;
+  button.append(flag, name, detail);
+  button.addEventListener("click", () => connectCountry(country.country_code, button));
+  return button;
+}
+
+function renderCountries() {
+  const quick = select("#quick-countries");
+  const all = select("#country-list");
+  const query = select("#country-search").value.trim().toLocaleLowerCase("nl");
+  quick.replaceChildren(...quickCountryCodes.map((code) => vpnCountries.find((country) => country.country_code === code)).filter(Boolean).map(countryCard));
+  all.replaceChildren(...vpnCountries.filter((country) => country.name.toLocaleLowerCase("nl").includes(query)).map(countryCard));
+}
+
+async function refreshCountries() {
+  const result = await api("/api/vpn/countries", { deduplicate: false });
+  vpnCountries = result.countries || [];
+  quickCountryCodes = result.quick_country_codes || [];
+  renderCountries();
+}
+
+async function connectCountry(countryCode, button) {
+  if (["connecting", "disconnecting"].includes(getSlice("providerAction").state)) return;
+  setBusy(button, true, t("provider.action.connecting", {}, "Connecting…"));
+  updateSlice("providerAction", { state: "connecting", target: countryCode, error: null });
+  try {
+    const result = await postJson("/api/vpn/connect", { country_code: countryCode });
+    if (!result.success) throw new Error("connect_failed");
+    await refreshProviderState({ deduplicate: false });
+    await refreshCountries();
+    showMessage(t("provider.notifications.country_connected", { server: result.server || countryCode }, `Connected to ${result.server || countryCode}.`), "success");
+  } catch {
+    showMessage(t("provider.notifications.connect_failed", { target: countryCode }, `Could not connect to ${countryCode}.`), "error");
+  } finally {
+    updateSlice("providerAction", { state: "idle" });
+    setBusy(button, false);
+  }
+}
+
+async function remeasureCountries() {
+  const button = select("#remeasure-countries");
+  setBusy(button, true, t("provider.country_selection.measuring", {}, "Measuring…"));
+  try {
+    await Promise.all(quickCountryCodes.map((code) => postJson(`/api/vpn/countries/${code}/measure`)));
+    await refreshCountries();
+  } catch {
+    showMessage(t("provider.country_selection.measure_failed", {}, "Not all latency values could be measured."), "error");
+  } finally {
+    setBusy(button, false);
+  }
+}
+
+async function measureMissingCountries() {
+  const missing = quickCountryCodes.filter((code) => {
+    const country = vpnCountries.find((item) => item.country_code === code);
+    return country && country.latency_measured_at == null;
+  });
+  if (!missing.length) return;
+  await Promise.allSettled(missing.map((code) => postJson(`/api/vpn/countries/${code}/measure`)));
+  await refreshCountries();
+}
+
+async function reconnectCountry() {
+  const current = vpnCountries.find((country) => country.is_connected)
+    || vpnCountries.find((country) => country.is_recent);
+  if (current) await connectCountry(current.country_code, select("#reconnect-button"));
 }
 
 function setProviderInstallLogExpanded(expanded) {
@@ -481,48 +582,6 @@ async function loginWithCallback(event) {
   }
 }
 
-async function connectProvider(event) {
-  event.preventDefault();
-  if (["connecting", "disconnecting"].includes(getSlice("providerAction").state)) return;
-  const button = event.currentTarget.querySelector('button[type="submit"]');
-  const target = select("#connect-target").value.trim();
-  if (!target) return showMessage(t("provider.errors.target_required", {}, "Choose a target."), "error");
-  updateSlice("providerAction", { state: "connecting", target, error: null });
-  setBusy(button, true, t("provider.action.connecting", {}, "Connecting…"));
-  const progress = showMessage(t("provider.notifications.connecting", { target }, `Connecting to ${target}…`), "info", { id: "provider-action", duration: null });
-
-  try {
-    const result = await postJson(
-      "/api/providers/nordvpn/connect",
-      { target },
-    );
-
-    if (!result.ok) {
-      throw new Error("connect_failed");
-    }
-
-    const deadline = Date.now() + 30000;
-    let status;
-    do {
-      status = await refreshProviderState({ deduplicate: false });
-      if (status.connected) break;
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    } while (Date.now() < deadline);
-    if (!status?.connected) throw new Error("connect_timeout");
-    updateSlice("providerAction", { state: "connected", error: null });
-    progress.close();
-    showMessage(t("provider.notifications.connected", { target, server: status.server || "" }, `Connected to ${target}.`), "success");
-  } catch {
-    failRefresh("provider", "connect_failed");
-    updateSlice("providerAction", { state: "failed", error: "connect_failed" });
-    progress.close();
-    showMessage(t("provider.notifications.connect_failed", { target }, `Could not connect to ${target}.`), "error");
-  } finally {
-    setBusy(button, false);
-    if (getSlice("providerAction").state === "failed") updateSlice("providerAction", { state: "idle" });
-  }
-}
-
 async function disconnectProvider() {
   if (["connecting", "disconnecting"].includes(getSlice("providerAction").state)) return;
   const button = select("#disconnect-button");
@@ -530,7 +589,7 @@ async function disconnectProvider() {
   setBusy(button, true, t("provider.action.disconnecting", {}, "Disconnecting…"));
   const progress = showMessage(t("provider.notifications.disconnecting", {}, "Disconnecting…"), "info", { id: "provider-action", duration: null });
   try {
-    const result = await postJson("/api/providers/nordvpn/disconnect");
+    const result = await postJson("/api/vpn/disconnect");
     if (!result.ok) throw new Error("disconnect_failed");
     const status = await refreshProviderState({ deduplicate: false });
     if (status.connected) throw new Error("disconnect_failed");
@@ -569,15 +628,16 @@ export function initialiseProviderControls() {
     loginWithCallback,
   );
 
-  select("#connect-form").addEventListener(
-    "submit",
-    connectProvider,
-  );
-
   select("#disconnect-button").addEventListener(
     "click",
     disconnectProvider,
   );
+  select("#reconnect-button").addEventListener("click", reconnectCountry);
+  select("#remeasure-countries").addEventListener("click", remeasureCountries);
+  select("#country-search").addEventListener("input", renderCountries);
+  refreshCountries()
+    .then(measureMissingCountries)
+    .catch(() => showMessage(t("provider.country_selection.load_failed", {}, "Countries could not be loaded."), "error"));
 
   document
     .querySelectorAll("[data-login-method]")

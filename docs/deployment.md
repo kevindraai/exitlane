@@ -4,6 +4,15 @@ Exitlane is currently designed as a single service on a dedicated Debian 12 or 1
 The supported installer creates an isolated Python environment, installs the systemd unit, and
 prepares configuration, data, and log locations.
 
+ExitLane must run natively in the same VM or LXC as the NordVPN CLI and `nordvpnd`. The Docker
+image is for UI/API development and is not a supported VPN gateway: a container cannot see or
+control the host's NordVPN installation. Do not expose the Docker socket or mount broad host
+paths to bridge that boundary.
+
+The systemd service gives the NordVPN CLI a private writable home under `/var/lib/exitlane` while
+retaining `ProtectHome=true`. The CLI communicates with the local daemon through its normal
+runtime interface; ExitLane does not mount host command or Docker control sockets.
+
 ## Prerequisites
 
 The host needs systemd, outbound internet access, `/dev/net/tun`, and permission to create and
@@ -19,6 +28,14 @@ sudo ./installer/install-debian.sh
 After installation, open `http://<host>:8787` from the trusted management network and complete the
 wizard. The router imports the generated WireGuard client configuration and owns the policy that
 selects which traffic uses Exitlane. See [Router integrations](router-integrations.md).
+
+Verify on the appliance that ExitLane and the interactive CLI use the same runtime:
+
+```bash
+sudo systemctl status exitlane
+sudo nordvpn status
+curl --fail http://127.0.0.1:8787/api/health
+```
 
 ## Security and operations
 
