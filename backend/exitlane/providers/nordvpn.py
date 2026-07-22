@@ -68,6 +68,7 @@ class NordVPN(Provider):
                 "daemon_active": False,
                 "authenticated": False,
                 "connected": False,
+                "state": "disconnected",
             }
 
         daemon_rc, _, _ = await command(
@@ -94,6 +95,7 @@ class NordVPN(Provider):
             "daemon_active": daemon_rc == 0,
             "authenticated": (account_rc == 0 and "not logged in" not in account_output.lower()),
             "connected": (status_rc == 0 and values.get("Status", "").lower() == "connected"),
+            "state": values.get("Status", "error").lower() if status_rc == 0 else "error",
             "country": values.get("Country", ""),
             "city": values.get("City", ""),
             "server": values.get(
@@ -429,32 +431,39 @@ echo "Installatie afgerond"
             ):
                 return {
                     "ok": False,
-                    "message": "invalid target",
+                    "action": "connect",
+                    "state": "error",
+                    "target": target,
+                    "error_code": "invalid_target",
                 }
 
             args.append(target)
 
-        rc, out, err = await command(
+        rc, _out, _err = await command(
             *args,
             timeout=90,
         )
 
         return {
             "ok": rc == 0,
-            "stdout": out,
-            "stderr": err,
+            "action": "connect",
+            "state": "connecting" if rc == 0 else "error",
+            "target": target,
+            "error_code": None if rc == 0 else "provider_connect_failed",
         }
 
     async def disconnect(self):
-        rc, out, err = await command(
+        rc, _out, _err = await command(
             "nordvpn",
             "disconnect",
         )
 
         return {
             "ok": rc == 0,
-            "stdout": out,
-            "stderr": err,
+            "action": "disconnect",
+            "state": "disconnecting" if rc == 0 else "error",
+            "target": None,
+            "error_code": None if rc == 0 else "provider_disconnect_failed",
         }
 
 

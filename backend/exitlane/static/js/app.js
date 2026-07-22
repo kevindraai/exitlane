@@ -9,13 +9,16 @@ import {
 } from "./config.js";
 import {
   initialiseNavigation,
+  setApplicationMode,
 } from "./navigation.js";
 import {
   initialiseNotificationControls,
 } from "./notifications.js";
 import {
   initialiseProviderControls,
+  initialiseProviderState,
   refreshProvider,
+  restoreInstallStatus,
 } from "./provider.js";
 import {
   select,
@@ -28,6 +31,7 @@ import {
 } from "./wizard.js";
 import {
   initialiseWireGuardControls,
+  loadDetectedEndpoint,
 } from "./wireguard.js";
 import {
   initialiseWireGuardManagement,
@@ -48,22 +52,19 @@ import {
   loadSettings,
 } from "./settings.js";
 import { initialiseDashboard, refreshDashboard } from "./dashboard.js";
-import { createDashboardPolling } from "./dashboard-polling.js";
+import { createApplicationLifecycle } from "./lifecycle.js";
+import { runColdStart } from "./startup.js";
+import { getSlice, subscribe } from "./state.js";
 
 let apiState = "checking";
 const dashboardIsActive = () =>
-  select(".app-shell").dataset.applicationMode === "dashboard" &&
-  !select("#view-dashboard").hidden;
+  getSlice("application").mode === "dashboard" &&
+  getSlice("application").activeView === "dashboard";
 
-const dashboardPolling = createDashboardPolling({
-  request: refreshDashboard,
-  isActive: dashboardIsActive,
-  intervalSeconds: frontendConfig.providerRefreshIntervalSeconds,
-});
+const lifecycle = createApplicationLifecycle({ intervalSeconds: frontendConfig.providerRefreshIntervalSeconds });
 
 function syncDashboardPolling() {
-  if (dashboardIsActive()) dashboardPolling.start();
-  else dashboardPolling.stop();
+  lifecycle.sync();
 }
 
 function renderApiStatus() {
@@ -111,6 +112,7 @@ function renderProviderStatusError() {
 }
 
 async function refreshApplication() {
+  lifecycle.stop();
   apiState = "checking";
   renderApiStatus();
 
@@ -127,37 +129,30 @@ async function refreshApplication() {
       ? `v${health.version}`
       : "";
 
-  await refreshSession();
-
-  try {
-    // Before setup this remains public; afterwards a session is required.
-    await refreshSetup({
-      runAutomaticDiagnostics: true,
-    });
-  } catch (error) {
-    if (error.status === 401) {
-      showLogin();
-      return;
-    }
-    throw error;
-  }
-
-  await loadPublicConfig();
-
-  if (!select("#view-settings").hidden) {
-    await loadSettings({ force: true });
-  }
-
-  try {
-    await refreshProvider();
-  } catch {
-    renderProviderStatusError();
-  }
-  try {
-    if (dashboardIsActive()) await dashboardPolling.refresh();
-  } catch {
-    // The dashboard exposes this failure locally while the rest of the app remains usable.
-  }
+  return runColdStart({
+    refreshSession,
+    setMode: setApplicationMode,
+    showLogin,
+    startWizard: async () => {
+      await refreshSetup({ runAutomaticDiagnostics: true });
+      await loadPublicConfig();
+    },
+    startDashboard: async () => {
+      await loadPublicConfig();
+      if (!select("#view-settings").hidden) await loadSettings({ force: true });
+      try {
+        await refreshProvider();
+      } catch {
+        renderProviderStatusError();
+      }
+      try {
+        if (dashboardIsActive()) await lifecycle.dashboard.refresh();
+      } catch {
+        // The dashboard exposes this failure locally while the rest of the app remains usable.
+      }
+      lifecycle.restart(frontendConfig.providerRefreshIntervalSeconds);
+    },
+  });
 }
 
 async function initialise() {
@@ -175,20 +170,28 @@ async function initialise() {
     initialiseDashboard();
     initialiseNavigation();
     initialiseProviderControls();
+    initialiseProviderState();
     initialiseWireGuardControls();
     initialiseWireGuardManagement();
     initialiseFinishControls();
     initialiseNotificationControls();
     initialiseAuth(refreshApplication);
 
+    let activeWizardStep = null;
+    subscribe("application", (application) => {
+      if (application.mode !== "wizard" || application.wizardStep === activeWizardStep) return;
+      activeWizardStep = application.wizardStep;
+      if (activeWizardStep === 3) restoreInstallStatus();
+      if (activeWizardStep === 4) loadDetectedEndpoint();
+    });
+
     window.addEventListener("exitlane:viewchange", syncDashboardPolling);
     window.addEventListener("exitlane:modechange", syncDashboardPolling);
-    window.addEventListener("exitlane:authenticationrequired", () => dashboardPolling.stop());
-    select("#dashboard-refresh").addEventListener("click", () => dashboardPolling.refresh().catch(() => {}));
-    select("#dashboard-wg-refresh").addEventListener("click", () => dashboardPolling.refresh().catch(() => {}));
+    window.addEventListener("exitlane:authenticationrequired", () => lifecycle.stop());
+    select("#dashboard-refresh").addEventListener("click", () => lifecycle.dashboard.refresh().catch(() => {}));
+    select("#dashboard-wg-refresh").addEventListener("click", () => lifecycle.wireguard.refresh().catch(() => {}));
 
     await refreshApplication();
-    dashboardPolling.restart(frontendConfig.providerRefreshIntervalSeconds);
   } catch (error) {
     console.error(
       "Exitlane initialization failed:",
@@ -209,7 +212,7 @@ async function initialise() {
 
   window.addEventListener("exitlane:settingschange", (event) => {
     frontendConfig.providerRefreshIntervalSeconds = event.detail.providerRefreshIntervalSeconds;
-    dashboardPolling.restart(event.detail.providerRefreshIntervalSeconds);
+    lifecycle.restart(event.detail.providerRefreshIntervalSeconds);
   });
 }
 

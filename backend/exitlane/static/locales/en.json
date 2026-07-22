@@ -189,7 +189,11 @@
     "callback_url": "Callback URL",
     "callback_hint": "Paste the link behind the Continue button here.",
     "finish_browser_login": "Finish browser login",
-    "token_placeholder": "Paste the token here"
+    "token_placeholder": "Paste the token here",
+    "status": { "connected": "Connected", "disconnected": "Disconnected", "authenticated": "Signed in", "signed_out": "Signed out", "not_installed": "Not installed" },
+    "action": { "connecting": "Connecting…", "disconnecting": "Disconnecting…" },
+    "notifications": { "connecting": "Connecting to {target}…", "connected": "Connected to {target} {server}.", "connect_failed": "Could not connect to {target}.", "disconnecting": "Disconnecting…", "disconnected": "Disconnected.", "disconnect_failed": "Could not disconnect." },
+    "errors": { "target_required": "Choose a target.", "timeout": "The status check timed out." }
   },
   "step4": {
     "kicker": "Step 4",
@@ -281,9 +285,13 @@
     },
     "time": {
       "no_handshake": "No handshake",
+      "just_now": "just now",
       "seconds_ago": "{count} seconds ago",
+      "minute_ago": "{count} minute ago",
       "minutes_ago": "{count} minutes ago",
+      "hour_ago": "{count} hour ago",
       "hours_ago": "{count} hours ago",
+      "day_ago": "{count} day ago",
       "days_ago": "{count} days ago"
     },
     "target": "Country, city or server",

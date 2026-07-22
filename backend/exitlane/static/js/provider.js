@@ -1,5 +1,6 @@
 import { api, postJson } from "./api.js";
-import { appState } from "./state.js";
+import { appState, failRefresh, getSlice, subscribe, updateSlice } from "./state.js";
+import { refreshProviderState } from "./lifecycle.js";
 import {
   clearInlineError,
   select,
@@ -78,12 +79,20 @@ function toggleProviderInstallLog() {
 }
 
 export async function refreshProvider() {
-  const response = await api("/api/providers/nordvpn/status");
-  renderProviderStatus(response.status);
-  return response.status;
+  return refreshProviderState();
+}
+
+export function initialiseProviderState() {
+  const render = (slice) => {
+    if (slice.data) renderProviderStatus(slice.data);
+  };
+  const unsubscribe = subscribe("provider", render, { immediate: true });
+  window.addEventListener("exitlane:languagechange", () => render(getSlice("provider")));
+  return unsubscribe;
 }
 
 let installPollTimer = null;
+let controlsInitialised = false;
 
 async function installProvider() {
   const button = select("#provider-install");
@@ -206,7 +215,7 @@ async function pollInstallStatus() {
   }
 }
 
-async function restoreInstallStatus() {
+export async function restoreInstallStatus() {
   try {
     const status = await api(
       "/api/providers/nordvpn/install/status",
@@ -474,59 +483,72 @@ async function loginWithCallback(event) {
 
 async function connectProvider(event) {
   event.preventDefault();
+  if (["connecting", "disconnecting"].includes(getSlice("providerAction").state)) return;
   const button = event.currentTarget.querySelector('button[type="submit"]');
-  setBusy(button, true, "Verbinden…");
+  const target = select("#connect-target").value.trim();
+  if (!target) return showMessage(t("provider.errors.target_required", {}, "Choose a target."), "error");
+  updateSlice("providerAction", { state: "connecting", target, error: null });
+  setBusy(button, true, t("provider.action.connecting", {}, "Connecting…"));
+  const progress = showMessage(t("provider.notifications.connecting", { target }, `Connecting to ${target}…`), "info", { id: "provider-action", duration: null });
 
   try {
-    const target = select("#connect-target").value.trim() || null;
     const result = await postJson(
       "/api/providers/nordvpn/connect",
       { target },
     );
 
     if (!result.ok) {
-      throw new Error(result.stderr || result.message || "Verbinden mislukt.");
+      throw new Error("connect_failed");
     }
 
-    showMessage(result.stdout || "Verbonden.");
-    await refreshProvider();
-  } catch (error) {
-    showMessage(error.message, "error");
+    const deadline = Date.now() + 30000;
+    let status;
+    do {
+      status = await refreshProviderState({ deduplicate: false });
+      if (status.connected) break;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    } while (Date.now() < deadline);
+    if (!status?.connected) throw new Error("connect_timeout");
+    updateSlice("providerAction", { state: "connected", error: null });
+    progress.close();
+    showMessage(t("provider.notifications.connected", { target, server: status.server || "" }, `Connected to ${target}.`), "success");
+  } catch {
+    failRefresh("provider", "connect_failed");
+    updateSlice("providerAction", { state: "failed", error: "connect_failed" });
+    progress.close();
+    showMessage(t("provider.notifications.connect_failed", { target }, `Could not connect to ${target}.`), "error");
   } finally {
     setBusy(button, false);
+    if (getSlice("providerAction").state === "failed") updateSlice("providerAction", { state: "idle" });
   }
 }
 
 async function disconnectProvider() {
+  if (["connecting", "disconnecting"].includes(getSlice("providerAction").state)) return;
   const button = select("#disconnect-button");
-  setBusy(
-  button,
-  true,
-  t(
-    "busy.disconnecting",
-    {},
-    "Disconnecting…",
-  ),
-);
-
+  updateSlice("providerAction", { state: "disconnecting", target: null, error: null });
+  setBusy(button, true, t("provider.action.disconnecting", {}, "Disconnecting…"));
+  const progress = showMessage(t("provider.notifications.disconnecting", {}, "Disconnecting…"), "info", { id: "provider-action", duration: null });
   try {
     const result = await postJson("/api/providers/nordvpn/disconnect");
-
-    if (!result.ok) {
-      throw new Error(
-        result.stderr || result.message || "Verbinding verbreken mislukt.",
-      );
-    }
-
-    showMessage(result.stdout || "Verbinding verbroken.");
-    await refreshProvider();
-  } catch (error) {
-    showMessage(error.message, "error");
+    if (!result.ok) throw new Error("disconnect_failed");
+    const status = await refreshProviderState({ deduplicate: false });
+    if (status.connected) throw new Error("disconnect_failed");
+    updateSlice("providerAction", { state: "idle", error: null });
+    progress.close();
+    showMessage(t("provider.notifications.disconnected", {}, "Disconnected."), "success");
+  } catch {
+    updateSlice("providerAction", { state: "failed", error: "disconnect_failed" });
+    progress.close();
+    showMessage(t("provider.notifications.disconnect_failed", {}, "Could not disconnect."), "error");
   } finally {
     setBusy(button, false);
+    if (getSlice("providerAction").state === "failed") updateSlice("providerAction", { state: "idle" });
   }
 }
 export function initialiseProviderControls() {
+  if (controlsInitialised) return;
+  controlsInitialised = true;
   select("#provider-install").addEventListener(
     "click",
     installProvider,
@@ -579,6 +601,4 @@ select("#provider-install-log-toggle").addEventListener(
   "click",
   toggleProviderInstallLog,
 );
-
-  restoreInstallStatus();
 }

@@ -2,8 +2,7 @@ import { api, postJson } from "./api.js";
 import { showLogin } from "./auth.js";
 import { t } from "./i18n.js";
 import { setApplicationMode } from "./navigation.js";
-import { refreshProvider } from "./provider.js";
-import { appState, stepNames } from "./state.js";
+import { appState, getSlice, stepNames, updateSlice } from "./state.js";
 import {
   clearInlineError,
   escapeHtml,
@@ -13,6 +12,8 @@ import {
   showInlineError,
   showMessage,
 } from "./ui.js";
+
+let navigationInitialised = false;
 
 function isStepComplete(stepNumber, setup = appState.setup) {
   if (!setup) {
@@ -63,6 +64,7 @@ export function showStep(stepNumber, { force = false } = {}) {
   }
 
   appState.visibleStep = number;
+  updateSlice("application", { wizardStep: number });
 
   selectAll(".wizard-step").forEach((element) => {
     element.hidden = element.id !== `step-${number}`;
@@ -81,7 +83,11 @@ export function showStep(stepNumber, { force = false } = {}) {
 function updateApplicationMode(setup) {
   const complete = Boolean(setup.complete);
   setApplicationMode(
-    complete ? "dashboard" : "wizard",
+    complete
+      ? getSlice("auth").data?.authenticated
+        ? "dashboard"
+        : "login"
+      : "wizard",
   );
 }
 export function renderSetupState(setup) {
@@ -346,15 +352,7 @@ export async function completeSetup() {
     ),
 );
 
-    // Eerst het dashboard zichtbaar maken.
     await refreshSetup();
-
-    // Providerstatus mag de overgang niet blokkeren.
-    try {
-      await refreshProvider();
-    } catch {
-      // De reguliere statusrefresh toont later de foutstatus.
-    }
   } catch (error) {
     if (error.status === 401) {
       showLogin();
@@ -430,6 +428,8 @@ function updatePasswordMatchState() {
 }
 
 export function initialiseWizardNavigation() {
+  if (navigationInitialised) return;
+  navigationInitialised = true;
   selectAll("#wizard-steps button").forEach((button) => {
     button.addEventListener("click", () => {
       showStep(Number(button.dataset.step));
