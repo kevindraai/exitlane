@@ -12,6 +12,7 @@
          Status ophalen&hellip;
         </span>
        </div>
+       <p class="inline-error" hidden="" id="vpn-runtime-error"></p>
        <div class="metric-grid" id="provider-metrics">
         <div class="metric">
          <span data-i18n="dashboard.country">
@@ -45,19 +46,35 @@
           &mdash;
          </strong>
         </div>
+        <div class="metric">
+         <span data-i18n="provider.country_selection.latency">Latency</span>
+         <strong id="metric-latency">
+          &mdash;
+         </strong>
+        </div>
        </div>
-       <form class="connect-form" id="connect-form" method="post">
-        <label>
-         <span data-i18n="dashboard.target">
-          Land, stad of server
-         </span>
-         <input data-i18n-placeholder="dashboard.target_placeholder" id="connect-target" placeholder="Bijv. Netherlands of nl1234"/>
-        </label>
-        <button class="button button-primary" data-i18n="dashboard.connect" type="submit">
-         Verbinden
+       <div class="connect-form">
+        <button class="button button-primary" data-i18n="provider.country_selection.reconnect" id="reconnect-button" type="button">
+         Opnieuw verbinden
         </button>
         <button class="button button-danger" data-i18n="dashboard.disconnect" id="disconnect-button" type="button">
          Verbreken
         </button>
-       </form>
+       </div>
+       <div class="country-heading">
+        <div>
+         <p class="eyebrow" data-i18n="provider.country_selection.quick_choice">SNELLE KEUZE</p>
+         <h3 data-i18n="provider.country_selection.choose_country">Kies een VPN-land</h3>
+        </div>
+        <button class="button button-secondary" data-i18n="provider.country_selection.measure_again" id="remeasure-countries" type="button">Opnieuw meten</button>
+       </div>
+       <div class="country-grid" id="quick-countries"></div>
+       <details class="all-countries" id="all-countries">
+        <summary data-i18n="provider.country_selection.all_countries">Alle landen</summary>
+        <label class="country-search">
+         <span data-i18n="provider.country_selection.search_country">Zoek land</span>
+         <input autocomplete="off" data-i18n-placeholder="provider.country_selection.search_placeholder" id="country-search" placeholder="Bijv. Nederland" type="search"/>
+        </label>
+        <div class="country-grid" id="country-list"></div>
+       </details>
       </section>

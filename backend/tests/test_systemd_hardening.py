@@ -19,6 +19,7 @@ def test_service_has_compatible_sandbox_and_filesystem_boundaries():
         "RestrictRealtime=true",
         "SystemCallArchitectures=native",
         "UMask=0077",
+        "Environment=HOME=/var/lib/exitlane",
         "ReadWritePaths=/etc/exitlane /etc/wireguard /var/lib/exitlane /var/log/exitlane",
         "ExecStart=/opt/exitlane/venv/bin/uvicorn exitlane.main:app --host ${EXITLANE_HOST} --port ${EXITLANE_PORT} --no-server-header",
     }

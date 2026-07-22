@@ -190,6 +190,7 @@ install_system_packages() {
     curl \
     gnupg \
     iproute2 \
+    iputils-ping \
     nftables \
     python3 \
     python3-pip \

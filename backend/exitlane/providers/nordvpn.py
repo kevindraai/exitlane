@@ -3,11 +3,42 @@ from __future__ import annotations
 import re
 import shutil
 import asyncio
+import http.client
+import json
+import logging
+import time
+import urllib.parse
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from exitlane.core import command
 
 from .base import Provider
+
+logger = logging.getLogger(__name__)
+SERVER_HOSTNAME_PATTERN = re.compile(r"^([a-z]{2}[0-9]+)\.nordvpn\.com$")
+CONNECT_FAILURE_TIMEOUT_SECONDS = 25
+
+
+def _connect_timed_out(return_code: int, output: str, error: str, elapsed: float) -> bool:
+    provider_message = f"{output}\n{error}".casefold()
+    return (
+        return_code == 124
+        or "context deadline exceeded" in provider_message
+        or (return_code != 0 and elapsed >= CONNECT_FAILURE_TIMEOUT_SECONDS)
+    )
+
+
+def build_connect_target(country_code: str, server_hostname: str | None = None) -> str:
+    """Build a native NordVPN CLI target, never an arbitrary hostname or argument."""
+    if not re.fullmatch(r"[A-Za-z]{2}", country_code):
+        raise ValueError("invalid country code")
+    if server_hostname is None:
+        return country_code.lower()
+    match = SERVER_HOSTNAME_PATTERN.fullmatch(server_hostname)
+    if not match:
+        raise ValueError("invalid NordVPN server hostname")
+    return match.group(1)
 
 
 def parse(output: str) -> dict[str, str]:
@@ -30,6 +61,7 @@ _install_job: dict[str, Any] = {
     "started_at": None,
     "finished_at": None,
 }
+_country_catalog_cache: list[dict] = []
 
 
 def _utc_now() -> str:
@@ -61,41 +93,51 @@ class NordVPN(Provider):
     id = "nordvpn"
     display_name = "NordVPN"
 
-    async def status(self):
+    async def status(self, *, timeout: float = 8):
         if not shutil.which("nordvpn"):
+            in_container = Path("/.dockerenv").exists()
             return {
                 "installed": False,
+                "available": False,
                 "daemon_active": False,
                 "authenticated": False,
                 "connected": False,
-                "state": "disconnected",
+                "state": "unavailable",
+                "error_code": (
+                    "unsupported_container_runtime" if in_container else "provider_cli_unavailable"
+                ),
             }
 
         daemon_rc, _, _ = await command(
             "systemctl",
             "is-active",
             "nordvpnd",
+            timeout=timeout,
         )
 
         status_rc, status_out, status_err = await command(
             "nordvpn",
             "status",
+            timeout=timeout,
         )
         values = parse(status_out or status_err)
 
         account_rc, account_out, account_err = await command(
             "nordvpn",
             "account",
+            timeout=timeout,
         )
 
         account_output = account_out or account_err
 
         return {
             "installed": True,
+            "available": status_rc == 0,
             "daemon_active": daemon_rc == 0,
             "authenticated": (account_rc == 0 and "not logged in" not in account_output.lower()),
             "connected": (status_rc == 0 and values.get("Status", "").lower() == "connected"),
             "state": values.get("Status", "error").lower() if status_rc == 0 else "error",
+            "error_code": None if status_rc == 0 else "provider_status_unavailable",
             "country": values.get("Country", ""),
             "city": values.get("City", ""),
             "server": values.get(
@@ -411,24 +453,63 @@ echo "Installatie afgerond"
         }
 
     async def countries(self):
-        rc, out, _ = await command(
-            "nordvpn",
-            "countries",
+        global _country_catalog_cache
+        data = await self._api_json("/v1/servers/countries")
+        countries = sorted(
+            (
+                {"id": item["id"], "country_code": item["code"].upper(), "provider_name": item["name"]}
+                for item in data if item.get("id") is not None and item.get("code")
+            ),
+            key=lambda item: item["provider_name"],
         )
+        if countries:
+            _country_catalog_cache = countries
+        return [dict(item) for item in (countries or _country_catalog_cache)]
 
-        if rc != 0:
+    async def servers(self, country_id: int, *, limit: int = 5) -> list[dict]:
+        query = urllib.parse.urlencode({"filters[country_id]": country_id, "limit": limit})
+        data = await self._api_json(f"/v1/servers/recommendations?{query}")
+        return [
+            {
+                "id": item.get("id"),
+                "hostname": item.get("hostname"),
+                "station": item.get("station"),
+                "load": item.get("load"),
+            }
+            for item in data if item.get("hostname")
+        ][:limit]
+
+    async def _api_json(self, path: str) -> list[dict]:
+        def fetch() -> list[dict]:
+            connection = http.client.HTTPSConnection("api.nordvpn.com", timeout=8)
+            try:
+                connection.request("GET", path, headers={"User-Agent": "ExitLane/0.2"})
+                response = connection.getresponse()
+                if response.status != 200:
+                    return []
+                payload = json.loads(response.read())
+            finally:
+                connection.close()
+            return payload if isinstance(payload, list) else []
+
+        try:
+            return await asyncio.to_thread(fetch)
+        except (OSError, ValueError):
             return []
 
-        return sorted(out.split())
-
-    async def connect(self, target=None):
+    async def connect(self, target=None, *, timeout: float = 40):
+        if not shutil.which("nordvpn"):
+            return {
+                "ok": False,
+                "action": "connect",
+                "state": "error",
+                "target": target,
+                "error_code": "provider_cli_unavailable",
+            }
         args = ["nordvpn", "connect"]
 
         if target:
-            if not re.fullmatch(
-                r"[A-Za-z0-9 _.-]{1,80}",
-                target,
-            ):
+            if not re.fullmatch(r"(?:[A-Za-z]{2}|[a-z]{2}[0-9]+)", target):
                 return {
                     "ok": False,
                     "action": "connect",
@@ -437,25 +518,57 @@ echo "Installatie afgerond"
                     "error_code": "invalid_target",
                 }
 
-            args.append(target)
+            args.append(target.lower())
 
-        rc, _out, _err = await command(
+        started_at = time.monotonic()
+        rc, out, err = await command(
             *args,
-            timeout=90,
+            timeout=timeout,
         )
+        elapsed = time.monotonic() - started_at
+        if rc != 0:
+            safe_error = re.sub(r"[\r\n\t]+", " ", err).strip()[:300]
+            logger.warning("NordVPN connect failed (exit %s): %s", rc, safe_error)
 
+        timed_out = _connect_timed_out(rc, out, err, elapsed)
         return {
             "ok": rc == 0,
             "action": "connect",
             "state": "connecting" if rc == 0 else "error",
             "target": target,
-            "error_code": None if rc == 0 else "provider_connect_failed",
+            "exit_code": rc,
+            "error_code": (
+                None if rc == 0 else "vpn_connect_timeout" if timed_out else "provider_connect_failed"
+            ),
         }
 
-    async def disconnect(self):
+    async def connect_country(self, country_code: str, *, timeout: float = 40) -> dict:
+        try:
+            target = build_connect_target(country_code)
+        except ValueError:
+            return {
+                "ok": False,
+                "action": "connect",
+                "state": "error",
+                "target": None,
+                "exit_code": None,
+                "error_code": "invalid_target",
+            }
+        return await self.connect(target, timeout=timeout)
+
+    async def disconnect(self, *, timeout: float = 15):
+        if not shutil.which("nordvpn"):
+            return {
+                "ok": False,
+                "action": "disconnect",
+                "state": "error",
+                "target": None,
+                "error_code": "provider_cli_unavailable",
+            }
         rc, _out, _err = await command(
             "nordvpn",
             "disconnect",
+            timeout=timeout,
         )
 
         return {
@@ -463,7 +576,31 @@ echo "Installatie afgerond"
             "action": "disconnect",
             "state": "disconnecting" if rc == 0 else "error",
             "target": None,
-            "error_code": None if rc == 0 else "provider_disconnect_failed",
+            "error_code": (
+                None if rc == 0 else "vpn_disconnect_timeout" if rc == 124 else "provider_disconnect_failed"
+            ),
+        }
+
+    async def recover_daemon(self) -> dict:
+        """Restart exactly nordvpnd; no user-controlled executable, unit, or arguments."""
+        rc, _out, _error = await command(
+            "/usr/bin/systemctl", "restart", "nordvpnd.service", timeout=15
+        )
+        if rc != 0:
+            return {"ok": False, "error_code": "provider_recovery_failed"}
+        active_rc, _, _ = await command(
+            "/usr/bin/systemctl", "is-active", "nordvpnd.service", timeout=5
+        )
+        if active_rc != 0:
+            return {"ok": False, "error_code": "provider_recovery_failed"}
+        status = await self.status(timeout=6)
+        responsive = status.get("available") is True and status.get("state") in {
+            "connected", "disconnected"
+        }
+        return {
+            "ok": responsive,
+            "error_code": None if responsive else "provider_recovery_healthcheck_failed",
+            "status": status,
         }
 
 

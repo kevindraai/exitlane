@@ -190,10 +190,13 @@
     "callback_hint": "Plak hier de link achter de knop Continue.",
     "finish_browser_login": "Browserlogin afronden",
     "token_placeholder": "Plak hier het token",
-    "status": { "connected": "Verbonden", "disconnected": "Niet verbonden", "authenticated": "Aangemeld", "signed_out": "Niet aangemeld", "not_installed": "Niet geïnstalleerd" },
+    "status": { "connected": "Verbonden", "disconnected": "Niet verbonden", "unavailable": "Niet beschikbaar", "authenticated": "Aangemeld", "signed_out": "Niet aangemeld", "not_installed": "Niet geïnstalleerd" },
+    "description": { "ready": "De NordVPN Linux-client is geïnstalleerd en aangemeld.", "signed_out": "De NordVPN Linux-client is geïnstalleerd, maar nog niet aangemeld.", "not_installed": "De NordVPN Linux-client is nog niet geïnstalleerd." },
     "action": { "connecting": "Verbinden…", "disconnecting": "Verbinding verbreken…" },
-    "notifications": { "connecting": "Verbinden met {target}…", "connected": "Verbonden met {target} {server}.", "connect_failed": "Kon niet verbinden met {target}.", "disconnecting": "Verbinding verbreken…", "disconnected": "Verbinding verbroken.", "disconnect_failed": "Kon de verbinding niet verbreken." },
-    "errors": { "target_required": "Kies een doel.", "timeout": "De statuscontrole duurde te lang." }
+    "operation": { "connecting_country": "Verbinden met {country}…", "recovering": "NordVPN herstellen…" },
+    "notifications": { "connecting": "Verbinden met {target}…", "connected": "Verbonden met {target} {server}.", "country_connected": "Verbonden met {server}.", "connect_failed": "Kon niet verbinden met {target}.", "disconnecting": "Verbinding verbreken…", "disconnected": "Verbinding verbroken.", "disconnect_failed": "Kon de verbinding niet verbreken." },
+    "errors": { "target_required": "Kies een doel.", "timeout": "De statuscontrole duurde te lang.", "vpn_connect_timeout": "Verbinding met {country} duurde te lang. NordVPN kon geen werkende serververbinding opbouwen. Probeer het opnieuw.", "provider_recovery_rate_limited": "NordVPN kon niet opnieuw worden hersteld. Probeer het later nogmaals.", "status_unavailable": "VPN-status is niet beschikbaar.", "provider_status_unavailable": "De NordVPN-status kon niet worden uitgelezen.", "provider_cli_unavailable": "De NordVPN-client is niet beschikbaar in de runtime van ExitLane.", "unsupported_container_runtime": "Deze Docker-runtime kan de NordVPN-client op de host niet besturen. Installeer ExitLane native in dezelfde LXC of VM als NordVPN." },
+    "country_selection": { "latency": "Latency", "reconnect": "Opnieuw verbinden", "quick_choice": "SNELLE KEUZE", "choose_country": "Kies een VPN-land", "measure_again": "Opnieuw meten", "all_countries": "Alle landen", "search_country": "Zoek land", "search_placeholder": "Bijv. Nederland", "measuring": "Meten…", "latency_ms": "{latency} ms", "connected_latency": "Verbonden · {latency}", "last_used": "Laatst gebruikt", "measure_failed": "Niet alle latencywaarden konden worden gemeten.", "load_failed": "Landen konden niet worden geladen." }
   },
   "step4": {
     "kicker": "Stap 4",
@@ -337,7 +340,7 @@
     "setup": { "completed": "Setup afgerond" },
     "auth": { "login_succeeded": "Beheerder aangemeld", "login_failed": "Aanmeldpoging mislukt", "logout": "Beheerder afgemeld", "session_expired": "Sessie verlopen", "session_revoked": "Sessie ingetrokken" },
     "settings": { "updated": "Instellingen bijgewerkt: {fields}" },
-    "provider": { "connect_started": "Verbinden met {target}", "connected": "Verbonden met {country} {server}", "connect_failed": "Kon niet verbinden met {target}", "disconnect_started": "VPN-verbinding verbreken", "disconnected": "VPN-verbinding verbroken", "disconnect_failed": "VPN-verbinding kon niet worden verbroken" },
+    "provider": { "connect_started": "Verbinden met {target}", "connected": "Verbonden met {country} {server}", "connect_failed": "Kon niet verbinden met {target}", "recovery_started": "NordVPN-herstel gestart", "recovered": "NordVPN hersteld", "recovery_failed": "NordVPN-herstel mislukt", "recovery_rate_limited": "NordVPN-herstel tijdelijk begrensd", "retry_started": "Verbinding opnieuw proberen", "disconnect_started": "VPN-verbinding verbreken", "disconnected": "VPN-verbinding verbroken", "disconnect_failed": "VPN-verbinding kon niet worden verbroken" },
     "wireguard": { "configuration_generated": "WireGuard-configuratie gegenereerd voor {client_name}", "interface_active": "WireGuard-interface {interface} is actief geworden", "interface_inactive": "WireGuard-interface {interface} is inactief geworden", "handshake_received": "WireGuard-handshake ontvangen voor {client_name}" },
     "notifications": { "webhook_added": "Webhook {name} toegevoegd" }
   },

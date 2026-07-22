@@ -190,10 +190,13 @@
     "callback_hint": "Paste the link behind the Continue button here.",
     "finish_browser_login": "Finish browser login",
     "token_placeholder": "Paste the token here",
-    "status": { "connected": "Connected", "disconnected": "Disconnected", "authenticated": "Signed in", "signed_out": "Signed out", "not_installed": "Not installed" },
+    "status": { "connected": "Connected", "disconnected": "Disconnected", "unavailable": "Unavailable", "authenticated": "Signed in", "signed_out": "Signed out", "not_installed": "Not installed" },
+    "description": { "ready": "The NordVPN Linux client is installed and signed in.", "signed_out": "The NordVPN Linux client is installed but signed out.", "not_installed": "The NordVPN Linux client is not installed yet." },
     "action": { "connecting": "Connecting…", "disconnecting": "Disconnecting…" },
-    "notifications": { "connecting": "Connecting to {target}…", "connected": "Connected to {target} {server}.", "connect_failed": "Could not connect to {target}.", "disconnecting": "Disconnecting…", "disconnected": "Disconnected.", "disconnect_failed": "Could not disconnect." },
-    "errors": { "target_required": "Choose a target.", "timeout": "The status check timed out." }
+    "operation": { "connecting_country": "Connecting to {country}…", "recovering": "Recovering NordVPN…" },
+    "notifications": { "connecting": "Connecting to {target}…", "connected": "Connected to {target} {server}.", "country_connected": "Connected to {server}.", "connect_failed": "Could not connect to {target}.", "disconnecting": "Disconnecting…", "disconnected": "Disconnected.", "disconnect_failed": "Could not disconnect." },
+    "errors": { "target_required": "Choose a target.", "timeout": "The status check timed out.", "vpn_connect_timeout": "Connecting to {country} took too long. NordVPN could not establish a working server connection. Try again.", "provider_recovery_rate_limited": "NordVPN could not be recovered again. Try again later.", "status_unavailable": "VPN status is unavailable.", "provider_status_unavailable": "The NordVPN status could not be read.", "provider_cli_unavailable": "The NordVPN client is unavailable in the ExitLane runtime.", "unsupported_container_runtime": "This Docker runtime cannot control the NordVPN client on the host. Install ExitLane natively in the same LXC or VM as NordVPN." },
+    "country_selection": { "latency": "Latency", "reconnect": "Reconnect", "quick_choice": "QUICK CHOICE", "choose_country": "Choose a VPN country", "measure_again": "Measure again", "all_countries": "All countries", "search_country": "Search country", "search_placeholder": "For example, Netherlands", "measuring": "Measuring…", "latency_ms": "{latency} ms", "connected_latency": "Connected · {latency}", "last_used": "Last used", "measure_failed": "Not all latency values could be measured.", "load_failed": "Countries could not be loaded." }
   },
   "step4": {
     "kicker": "Step 4",
@@ -337,7 +340,7 @@
     "setup": { "completed": "Setup completed" },
     "auth": { "login_succeeded": "Administrator signed in", "login_failed": "Sign-in attempt failed", "logout": "Administrator signed out", "session_expired": "Session expired", "session_revoked": "Session revoked" },
     "settings": { "updated": "Settings updated: {fields}" },
-    "provider": { "connect_started": "Connecting to {target}", "connected": "Connected to {country} {server}", "connect_failed": "Could not connect to {target}", "disconnect_started": "Disconnecting VPN", "disconnected": "VPN disconnected", "disconnect_failed": "Could not disconnect VPN" },
+    "provider": { "connect_started": "Connecting to {target}", "connected": "Connected to {country} {server}", "connect_failed": "Could not connect to {target}", "recovery_started": "NordVPN recovery started", "recovered": "NordVPN recovered", "recovery_failed": "NordVPN recovery failed", "recovery_rate_limited": "NordVPN recovery temporarily rate-limited", "retry_started": "Retrying connection", "disconnect_started": "Disconnecting VPN", "disconnected": "VPN disconnected", "disconnect_failed": "Could not disconnect VPN" },
     "wireguard": { "configuration_generated": "WireGuard configuration generated for {client_name}", "interface_active": "WireGuard interface {interface} became active", "interface_inactive": "WireGuard interface {interface} became inactive", "handshake_received": "WireGuard handshake received for {client_name}" },
     "notifications": { "webhook_added": "Webhook {name} added" }
   },

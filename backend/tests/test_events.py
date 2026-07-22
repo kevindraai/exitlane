@@ -41,6 +41,28 @@ def test_record_validates_metadata_and_preserves_actor_snapshot(tmp_path, monkey
     assert item.actor.username == "admin"
 
 
+def test_provider_connection_events_accept_safe_technical_metadata(tmp_path, monkeypatch):
+    database(tmp_path, monkeypatch)
+    assert events.record_event(
+        "provider.connect_started",
+        metadata={"target": "Nederland", "country_code": "NL", "cli_action": "connect_country"},
+    )
+    assert events.record_event(
+        "provider.connected",
+        metadata={
+            "country": "Netherlands",
+            "city": "Amsterdam",
+            "server": "nl925.nordvpn.com",
+            "country_code": "NL",
+            "cli_action": "connect_country",
+            "exit_code": "0",
+        },
+    )
+    items = events.list_events().items
+    assert items[0].metadata["server"] == "nl925.nordvpn.com"
+    assert items[1].metadata["target"] == "Nederland"
+
+
 def test_corrupt_metadata_does_not_break_page(tmp_path, monkeypatch):
     db = database(tmp_path, monkeypatch)
     assert events.record_event("system.started")

@@ -790,6 +790,60 @@ pre {
   gap: 10px;
 }
 
+.country-heading {
+  align-items: end;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2rem;
+}
+
+.country-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  margin-top: 1rem;
+}
+
+.country-card {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #d8dee9);
+  border-radius: 0.75rem;
+  color: inherit;
+  min-height: 88px;
+  padding: 0.9rem;
+  text-align: left;
+  display: grid;
+  grid-template-rows: repeat(4, min-content);
+  align-content: start;
+}
+
+.country-card:hover:not(:disabled), .country-card--active, .country-card--connecting {
+  border-color: var(--accent, #3764e8);
+}
+
+.country-card--active { box-shadow: 0 0 0 1px var(--accent, #3764e8); }
+.country-card__flag, .country-card__name, .country-card__latency, .country-card__status { display: block; }
+.country-card__name { margin: 0.25rem 0; }
+.country-card__latency, .country-card__status { color: var(--muted, #667085); font-size: 0.875rem; }
+.country-card__status:empty { min-height: 0; }
+.country-card:disabled { cursor: not-allowed; opacity: 0.55; }
+.country-card--connecting .country-card__status::before {
+  animation: country-card-spin 0.8s linear infinite;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  content: "";
+  display: inline-block;
+  height: 0.75rem;
+  margin-right: 0.4rem;
+  vertical-align: -0.1rem;
+  width: 0.75rem;
+}
+@keyframes country-card-spin { to { transform: rotate(360deg); } }
+.all-countries { margin-top: 1.25rem; }
+.all-countries summary { cursor: pointer; font-weight: 700; }
+.country-search { display: block; margin-top: 1rem; max-width: 24rem; }
+
 .toast-region {
   position: fixed;
   right: 18px;

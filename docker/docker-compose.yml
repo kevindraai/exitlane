@@ -1,3 +1,5 @@
+# Development image only. This container cannot control a NordVPN client on the Docker host.
+# The supported VPN gateway deployment is the native systemd installer in docs/deployment.md.
 services:
   exitlane:
     build:
