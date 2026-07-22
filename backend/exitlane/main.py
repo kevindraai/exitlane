@@ -4,12 +4,13 @@ import sqlite3
 import hashlib
 import secrets
 import time
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -50,8 +51,19 @@ from exitlane.config import (
     SESSION_MAX_AGE_SECONDS,
     validate_config,
 )
+from exitlane.events import (
+    EVENT_DEFINITIONS,
+    FILTER_CATEGORIES,
+    FILTER_LEVELS,
+    EventPage,
+    list_events,
+    record_event,
+)
 
 SYSTEM_WIREGUARD_DIR = Path("/etc/wireguard")
+_system_started_databases: set[Path] = set()
+_wireguard_observed_state: tuple[bool, bool] | None = None
+_pending_provider_connection: dict | None = None
 
 
 class Admin(BaseModel):
@@ -133,6 +145,10 @@ class Webhook(BaseModel):
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     validate_config()
     init()
+    database = DB.resolve()
+    if database not in _system_started_databases:
+        record_event("system.started")
+        _system_started_databases.add(database)
     yield
 
 
@@ -203,6 +219,27 @@ def is_setup_client_download(method: str, path: str) -> bool:
     return method == "GET" and path.startswith(prefix) and bool(client_name) and "/" not in client_name
 
 
+def request_actor(request: Request) -> dict | None:
+    return getattr(request.state, "user", None)
+
+
+def observe_wireguard_state(*, configured: bool, active: bool, handshake: bool, interface: str, client: str) -> None:
+    """Record only confirmed poll transitions; the first observation establishes a baseline."""
+    global _wireguard_observed_state
+    current = (active, handshake)
+    previous = _wireguard_observed_state
+    _wireguard_observed_state = current
+    if not configured or previous is None:
+        return
+    if previous[0] != active:
+        record_event(
+            "wireguard.interface_active" if active else "wireguard.interface_inactive",
+            metadata={"interface": interface},
+        )
+    if not previous[1] and handshake:
+        record_event("wireguard.handshake_received", metadata={"client_name": client})
+
+
 @app.middleware("http")
 async def require_authentication(request: Request, call_next):
     path = request.url.path
@@ -267,11 +304,17 @@ async def get_settings() -> dict:
 
 
 @app.put("/api/settings")
-async def put_settings(req: SettingsUpdate) -> dict:
+async def put_settings(req: SettingsUpdate, request: Request) -> dict:
+    before = current_general_settings().model_dump()
     try:
-        return update_settings(req)
+        result = update_settings(req)
     except SettingsStorageError as error:
         raise HTTPException(status_code=503, detail="Settings storage is temporarily unavailable") from error
+    after = result["general"]
+    changed = [field for field in req.general.model_fields_set if before[field] != after[field]]
+    if changed:
+        record_event("settings.updated", actor=request.state.user, metadata={"fields": changed})
+    return result
 
 
 @app.post("/api/auth/login")
@@ -289,6 +332,7 @@ async def login(req: Login, response: Response) -> dict:
         row[3] if row else "0" * 32,
     )
     if row is None or not valid:
+        record_event("auth.login_failed", metadata={"reason": "invalid_credentials"})
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
     token = secrets.token_urlsafe(32)
@@ -308,6 +352,7 @@ async def login(req: Login, response: Response) -> dict:
         samesite="lax",
         path="/",
     )
+    record_event("auth.login_succeeded", actor={"id": row[0], "username": row[1]})
     return {"authenticated": True, "user": {"username": row[1]}}
 
 
@@ -327,7 +372,28 @@ async def logout(request: Request, response: Response) -> dict:
         samesite="lax",
         path="/",
     )
+    record_event("auth.logout", actor=request.state.user)
     return {"ok": True}
+
+
+@app.get("/api/events", response_model=EventPage)
+async def get_events(
+    limit: int = Query(50, ge=1, le=200),
+    cursor: int | None = Query(None, ge=1),
+    category: str | None = Query(None),
+    level: str | None = Query(None),
+    code: str | None = Query(None),
+) -> EventPage:
+    if category is not None and category not in FILTER_CATEGORIES:
+        raise HTTPException(status_code=422, detail="Invalid event category")
+    if level is not None and level not in FILTER_LEVELS:
+        raise HTTPException(status_code=422, detail="Invalid event level")
+    if code is not None and code not in EVENT_DEFINITIONS:
+        raise HTTPException(status_code=422, detail="Invalid event code")
+    try:
+        return list_events(limit=limit, cursor=cursor, category=category, level=level, code=code)
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail="Events are temporarily unavailable") from error
 
 
 @app.get("/api/auth/session")
@@ -540,9 +606,22 @@ async def configure_nordvpn_defaults() -> dict:
 
 @app.get("/api/providers/nordvpn/status")
 async def nordvpn_status() -> dict:
-    return {
-        "status": await provider.status(),
-    }
+    global _pending_provider_connection
+    status = await provider.status()
+    if _pending_provider_connection and status.get("connected"):
+        pending = _pending_provider_connection
+        _pending_provider_connection = None
+        record_event(
+            "provider.connected",
+            actor=pending["actor"],
+            metadata={
+                key: status[key]
+                for key in ("country", "city", "server")
+                if status.get(key)
+            },
+            correlation_id=pending["correlation_id"],
+        )
+    return {"status": status}
 
 
 @app.get("/api/providers/nordvpn/countries")
@@ -553,13 +632,63 @@ async def nordvpn_countries() -> dict:
 
 
 @app.post("/api/providers/nordvpn/connect")
-async def connect_nordvpn(req: Connect) -> dict:
-    return await provider.connect(req.target)
+async def connect_nordvpn(req: Connect, request: Request) -> dict:
+    global _pending_provider_connection
+    correlation_id = str(uuid.uuid4())
+    metadata = {"target": req.target or "recommended"}
+    record_event("provider.connect_started", actor=request_actor(request), metadata=metadata, correlation_id=correlation_id)
+    result = await provider.connect(req.target)
+    if result.get("ok"):
+        try:
+            status = await provider.status()
+        except Exception:  # Provider detail is intentionally not exposed to the event log.
+            status = None
+        if status and status.get("connected"):
+            record_event(
+                "provider.connected",
+                actor=request_actor(request),
+                metadata={
+                    key: status[key]
+                    for key in ("country", "city", "server")
+                    if status.get(key)
+                },
+                correlation_id=correlation_id,
+            )
+            _pending_provider_connection = None
+        elif status is None:
+            record_event(
+                "provider.connect_failed",
+                actor=request_actor(request),
+                metadata={**metadata, "reason": "provider_unavailable"},
+                correlation_id=correlation_id,
+            )
+            _pending_provider_connection = None
+        else:
+            _pending_provider_connection = {
+                "actor": request_actor(request),
+                "correlation_id": correlation_id,
+            }
+    else:
+        reason = "invalid_target" if result.get("error_code") == "invalid_target" else "connection_failed"
+        record_event("provider.connect_failed", actor=request_actor(request), metadata={**metadata, "reason": reason}, correlation_id=correlation_id)
+        _pending_provider_connection = None
+    return result
 
 
 @app.post("/api/providers/nordvpn/disconnect")
-async def disconnect_nordvpn() -> dict:
-    return await provider.disconnect()
+async def disconnect_nordvpn(request: Request) -> dict:
+    global _pending_provider_connection
+    correlation_id = str(uuid.uuid4())
+    record_event("provider.disconnect_started", actor=request_actor(request), correlation_id=correlation_id)
+    result = await provider.disconnect()
+    _pending_provider_connection = None
+    record_event(
+        "provider.disconnected" if result.get("ok") else "provider.disconnect_failed",
+        actor=request_actor(request),
+        metadata=None if result.get("ok") else {"reason": "connection_failed"},
+        correlation_id=correlation_id,
+    )
+    return result
 
 
 @app.post("/api/providers/nordvpn/login/browser/start")
@@ -644,7 +773,8 @@ async def activate_wireguard_interface(interface: str) -> None:
 
 
 @app.post("/api/ingress/wireguard")
-async def create_wireguard_ingress(req: WireGuard) -> dict:
+async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
+    global _wireguard_observed_state
     try:
         result = await create_wireguard(
             endpoint=req.endpoint,
@@ -679,6 +809,10 @@ async def create_wireguard_ingress(req: WireGuard) -> dict:
     set_setting("wireguard_client_name", req.client)
     set_setting("wireguard_interface", req.interface)
     set_setting("setup_current_step", 5)
+
+    record_event("wireguard.configuration_generated", actor=request_actor(request), metadata={"client_name": req.client})
+    record_event("wireguard.interface_active", actor=request_actor(request), metadata={"interface": req.interface})
+    _wireguard_observed_state = (True, False)
 
     return result
 
@@ -736,13 +870,16 @@ async def wireguard_status() -> dict:
     )
 
     if rc != 0:
+        configured = bool(setting("wireguard_configured", False))
+        observe_wireguard_state(
+            configured=configured,
+            active=False,
+            handshake=False,
+            interface=interface,
+            client=client_name,
+        )
         return {
-            "configured": bool(
-                setting(
-                    "wireguard_configured",
-                    False,
-                )
-            ),
+            "configured": configured,
             "active": False,
             "service_active": service_active,
             "connected": False,
@@ -781,14 +918,17 @@ async def wireguard_status() -> dict:
         (peer["latest_handshake"] for peer in peers),
         default=0,
     )
+    configured = bool(setting("wireguard_configured", False))
+    observe_wireguard_state(
+        configured=configured,
+        active=True,
+        handshake=latest_handshake > 0,
+        interface=interface,
+        client=client_name,
+    )
 
     return {
-        "configured": bool(
-            setting(
-                "wireguard_configured",
-                False,
-            )
-        ),
+        "configured": configured,
         "active": True,
         "service_active": service_active,
         "connected": latest_handshake > 0,
@@ -800,7 +940,7 @@ async def wireguard_status() -> dict:
 
 
 @app.post("/api/notifications/webhook")
-async def create_webhook(req: Webhook) -> dict:
+async def create_webhook(req: Webhook, request: Request) -> dict:
     if not req.url.startswith(("http://", "https://")):
         raise HTTPException(
             status_code=400,
@@ -822,6 +962,8 @@ async def create_webhook(req: Webhook) -> dict:
             ),
         )
 
+    record_event("notifications.webhook_added", actor=request_actor(request), metadata={"name": req.name})
+
     return {
         "ok": True,
         "id": cursor.lastrowid,
@@ -829,7 +971,7 @@ async def create_webhook(req: Webhook) -> dict:
 
 
 @app.post("/api/setup/complete")
-async def complete_setup() -> dict:
+async def complete_setup(request: Request) -> dict:
     state = await setup_state()
 
     incomplete_steps = [name for name, completed in state["steps"].items() if not completed]
@@ -842,6 +984,8 @@ async def complete_setup() -> dict:
 
     set_setting("setup_complete", True)
     set_setting("setup_current_step", 5)
+
+    record_event("setup.completed", actor=request_actor(request))
 
     return {
         "ok": True,

@@ -318,8 +318,28 @@
     "dashboard": "Dashboard",
     "vpn": "VPN",
     "wireguard": "WireGuard",
+    "activity": "Activiteit",
     "security": "Beveiliging",
     "settings": "Instellingen"
+  },
+  "activity": {
+    "eyebrow": "ACTIVITEIT", "title": "Activiteit", "description": "Belangrijke gebeurtenissen die Exitlane heeft vastgelegd.",
+    "filters": { "category": "Categorie", "level": "Niveau", "all": "Alle" },
+    "actions": { "refresh": "Vernieuwen", "load_more": "Meer laden", "reset": "Filters wissen" },
+    "status": { "loading": "Activiteit laden…", "updating": "Bijwerken…", "empty": "Er is nog geen activiteit vastgelegd.", "error": "Activiteit kon niet worden vernieuwd." },
+    "last_refresh": "Laatst succesvol vernieuwd", "details": "Details",
+    "level": { "info": "Info", "warning": "Waarschuwing", "error": "Fout" },
+    "category": { "auth": "Authenticatie", "setup": "Setup", "provider": "Provider", "wireguard": "WireGuard", "settings": "Instellingen", "notifications": "Notificaties", "system": "Systeem" },
+    "metadata": { "target": "Doel", "country": "Land", "city": "Stad", "server": "Server", "reason": "Reden", "fields": "Velden", "client_name": "Client", "interface": "Interface", "name": "Naam" }
+  },
+  "events": {
+    "system": { "started": "Exitlane gestart" },
+    "setup": { "completed": "Setup afgerond" },
+    "auth": { "login_succeeded": "Beheerder aangemeld", "login_failed": "Aanmeldpoging mislukt", "logout": "Beheerder afgemeld", "session_expired": "Sessie verlopen", "session_revoked": "Sessie ingetrokken" },
+    "settings": { "updated": "Instellingen bijgewerkt: {fields}" },
+    "provider": { "connect_started": "Verbinden met {target}", "connected": "Verbonden met {country} {server}", "connect_failed": "Kon niet verbinden met {target}", "disconnect_started": "VPN-verbinding verbreken", "disconnected": "VPN-verbinding verbroken", "disconnect_failed": "VPN-verbinding kon niet worden verbroken" },
+    "wireguard": { "configuration_generated": "WireGuard-configuratie gegenereerd voor {client_name}", "interface_active": "WireGuard-interface {interface} is actief geworden", "interface_inactive": "WireGuard-interface {interface} is inactief geworden", "handshake_received": "WireGuard-handshake ontvangen voor {client_name}" },
+    "notifications": { "webhook_added": "Webhook {name} toegevoegd" }
   },
   "auth": {
     "eyebrow": "AUTHENTICATIE",

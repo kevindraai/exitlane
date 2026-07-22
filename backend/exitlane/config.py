@@ -75,6 +75,8 @@ PROVIDER_REFRESH_INTERVAL_SECONDS = environment_int(
     "EXITLANE_PROVIDER_REFRESH_INTERVAL",
     5,
 )
+EVENT_RETENTION_MAX_COUNT = environment_int("EXITLANE_EVENT_RETENTION_MAX_COUNT", 5000)
+EVENT_RETENTION_MAX_DAYS = environment_int("EXITLANE_EVENT_RETENTION_MAX_DAYS", 90)
 
 DEFAULT_WIREGUARD_VPN_INTERFACE = os.getenv(
     "EXITLANE_WIREGUARD_VPN_INTERFACE",
@@ -91,6 +93,9 @@ DEFAULT_WIREGUARD_KEEPALIVE = environment_int(
 
 
 def validate_config() -> None:
+    if EVENT_RETENTION_MAX_COUNT < 1 or EVENT_RETENTION_MAX_DAYS < 1:
+        raise RuntimeError("Event retention limits must be positive")
+
     if not 6 <= MIN_PASSWORD_LENGTH <= MAX_PASSWORD_LENGTH:
         raise RuntimeError(
             "EXITLANE_MIN_PASSWORD_LENGTH must be between 6 and EXITLANE_MAX_PASSWORD_LENGTH"

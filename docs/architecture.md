@@ -19,6 +19,11 @@ SQLite stores local durable state. It fits the single-appliance model, avoids a 
 service, and supports transactional updates. The database is not intended as a coordination layer
 for multiple active Exitlane nodes.
 
+Structured application events are a separate backend responsibility. Stable event codes and
+per-code metadata allowlists are stored in SQLite; the browser translates them at render time.
+Event writes are best-effort so audit storage cannot break the primary action. This Activity log
+is intentionally distinct from systemd/journald operational logs.
+
 NordVPN CLI is currently the provider boundary. Exitlane delegates VPN tunnel ownership to a
 mature local client while presenting provider-neutral concepts where practical. WireGuard is the
 ingress boundary: routers and clients send selected traffic to Exitlane without requiring

@@ -44,6 +44,12 @@ Debian-based Proxmox LXC.
 
 - Configure generic webhook notifications.
 
+### Activity log
+
+- Review important authentication, setup, VPN, WireGuard, settings, notification, and system
+  events in a translated, filterable Activity view.
+- Keep structured application events for up to 90 days and 5,000 records by default.
+
 ### First-run wizard
 
 - Complete system checks, administrator setup, provider setup, and WireGuard setup in a guided

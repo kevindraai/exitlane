@@ -24,6 +24,13 @@ const state = {
   wireguard: statusSlice(),
   dashboard: statusSlice(),
   system: statusSlice(),
+  activity: {
+    ...statusSlice(),
+    data: [],
+    nextCursor: null,
+    hasMore: false,
+    filters: { category: "", level: "" },
+  },
   providerAction: { state: "idle", target: null, error: null },
 };
 
@@ -64,7 +71,12 @@ export function subscribe(name, callback, { immediate = false } = {}) {
 }
 
 export function resetAuthenticatedState() {
-  for (const name of ["provider", "wireguard", "dashboard", "system"]) {
+  for (const name of ["provider", "wireguard", "dashboard", "system", "activity"]) {
+    if (name === "activity") {
+      state[name] = { ...statusSlice(), data: [], nextCursor: null, hasMore: false, filters: { category: "", level: "" } };
+      notify(name);
+      continue;
+    }
     state[name] = statusSlice();
     notify(name);
   }

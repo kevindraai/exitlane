@@ -55,6 +55,7 @@ import { initialiseDashboard, refreshDashboard } from "./dashboard.js";
 import { createApplicationLifecycle } from "./lifecycle.js";
 import { runColdStart } from "./startup.js";
 import { getSlice, subscribe } from "./state.js";
+import { initialiseActivity } from "./activity.js";
 
 let apiState = "checking";
 const dashboardIsActive = () =>
@@ -168,6 +169,7 @@ async function initialise() {
     initialiseWizardNavigation();
     initialiseSettings();
     initialiseDashboard();
+    initialiseActivity();
     initialiseNavigation();
     initialiseProviderControls();
     initialiseProviderState();
