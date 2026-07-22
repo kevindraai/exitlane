@@ -30,7 +30,11 @@ class WireGuardConfigurationError(RuntimeError):
 def _configuration_path(name: str) -> Path:
     if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", name) is None:
         raise WireGuardConfigurationError("wireguard_configuration_invalid")
-    return WG_DIR / f"{name}.conf"
+    safe_root = os.path.realpath(WG_DIR)
+    candidate = os.path.realpath(os.path.join(safe_root, f"{name}.conf"))
+    if not candidate.startswith(safe_root + os.sep):
+        raise WireGuardConfigurationError("wireguard_configuration_invalid")
+    return Path(candidate)
 
 
 def _atomic_write(path: Path, content: str) -> None:

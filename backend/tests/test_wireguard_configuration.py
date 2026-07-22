@@ -351,3 +351,10 @@ def test_configuration_paths_reject_untrusted_names(tmp_path, monkeypatch, inter
         asyncio.run(wireguard.read_current(interface, client))
     assert error.value.code == "wireguard_configuration_invalid"
     assert list(tmp_path.iterdir()) == []
+
+
+def test_configuration_path_stays_below_canonical_wireguard_root(tmp_path, monkeypatch):
+    wireguard_root = tmp_path / "wireguard"
+    wireguard_root.mkdir()
+    monkeypatch.setattr(wireguard, "WG_DIR", wireguard_root / ".." / "wireguard")
+    assert wireguard._configuration_path("router") == wireguard_root / "router.conf"
