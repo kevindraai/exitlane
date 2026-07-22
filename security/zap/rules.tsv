@@ -1,0 +1,6 @@
+# Rule-specific reviewed dispositions; never replace with a broad warning ignore.
+10049	IGNORE	(no-store is intentional for the local administrative UI and sensitive responses)
+10109	IGNORE	(SPA identification is informational and confirms the expected architecture)
+10111	IGNORE	(Authentication-form identification is expected and not a vulnerability)
+10202	IGNORE	(CSRF uses SameSite plus strict Origin/Referer validation; headerless API clients are documented)
+2	IGNORE	(Private addresses are expected WireGuard/loopback defaults in a local network appliance)

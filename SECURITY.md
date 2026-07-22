@@ -22,6 +22,13 @@ issue.
 Please allow the maintainers time to acknowledge, investigate, and coordinate a fix before public
 disclosure. Good-faith research and responsible disclosure are appreciated.
 
+Reports are triaged by exploitability, required privilege, exposure and impact on credentials,
+routing and host control. No fixed response time is promised. Fixes are coordinated privately and
+published through an advisory when operators need to act; request a CVE only when ecosystem impact
+warrants one. Rotate any session, provider credential or WireGuard key that may have been exposed.
+Alpha fixes normally ship forward, with backports considered only for materially deployed older
+alphas.
+
 ## Scope
 
 In scope are vulnerabilities in the Exitlane backend, browser application, authentication and

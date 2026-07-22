@@ -174,6 +174,13 @@ def test_partials_are_passive_markup_fragments():
         assert "app-content" not in html
 
 
+def test_forms_do_not_fall_back_to_sensitive_get_queries():
+    parser = parse(render_index())
+    forms = [attrs for tag, attrs in parser.elements if tag == "form"]
+    assert forms
+    assert all(attrs.get("method") == "post" for attrs in forms)
+
+
 def test_missing_partial_and_invalid_marker_fail_clearly(tmp_path):
     index = tmp_path / "index.html"
     index.write_text("<!-- EXITLANE_PARTIAL:header -->", encoding="utf-8")

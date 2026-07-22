@@ -21,6 +21,11 @@ Avoid mixing formatting, refactoring, and functional changes in one commit.
 Never commit credentials, access tokens, private keys, generated WireGuard configurations, or
 real public IP addresses.
 
+Security-sensitive changes must add relevant negative and authorization tests and update the
+threat-model or ASVS delta when a boundary changes. Never use real cookies, sessions, passwords,
+provider credentials, or appliance data in fixtures, logs, or artifacts. Report suspected
+unpatched vulnerabilities privately according to `SECURITY.md`, not in a public issue.
+
 ## Tests and CI
 
 Run checks relevant to the change before opening a pull request. The main local commands are:
@@ -40,6 +45,9 @@ python3 scripts/check_i18n.py
 GitHub Actions also checks Bash syntax and ShellCheck, compiles Python sources, validates
 JavaScript syntax and JSON, runs backend and frontend tests, checks translations, and builds the
 Python package. All required CI jobs must pass before merge.
+
+Security CI additionally runs Bandit, pip-audit, Gitleaks, dependency review, CodeQL and a passive
+ZAP baseline. See [security testing](docs/security/security-testing.md).
 
 ## Test-LXC deployment
 

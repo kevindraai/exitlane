@@ -1,0 +1,4 @@
+title = "Exitlane secret scanning"
+
+[extend]
+useDefault = true

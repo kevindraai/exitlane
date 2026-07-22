@@ -25,6 +25,12 @@ SQLite stores local durable state. It fits the single-appliance model, avoids a 
 service, and supports transactional updates. The database is not intended as a coordination layer
 for multiple active Exitlane nodes.
 
+The browser, FastAPI process, SQLite/filesystem, privileged provider and WireGuard subprocesses,
+Linux/systemd host, and router are explicit trust boundaries. Setup temporarily exposes a fixed
+bootstrap route allowlist; completion changes the API to default-authenticated. See the
+[security threat model](security/threat-model.md) and
+[security testing guide](security/security-testing.md).
+
 Structured application events are a separate backend responsibility. Stable event codes and
 per-code metadata allowlists are stored in SQLite; the browser translates them at render time.
 Event writes are best-effort so audit storage cannot break the primary action. This Activity log

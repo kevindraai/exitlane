@@ -30,7 +30,9 @@ def environment_bool(name: str, default: bool) -> bool:
 
 APP_NAME = "Exitlane"
 
-WEB_HOST = os.getenv("EXITLANE_HOST", "0.0.0.0")
+# The appliance UI must be reachable from its management VLAN by default. Deployment
+# guidance requires a firewall; operators can narrow this with EXITLANE_HOST.
+WEB_HOST = os.getenv("EXITLANE_HOST", "0.0.0.0")  # nosec B104
 WEB_PORT = environment_int("EXITLANE_PORT", 8787)
 
 CONFIG_DIR = Path(os.getenv("EXITLANE_CONFIG_DIR", "/etc/exitlane"))
@@ -47,6 +49,8 @@ MAX_PASSWORD_LENGTH = environment_int(
 )
 SESSION_MAX_AGE_SECONDS = environment_int("EXITLANE_SESSION_MAX_AGE", 86400)
 SESSION_COOKIE_SECURE = environment_bool("EXITLANE_SESSION_COOKIE_SECURE", False)
+MAX_REQUEST_BODY_BYTES = environment_int("EXITLANE_MAX_REQUEST_BODY_BYTES", 1_048_576)
+HTTPS_ONLY = environment_bool("EXITLANE_HTTPS_ONLY", False)
 
 DEFAULT_WIREGUARD_INTERFACE = os.getenv(
     "EXITLANE_WIREGUARD_INTERFACE",
@@ -109,3 +113,6 @@ def validate_config() -> None:
 
     if SESSION_MAX_AGE_SECONDS < 60:
         raise RuntimeError("EXITLANE_SESSION_MAX_AGE must be at least 60 seconds")
+
+    if not 1024 <= MAX_REQUEST_BODY_BYTES <= 16 * 1024 * 1024:
+        raise RuntimeError("EXITLANE_MAX_REQUEST_BODY_BYTES must be between 1024 and 16777216")

@@ -7,6 +7,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- Added documented threat/ASVS baselines, security regression and scanner CI, passive dynamic
+  testing, HTTP security headers, service/filesystem hardening, and deployment/release guidance.
+
 ### Added
 
 - Structured, persistent application events with bounded retention and privacy allowlists.

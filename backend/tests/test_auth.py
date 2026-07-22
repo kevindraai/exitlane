@@ -237,6 +237,59 @@ def test_cross_origin_write_is_rejected(client):
     assert response.json() == {"detail": "Request origin not allowed"}
 
 
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"Origin": "http://testserver.evil.example"},
+        {"Origin": "http://user@testserver"},
+        {"Origin": "ftp://testserver"},
+        {"Referer": "http://attacker.example/path"},
+        {"Origin": "https://attacker.example", "Referer": "http://testserver/"},
+    ],
+)
+def test_malformed_or_cross_site_sources_are_rejected(client, headers):
+    response = client.post(
+        "/api/auth/login",
+        headers=headers,
+        json={"username": "admin", "password": "correct horse battery staple"},
+    )
+    assert response.status_code == 403
+
+
+def test_valid_referer_and_non_browser_client_follow_documented_policy(client):
+    payload = {"username": "admin", "password": "correct horse battery staple"}
+    assert client.post("/api/auth/login", headers={"Referer": "http://testserver/"}, json=payload).status_code == 200
+    client.cookies.clear()
+    assert client.post("/api/auth/login", json=payload).status_code == 200
+
+
+def test_oversized_body_is_rejected_before_route_processing(client, monkeypatch):
+    monkeypatch.setattr(main, "MAX_REQUEST_BODY_BYTES", 1024)
+    response = client.post(
+        "/api/auth/login",
+        content=b"x" * 1025,
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status_code == 413
+    assert response.json() == {"detail": "Request body too large"}
+
+
+@pytest.mark.parametrize("path", ["/", "/api/health", "/api/auth/session", "/missing"])
+def test_security_headers_cover_html_api_and_errors(client, path):
+    response = client.get(path)
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["cross-origin-embedder-policy"] == "require-corp"
+    assert response.headers["cross-origin-opener-policy"] == "same-origin"
+    assert response.headers["cross-origin-resource-policy"] == "same-origin"
+    assert "unsafe-inline" not in response.headers["content-security-policy"]
+    assert response.headers["permissions-policy"]
+    assert response.headers["cache-control"] == "no-store"
+    assert "server" not in response.headers
+
+
 def test_same_origin_write_and_configurable_secure_cookie(client, monkeypatch):
     monkeypatch.setattr(main, "SESSION_COOKIE_SECURE", True)
     response = client.post(

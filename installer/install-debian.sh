@@ -205,8 +205,8 @@ create_directories() {
 
   install -d -m 0755 "${TARGET}"
   install -d -m 0700 "${CONFIG_DIR}"
-  install -d -m 0750 "${DATA_DIR}"
-  install -d -m 0750 "${LOG_DIR}"
+  install -d -m 0700 "${DATA_DIR}"
+  install -d -m 0700 "${LOG_DIR}"
 
   success "Mappen aangemaakt"
 }
