@@ -10,7 +10,7 @@ const FALLBACK_LANGUAGE = "en";
 let currentLanguage = FALLBACK_LANGUAGE;
 let messages = {};
 
-function normaliseLanguage(value) {
+export function normaliseLanguage(value) {
   if (!value) {
     return null;
   }
@@ -24,10 +24,13 @@ function normaliseLanguage(value) {
     : null;
 }
 
-function detectBrowserLanguage() {
+export function detectBrowserLanguage(
+  languages = navigator.languages || [],
+  language = navigator.language,
+) {
   const candidates = [
-    ...(navigator.languages || []),
-    navigator.language,
+    ...languages,
+    language,
   ];
 
   for (const candidate of candidates) {
@@ -41,16 +44,19 @@ function detectBrowserLanguage() {
   return FALLBACK_LANGUAGE;
 }
 
-function getStoredLanguage() {
-  return normaliseLanguage(
-    localStorage.getItem(STORAGE_KEY),
-  );
-}
-
-function resolveLanguage() {
+export function resolveLanguage(
+  storedLanguage = localStorage.getItem(
+    STORAGE_KEY,
+  ),
+  browserLanguages = navigator.languages || [],
+  browserLanguage = navigator.language,
+) {
   return (
-    getStoredLanguage() ||
-    detectBrowserLanguage() ||
+    normaliseLanguage(storedLanguage) ||
+    detectBrowserLanguage(
+      browserLanguages,
+      browserLanguage,
+    ) ||
     FALLBACK_LANGUAGE
   );
 }

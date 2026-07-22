@@ -101,6 +101,9 @@ jobs:
             -print0 |
             xargs -0 -r -n1 node --check
 
+      - name: Run frontend tests
+        run: node --experimental-default-type=module --test frontend_tests/*.test.js
+
       - name: Validate JSON files
         run: |
           python3 - <<'PY'
