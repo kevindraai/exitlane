@@ -2,25 +2,83 @@
 
 **Smart egress for every network.**
 
-Exitlane is a self-hosted egress gateway for routers, VLANs and applications. The first provider is NordVPN, while the core stays provider- and router-neutral.
+Exitlane is a self-hosted egress gateway for routers, VLANs, and applications. It provides a
+browser-based control plane for routing traffic through a VPN without coupling the core to a
+specific router platform.
 
-## v0.1.0-alpha.1
+The current alpha release integrates with NordVPN and accepts traffic through WireGuard.
+Exitlane is intended for a trusted management network and is currently tested primarily on a
+Debian-based Proxmox LXC.
 
-- FastAPI backend and OpenAPI docs
-- SQLite state
-- first-run WebUI
-- NordVPN CLI adapter
-- WireGuard ingress generator
-- diagnostics and generic webhooks
-- Debian/Proxmox LXC installer
-- Docker development scaffold
-- tests and GitHub Actions
+> [!WARNING]
+> Exitlane is alpha software. Do not expose the management interface directly to the internet.
 
-> Early alpha. Keep the management interface on a trusted network.
+## Features
 
-## Install on Debian 13 LXC
+### VPN management
 
-The LXC needs `/dev/net/tun`; a privileged LXC is the currently tested path.
+- Install, authenticate, configure, connect, and disconnect the NordVPN CLI.
+- View provider and tunnel status from one interface.
+
+### WireGuard ingress
+
+- Generate a WireGuard ingress interface and client configuration.
+- Use the generated configuration with a router or another WireGuard client.
+
+### Dashboard
+
+- Monitor VPN, WireGuard, host, and application health.
+- Refresh status without overlapping background requests.
+
+### Authentication
+
+- Create the first local administrator account during setup.
+- Protect the application and API with expiring server-side sessions.
+
+### Settings
+
+- Configure timezone and dashboard refresh interval in the WebUI.
+- Choose the interface language and light, dark, or system appearance.
+
+### Notifications
+
+- Configure generic webhook notifications.
+
+### First-run wizard
+
+- Complete system checks, administrator setup, provider setup, and WireGuard setup in a guided
+  flow.
+
+### Multi-language
+
+- Use the interface in English or Dutch.
+
+### Dark/light theme
+
+- Select a light or dark appearance, or follow the operating-system preference.
+
+## Screenshots
+
+Screenshots will be added as the v0.2 interface stabilizes.
+
+<!-- Placeholder: dashboard screenshot -->
+<!-- Placeholder: first-run wizard screenshot -->
+
+## Architecture
+
+Exitlane uses a FastAPI backend that serves both its API and a single-page frontend. The
+frontend coordinates shared data through central application state, while SQLite stores durable
+settings, users, sessions, and generated configuration metadata. NordVPN CLI is the first VPN
+provider integration; WireGuard provides ingress from routers and other clients.
+
+See [Architecture](docs/architecture.md), [Authentication](docs/authentication.md),
+[Application state](docs/application-state.md), and
+[Startup lifecycle](docs/startup-lifecycle.md) for the design rationale.
+
+## Installation
+
+The installer supports Debian 12 and 13. A Proxmox LXC must have `/dev/net/tun` and permission to
+create WireGuard interfaces.
 
 ```bash
 git clone https://github.com/kevindraai/exitlane.git
@@ -28,16 +86,23 @@ cd exitlane
 sudo ./installer/install-debian.sh
 ```
 
-Open `http://<LXC-IP>:8787` and complete the wizard.
+Open `http://<host>:8787` and complete the first-run wizard. Read the
+[deployment guide](docs/deployment.md) and [Proxmox LXC notes](docs/proxmox-lxc.md) before using
+Exitlane outside a development environment.
 
 ## Development
 
-```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev]'
-uvicorn exitlane.main:app --reload --host 0.0.0.0 --port 8787
-```
+Work takes place on feature branches and reaches `main` through a pull request after CI passes.
+CI checks shell scripts, Python linting and tests, frontend syntax and tests, translations, JSON,
+and package builds. Before merge, deploy the candidate to the test LXC and run its smoke test.
 
-See `ROADMAP.md` and `docs/`.
+See [Development](docs/development.md) and [Contributing](CONTRIBUTING.md) for commands and the
+full workflow.
+
+## Roadmap
+
+Planned work is tracked in the [roadmap](ROADMAP.md).
+
+## License
+
+Exitlane is licensed under the [GNU General Public License v3.0](LICENSE).

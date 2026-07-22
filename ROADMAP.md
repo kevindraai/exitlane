@@ -1,23 +1,37 @@
 # Roadmap
 
-## v0.1 alpha
-- [x] FastAPI foundation
-- [x] NordVPN provider adapter
-- [x] WireGuard ingress generator
-- [x] first-run wizard
-- [x] diagnostics and generic webhook notifications
-- [ ] authentication sessions and CSRF hardening
-- [ ] full leak test
-- [ ] encrypted backup/restore
+The roadmap describes direction rather than a release commitment. Priorities may change as the
+alpha is tested in real networks.
 
-## v0.2 alpha
-- [ ] SOCKS5 ingress
-- [ ] Shadowsocks ingress
-- [ ] ntfy, Gotify, MQTT, SMTP and Home Assistant notifications
-- [ ] update/rollback manager
-- [ ] router-specific exporters
+## Completed in v0.2.0-alpha.1
 
-## v0.3 alpha
-- [ ] multiple isolated VPN instances
-- [ ] Docker-backed instance manager
-- [ ] additional providers
+- Authentication with local administrator sessions
+- Dashboard 2.0 with consolidated operational status
+- Application and dashboard settings
+- Central frontend application state
+- Explicit startup lifecycle and first-run routing
+- Test-LXC deployment and smoke-test workflow
+- Frontend unit tests
+- English and Dutch internationalization (i18n)
+- NordVPN CLI management
+- WireGuard ingress configuration
+- First-run wizard
+- Generic webhook notifications
+
+## Next
+
+- Update and rollback mechanism
+- Backup and restore
+- Provider abstraction hardening
+- Additional VPN providers
+- Better notification management
+- Logs and diagnostics
+- Appliance and installation polish
+
+## Later
+
+- High availability
+- Metrics and monitoring integrations
+- API tokens
+- Supported public REST API
+- Plugin architecture
