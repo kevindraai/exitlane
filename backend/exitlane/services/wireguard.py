@@ -3,6 +3,10 @@ from __future__ import annotations
 import ipaddress
 import os
 import re
+import tempfile
+from contextlib import suppress
+from pathlib import Path
+from typing import Awaitable, Callable
 
 from exitlane.config import (
     DEFAULT_WIREGUARD_ALLOWED_IPS,
@@ -17,10 +21,137 @@ from exitlane.config import (
 from exitlane.core import WG_DIR, command
 
 
+class WireGuardConfigurationError(RuntimeError):
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
+def _configuration_path(name: str) -> Path:
+    if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", name) is None:
+        raise WireGuardConfigurationError("wireguard_configuration_invalid")
+    safe_root = os.path.realpath(WG_DIR)
+    candidate = os.path.realpath(os.path.join(safe_root, f"{name}.conf"))
+    if not candidate.startswith(safe_root + os.sep):
+        raise WireGuardConfigurationError("wireguard_configuration_invalid")
+    return Path(candidate)
+
+
+def _atomic_write(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            os.fchmod(handle.fileno(), 0o600)
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        os.chmod(path, 0o600)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _restore(path: Path, content: str | None) -> None:
+    if content is None:
+        path.unlink(missing_ok=True)
+    else:
+        _atomic_write(path, content)
+
+
+def _value(configuration: str, key: str, *, section: str) -> str | None:
+    current = ""
+    for raw_line in configuration.splitlines():
+        line = raw_line.strip()
+        if line.startswith("[") and line.endswith("]"):
+            current = line[1:-1]
+        elif current == section and "=" in line:
+            name, value = line.split("=", 1)
+            if name.strip() == key:
+                return value.strip()
+    return None
+
+
+async def _public_key(private_key: str) -> str:
+    rc, public_key, _error = await command(
+        "wg", "pubkey", input_text=private_key + "\n", timeout=5
+    )
+    if rc != 0 or not public_key.strip():
+        raise WireGuardConfigurationError("wireguard_configuration_invalid")
+    return public_key.strip()
+
+
+async def read_current(interface: str, client: str) -> dict | None:
+    server_path = _configuration_path(interface)
+    client_path = _configuration_path(client)
+    if not server_path.exists() and not client_path.exists():
+        return None
+    try:
+        server_config = server_path.read_text(encoding="utf-8")
+        client_config = client_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        raise WireGuardConfigurationError("wireguard_configuration_invalid") from error
+
+    server_private = _value(server_config, "PrivateKey", section="Interface")
+    client_private = _value(client_config, "PrivateKey", section="Interface")
+    server_peer = _value(server_config, "PublicKey", section="Peer")
+    client_peer = _value(client_config, "PublicKey", section="Peer")
+    if not all((server_private, client_private, server_peer, client_peer)):
+        raise WireGuardConfigurationError("wireguard_configuration_invalid")
+    if await _public_key(server_private) != client_peer:
+        raise WireGuardConfigurationError("wireguard_configuration_invalid")
+    if await _public_key(client_private) != server_peer:
+        raise WireGuardConfigurationError("wireguard_configuration_invalid")
+    return {
+        "client_name": client,
+        "filename": "exitlane-wireguard.conf",
+        "client_config": client_config,
+    }
+
+
+async def parameters_from_current(interface: str, client: str) -> dict:
+    current = await read_current(interface, client)
+    if current is None:
+        raise WireGuardConfigurationError("wireguard_configuration_missing")
+    try:
+        server_config = _configuration_path(interface).read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        raise WireGuardConfigurationError("wireguard_configuration_invalid") from error
+    client_config = current["client_config"]
+    endpoint_value = _value(client_config, "Endpoint", section="Peer") or ""
+    endpoint, separator, port_value = endpoint_value.rpartition(":")
+    server_address = _value(server_config, "Address", section="Interface")
+    dns = _value(client_config, "DNS", section="Interface")
+    allowed_ips = _value(client_config, "AllowedIPs", section="Peer")
+    keepalive = _value(client_config, "PersistentKeepalive", section="Peer")
+    vpn_match = re.search(r"^PostUp\s*=.*\s-o\s+([A-Za-z0-9_.-]{1,15})\s", server_config, re.MULTILINE)
+    try:
+        subnet = str(ipaddress.ip_interface(server_address or "").network)
+        port = int(port_value)
+        keepalive_value = int(keepalive or DEFAULT_WIREGUARD_KEEPALIVE)
+    except (ValueError, TypeError) as error:
+        raise WireGuardConfigurationError("wireguard_configuration_invalid") from error
+    if not separator or not endpoint or not dns or not allowed_ips:
+        raise WireGuardConfigurationError("wireguard_configuration_invalid")
+    return {
+        "endpoint": endpoint,
+        "subnet": subnet,
+        "dns": dns,
+        "port": port,
+        "interface": interface,
+        "client": client,
+        "vpn_interface": vpn_match.group(1) if vpn_match else DEFAULT_WIREGUARD_VPN_INTERFACE,
+        "allowed_ips": allowed_ips,
+        "keepalive": keepalive_value,
+    }
+
+
 async def keypair() -> tuple[str, str]:
     rc, private, error = await command(
         "wg",
         "genkey",
+        timeout=10,
     )
 
     if rc != 0:
@@ -30,6 +161,7 @@ async def keypair() -> tuple[str, str]:
         "wg",
         "pubkey",
         input_text=private + "\n",
+        timeout=10,
     )
 
     if rc != 0:
@@ -133,26 +265,11 @@ PersistentKeepalive = {keepalive}
         mode=0o700,
     )
 
-    server_path = WG_DIR / f"{interface}.conf"
-    client_path = WG_DIR / f"{client}.conf"
+    server_path = _configuration_path(interface)
+    client_path = _configuration_path(client)
 
-    server_path.write_text(
-        server_config,
-        encoding="utf-8",
-    )
-    client_path.write_text(
-        client_config,
-        encoding="utf-8",
-    )
-
-    os.chmod(
-        server_path,
-        0o600,
-    )
-    os.chmod(
-        client_path,
-        0o600,
-    )
+    _atomic_write(server_path, server_config)
+    _atomic_write(client_path, client_config)
 
     return {
         "interface": interface,
@@ -161,3 +278,54 @@ PersistentKeepalive = {keepalive}
         "client_config": client_config,
         "client_name": client,
     }
+
+
+async def provision(
+    *,
+    activate: Callable[[str], Awaitable[None]],
+    endpoint: str,
+    subnet: str = DEFAULT_WIREGUARD_SUBNET,
+    dns: str = DEFAULT_WIREGUARD_DNS,
+    port: int = DEFAULT_WIREGUARD_PORT,
+    interface: str = DEFAULT_WIREGUARD_INTERFACE,
+    client: str = DEFAULT_WIREGUARD_CLIENT,
+    vpn_interface: str = DEFAULT_WIREGUARD_VPN_INTERFACE,
+    allowed_ips: str = DEFAULT_WIREGUARD_ALLOWED_IPS,
+    keepalive: int = DEFAULT_WIREGUARD_KEEPALIVE,
+) -> dict:
+    paths = (_configuration_path(interface), _configuration_path(client))
+    previous: dict[Path, str | None] = {}
+    for path in paths:
+        try:
+            previous[path] = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            previous[path] = None
+        except (OSError, UnicodeError) as error:
+            raise WireGuardConfigurationError("wireguard_configuration_invalid") from error
+
+    try:
+        result = await create(
+            endpoint=endpoint,
+            subnet=subnet,
+            dns=dns,
+            port=port,
+            interface=interface,
+            client=client,
+            vpn_interface=vpn_interface,
+            allowed_ips=allowed_ips,
+            keepalive=keepalive,
+        )
+        await activate(interface)
+        return result
+    except (ValueError, WireGuardConfigurationError):
+        for path, content in previous.items():
+            _restore(path, content)
+        raise
+    except Exception as error:
+        for path, content in previous.items():
+            with suppress(OSError):
+                _restore(path, content)
+        if all(content is not None for content in previous.values()):
+            with suppress(Exception):
+                await activate(interface)
+        raise WireGuardConfigurationError("wireguard_reload_failed") from error

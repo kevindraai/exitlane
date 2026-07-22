@@ -2,13 +2,13 @@
       <section class="panel">
        <div class="panel-heading">
         <div>
-         <p class="eyebrow">
+         <p class="eyebrow" data-i18n="wireguard_management.eyebrow">
           WIREGUARD
          </p>
-         <h1>
+         <h1 data-i18n="wireguard_management.title">
           WireGuard
          </h1>
-         <p class="lead">
+         <p class="lead" data-i18n="wireguard_management.description">
           Beheer router- en applicatietunnels.
          </p>
         </div>
@@ -17,7 +17,7 @@
         <div class="connection-card">
          <div class="connection-heading">
           <div>
-           <strong>
+           <strong data-i18n="wireguard_management.status_title">
             Routertunnel
            </strong>
            <p id="management-wireguard-message">
@@ -30,7 +30,7 @@
          </div>
          <div class="connection-details" hidden="" id="management-wireguard-details">
           <div>
-           <span>
+           <span data-i18n="wireguard_management.client">
             Client
            </span>
            <strong id="management-wireguard-client">
@@ -38,7 +38,7 @@
            </strong>
           </div>
           <div>
-           <span>
+           <span data-i18n="wireguard_management.endpoint">
             Endpoint
            </span>
            <strong id="management-wireguard-endpoint">
@@ -46,7 +46,7 @@
            </strong>
           </div>
           <div>
-           <span>
+           <span data-i18n="wireguard_management.received">
             Ontvangen
            </span>
            <strong id="management-wireguard-received">
@@ -54,7 +54,7 @@
            </strong>
           </div>
           <div>
-           <span>
+           <span data-i18n="wireguard_management.sent">
             Verzonden
            </span>
            <strong id="management-wireguard-sent">
@@ -63,33 +63,55 @@
           </div>
          </div>
          <div class="view-actions">
-          <button class="button button-secondary" id="management-wireguard-refresh" type="button">
+          <button class="button button-secondary" data-i18n="wireguard_management.refresh" id="management-wireguard-refresh" type="button">
            Opnieuw controleren
           </button>
          </div>
         </div>
-        <section class="panel">
+        <section class="panel wireguard-config-panel" aria-labelledby="wireguard-config-title">
          <div class="panel-heading compact">
           <div>
-           <p class="eyebrow">
-            TUNNELS
+           <p class="eyebrow" data-i18n="wireguard_management.config_eyebrow">
+            CONFIGURATIE
            </p>
-           <h2>
-            WireGuard-clients
+           <h2 data-i18n="wireguard_management.config_title" id="wireguard-config-title">
+            Clientconfiguratie
            </h2>
-           <p>
-            Beheer hier straks router- en applicatietunnels.
+           <p data-i18n="wireguard_management.config_description">
+            Bekijk, download of vervang de actuele routerconfiguratie.
            </p>
           </div>
-          <button class="button button-primary" disabled="" type="button">
-           Nieuwe tunnel
-          </button>
          </div>
-         <div class="empty-state">
-          Exitlane gebruikt momenteel &eacute;&eacute;n routertunnel. Ondersteuning voor
-      meerdere peers en applicatietunnels volgt later.
+         <p class="sensitive-warning" data-i18n="wireguard_management.sensitive_warning">
+          Deze configuratie bevat een private sleutel. Deel en bewaar haar veilig.
+         </p>
+         <div class="empty-state" id="wireguard-config-loading">
+          <span data-i18n="wireguard_management.loading">Configuratie laden…</span>
+         </div>
+         <div class="empty-state" hidden="" id="wireguard-config-empty">
+          <span data-i18n="wireguard_management.empty">Er bestaat nog geen WireGuard-clientconfiguratie.</span>
+         </div>
+         <div class="inline-error" hidden="" id="wireguard-config-error" role="alert"></div>
+         <div hidden="" id="wireguard-config-content">
+          <div class="view-actions wireguard-config-actions">
+           <button aria-controls="management-wireguard-config" aria-expanded="false" class="button button-secondary" data-i18n="wireguard_management.show" id="wireguard-config-toggle" type="button">Bekijken</button>
+           <button class="button button-secondary" data-i18n="wireguard_management.copy" id="wireguard-config-copy" type="button">Kopiëren</button>
+           <a class="button button-secondary" data-i18n="wireguard_management.download" download="exitlane-wireguard.conf" href="/api/ingress/wireguard/config/download" id="wireguard-config-download">Downloaden</a>
+           <button class="button button-danger" data-i18n="wireguard_management.regenerate" id="wireguard-config-regenerate" type="button">Opnieuw genereren</button>
+          </div>
+          <pre aria-label="WireGuard client configuration" class="wireguard-secret-config" hidden="" id="management-wireguard-config" tabindex="0"></pre>
          </div>
         </section>
        </section>
       </section>
+      <dialog aria-labelledby="wireguard-regenerate-title" aria-describedby="wireguard-regenerate-description" id="wireguard-regenerate-dialog">
+       <form id="wireguard-regenerate-form" method="post">
+        <h2 data-i18n="wireguard_management.confirm_title" id="wireguard-regenerate-title">Clientconfiguratie vervangen?</h2>
+        <p data-i18n="wireguard_management.confirm_description" id="wireguard-regenerate-description">De huidige configuratie wordt ongeldig en moet opnieuw op apparaten worden geïmporteerd.</p>
+        <div class="view-actions">
+         <button class="button button-secondary" data-i18n="wireguard_management.cancel" id="wireguard-regenerate-cancel" type="button">Annuleren</button>
+         <button class="button button-danger" data-i18n="wireguard_management.confirm" id="wireguard-regenerate-confirm" type="button">Vervangen</button>
+        </div>
+       </form>
+      </dialog>
      </section>

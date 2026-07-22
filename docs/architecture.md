@@ -41,6 +41,10 @@ mature local client while presenting provider-neutral concepts where practical. 
 ingress boundary: routers and clients send selected traffic to Exitlane without requiring
 router-specific logic in the core.
 
+WireGuard setup and management share one configuration service. It generates both key pairs,
+transactionally replaces mode-0600 server and client files, activates the interface, and restores the
+last working pair when activation fails. See [WireGuard client configuration](wireguard-configuration.md).
+
 VPN mutations are serialized in the FastAPI process. A bounded CLI timeout is followed by a fresh
 provider status check; only a timed-out connect that is still disconnected may trigger the narrow
 NordVPN recovery path. That path restarts the fixed `nordvpnd.service`, performs a health check,

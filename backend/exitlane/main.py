@@ -30,6 +30,7 @@ from exitlane.core import (
     hash_password,
     init,
     set_setting,
+    set_settings,
     setting,
     verify_password,
 )
@@ -42,7 +43,7 @@ from exitlane.settings import (
 from exitlane.providers.nordvpn import provider
 from exitlane.services.diagnostics import run as diagnostics
 from exitlane.services.dashboard import DashboardResponse, build_dashboard, system_status
-from exitlane.services.wireguard import create as create_wireguard
+from exitlane.services import wireguard as wireguard_service
 from exitlane.services.vpn_selection import (
     QUICK_COUNTRIES,
     country_summary,
@@ -80,6 +81,7 @@ SYSTEM_WIREGUARD_DIR = Path("/etc/wireguard")
 _system_started_databases: set[Path] = set()
 _wireguard_observed_state: tuple[bool, bool] | None = None
 _pending_provider_connection: dict | None = None
+_wireguard_generation_lock: asyncio.Lock | None = None
 NORDVPN_HOST_COUNTRY_CODES = {"UK": "GB"}
 
 
@@ -1189,46 +1191,158 @@ async def activate_wireguard_interface(interface: str) -> None:
 @app.post("/api/ingress/wireguard")
 async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
     global _wireguard_observed_state
+    generation_lock = wireguard_generation_lock()
     try:
-        result = await create_wireguard(
-            endpoint=req.endpoint,
-            subnet=req.subnet,
-            dns=req.dns,
-            port=req.port,
-            interface=req.interface,
-            client=req.client,
-        )
+        if generation_lock.locked():
+            return JSONResponse(status_code=409, content={"error": "wireguard_generation_in_progress"})
+        async with generation_lock:
+            result = await wireguard_service.provision(
+                activate=activate_wireguard_interface,
+                endpoint=req.endpoint,
+                subnet=req.subnet,
+                dns=req.dns,
+                port=req.port,
+                interface=req.interface,
+                client=req.client,
+            )
     except ValueError as error:
         raise HTTPException(
             status_code=400,
             detail=str(error),
         ) from error
-    except RuntimeError as error:
+    except wireguard_service.WireGuardConfigurationError as error:
         raise HTTPException(
             status_code=500,
-            detail=str(error),
+            detail=error.code,
         ) from error
 
-    try:
-        await activate_wireguard_interface(
-            req.interface,
-        )
-    except RuntimeError as error:
-        raise HTTPException(
-            status_code=500,
-            detail=str(error),
-        ) from error
-
-    set_setting("wireguard_configured", True)
-    set_setting("wireguard_client_name", req.client)
-    set_setting("wireguard_interface", req.interface)
-    set_setting("setup_current_step", 5)
+    set_settings(
+        {
+            "wireguard_configured": True,
+            "wireguard_client_name": req.client,
+            "wireguard_interface": req.interface,
+            "wireguard_endpoint": req.endpoint,
+            "wireguard_subnet": req.subnet,
+            "wireguard_dns": req.dns,
+            "wireguard_port": req.port,
+            "setup_current_step": 5,
+        }
+    )
 
     record_event("wireguard.configuration_generated", actor=request_actor(request), metadata={"client_name": req.client})
     record_event("wireguard.interface_active", actor=request_actor(request), metadata={"interface": req.interface})
     _wireguard_observed_state = (True, False)
 
     return result
+
+
+def _private_response(content: dict, *, status_code: int = 200) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content=content,
+        headers={"Cache-Control": "no-store, private", "Pragma": "no-cache"},
+    )
+
+
+def wireguard_generation_lock() -> asyncio.Lock:
+    global _wireguard_generation_lock
+    if _wireguard_generation_lock is None:
+        _wireguard_generation_lock = asyncio.Lock()
+    return _wireguard_generation_lock
+
+
+async def _current_wireguard_configuration() -> dict | None:
+    interface = setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE)
+    client = setting("wireguard_client_name", DEFAULT_WIREGUARD_CLIENT)
+    return await wireguard_service.read_current(interface, client)
+
+
+@app.get("/api/ingress/wireguard/config")
+async def current_wireguard_configuration() -> JSONResponse:
+    try:
+        configuration = await _current_wireguard_configuration()
+    except wireguard_service.WireGuardConfigurationError as error:
+        return _private_response({"error": error.code}, status_code=409)
+    if configuration is None:
+        return _private_response({"available": False, "configuration": None})
+    return _private_response(
+        {
+            "available": True,
+            "client_name": configuration["client_name"],
+            "filename": configuration["filename"],
+            "configuration": configuration["client_config"],
+        }
+    )
+
+
+@app.get("/api/ingress/wireguard/config/download")
+async def download_wireguard_configuration() -> Response:
+    try:
+        configuration = await _current_wireguard_configuration()
+    except wireguard_service.WireGuardConfigurationError as error:
+        return _private_response({"error": error.code}, status_code=409)
+    if configuration is None:
+        return _private_response({"error": "wireguard_configuration_missing"}, status_code=404)
+    client = setting("wireguard_client_name", DEFAULT_WIREGUARD_CLIENT)
+    response = FileResponse(
+        path=WG_DIR / f"{client}.conf",
+        media_type="application/x-wireguard-profile",
+        filename="exitlane-wireguard.conf",
+    )
+    response.headers["Cache-Control"] = "no-store, private"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
+@app.post("/api/ingress/wireguard/config/regenerate")
+async def regenerate_wireguard_configuration(request: Request) -> JSONResponse:
+    global _wireguard_observed_state
+    generation_lock = wireguard_generation_lock()
+    if generation_lock.locked():
+        return _private_response({"error": "wireguard_generation_in_progress"}, status_code=409)
+    interface = setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE)
+    client = setting("wireguard_client_name", DEFAULT_WIREGUARD_CLIENT)
+    try:
+        if await wireguard_service.read_current(interface, client) is None:
+            raise wireguard_service.WireGuardConfigurationError(
+                "wireguard_configuration_missing"
+            )
+        parameters = {
+            "endpoint": setting("wireguard_endpoint"),
+            "subnet": setting("wireguard_subnet"),
+            "dns": setting("wireguard_dns"),
+            "port": setting("wireguard_port"),
+            "interface": interface,
+            "client": client,
+        }
+        if not all(parameters.values()):
+            parameters = await wireguard_service.parameters_from_current(interface, client)
+        async with generation_lock:
+            result = await wireguard_service.provision(
+                activate=activate_wireguard_interface,
+                **parameters,
+            )
+    except wireguard_service.WireGuardConfigurationError as error:
+        return _private_response({"error": error.code}, status_code=409 if "invalid" in error.code or "missing" in error.code else 500)
+    except (ValueError, RuntimeError):
+        return _private_response({"error": "wireguard_regeneration_failed"}, status_code=500)
+
+    set_setting("wireguard_configured", True)
+    record_event(
+        "wireguard.configuration_regenerated",
+        actor=request_actor(request),
+        metadata={"client_name": client},
+    )
+    _wireguard_observed_state = (True, False)
+    return _private_response(
+        {
+            "ok": True,
+            "available": True,
+            "client_name": client,
+            "filename": "exitlane-wireguard.conf",
+            "configuration": result["client_config"],
+        }
+    )
 
 
 @app.get("/api/ingress/wireguard/client/{name}")
@@ -1251,6 +1365,7 @@ async def wireguard_client_config(name: str) -> FileResponse:
         path=path,
         media_type="application/x-wireguard-profile",
         filename=f"exitlane-{name}.conf",
+        headers={"Cache-Control": "no-store, private", "Pragma": "no-cache"},
     )
 
 

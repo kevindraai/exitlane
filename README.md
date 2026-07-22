@@ -82,6 +82,7 @@ settings, users, sessions, and generated configuration metadata. NordVPN CLI is 
 provider integration; WireGuard provides ingress from routers and other clients.
 
 See [Architecture](docs/architecture.md), [Authentication](docs/authentication.md),
+[WireGuard configuration management](docs/wireguard-configuration.md),
 [Application state](docs/application-state.md), and
 [Startup lifecycle](docs/startup-lifecycle.md) for the design rationale.
 

@@ -35,6 +35,7 @@ EVENT_DEFINITIONS = {
     "provider.disconnected": ("provider", "info", set()),
     "provider.disconnect_failed": ("provider", "error", {"reason"}),
     "wireguard.configuration_generated": ("wireguard", "info", {"client_name"}),
+    "wireguard.configuration_regenerated": ("wireguard", "warning", {"client_name"}),
     "wireguard.interface_active": ("wireguard", "info", {"interface"}),
     "wireguard.interface_inactive": ("wireguard", "warning", {"interface"}),
     "wireguard.handshake_received": ("wireguard", "info", {"client_name"}),
