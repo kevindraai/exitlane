@@ -5,6 +5,7 @@ import shutil
 import asyncio
 import http.client
 import json
+import logging
 import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,6 +13,21 @@ from typing import Any
 from exitlane.core import command
 
 from .base import Provider
+
+logger = logging.getLogger(__name__)
+SERVER_HOSTNAME_PATTERN = re.compile(r"^([a-z]{2}[0-9]+)\.nordvpn\.com$")
+
+
+def build_connect_target(country_code: str, server_hostname: str | None = None) -> str:
+    """Build a native NordVPN CLI target, never an arbitrary hostname or argument."""
+    if not re.fullmatch(r"[A-Za-z]{2}", country_code):
+        raise ValueError("invalid country code")
+    if server_hostname is None:
+        return country_code.lower()
+    match = SERVER_HOSTNAME_PATTERN.fullmatch(server_hostname)
+    if not match:
+        raise ValueError("invalid NordVPN server hostname")
+    return match.group(1)
 
 
 def parse(output: str) -> dict[str, str]:
@@ -474,10 +490,7 @@ echo "Installatie afgerond"
         args = ["nordvpn", "connect"]
 
         if target:
-            if not re.fullmatch(
-                r"[A-Za-z0-9 _.-]{1,80}",
-                target,
-            ):
+            if not re.fullmatch(r"(?:[A-Za-z]{2}|[a-z]{2}[0-9]+)", target):
                 return {
                     "ok": False,
                     "action": "connect",
@@ -486,20 +499,38 @@ echo "Installatie afgerond"
                     "error_code": "invalid_target",
                 }
 
-            args.append(target)
+            args.append(target.lower())
 
-        rc, _out, _err = await command(
+        rc, _out, err = await command(
             *args,
             timeout=90,
         )
+        if rc != 0:
+            safe_error = re.sub(r"[\r\n\t]+", " ", err).strip()[:300]
+            logger.warning("NordVPN connect failed (exit %s): %s", rc, safe_error)
 
         return {
             "ok": rc == 0,
             "action": "connect",
             "state": "connecting" if rc == 0 else "error",
             "target": target,
+            "exit_code": rc,
             "error_code": None if rc == 0 else "provider_connect_failed",
         }
+
+    async def connect_country(self, country_code: str) -> dict:
+        try:
+            target = build_connect_target(country_code)
+        except ValueError:
+            return {
+                "ok": False,
+                "action": "connect",
+                "state": "error",
+                "target": None,
+                "exit_code": None,
+                "error_code": "invalid_target",
+            }
+        return await self.connect(target)
 
     async def disconnect(self):
         if not shutil.which("nordvpn"):

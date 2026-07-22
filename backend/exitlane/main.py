@@ -798,22 +798,79 @@ async def measure_vpn_country(country_code: str) -> dict:
 
 @app.post("/api/vpn/connect")
 async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
+    global _pending_provider_connection
     code = req.country_code.upper()
-    country_id = _country_id(await _vpn_catalog(), code)
+    catalog = await _vpn_catalog()
+    country = next((item for item in catalog if item["country_code"] == code), None)
+    country_id = country["id"] if country else None
     if country_id is None:
         raise HTTPException(404, "Unsupported country")
-    selected = await select_server(code, await provider.servers(country_id))
-    target = selected["server"] if selected else code
-    result = await connect_nordvpn(Connect(target=target), request)
-    if result.get("ok"):
+
+    indication = await select_server(code, await provider.servers(country_id))
+    actor = request_actor(request)
+    correlation_id = str(uuid.uuid4())
+    country_name = country_summary(code, provider_name=country["provider_name"])["name"]
+    technical = {"country_code": code, "cli_action": "connect_country"}
+    record_event(
+        "provider.connect_started",
+        actor=actor,
+        metadata={"target": country_name, **technical},
+        correlation_id=correlation_id,
+    )
+    result = await provider.connect_country(code)
+    try:
+        status = await provider.status()
+    except Exception:  # Provider internals are intentionally not exposed through the API.
+        status = None
+
+    expected_country = country["provider_name"].casefold()
+    proven = bool(
+        result.get("ok")
+        and status
+        and status.get("connected")
+        and status.get("country", "").casefold() == expected_country
+    )
+    event_technical = {**technical, "exit_code": str(result.get("exit_code"))}
+    if proven:
         remember_country(code)
+        record_event(
+            "provider.connected",
+            actor=actor,
+            metadata={
+                **event_technical,
+                **{
+                    key: status[key]
+                    for key in ("country", "city", "server")
+                    if status.get(key)
+                },
+            },
+            correlation_id=correlation_id,
+        )
+        _pending_provider_connection = None
+    else:
+        reason = (
+            "connection_failed"
+            if not result.get("ok")
+            else "provider_status_unavailable"
+            if status is None or status.get("available") is False
+            else "not_connected"
+            if not status.get("connected")
+            else "wrong_country"
+        )
+        record_event(
+            "provider.connect_failed",
+            actor=actor,
+            metadata={"target": country_name, "reason": reason, **event_technical},
+            correlation_id=correlation_id,
+        )
     return {
         **result,
-        "success": bool(result.get("ok")),
+        "success": proven,
         "country_code": code,
-        "server": selected["server"] if selected else None,
-        "latency_ms": selected["latency_ms"] if selected else None,
-        "status": result.get("state"),
+        "server": status.get("server") if status else None,
+        "latency_ms": indication["latency_ms"] if indication else None,
+        "status": "connected" if proven else "error",
+        "error_code": None if proven else result.get("error_code") or reason,
     }
 
 

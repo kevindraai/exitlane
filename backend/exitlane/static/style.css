@@ -812,16 +812,20 @@ pre {
   min-height: 88px;
   padding: 0.9rem;
   text-align: left;
+  display: grid;
+  grid-template-rows: repeat(4, min-content);
+  align-content: start;
 }
 
-.country-card:hover:not(:disabled), .country-card.active {
+.country-card:hover:not(:disabled), .country-card--active, .country-card--connecting {
   border-color: var(--accent, #3764e8);
 }
 
-.country-card.active { box-shadow: 0 0 0 1px var(--accent, #3764e8); }
-.country-card strong, .country-card span { display: block; }
-.country-card .country-name { margin: 0.25rem 0; }
-.country-card .country-latency { color: var(--muted, #667085); font-size: 0.875rem; }
+.country-card--active { box-shadow: 0 0 0 1px var(--accent, #3764e8); }
+.country-card__flag, .country-card__name, .country-card__latency, .country-card__status { display: block; }
+.country-card__name { margin: 0.25rem 0; }
+.country-card__latency, .country-card__status { color: var(--muted, #667085); font-size: 0.875rem; }
+.country-card__status:empty { min-height: 0; }
 .all-countries { margin-top: 1.25rem; }
 .all-countries summary { cursor: pointer; font-weight: 700; }
 .country-search { display: block; margin-top: 1rem; max-width: 24rem; }

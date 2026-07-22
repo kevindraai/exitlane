@@ -71,25 +71,29 @@ let quickCountryCodes = [];
 function countryCard(country) {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = `country-card${country.is_connected ? " active" : ""}`;
+  button.className = `country-card${country.is_connected ? " country-card--active" : ""}`;
   button.dataset.countryCode = country.country_code;
   button.setAttribute("aria-pressed", String(country.is_connected));
   button.disabled = appState.provider?.available === false;
   const latency = country.latency_ms == null
     ? t("provider.country_selection.measuring", {}, "Measuring…")
     : t("provider.country_selection.latency_ms", { latency: country.latency_ms }, `${country.latency_ms} ms`);
-  const state = country.is_connected
-    ? t("provider.country_selection.connected_latency", { latency }, `Connected · ${latency}`)
-    : latency;
   const flag = document.createElement("span");
+  flag.className = "country-card__flag";
+  flag.setAttribute("aria-hidden", "true");
   flag.textContent = country.flag;
-  const name = document.createElement("strong");
-  name.className = "country-name";
+  const name = document.createElement("span");
+  name.className = "country-card__name";
   name.textContent = country.name;
   const detail = document.createElement("span");
-  detail.className = "country-latency";
-  detail.textContent = state;
-  button.append(flag, name, detail);
+  detail.className = "country-card__latency";
+  detail.textContent = latency;
+  const status = document.createElement("span");
+  status.className = "country-card__status";
+  status.textContent = country.is_connected
+    ? t("provider.status.connected", {}, "Connected")
+    : "";
+  button.append(flag, name, detail, status);
   button.addEventListener("click", () => connectCountry(country.country_code, button));
   return button;
 }
@@ -111,7 +115,10 @@ async function refreshCountries() {
 
 async function connectCountry(countryCode, button) {
   if (["connecting", "disconnecting"].includes(getSlice("providerAction").state)) return;
-  setBusy(button, true, t("provider.action.connecting", {}, "Connecting…"));
+  const statusLabel = button.querySelector(".country-card__status");
+  button.disabled = true;
+  button.classList.add("country-card--connecting");
+  statusLabel.textContent = t("provider.action.connecting", {}, "Connecting…");
   updateSlice("providerAction", { state: "connecting", target: countryCode, error: null });
   try {
     const result = await postJson("/api/vpn/connect", { country_code: countryCode });
@@ -120,10 +127,12 @@ async function connectCountry(countryCode, button) {
     await refreshCountries();
     showMessage(t("provider.notifications.country_connected", { server: result.server || countryCode }, `Connected to ${result.server || countryCode}.`), "success");
   } catch {
+    statusLabel.textContent = t("provider.notifications.connect_failed", { target: countryCode }, `Could not connect to ${countryCode}.`);
     showMessage(t("provider.notifications.connect_failed", { target: countryCode }, `Could not connect to ${countryCode}.`), "error");
   } finally {
     updateSlice("providerAction", { state: "idle" });
-    setBusy(button, false);
+    button.classList.remove("country-card--connecting");
+    button.disabled = appState.provider?.available === false;
   }
 }
 
