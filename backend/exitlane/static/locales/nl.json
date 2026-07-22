@@ -217,6 +217,44 @@
     "import_hint": "Importeer deze configuratie in je router.",
     "endpoint_placeholder": "Automatisch detecteren..."
   },
+  "wireguard_management": {
+    "eyebrow": "WIREGUARD",
+    "title": "WireGuard",
+    "description": "Beheer de actuele routertunnel en clientconfiguratie.",
+    "status_title": "Routertunnel",
+    "client": "Client",
+    "endpoint": "Endpoint",
+    "received": "Ontvangen",
+    "sent": "Verzonden",
+    "refresh": "Opnieuw controleren",
+    "config_eyebrow": "CONFIGURATIE",
+    "config_title": "Clientconfiguratie",
+    "config_description": "Bekijk, download of vervang de actuele routerconfiguratie.",
+    "sensitive_warning": "Deze configuratie bevat een private sleutel. Deel en bewaar haar veilig.",
+    "loading": "Configuratie laden…",
+    "empty": "Er bestaat nog geen WireGuard-clientconfiguratie.",
+    "show": "Bekijken",
+    "hide": "Verbergen",
+    "copy": "Kopiëren",
+    "copied": "WireGuard-configuratie gekopieerd.",
+    "download": "Downloaden",
+    "regenerate": "Opnieuw genereren",
+    "regenerating": "Opnieuw genereren…",
+    "regenerated": "Een nieuwe WireGuard-configuratie is gegenereerd. Importeer deze opnieuw op je apparaten.",
+    "confirm_title": "Clientconfiguratie vervangen?",
+    "confirm_description": "De huidige configuratie wordt ongeldig en moet daarna opnieuw op alle apparaten worden geïmporteerd.",
+    "cancel": "Annuleren",
+    "confirm": "Vervangen",
+    "errors": {
+      "load_failed": "De WireGuard-configuratie kon niet worden geladen.",
+      "copy_failed": "Kopiëren is niet gelukt. Toon en selecteer de configuratie handmatig.",
+      "wireguard_configuration_invalid": "De bestaande WireGuard-configuratie is ongeldig of onvolledig.",
+      "wireguard_configuration_missing": "Er bestaat nog geen WireGuard-clientconfiguratie.",
+      "wireguard_reload_failed": "De nieuwe configuratie kon niet worden geactiveerd. De vorige configuratie is hersteld.",
+      "wireguard_regeneration_failed": "De WireGuard-configuratie kon niet opnieuw worden gegenereerd.",
+      "wireguard_generation_in_progress": "Er wordt al een WireGuard-configuratie gegenereerd."
+    }
+  },
   "step5": {
     "kicker": "Stap 5",
     "title": "Exitlane is bijna gereed",
@@ -341,7 +379,7 @@
     "auth": { "login_succeeded": "Beheerder aangemeld", "login_failed": "Aanmeldpoging mislukt", "logout": "Beheerder afgemeld", "session_expired": "Sessie verlopen", "session_revoked": "Sessie ingetrokken" },
     "settings": { "updated": "Instellingen bijgewerkt: {fields}" },
     "provider": { "connect_started": "Verbinden met {target}", "connected": "Verbonden met {country} {server}", "connect_failed": "Kon niet verbinden met {target}", "recovery_started": "NordVPN-herstel gestart", "recovered": "NordVPN hersteld", "recovery_failed": "NordVPN-herstel mislukt", "recovery_rate_limited": "NordVPN-herstel tijdelijk begrensd", "retry_started": "Verbinding opnieuw proberen", "disconnect_started": "VPN-verbinding verbreken", "disconnected": "VPN-verbinding verbroken", "disconnect_failed": "VPN-verbinding kon niet worden verbroken" },
-    "wireguard": { "configuration_generated": "WireGuard-configuratie gegenereerd voor {client_name}", "interface_active": "WireGuard-interface {interface} is actief geworden", "interface_inactive": "WireGuard-interface {interface} is inactief geworden", "handshake_received": "WireGuard-handshake ontvangen voor {client_name}" },
+    "wireguard": { "configuration_generated": "WireGuard-configuratie gegenereerd voor {client_name}", "configuration_regenerated": "WireGuard-configuratie vervangen voor {client_name}", "interface_active": "WireGuard-interface {interface} is actief geworden", "interface_inactive": "WireGuard-interface {interface} is inactief geworden", "handshake_received": "WireGuard-handshake ontvangen voor {client_name}" },
     "notifications": { "webhook_added": "Webhook {name} toegevoegd" }
   },
   "auth": {

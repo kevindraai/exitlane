@@ -948,6 +948,43 @@ pre {
     flex: 1;
   }
 }
+
+.sensitive-warning {
+  border-left: 3px solid var(--warning, #c98900);
+  background: color-mix(in srgb, var(--warning, #c98900) 10%, transparent);
+  padding: 0.8rem 1rem;
+}
+
+.wireguard-config-actions { flex-wrap: wrap; }
+
+.wireguard-secret-config {
+  max-height: 28rem;
+  overflow: auto;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: #111827;
+  color: #f8fafc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.button.disabled,
+.button[aria-disabled="true"] { opacity: 0.55; pointer-events: none; }
+
+#wireguard-regenerate-dialog {
+  width: min(32rem, calc(100vw - 2rem));
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  background: var(--surface);
+  color: inherit;
+}
+
+#wireguard-regenerate-dialog::backdrop { background: rgb(15 23 42 / 55%); }
 .helper-text {
   display: block;
   margin-top: 6px;

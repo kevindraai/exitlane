@@ -217,6 +217,44 @@
     "import_hint": "Import this configuration into your router.",
     "endpoint_placeholder": "Detect automatically..."
   },
+  "wireguard_management": {
+    "eyebrow": "WIREGUARD",
+    "title": "WireGuard",
+    "description": "Manage the current router tunnel and client configuration.",
+    "status_title": "Router tunnel",
+    "client": "Client",
+    "endpoint": "Endpoint",
+    "received": "Received",
+    "sent": "Sent",
+    "refresh": "Check again",
+    "config_eyebrow": "CONFIGURATION",
+    "config_title": "Client configuration",
+    "config_description": "View, download, or replace the current router configuration.",
+    "sensitive_warning": "This configuration contains a private key. Share and store it securely.",
+    "loading": "Loading configuration…",
+    "empty": "No WireGuard client configuration exists yet.",
+    "show": "Show",
+    "hide": "Hide",
+    "copy": "Copy",
+    "copied": "WireGuard configuration copied.",
+    "download": "Download",
+    "regenerate": "Regenerate",
+    "regenerating": "Regenerating…",
+    "regenerated": "A new WireGuard configuration was generated. Import it on your devices again.",
+    "confirm_title": "Replace the client configuration?",
+    "confirm_description": "The current configuration will become invalid and must then be imported again on every device.",
+    "cancel": "Cancel",
+    "confirm": "Replace",
+    "errors": {
+      "load_failed": "The WireGuard configuration could not be loaded.",
+      "copy_failed": "Copying failed. Show and select the configuration manually.",
+      "wireguard_configuration_invalid": "The existing WireGuard configuration is invalid or incomplete.",
+      "wireguard_configuration_missing": "No WireGuard client configuration exists yet.",
+      "wireguard_reload_failed": "The new configuration could not be activated. The previous configuration was restored.",
+      "wireguard_regeneration_failed": "The WireGuard configuration could not be regenerated.",
+      "wireguard_generation_in_progress": "A WireGuard configuration is already being generated."
+    }
+  },
   "step5": {
     "kicker": "Step 5",
     "title": "Exitlane is almost ready",
@@ -341,7 +379,7 @@
     "auth": { "login_succeeded": "Administrator signed in", "login_failed": "Sign-in attempt failed", "logout": "Administrator signed out", "session_expired": "Session expired", "session_revoked": "Session revoked" },
     "settings": { "updated": "Settings updated: {fields}" },
     "provider": { "connect_started": "Connecting to {target}", "connected": "Connected to {country} {server}", "connect_failed": "Could not connect to {target}", "recovery_started": "NordVPN recovery started", "recovered": "NordVPN recovered", "recovery_failed": "NordVPN recovery failed", "recovery_rate_limited": "NordVPN recovery temporarily rate-limited", "retry_started": "Retrying connection", "disconnect_started": "Disconnecting VPN", "disconnected": "VPN disconnected", "disconnect_failed": "Could not disconnect VPN" },
-    "wireguard": { "configuration_generated": "WireGuard configuration generated for {client_name}", "interface_active": "WireGuard interface {interface} became active", "interface_inactive": "WireGuard interface {interface} became inactive", "handshake_received": "WireGuard handshake received for {client_name}" },
+    "wireguard": { "configuration_generated": "WireGuard configuration generated for {client_name}", "configuration_regenerated": "WireGuard configuration replaced for {client_name}", "interface_active": "WireGuard interface {interface} became active", "interface_inactive": "WireGuard interface {interface} became inactive", "handshake_received": "WireGuard handshake received for {client_name}" },
     "notifications": { "webhook_added": "Webhook {name} added" }
   },
   "auth": {
