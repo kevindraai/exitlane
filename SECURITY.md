@@ -13,10 +13,11 @@ alpha release.
 ## Reporting a vulnerability
 
 Do not report vulnerabilities through public GitHub Issues, discussions, or pull requests.
-Contact the maintainers privately through the security-reporting channel listed in the GitHub
-repository's **Security** tab. Include a clear description, affected version, reproduction steps,
-impact, and any suggested mitigation. Do not include credentials, private keys, or personal data
-that are not required to reproduce the issue.
+Use GitHub private vulnerability reporting when it is available for the repository. Otherwise,
+use a private maintainer-contact method listed in the repository or maintainer profile. Include a
+clear description, affected version, reproduction steps, impact, and any suggested mitigation. Do
+not include credentials, private keys, or personal data that are not required to reproduce the
+issue.
 
 Please allow the maintainers time to acknowledge, investigate, and coordinate a fix before public
 disclosure. Good-faith research and responsible disclosure are appreciated.

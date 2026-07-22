@@ -37,7 +37,8 @@ Debian-based Proxmox LXC.
 
 ### Settings
 
-- Manage general application and dashboard preferences in the WebUI.
+- Configure timezone and dashboard refresh interval in the WebUI.
+- Choose the interface language and light, dark, or system appearance.
 
 ### Notifications
 
@@ -70,8 +71,9 @@ frontend coordinates shared data through central application state, while SQLite
 settings, users, sessions, and generated configuration metadata. NordVPN CLI is the first VPN
 provider integration; WireGuard provides ingress from routers and other clients.
 
-See [Architecture](docs/architecture.md), [Authentication](docs/authentication.md), and
-[Application state](docs/application-state.md) for the design rationale.
+See [Architecture](docs/architecture.md), [Authentication](docs/authentication.md),
+[Application state](docs/application-state.md), and
+[Startup lifecycle](docs/startup-lifecycle.md) for the design rationale.
 
 ## Installation
 

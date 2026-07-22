@@ -1,6 +1,7 @@
 # Proxmox LXC
 
-Tested baseline: Debian 12, privileged LXC and `/dev/net/tun`. Add to `/etc/pve/lxc/<CTID>.conf`:
+Supported baseline: Debian 12 or 13, privileged LXC and `/dev/net/tun`. Add to
+`/etc/pve/lxc/<CTID>.conf`:
 
 ```ini
 lxc.cgroup2.devices.allow: c 10:200 rwm
