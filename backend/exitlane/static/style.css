@@ -166,6 +166,11 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Component styles set display explicitly; hidden must always win. */
+[hidden] {
+  display: none !important;
+}
+
 button:focus-visible,
 input:focus-visible,
 a:focus-visible,

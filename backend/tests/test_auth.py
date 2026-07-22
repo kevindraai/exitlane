@@ -59,7 +59,11 @@ def test_correct_login_returns_safe_user_and_secure_cookie_attributes(client):
     assert stored_hash == hashlib.sha256(token.encode()).hexdigest()
 
     session = client.get("/api/auth/session").json()
-    assert session == {"authenticated": True, "user": {"username": "admin"}}
+    assert session == {
+        "authenticated": True,
+        "user": {"username": "admin"},
+        "setup_complete": False,
+    }
 
 
 @pytest.mark.parametrize(
@@ -92,6 +96,7 @@ def test_logout_invalidates_session(client):
     assert client.get("/api/auth/session").json() == {
         "authenticated": False,
         "user": None,
+        "setup_complete": False,
     }
 
 
@@ -107,6 +112,13 @@ def test_missing_and_expired_session(client):
             (int(time.time()) - 1, hashlib.sha256(token.encode()).hexdigest()),
         )
     assert client.get("/api/auth/session").json()["authenticated"] is False
+
+
+def test_session_exposes_setup_completion_without_requiring_setup_request(client):
+    complete_setup()
+    session = client.get("/api/auth/session").json()
+    assert session["authenticated"] is False
+    assert session["setup_complete"] is True
 
 
 def test_protected_route_without_login_after_setup(client):

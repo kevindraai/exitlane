@@ -13,6 +13,7 @@ import {
   showInlineError,
   showMessage,
 } from "./ui.js";
+import { getSlice } from "./state.js";
 
 let savedGeneral = null;
 let savedSettings = null;
@@ -143,13 +144,11 @@ export function initialiseSettings() {
   form.addEventListener("input", updateSaveState);
   form.addEventListener("change", updateSaveState);
   window.addEventListener("exitlane:viewchange", (event) => {
-    const dashboardActive =
-      select(".app-shell").dataset.applicationMode === "dashboard";
+    const dashboardActive = getSlice("application").mode === "dashboard";
     if (dashboardActive && event.detail.view === "settings") loadSettings();
   });
   window.addEventListener("exitlane:languagechange", () => {
-    const dashboardActive =
-      select(".app-shell").dataset.applicationMode === "dashboard";
+    const dashboardActive = getSlice("application").mode === "dashboard";
     if (dashboardActive && settingsLoaded) renderAbout(savedSettings.about);
   });
 }

@@ -1,9 +1,9 @@
-import { api } from "./api.js";
 import { t } from "./i18n.js";
-import { renderProviderStatus } from "./provider.js";
 import { select, setBusy, setStatusPill } from "./ui.js";
 import { formatBytes, formatDuration, formatRelativeTime as formatRelative } from "./dashboard-format.js";
 import { createDashboardRefreshState } from "./dashboard-refresh-state.js";
+import { getSlice, subscribe } from "./state.js";
+import { refreshDashboardState } from "./lifecycle.js";
 
 const formatRelativeTime = (value) => formatRelative(value, Date.now(), t);
 let lastDashboardData = null;
@@ -16,6 +16,12 @@ function text(id, value) {
 
 function bytesOrUnknown(value) {
   return value == null ? "—" : formatBytes(value);
+}
+
+function renderLastSuccessfulRefresh(now = Date.now()) {
+  const timestamp = getSlice("dashboard").updatedAt;
+  text("#dashboard-refreshed", formatRelative(timestamp, now, t));
+  select("#dashboard-refreshed").dataset.timestamp = timestamp == null ? "" : String(timestamp);
 }
 
 export function renderDashboard(data, { successfulRefresh = true } = {}) {
@@ -61,11 +67,9 @@ export function renderDashboard(data, { successfulRefresh = true } = {}) {
   systemError.textContent = data.system.available ? "" : t("dashboard.system_unavailable", {}, "System status is unavailable.");
   systemError.hidden = data.system.available;
   text("#dashboard-version", `v${data.version}`);
-  text("#dashboard-refreshed", formatRelativeTime(data.generated_at));
+  renderLastSuccessfulRefresh();
   if (successfulRefresh) select("#dashboard-refresh-error").hidden = true;
-  select("#dashboard-refreshed").dataset.timestamp = data.generated_at;
 
-  renderProviderStatus(data.vpn);
   lastDashboardData = data;
   if (successfulRefresh) refreshState.succeed(data);
 }
@@ -74,13 +78,14 @@ export async function refreshDashboard({ signal } = {}) {
   const button = select("#dashboard-refresh");
   setBusy(button, true, t("busy.checking", {}, "Checking…"));
   try {
-    const data = await api("/api/dashboard", { signal });
+    const data = await refreshDashboardState({ signal });
     renderDashboard(data);
     return data;
   } catch (error) {
+    if (error.code === "aborted") throw error;
     refreshState.fail(error.message);
-    if (lastDashboardData?.generated_at) {
-      text("#dashboard-refreshed", formatRelativeTime(lastDashboardData.generated_at));
+    if (getSlice("dashboard").updatedAt) {
+      renderLastSuccessfulRefresh();
     }
     const refreshError = select("#dashboard-refresh-error");
     refreshError.textContent = t("dashboard.refresh_error", { message: error.message }, `Refresh failed: ${error.message}`);
@@ -94,6 +99,21 @@ export async function refreshDashboard({ signal } = {}) {
 export function initialiseDashboard() {
   if (initialised) return;
   initialised = true;
+  subscribe("dashboard", (slice) => {
+    if (slice.data) renderDashboard(slice.data, { successfulRefresh: !slice.error });
+  }, { immediate: true });
+  subscribe("provider", (slice) => {
+    if (lastDashboardData && slice.data) renderDashboard({ ...lastDashboardData, vpn: { ...lastDashboardData.vpn, ...slice.data } }, { successfulRefresh: false });
+  });
+  subscribe("wireguard", (slice) => {
+    if (lastDashboardData && slice.data) renderDashboard({ ...lastDashboardData, wireguard: { ...lastDashboardData.wireguard, ...slice.data } }, { successfulRefresh: false });
+  });
+  window.setInterval(() => {
+    const slice = getSlice("dashboard");
+    if (slice.updatedAt && !select("#view-dashboard").hidden) {
+      renderLastSuccessfulRefresh();
+    }
+  }, 1000);
   window.addEventListener("exitlane:languagechange", () => {
     if (lastDashboardData) renderDashboard(lastDashboardData, { successfulRefresh: false });
     for (const selector of ["#dashboard-refresh", "#dashboard-wg-refresh"]) {

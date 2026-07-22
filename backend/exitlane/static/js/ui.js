@@ -25,17 +25,17 @@ export function setBusy(
     : element.dataset.originalLabel;
 }
 
-export function showMessage(message, type = "info") {
+export function showMessage(message, type = "info", { id = null, duration = 5000 } = {}) {
   const region = select("#toast-region");
-  const toast = document.createElement("div");
+  const toast = id ? region.querySelector(`[data-message-id="${id}"]`) || document.createElement("div") : document.createElement("div");
 
   toast.className = `toast${type === "error" ? " error" : ""}`;
   toast.textContent = message;
-  region.appendChild(toast);
+  if (id) toast.dataset.messageId = id;
+  if (!toast.isConnected) region.appendChild(toast);
 
-  window.setTimeout(() => {
-    toast.remove();
-  }, 5000);
+  if (duration !== null) window.setTimeout(() => toast.remove(), duration);
+  return { close: () => toast.remove() };
 }
 
 export function showInlineError(message, selector = "#wizard-error") {

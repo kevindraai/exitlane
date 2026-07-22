@@ -1,7 +1,8 @@
-import { api } from "./api.js";
 import { formatBytes } from "./dashboard-format.js";
 import { select, setBusy, setStatusPill } from "./ui.js";
 import { t } from "./i18n.js";
+import { getSlice, subscribe } from "./state.js";
+import { refreshWireGuardState } from "./lifecycle.js";
 
 function renderStatus(status) {
   const state = select("#management-wireguard-state");
@@ -35,8 +36,9 @@ export async function refreshManagedWireGuard() {
   const button = select("#management-wireguard-refresh");
   setBusy(button, true, t("busy.checking", {}, "Checking…"));
   try {
-    renderStatus(await api("/api/ingress/wireguard/status"));
+    await refreshWireGuardState();
   } catch (error) {
+    if (error.code === "aborted") return;
     setStatusPill(select("#management-wireguard-state"), t("common.status_error", {}, "Status error"), "danger");
     select("#management-wireguard-message").textContent = error.message;
   } finally {
@@ -48,5 +50,7 @@ export function initialiseWireGuardManagement() {
   const refreshButton = document.querySelector("#management-wireguard-refresh");
   if (!refreshButton) return;
   refreshButton.addEventListener("click", refreshManagedWireGuard);
-  refreshManagedWireGuard();
+  const render = (slice) => { if (slice.data) renderStatus(slice.data); };
+  subscribe("wireguard", render, { immediate: true });
+  window.addEventListener("exitlane:languagechange", () => render(getSlice("wireguard")));
 }

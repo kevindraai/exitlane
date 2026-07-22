@@ -11,7 +11,9 @@ import { refreshSetup } from "./wizard.js";
 import { prepareFinishStep } from "./finish.js";
 import { t } from "./i18n.js";
 
-async function loadDetectedEndpoint() {
+let controlsInitialised = false;
+
+export async function loadDetectedEndpoint() {
   const endpointInput = select("#wg-endpoint");
   const helpText = select("#wg-endpoint-help");
 
@@ -116,7 +118,8 @@ async function copyWireGuardConfig() {
 }
 
 export function initialiseWireGuardControls() {
+  if (controlsInitialised) return;
+  controlsInitialised = true;
   select("#wireguard-form").addEventListener("submit", generateWireGuard);
   select("#wireguard-copy").addEventListener("click", copyWireGuardConfig);
-  loadDetectedEndpoint();
 }

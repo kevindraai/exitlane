@@ -189,7 +189,11 @@
     "callback_url": "Callback-URL",
     "callback_hint": "Plak hier de link achter de knop Continue.",
     "finish_browser_login": "Browserlogin afronden",
-    "token_placeholder": "Plak hier het token"
+    "token_placeholder": "Plak hier het token",
+    "status": { "connected": "Verbonden", "disconnected": "Niet verbonden", "authenticated": "Aangemeld", "signed_out": "Niet aangemeld", "not_installed": "Niet geïnstalleerd" },
+    "action": { "connecting": "Verbinden…", "disconnecting": "Verbinding verbreken…" },
+    "notifications": { "connecting": "Verbinden met {target}…", "connected": "Verbonden met {target} {server}.", "connect_failed": "Kon niet verbinden met {target}.", "disconnecting": "Verbinding verbreken…", "disconnected": "Verbinding verbroken.", "disconnect_failed": "Kon de verbinding niet verbreken." },
+    "errors": { "target_required": "Kies een doel.", "timeout": "De statuscontrole duurde te lang." }
   },
   "step4": {
     "kicker": "Stap 4",
@@ -281,9 +285,13 @@
     },
     "time": {
       "no_handshake": "Geen handshake",
+      "just_now": "zojuist",
       "seconds_ago": "{count} seconden geleden",
+      "minute_ago": "{count} minuut geleden",
       "minutes_ago": "{count} minuten geleden",
+      "hour_ago": "{count} uur geleden",
       "hours_ago": "{count} uur geleden",
+      "day_ago": "{count} dag geleden",
       "days_ago": "{count} dagen geleden"
     },
     "target": "Land, stad of server",

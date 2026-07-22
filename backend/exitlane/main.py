@@ -336,6 +336,7 @@ async def auth_session(request: Request) -> dict:
     return {
         "authenticated": user is not None,
         "user": None if user is None else {"username": user["username"]},
+        "setup_complete": bool(setting("setup_complete", False)),
     }
 
 

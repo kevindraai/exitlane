@@ -1,6 +1,6 @@
-import { api } from "./api.js";
 import { t } from "./i18n.js";
-import { appState } from "./state.js";
+import { appState, subscribe } from "./state.js";
+import { refreshWireGuardState } from "./lifecycle.js";
 import {
   select,
   setStatusPill,
@@ -217,14 +217,8 @@ function renderWireGuardStatus(status) {
 
 export async function refreshWireGuardStatus() {
   try {
-    const status = await api(
-      "/api/ingress/wireguard/status",
-    );
-
-    renderWireGuardStatus(status);
+    await refreshWireGuardState();
   } catch (error) {
-    latestWireGuardStatus = null;
-
     setStatusPill(
       select("#wireguard-connection-state"),
       t(
@@ -243,18 +237,16 @@ export async function refreshWireGuardStatus() {
 }
 
 export function startWireGuardStatusPolling() {
-  window.clearInterval(statusTimer);
-
-  refreshWireGuardStatus();
-
-  statusTimer = window.setInterval(
-    refreshWireGuardStatus,
-    2000,
-  );
+  window.clearTimeout(statusTimer);
+  const poll = async () => {
+    await refreshWireGuardStatus();
+    if (statusTimer !== null) statusTimer = window.setTimeout(poll, 2000);
+  };
+  statusTimer = window.setTimeout(poll, 0);
 }
 
 export function stopWireGuardStatusPolling() {
-  window.clearInterval(statusTimer);
+  window.clearTimeout(statusTimer);
   statusTimer = null;
 }
 
@@ -269,6 +261,9 @@ function rerenderFinishStep() {
 }
 
 export function initialiseFinishControls() {
+  subscribe("wireguard", (slice) => {
+    if (slice.data) renderWireGuardStatus(slice.data);
+  }, { immediate: true });
   select("#finish-copy").addEventListener(
     "click",
     copyConfiguration,
