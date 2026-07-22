@@ -17,6 +17,7 @@ alpha is tested in real networks.
 - WireGuard ingress configuration
 - First-run wizard
 - Generic webhook notifications
+- Structured application Activity log
 
 ## Next
 
@@ -25,7 +26,7 @@ alpha is tested in real networks.
 - Provider abstraction hardening
 - Additional VPN providers
 - Better notification management
-- Logs and diagnostics
+- Extended system logs and diagnostics
 - Appliance and installation polish
 
 ## Later

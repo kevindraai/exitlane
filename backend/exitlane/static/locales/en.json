@@ -318,8 +318,28 @@
     "dashboard": "Dashboard",
     "vpn": "VPN",
     "wireguard": "WireGuard",
+    "activity": "Activity",
     "security": "Security",
     "settings": "Settings"
+  },
+  "activity": {
+    "eyebrow": "ACTIVITY", "title": "Activity", "description": "Important events recorded by Exitlane.",
+    "filters": { "category": "Category", "level": "Level", "all": "All" },
+    "actions": { "refresh": "Refresh", "load_more": "Load more", "reset": "Reset filters" },
+    "status": { "loading": "Loading activity…", "updating": "Updating…", "empty": "No activity has been recorded yet.", "error": "Activity could not be refreshed." },
+    "last_refresh": "Last successful refresh", "details": "Details",
+    "level": { "info": "Info", "warning": "Warning", "error": "Error" },
+    "category": { "auth": "Authentication", "setup": "Setup", "provider": "Provider", "wireguard": "WireGuard", "settings": "Settings", "notifications": "Notifications", "system": "System" },
+    "metadata": { "target": "Target", "country": "Country", "city": "City", "server": "Server", "reason": "Reason", "fields": "Fields", "client_name": "Client", "interface": "Interface", "name": "Name" }
+  },
+  "events": {
+    "system": { "started": "Exitlane started" },
+    "setup": { "completed": "Setup completed" },
+    "auth": { "login_succeeded": "Administrator signed in", "login_failed": "Sign-in attempt failed", "logout": "Administrator signed out", "session_expired": "Session expired", "session_revoked": "Session revoked" },
+    "settings": { "updated": "Settings updated: {fields}" },
+    "provider": { "connect_started": "Connecting to {target}", "connected": "Connected to {country} {server}", "connect_failed": "Could not connect to {target}", "disconnect_started": "Disconnecting VPN", "disconnected": "VPN disconnected", "disconnect_failed": "Could not disconnect VPN" },
+    "wireguard": { "configuration_generated": "WireGuard configuration generated for {client_name}", "interface_active": "WireGuard interface {interface} became active", "interface_inactive": "WireGuard interface {interface} became inactive", "handshake_received": "WireGuard handshake received for {client_name}" },
+    "notifications": { "webhook_added": "Webhook {name} added" }
   },
   "auth": {
     "eyebrow": "AUTHENTICATION",

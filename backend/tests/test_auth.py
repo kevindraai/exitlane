@@ -100,6 +100,20 @@ def test_logout_invalidates_session(client):
     }
 
 
+def test_auth_events_are_protected_and_do_not_enumerate_username(client):
+    client.post("/api/auth/login", json={"username": "does-not-exist", "password": "wrong password"})
+    complete_setup()
+    assert client.get("/api/events").status_code == 401
+    assert login(client).status_code == 200
+    page = client.get("/api/events?category=auth&limit=1").json()
+    assert page["items"][0]["code"] == "auth.login_succeeded"
+    with sqlite3.connect(main.DB) as connection:
+        failure = connection.execute(
+            "SELECT actor_username, metadata_json FROM events WHERE code='auth.login_failed'"
+        ).fetchone()
+    assert failure == (None, '{"reason": "invalid_credentials"}')
+
+
 def test_missing_and_expired_session(client):
     assert client.get("/api/auth/session").json()["authenticated"] is False
     with sqlite3.connect(main.DB) as connection:

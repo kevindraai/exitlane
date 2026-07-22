@@ -1,5 +1,6 @@
 import { api } from "./api.js";
 import { beginRefresh, failRefresh, getSlice, succeedRefresh } from "./state.js";
+import { refreshActivity } from "./activity.js";
 
 export function createDomainPoller({ refresh, isActive, intervalSeconds = 15, setTimer = setTimeout, clearTimer = clearTimeout }) {
   let timer = null;
@@ -78,13 +79,15 @@ export function createApplicationLifecycle({ intervalSeconds, application = () =
   const provider = createDomainPoller({ refresh: refreshProviderState, isActive: () => active("vpn"), intervalSeconds });
   const wireguard = createDomainPoller({ refresh: refreshWireGuardState, isActive: () => active("wireguard"), intervalSeconds });
   const dashboard = createDomainPoller({ refresh: refreshDashboardState, isActive: () => active("dashboard"), intervalSeconds });
+  const activity = createDomainPoller({ refresh: refreshActivity, isActive: () => active("activity"), intervalSeconds: Math.max(intervalSeconds || 15, 15) });
   const sync = () => {
-    for (const poller of [provider, wireguard, dashboard]) poller.start({ immediate: true });
+    for (const poller of [provider, wireguard, dashboard, activity]) poller.start({ immediate: true });
     if (!active("vpn")) provider.stop();
     if (!active("wireguard")) wireguard.stop();
     if (!active("dashboard")) dashboard.stop();
+    if (!active("activity")) activity.stop();
   };
-  const stop = () => [provider, wireguard, dashboard].forEach((poller) => poller.stop());
-  const restart = (seconds) => { intervalSeconds = seconds; [provider, wireguard, dashboard].forEach((poller) => poller.restart(seconds)); sync(); };
-  return { provider, wireguard, dashboard, sync, stop, restart };
+  const stop = () => [provider, wireguard, dashboard, activity].forEach((poller) => poller.stop());
+  const restart = (seconds) => { intervalSeconds = seconds; [provider, wireguard, dashboard].forEach((poller) => poller.restart(seconds)); activity.restart(Math.max(seconds, 15)); sync(); };
+  return { provider, wireguard, dashboard, activity, sync, stop, restart };
 }

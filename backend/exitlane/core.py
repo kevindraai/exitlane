@@ -58,6 +58,21 @@ def init():
             BEGIN
                 DELETE FROM sessions WHERE user_id = NEW.id;
             END;
+            CREATE TABLE IF NOT EXISTS events(
+                id INTEGER PRIMARY KEY,
+                created_at TEXT NOT NULL,
+                level TEXT NOT NULL CHECK(level IN ('info', 'warning', 'error')),
+                category TEXT NOT NULL,
+                code TEXT NOT NULL,
+                actor_user_id INTEGER,
+                actor_username TEXT,
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                correlation_id TEXT
+            );
+            CREATE INDEX IF NOT EXISTS events_created_at_idx ON events(created_at);
+            CREATE INDEX IF NOT EXISTS events_category_idx ON events(category);
+            CREATE INDEX IF NOT EXISTS events_level_idx ON events(level);
+            CREATE INDEX IF NOT EXISTS events_code_idx ON events(code);
             """
         )
 
