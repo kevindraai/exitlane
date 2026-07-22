@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from exitlane import __version__
 from exitlane.core import (
     DB,
+    DATA,
     SettingsStorageError,
     WG_DIR,
     command,
@@ -35,6 +36,7 @@ from exitlane.settings import (
 )
 from exitlane.providers.nordvpn import provider
 from exitlane.services.diagnostics import run as diagnostics
+from exitlane.services.dashboard import DashboardResponse, build_dashboard, system_status
 from exitlane.services.wireguard import create as create_wireguard
 from exitlane.config import (
     DEFAULT_WIREGUARD_CLIENT,
@@ -247,6 +249,16 @@ async def health() -> dict:
         "service": "exitlane",
         "version": __version__,
     }
+
+
+@app.get("/api/dashboard", response_model=DashboardResponse)
+async def dashboard() -> DashboardResponse:
+    return await build_dashboard(
+        provider.status,
+        wireguard_status,
+        __version__,
+        system_status_call=lambda: system_status(DATA),
+    )
 
 
 @app.get("/api/settings")

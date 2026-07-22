@@ -116,6 +116,13 @@ def test_protected_route_without_login_after_setup(client):
     assert response.json() == {"detail": "Authentication required"}
 
 
+def test_dashboard_endpoint_requires_session_after_setup(client):
+    complete_setup()
+    response = client.get("/api/dashboard")
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Authentication required"}
+
+
 def test_protected_post_without_login_has_no_information_leak(client):
     complete_setup()
     response = client.post(

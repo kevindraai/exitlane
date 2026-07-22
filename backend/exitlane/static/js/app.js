@@ -47,22 +47,23 @@ import {
   initialiseSettings,
   loadSettings,
 } from "./settings.js";
+import { initialiseDashboard, refreshDashboard } from "./dashboard.js";
+import { createDashboardPolling } from "./dashboard-polling.js";
 
 let apiState = "checking";
-let providerRefreshTimer = null;
+const dashboardIsActive = () =>
+  select(".app-shell").dataset.applicationMode === "dashboard" &&
+  !select("#view-dashboard").hidden;
 
-function scheduleProviderRefresh(intervalSeconds) {
-  if (providerRefreshTimer !== null) {
-    window.clearInterval(providerRefreshTimer);
-  }
-  frontendConfig.providerRefreshIntervalSeconds = intervalSeconds;
-  providerRefreshTimer = window.setInterval(async () => {
-    try {
-      await refreshProvider();
-    } catch {
-      renderProviderStatusError();
-    }
-  }, intervalSeconds * 1000);
+const dashboardPolling = createDashboardPolling({
+  request: refreshDashboard,
+  isActive: dashboardIsActive,
+  intervalSeconds: frontendConfig.providerRefreshIntervalSeconds,
+});
+
+function syncDashboardPolling() {
+  if (dashboardIsActive()) dashboardPolling.start();
+  else dashboardPolling.stop();
 }
 
 function renderApiStatus() {
@@ -152,6 +153,11 @@ async function refreshApplication() {
   } catch {
     renderProviderStatusError();
   }
+  try {
+    if (dashboardIsActive()) await dashboardPolling.refresh();
+  } catch {
+    // The dashboard exposes this failure locally while the rest of the app remains usable.
+  }
 }
 
 async function initialise() {
@@ -166,6 +172,7 @@ async function initialise() {
 
     initialiseWizardNavigation();
     initialiseSettings();
+    initialiseDashboard();
     initialiseNavigation();
     initialiseProviderControls();
     initialiseWireGuardControls();
@@ -174,8 +181,14 @@ async function initialise() {
     initialiseNotificationControls();
     initialiseAuth(refreshApplication);
 
+    window.addEventListener("exitlane:viewchange", syncDashboardPolling);
+    window.addEventListener("exitlane:modechange", syncDashboardPolling);
+    window.addEventListener("exitlane:authenticationrequired", () => dashboardPolling.stop());
+    select("#dashboard-refresh").addEventListener("click", () => dashboardPolling.refresh().catch(() => {}));
+    select("#dashboard-wg-refresh").addEventListener("click", () => dashboardPolling.refresh().catch(() => {}));
+
     await refreshApplication();
-    scheduleProviderRefresh(frontendConfig.providerRefreshIntervalSeconds);
+    dashboardPolling.restart(frontendConfig.providerRefreshIntervalSeconds);
   } catch (error) {
     console.error(
       "Exitlane initialization failed:",
@@ -195,7 +208,8 @@ async function initialise() {
   }
 
   window.addEventListener("exitlane:settingschange", (event) => {
-    scheduleProviderRefresh(event.detail.providerRefreshIntervalSeconds);
+    frontendConfig.providerRefreshIntervalSeconds = event.detail.providerRefreshIntervalSeconds;
+    dashboardPolling.restart(event.detail.providerRefreshIntervalSeconds);
   });
 }
 

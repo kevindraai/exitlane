@@ -38,22 +38,10 @@ export function renderProviderStatus(status) {
   select("#provider-defaults").disabled = !installed;
   select("#provider-next").disabled = !authenticated;
 
-  renderDashboard(status);
-}
-function setTextIfPresent(
-  selector,
-  value,
-) {
-  const element =
-    document.querySelector(selector);
-
-  if (element) {
-    element.textContent = value;
-  }
+  renderVpnView(status);
 }
 
-
-function renderDashboard(status) {
+function renderVpnView(status) {
   setStatusPill(
     select("#connection-state"),
     status.connected ? "Verbonden" : "Niet verbonden",
@@ -64,27 +52,6 @@ function renderDashboard(status) {
   select("#metric-city").textContent = status.city || "—";
   select("#metric-server").textContent = status.server || "—";
   select("#metric-ip").textContent = status.external_ip || "—";
-setTextIfPresent(
-  "#dashboard-vpn-state",
-  status.connected
-    ? "Connected"
-    : "Not connected",
-);
-
-setTextIfPresent(
-  "#dashboard-vpn-country",
-  status.country || "—",
-);
-
-setTextIfPresent(
-  "#dashboard-vpn-server",
-  status.server || "—",
-);
-
-setTextIfPresent(
-  "#dashboard-external-ip",
-  status.external_ip || "—",
-);
 }
 
 function setProviderInstallLogExpanded(expanded) {

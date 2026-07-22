@@ -1359,6 +1359,97 @@ pre {
   gap: 14px;
 }
 
+.dashboard-health {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+}
+
+.dashboard-health .dashboard-issues {
+  grid-column: 1 / -1;
+}
+
+.status-prominent {
+  min-height: 38px;
+  padding-inline: 16px;
+  font-size: 0.9rem;
+}
+
+.dashboard-issues {
+  margin: 0;
+  padding: 14px 18px 14px 34px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-soft);
+}
+
+.dashboard-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.dashboard-system-card {
+  grid-column: 1 / -1;
+}
+
+.dashboard-card,
+.dashboard-card .metric,
+.dashboard-card strong {
+  min-width: 0;
+}
+
+.dashboard-card .metric strong {
+  overflow-wrap: anywhere;
+}
+
+.dashboard-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dashboard-statusline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.dashboard-statusline .button {
+  margin-left: auto;
+}
+
+@media (max-width: 900px) {
+  .dashboard-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-system-card {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .dashboard-health {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-health .dashboard-issues {
+    grid-column: auto;
+  }
+
+  .dashboard-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-statusline .button {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
 .summary-card {
   min-height: 150px;
   padding: 18px;

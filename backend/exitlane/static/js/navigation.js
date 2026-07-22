@@ -38,6 +38,10 @@ export function setApplicationMode(mode) {
     "has-sidebar",
     mode === "dashboard",
   );
+
+  window.dispatchEvent(new CustomEvent("exitlane:modechange", {
+    detail: { mode },
+  }));
 }
 
 function viewExists(name) {

@@ -730,64 +730,57 @@
      </section>
      <section class="dashboard-panel" hidden="" id="dashboard-panel">
       <section class="app-view" data-view-panel="dashboard" id="view-dashboard">
-       <section class="panel">
-        <div class="panel-heading compact">
-         <div>
-          <p class="eyebrow">
-           DASHBOARD
-          </p>
-          <h1>
-           Exitlane
-          </h1>
-          <p class="lead">
-           Overzicht van je VPN-gateway en verbonden diensten.
-          </p>
-         </div>
-        </div>
-        <div class="dashboard-summary-grid">
-         <article class="summary-card">
-          <span>
-           VPN-status
-          </span>
-          <strong id="dashboard-vpn-state">
-           Status ophalen&hellip;
-          </strong>
-          <button class="summary-link" data-open-view="vpn" type="button">
-           VPN beheren &rarr;
-          </button>
-         </article>
-         <article class="summary-card">
-          <span>
-           Locatie
-          </span>
-          <strong id="dashboard-vpn-country">
-           &mdash;
-          </strong>
-          <small id="dashboard-vpn-server">
-           &mdash;
-          </small>
-         </article>
-         <article class="summary-card">
-          <span>
-           Extern IP
-          </span>
-          <strong id="dashboard-external-ip">
-           &mdash;
-          </strong>
-         </article>
-         <article class="summary-card">
-          <span>
-           WireGuard
-          </span>
-          <strong>
-           Geconfigureerd
-          </strong>
-          <button class="summary-link" data-open-view="wireguard" type="button">
-           Tunnels beheren &rarr;
-          </button>
-         </article>
-        </div>
+       <section aria-live="polite" class="panel dashboard-health">
+        <div><p class="eyebrow" data-i18n="dashboard.overall_health">OVERALL HEALTH</p><h1 data-i18n="dashboard.title">Exitlane status</h1><p class="lead" data-i18n="dashboard.description">Current appliance health at a glance.</p></div>
+        <span class="status-pill status-neutral status-prominent" id="dashboard-health-state" role="status">Checking…</span>
+        <ul class="dashboard-issues" hidden="" id="dashboard-issues"></ul>
        </section>
+       <div class="dashboard-card-grid">
+        <article aria-live="polite" class="panel dashboard-card">
+         <div class="panel-heading compact"><div><p class="eyebrow">VPN</p><h2 data-i18n="dashboard.vpn">VPN</h2></div><span class="status-pill status-neutral" id="dashboard-vpn-pill" role="status">—</span></div>
+         <p class="inline-error" hidden="" id="dashboard-vpn-error"></p>
+         <div class="metric-grid dashboard-metrics">
+          <div class="metric"><span data-i18n="dashboard.country">Country</span><strong id="dashboard-vpn-country">—</strong></div>
+          <div class="metric"><span data-i18n="dashboard.city">City</span><strong id="dashboard-vpn-city">—</strong></div>
+          <div class="metric"><span data-i18n="dashboard.server">Server</span><strong id="dashboard-vpn-server">—</strong></div>
+          <div class="metric"><span data-i18n="dashboard.external_ip">External IP</span><strong id="dashboard-external-ip">—</strong></div>
+          <div class="metric"><span data-i18n="dashboard.current_target">Current target</span><strong id="dashboard-vpn-target">—</strong></div>
+          <div class="metric"><span data-i18n="dashboard.last_status_update">Last status update</span><strong id="dashboard-vpn-updated">—</strong></div>
+         </div>
+         <div class="view-actions"><button class="button button-secondary" data-i18n="dashboard.open_vpn" data-open-view="vpn" type="button">Open VPN page</button></div>
+        </article>
+        <article aria-live="polite" class="panel dashboard-card">
+         <div class="panel-heading compact"><div><p class="eyebrow">WIREGUARD</p><h2>WireGuard</h2></div><span class="status-pill status-neutral" id="dashboard-wg-pill" role="status">—</span></div>
+         <div class="metric-grid dashboard-metrics">
+          <div class="metric"><span data-i18n="dashboard.client">Client</span><strong id="dashboard-wg-client">—</strong></div>
+          <div class="metric"><span data-i18n="dashboard.peer_count">Peer count</span><strong id="dashboard-wg-peers">—</strong></div>
+          <div class="metric"><span data-i18n="dashboard.latest_handshake">Latest handshake</span><strong id="dashboard-wg-handshake">—</strong></div>
+          <div class="metric"><span data-i18n="dashboard.received">Received</span><strong id="dashboard-wg-received">—</strong></div>
+          <div class="metric"><span data-i18n="dashboard.sent">Sent</span><strong id="dashboard-wg-sent">—</strong></div>
+          <div class="metric"><span data-i18n="dashboard.endpoint">Endpoint</span><strong id="dashboard-wg-endpoint">—</strong></div>
+         </div>
+         <div class="view-actions"><button class="button button-secondary" data-i18n="dashboard.open_wireguard" data-open-view="wireguard" type="button">Open WireGuard page</button><button class="button button-secondary" data-i18n="dashboard.refresh" id="dashboard-wg-refresh" type="button">Refresh</button></div>
+        </article>
+        <article aria-live="polite" class="panel dashboard-card dashboard-system-card">
+         <div class="panel-heading compact"><div><p class="eyebrow">SYSTEM</p><h2 data-i18n="dashboard.system">System</h2></div></div>
+         <p class="inline-error" hidden="" id="dashboard-system-error"></p>
+         <div class="metric-grid dashboard-metrics">
+          <div class="metric"><span data-i18n="dashboard.hostname">Linux hostname</span><strong id="dashboard-hostname">—</strong></div>
+          <div class="metric"><span data-i18n="dashboard.cpu">CPU usage</span><strong id="dashboard-cpu">—</strong></div>
+          <div class="metric"><span data-i18n="dashboard.memory">Memory</span><strong id="dashboard-memory">—</strong></div>
+          <div class="metric"><span data-i18n="dashboard.disk">Disk</span><strong id="dashboard-disk">—</strong></div>
+          <div class="metric"><span data-i18n="dashboard.uptime">Uptime</span><strong id="dashboard-uptime">—</strong></div>
+          <div class="metric"><span data-i18n="dashboard.load_average">Load average</span><strong id="dashboard-load">—</strong></div>
+          <div class="metric" hidden="" id="dashboard-temperature-metric"><span data-i18n="dashboard.temperature">Temperature</span><strong id="dashboard-temperature">—</strong></div>
+         </div>
+        </article>
+       </div>
+       <footer aria-live="polite" class="panel dashboard-statusline">
+        <span><span data-i18n="dashboard.version">Version</span> <strong id="dashboard-version">—</strong></span>
+        <span><span data-i18n="dashboard.last_refresh">Last successful refresh</span> <strong id="dashboard-refreshed">—</strong></span>
+        <span class="inline-error" hidden="" id="dashboard-refresh-error"></span>
+        <button class="button button-secondary" data-i18n="dashboard.refresh" id="dashboard-refresh" type="button">Refresh</button>
+       </footer>
       </section>
       <section class="app-view" data-view-panel="vpn" hidden="" id="view-vpn">
        <div class="panel-heading compact">
