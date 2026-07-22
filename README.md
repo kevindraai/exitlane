@@ -13,6 +13,10 @@ Debian-based Proxmox LXC.
 > [!WARNING]
 > Exitlane is alpha software. Do not expose the management interface directly to the internet.
 
+The trusted management network is a deployment assumption, not a substitute for application
+security. See the [hardening guide](docs/security/hardening-guide.md),
+[threat model](docs/security/threat-model.md), and [security policy](SECURITY.md).
+
 ## Features
 
 ### VPN management

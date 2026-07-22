@@ -16,7 +16,7 @@
          <p data-i18n="settings.general.description">Application identity and runtime behavior.</p>
         </div>
        </div>
-       <form class="form-grid" id="settings-general-form">
+       <form class="form-grid" id="settings-general-form" method="post">
         <p class="inline-error" hidden="" id="settings-general-error"></p>
         <label>
          <span data-i18n="settings.general.timezone">Timezone</span>
@@ -72,7 +72,7 @@
          <p data-i18n="settings.notifications.description">Send notifications to an HTTP endpoint.</p>
         </div>
        </div>
-       <form class="form-grid" id="webhook-form">
+       <form class="form-grid" id="webhook-form" method="post">
         <label>
          <span data-i18n="settings.notifications.name">Name</span>
          <input id="webhook-name" required="" value="Home Assistant"/>

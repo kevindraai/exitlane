@@ -18,6 +18,7 @@ alpha is tested in real networks.
 - First-run wizard
 - Generic webhook notifications
 - Structured application Activity log
+- Security-hardening and repeatable security-assurance baseline
 
 ## Next
 
@@ -31,6 +32,7 @@ alpha is tested in real networks.
 
 ## Later
 
+- Independent security review and penetration test
 - High availability
 - Metrics and monitoring integrations
 - API tokens

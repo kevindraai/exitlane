@@ -133,9 +133,12 @@ def list_events(*, limit: int = 50, cursor: int | None = None, category: str | N
     where = " WHERE " + " AND ".join(clauses) if clauses else ""
     try:
         with sqlite3.connect(core.DB) as connection:
+            query = f"""SELECT id, created_at, level, category, code, actor_username,
+                    metadata_json, correlation_id FROM events{where}
+                    ORDER BY id DESC LIMIT ?"""  # nosec B608
+            # `where` contains only fixed column/operator fragments above; every value is bound.
             rows = connection.execute(
-                f"""SELECT id, created_at, level, category, code, actor_username,
-                    metadata_json, correlation_id FROM events{where} ORDER BY id DESC LIMIT ?""",
+                query,
                 (*parameters, limit + 1),
             ).fetchall()
     except sqlite3.Error as error:

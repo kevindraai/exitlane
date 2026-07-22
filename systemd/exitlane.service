@@ -8,10 +8,23 @@ Type=simple
 User=root
 EnvironmentFile=-/etc/default/exitlane
 WorkingDirectory=/opt/exitlane/backend
-ExecStart=/opt/exitlane/venv/bin/uvicorn exitlane.main:app --host ${EXITLANE_HOST} --port ${EXITLANE_PORT}
+ExecStart=/opt/exitlane/venv/bin/uvicorn exitlane.main:app --host ${EXITLANE_HOST} --port ${EXITLANE_PORT} --no-server-header
 Restart=on-failure
 RestartSec=5
 UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=false
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+ReadWritePaths=/etc/exitlane /etc/wireguard /var/lib/exitlane /var/log/exitlane
 
 [Install]
 WantedBy=multi-user.target

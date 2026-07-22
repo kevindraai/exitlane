@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import hashlib
+import base64
 import secrets
 import time
 import uuid
@@ -48,6 +49,8 @@ from exitlane.config import (
     DEFAULT_WIREGUARD_SUBNET,
     MAX_PASSWORD_LENGTH,
     MIN_PASSWORD_LENGTH,
+    MAX_REQUEST_BODY_BYTES,
+    HTTPS_ONLY,
     SESSION_COOKIE_SECURE,
     SESSION_MAX_AGE_SECONDS,
     validate_config,
@@ -186,6 +189,33 @@ SETUP_API_ROUTES = {
 }
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 PROTECTED_APPLICATION_ROUTES = {"/docs", "/redoc", "/openapi.json"}
+SENSITIVE_CACHE_CONTROL = "no-store"
+
+
+def _theme_script_hash() -> str:
+    """Return the CSP hash for the single trusted inline bootstrap script."""
+    index_source = (Path(__file__).parent / "static" / "index.html").read_text(encoding="utf-8")
+    start = index_source.index("<script>") + len("<script>")
+    end = index_source.index("</script>", start)
+    digest = hashlib.sha256(index_source[start:end].encode()).digest()
+    return base64.b64encode(digest).decode()
+
+
+CONTENT_SECURITY_POLICY = "; ".join(
+    (
+        "default-src 'self'",
+        f"script-src 'self' 'sha256-{_theme_script_hash()}'",
+        "style-src 'self'",
+        "img-src 'self' data:",
+        "font-src 'self'",
+        "connect-src 'self'",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+        "manifest-src 'self'",
+    )
+)
 
 
 def session_user(token: str | None) -> dict | None:
@@ -212,7 +242,19 @@ def request_has_trusted_origin(request: Request) -> bool:
     if not source:
         return True
     parsed = urlsplit(source)
-    return parsed.scheme in {"http", "https"} and parsed.netloc == request.headers.get("host")
+    host = request.headers.get("host", "")
+    if not host or any(character in host for character in "\r\n/\\"):
+        return False
+    return (
+        parsed.scheme in {"http", "https"}
+        and bool(parsed.hostname)
+        and parsed.username is None
+        and parsed.password is None
+        and parsed.path in {"", "/"}
+        and not parsed.query
+        and not parsed.fragment
+        and parsed.netloc.casefold() == host.casefold()
+    )
 
 
 def is_setup_client_download(method: str, path: str) -> bool:
@@ -242,7 +284,6 @@ def observe_wireguard_state(*, configured: bool, active: bool, handshake: bool, 
         record_event("wireguard.handshake_received", metadata={"client_name": client})
 
 
-@app.middleware("http")
 async def require_authentication(request: Request, call_next):
     path = request.url.path
     route = (request.method, path)
@@ -267,6 +308,37 @@ async def require_authentication(request: Request, call_next):
     if user or (not setup_complete and (route in SETUP_API_ROUTES or setup_client_download)):
         return await call_next(request)
     return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+
+
+@app.middleware("http")
+async def security_baseline(request: Request, call_next):
+    """Apply request limits and headers at the outermost application boundary."""
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > MAX_REQUEST_BODY_BYTES:
+                response = JSONResponse(status_code=413, content={"detail": "Request body too large"})
+            else:
+                response = await require_authentication(request, call_next)
+        except ValueError:
+            response = JSONResponse(status_code=400, content={"detail": "Invalid Content-Length"})
+    else:
+        response = await require_authentication(request, call_next)
+
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
+    response.headers["Cache-Control"] = SENSITIVE_CACHE_CONTROL
+    if "server" in response.headers:
+        del response.headers["server"]
+    if HTTPS_ONLY:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
+    return response
 
 static_dir = Path(__file__).parent / "static"
 app.mount(
