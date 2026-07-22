@@ -138,6 +138,7 @@ def test_non_timeout_failure_never_restarts_daemon(monkeypatch):
     monkeypatch.setattr(main.provider, "status", status)
     monkeypatch.setattr(main.provider, "recover_daemon", unexpected_recovery)
     monkeypatch.setattr(main, "select_server", lambda *_args: asyncio.sleep(0, result=None))
+    monkeypatch.setattr(main, "country_summary", lambda *_args, **_kwargs: {"name": "Nederland"})
     monkeypatch.setattr(main, "record_event", lambda *_args, **_kwargs: None)
 
     result = asyncio.run(main.connect_vpn_country(main.CountryConnect(country_code="NL"), request()))
@@ -191,6 +192,7 @@ def test_timeout_recovers_and_retries_exactly_once(monkeypatch):
     monkeypatch.setattr(main.provider, "status", status)
     monkeypatch.setattr(main.provider, "recover_daemon", recover)
     monkeypatch.setattr(main, "select_server", lambda *_args: asyncio.sleep(0, result=None))
+    monkeypatch.setattr(main, "country_summary", lambda *_args, **_kwargs: {"name": "Nederland"})
     monkeypatch.setattr(
         main,
         "record_event",
