@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-readonly INSTALLER_VERSION="0.1.0-alpha.1"
+readonly INSTALLER_VERSION="0.2.0-alpha.1"
 
 # De repository waarin dit script staat.
 SOURCE_DIR="$(
