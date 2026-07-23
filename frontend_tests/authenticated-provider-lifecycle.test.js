@@ -10,22 +10,34 @@ const appUrl = new URL("../backend/exitlane/static/js/app.js", import.meta.url);
 const authUrl = new URL("../backend/exitlane/static/js/auth.js", import.meta.url);
 
 test("protected provider data is gated by dashboard mode and authentication", () => {
+  const signedIn = { data: { management: {
+    authentication: { state: "signed_in" },
+    capabilities: { can_select_location: true },
+  } } };
   assert.equal(shouldLoadAuthenticatedProviderData(
     { mode: "login" },
-    { data: { authenticated: false } },
+    { data: { authenticated: false } }, signedIn,
   ), false);
   assert.equal(shouldLoadAuthenticatedProviderData(
     { mode: "wizard" },
-    { data: { authenticated: false } },
+    { data: { authenticated: false } }, signedIn,
   ), false);
   assert.equal(shouldLoadAuthenticatedProviderData(
-    { mode: "dashboard" },
-    { data: { authenticated: false } },
+    { mode: "dashboard", activeView: "vpn" },
+    { data: { authenticated: false } }, signedIn,
   ), false);
   assert.equal(shouldLoadAuthenticatedProviderData(
-    { mode: "dashboard" },
-    { data: { authenticated: true } },
+    { mode: "dashboard", activeView: "vpn" },
+    { data: { authenticated: true } }, signedIn,
   ), true);
+  assert.equal(shouldLoadAuthenticatedProviderData(
+    { mode: "dashboard", activeView: "vpn" },
+    { data: { authenticated: true } },
+    { data: { management: {
+      authentication: { state: "signed_out" },
+      capabilities: { can_select_location: false },
+    } } },
+  ), false);
 });
 
 test("provider controls do not load countries before authenticated activation", async () => {

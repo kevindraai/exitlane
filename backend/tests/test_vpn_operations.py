@@ -127,7 +127,12 @@ def test_non_timeout_failure_never_restarts_daemon(monkeypatch):
 
     async def status(*, timeout):
         assert timeout == 6
-        return {"available": True, "connected": False, "state": "disconnected"}
+        return {
+            "available": True,
+            "authenticated": True,
+            "connected": False,
+            "state": "disconnected",
+        }
 
     async def unexpected_recovery():
         pytest.fail("recovery must only run after a connect timeout")
@@ -167,9 +172,21 @@ def test_timeout_recovers_and_retries_exactly_once(monkeypatch):
 
     statuses = iter(
         [
-            {"available": True, "connected": False, "state": "disconnected"},
             {
                 "available": True,
+                "authenticated": True,
+                "connected": False,
+                "state": "disconnected",
+            },
+            {
+                "available": True,
+                "authenticated": True,
+                "connected": False,
+                "state": "disconnected",
+            },
+            {
+                "available": True,
+                "authenticated": True,
                 "connected": True,
                 "state": "connected",
                 "country": "Netherlands",

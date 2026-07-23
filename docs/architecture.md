@@ -43,8 +43,11 @@ router-specific logic in the core.
 
 Provider status keeps installation, authentication, and tunnel connection as separate states and
 includes backend-determined capabilities. The capability model currently exposes sign-in,
-sign-out, connect, and disconnect decisions and reserves `can_manage_killswitch`, which remains
-`false`. Killswitch management is intentionally outside the current scope: enabling it later
+sign-out, connect, disconnect, and location-selection decisions. The VPN view remains visible
+while signed out, but its provider-dependent controls and data loaders stay inert until
+`authentication.state` is `signed_in` and `can_select_location` permits them. The backend enforces
+the same boundary before catalog, latency, server, or connection work. The model reserves
+`can_manage_killswitch`, which remains `false`. Killswitch management is intentionally outside the current scope: enabling it later
 requires separate security, routing, DNS, failure-mode, and privilege design rather than only a UI
 toggle.
 

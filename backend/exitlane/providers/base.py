@@ -25,6 +25,7 @@ class Provider(ABC):
             "can_sign_out": False,
             "can_connect": False,
             "can_disconnect": False,
+            "can_select_location": False,
             "can_manage_killswitch": False,
         }
 

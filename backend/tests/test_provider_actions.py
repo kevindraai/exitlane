@@ -86,6 +86,7 @@ Current technology: NORDLYNX""", ""
             "can_sign_out": True,
             "can_connect": False,
             "can_disconnect": True,
+            "can_select_location": True,
             "can_manage_killswitch": False,
         },
         "error_code": None,
@@ -109,6 +110,8 @@ def test_signed_out_status_has_distinct_authentication_and_connection_states(mon
     assert management["connection"]["state"] == "disconnected"
     assert management["capabilities"]["can_sign_in"] is True
     assert management["capabilities"]["can_sign_out"] is False
+    assert management["capabilities"]["can_disconnect"] is False
+    assert management["capabilities"]["can_select_location"] is False
     assert management["capabilities"]["can_manage_killswitch"] is False
 
 

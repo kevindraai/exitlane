@@ -846,6 +846,61 @@ pre {
   gap: 10px;
 }
 
+.vpn-management-stage {
+  min-height: 20rem;
+  position: relative;
+}
+
+.vpn-provider-controls {
+  transition: opacity 160ms ease;
+}
+
+.vpn-provider-controls[aria-disabled="true"] {
+  opacity: 0.32;
+  pointer-events: none;
+  user-select: none;
+}
+
+.vpn-provider-blocker {
+  align-items: start;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  display: grid;
+  inset: 0;
+  padding: clamp(1rem, 4vw, 2rem);
+  place-content: center;
+  position: absolute;
+  text-align: center;
+  z-index: 2;
+}
+
+.vpn-provider-blocker[hidden] {
+  display: none;
+}
+
+.vpn-provider-blocker > div {
+  max-width: 34rem;
+}
+
+.vpn-provider-blocker h3 {
+  margin-bottom: 0.5rem;
+}
+
+.vpn-provider-blocker p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.vpn-provider-blocker .view-actions {
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.vpn-provider-blocker[data-state="unavailable"] {
+  border-color: var(--danger);
+}
+
 .country-heading {
   align-items: end;
   display: flex;

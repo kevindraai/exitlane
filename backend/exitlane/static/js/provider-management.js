@@ -22,6 +22,26 @@ export function providerManagementView(status = {}) {
     errorCode: management.error_code || status.error_code || null,
     canSignIn: capabilities.can_sign_in === true,
     canSignOut: capabilities.can_sign_out === true,
+    canConnect: capabilities.can_connect === true,
+    canDisconnect: capabilities.can_disconnect === true,
+    canSelectLocation: capabilities.can_select_location === true,
     canManageKillswitch: capabilities.can_manage_killswitch === true,
+  };
+}
+
+export function vpnProviderAccess(status = {}) {
+  const view = providerManagementView(status);
+  const transient = new Set(["signing_in", "signing_out"]);
+  let state = view.authenticationState;
+  if (view.errorCode === "daemon_unavailable" || state === "unavailable") state = "unavailable";
+  if (!["signed_in", "signed_out", "unavailable", "unknown", "signing_in", "signing_out"].includes(state)) {
+    state = "unknown";
+  }
+  const inconsistent = state === "signed_out" && view.connectionState === "connected";
+  return {
+    ...view,
+    state: inconsistent ? "unknown" : state,
+    blocked: state !== "signed_in" || inconsistent,
+    busy: transient.has(state),
   };
 }

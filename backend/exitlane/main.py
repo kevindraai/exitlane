@@ -933,6 +933,16 @@ async def _fresh_vpn_status() -> dict:
         )
 
 
+async def _require_provider_authentication() -> dict:
+    status = await _fresh_vpn_status()
+    authentication_state = _provider_authentication_state(status)
+    if authentication_state == "signed_out":
+        raise HTTPException(status_code=409, detail="provider_authentication_required")
+    if authentication_state != "signed_in":
+        raise HTTPException(status_code=409, detail="provider_state_unknown")
+    return status
+
+
 def _action_conflict() -> JSONResponse:
     operation = vpn_operations.snapshot()
     return JSONResponse(
@@ -950,7 +960,8 @@ async def vpn_status() -> dict:
 
 @app.get("/api/vpn/countries")
 async def vpn_countries() -> dict:
-    catalog, vpn = await asyncio.gather(_vpn_catalog(), _fresh_vpn_status())
+    vpn = await _require_provider_authentication()
+    catalog = await _vpn_catalog()
     connected = vpn["country_code"]
     codes = [item["country_code"] for item in catalog]
     last = setting("vpn.last_country")
@@ -971,6 +982,7 @@ async def vpn_countries() -> dict:
 
 @app.get("/api/vpn/countries/{country_code}/servers")
 async def vpn_country_servers(country_code: str) -> dict:
+    await _require_provider_authentication()
     code = country_code.upper()
     country_id = _country_id(await _vpn_catalog(), code)
     if country_id is None:
@@ -980,6 +992,7 @@ async def vpn_country_servers(country_code: str) -> dict:
 
 @app.post("/api/vpn/countries/{country_code}/measure")
 async def measure_vpn_country(country_code: str) -> dict:
+    await _require_provider_authentication()
     if vpn_operations.snapshot()["state"] in vpn_operations.ACTIVE_STATES:
         return _action_conflict()
     code = country_code.upper()
@@ -994,6 +1007,7 @@ async def measure_vpn_country(country_code: str) -> dict:
 @app.post("/api/vpn/connect")
 async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
     global _pending_provider_connection
+    await _require_provider_authentication()
     code = req.country_code.upper()
     catalog = await _vpn_catalog()
     country = next((item for item in catalog if item["country_code"] == code), None)
@@ -1151,6 +1165,7 @@ async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
 
 @app.post("/api/vpn/disconnect")
 async def disconnect_vpn(request: Request) -> dict:
+    await _require_provider_authentication()
     try:
         vpn_operations.begin("disconnecting", timeout=25)
     except vpn_operations.VPNActionInProgress:
@@ -1192,6 +1207,7 @@ async def disconnect_vpn(request: Request) -> dict:
 @app.post("/api/providers/nordvpn/connect")
 async def connect_nordvpn(req: Connect, request: Request) -> dict:
     global _pending_provider_connection
+    await _require_provider_authentication()
     if req.target and re.fullmatch(r"[A-Za-z]{2}", req.target):
         return await connect_vpn_country(CountryConnect(country_code=req.target), request)
     try:

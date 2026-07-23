@@ -57,6 +57,7 @@ def test_success_requires_status_and_reports_actual_server(monkeypatch):
         monkeypatch,
         status={
             "available": True,
+            "authenticated": True,
             "connected": True,
             "country": "Netherlands",
             "city": "Amsterdam",
@@ -79,7 +80,13 @@ def test_success_requires_status_and_reports_actual_server(monkeypatch):
 def test_exit_zero_without_connected_status_is_failure(monkeypatch):
     calls, events = configure(
         monkeypatch,
-        status={"available": True, "connected": False, "country": "", "server": ""},
+        status={
+            "available": True,
+            "authenticated": True,
+            "connected": False,
+            "country": "",
+            "server": "",
+        },
     )
 
     result = asyncio.run(main.connect_vpn_country(main.CountryConnect(country_code="NL"), request()))

@@ -207,7 +207,16 @@ class NordVPN(Provider):
                 and authentication_state == "signed_in"
                 and connection_state == "disconnected"
             ),
-            "can_disconnect": available and connection_state == "connected",
+            "can_disconnect": (
+                available
+                and authentication_state == "signed_in"
+                and connection_state == "connected"
+            ),
+            "can_select_location": (
+                available
+                and authentication_state == "signed_in"
+                and connection_state in {"connected", "disconnected"}
+            ),
             # Deliberately reserved for a later security/networking design.
             "can_manage_killswitch": False,
         }

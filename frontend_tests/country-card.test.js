@@ -18,12 +18,17 @@ test("country card keeps stable child markup while connecting", async () => {
 
 test("disconnect and provider mutations follow fresh operation state", () => {
   assert.equal(providerControlState({ connected: false }, { state: "idle" }).disconnectDisabled, true);
-  assert.deepEqual(providerControlState({ connected: true }, { state: "recovering" }), {
+  const connected = { connected: true, management: {
+    authentication: { state: "signed_in" },
+    connection: { state: "connected" },
+    capabilities: { can_disconnect: true, can_select_location: true },
+  } };
+  assert.deepEqual(providerControlState(connected, { state: "recovering" }), {
     reconnectDisabled: true,
     disconnectDisabled: true,
     measureDisabled: true,
   });
-  assert.equal(providerControlState({ connected: true }, { state: "connected" }).disconnectDisabled, false);
+  assert.equal(providerControlState(connected, { state: "connected" }).disconnectDisabled, false);
 });
 
 test("only fresh provider status marks a country as connected", () => {
