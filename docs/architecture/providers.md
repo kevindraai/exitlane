@@ -26,6 +26,11 @@ Metadata creates sidebar entries, Overview cards, provider headings, and wizard 
 status and polling start only while the authenticated provider view is active; logout/session
 expiry stops pollers and clears the catalog and provider slices.
 
+Provider icon metadata is a local Lucide identifier, not a URL or SVG fragment. The frontend
+validates it against the allowlist in `static/js/icons.js` and uses `shield-check` as the safe
+fallback. ExitLane ships only the selected Lucide 1.26.0 paths required by the vanilla frontend;
+license and source details are recorded in `THIRD_PARTY_NOTICES.md`.
+
 ## Adding a provider
 
 1. Implement `Provider` in `backend/exitlane/providers/` and provide local, non-secret metadata.

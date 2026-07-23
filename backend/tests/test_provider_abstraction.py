@@ -82,7 +82,7 @@ def test_provider_catalog_exposes_safe_metadata_and_capabilities(client, monkeyp
     assert catalog.status_code == 200
     item = catalog.json()["providers"][0]
     assert item["id"] == "nordvpn"
-    assert item["icon"] == "provider-nordvpn"
+    assert item["icon"] == "shield-check"
     assert not {"token", "credential", "secret", "password"} & item.keys()
     assert item["status"]["management"]["authentication"]["state"] == "signed_in"
     assert item["status"]["management"]["connection"]["state"] == "disconnected"

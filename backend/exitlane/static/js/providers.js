@@ -1,5 +1,6 @@
 import { api } from "./api.js";
 import { localisedCountryName } from "./country-format.js";
+import { createIcon, renderIcon, resolveIconName, statusIconName } from "./icons.js";
 import { getCurrentLanguage, t } from "./i18n.js";
 import { showProviderView, showView } from "./navigation.js";
 import { providerManagementView } from "./provider-management.js";
@@ -101,7 +102,7 @@ export function providerOverviewView(provider = {}) {
     id: provider.id || null,
     displayName: provider.display_name || "",
     description: provider.description || "",
-    icon: provider.icon || "provider-generic",
+    icon: resolveIconName(provider.icon),
     active: provider.active === true,
     authenticationState: management.authenticationState,
     connectionState: management.connectionState,
@@ -155,9 +156,8 @@ function createOverviewCard(provider) {
   header.className = "provider-overview-card__header";
   const icon = document.createElement("span");
   icon.className = "provider-overview-card__icon";
-  icon.dataset.icon = view.icon;
   icon.setAttribute("aria-hidden", "true");
-  icon.textContent = "◇";
+  icon.append(createIcon(view.icon));
   const identity = document.createElement("div");
   const name = document.createElement("h2");
   name.textContent = view.displayName;
@@ -167,15 +167,27 @@ function createOverviewCard(provider) {
   const badge = document.createElement("span");
   badge.className = `provider-overview-status provider-overview-status--${view.statusTone}`;
   badge.dataset.status = view.connectionDisplayState;
-  badge.textContent = overviewStatusLabel(view.connectionDisplayState);
+  const badgeIcon = createIcon(
+    statusIconName(view.connectionDisplayState),
+    { className: ["connecting", "disconnecting"].includes(view.connectionDisplayState) ? "lucide-icon--spin" : "" },
+  );
+  const badgeText = document.createElement("span");
+  badgeText.textContent = overviewStatusLabel(view.connectionDisplayState);
+  badge.append(badgeIcon, badgeText);
   header.append(icon, identity, badge);
 
   const authentication = document.createElement("div");
   authentication.className = "provider-overview-authentication";
   const authenticationLabel = document.createElement("span");
-  authenticationLabel.textContent = t("vpn.overview.authentication", {}, "Authentication");
+  authenticationLabel.append(
+    createIcon("user-round-check"),
+    document.createTextNode(t("vpn.overview.authentication", {}, "Authentication")),
+  );
   const authenticationValue = document.createElement("strong");
-  authenticationValue.textContent = overviewStatusLabel(view.authenticationState);
+  authenticationValue.append(
+    createIcon(statusIconName(view.authenticationState)),
+    document.createTextNode(overviewStatusLabel(view.authenticationState)),
+  );
   authentication.append(authenticationLabel, authenticationValue);
 
   const grid = document.createElement("dl");
@@ -183,7 +195,17 @@ function createOverviewCard(provider) {
   for (const field of view.fields) {
     const item = document.createElement("div");
     const label = document.createElement("dt");
-    label.textContent = overviewFieldLabel(field.key);
+    const fieldIcons = {
+      location: "map-pinned",
+      server: "server",
+      external_ip: "globe",
+      latency: "gauge",
+      connected_since: "history",
+    };
+    label.append(
+      createIcon(fieldIcons[field.key] || "info"),
+      document.createTextNode(overviewFieldLabel(field.key)),
+    );
     const value = document.createElement("dd");
     value.textContent = field.value;
     item.append(label, value);
@@ -281,6 +303,10 @@ function renderProviderNavigation(slice = getSlice("providers")) {
   const toggle = select("#vpn-navigation-toggle");
   const expanded = providerViewActive || application.activeView === "vpn";
   toggle.setAttribute("aria-expanded", String(expanded));
+  renderIcon(
+    select("#vpn-navigation-toggle .sidebar-group-chevron"),
+    expanded ? "chevron-down" : "chevron-right",
+  );
   select("#vpn-navigation-items").hidden = !expanded;
   navigation.replaceChildren();
   overview.replaceChildren();
@@ -356,6 +382,10 @@ export function initialiseProviders() {
     const expanded = toggle.getAttribute("aria-expanded") !== "true";
     toggle.setAttribute("aria-expanded", String(expanded));
     select("#vpn-navigation-items").hidden = !expanded;
+    renderIcon(
+      select("#vpn-navigation-toggle .sidebar-group-chevron"),
+      expanded ? "chevron-down" : "chevron-right",
+    );
   });
   select("#provider-token-form").addEventListener("submit", authenticateProvider);
   select("#provider-end-session").addEventListener("click", () => {

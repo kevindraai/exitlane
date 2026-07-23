@@ -60,7 +60,7 @@ const provider = ({
   id: "example-vpn",
   display_name: "Example VPN",
   description: "Provider supplied description",
-  icon: "provider-example",
+  icon: "server",
   active: true,
   status: {
     installed: true,
@@ -92,7 +92,7 @@ test("connected overview exposes provider metadata, status and reliable optional
   }));
   assert.equal(view.displayName, "Example VPN");
   assert.equal(view.description, "Provider supplied description");
-  assert.equal(view.icon, "provider-example");
+  assert.equal(view.icon, "server");
   assert.equal(view.state, "connected");
   assert.equal(view.statusTone, "success");
   assert.deepEqual(view.fields.map(({ key }) => key), [
@@ -145,10 +145,12 @@ test("overview omits missing optional values and contains no provider-specific l
   const view = providerOverviewView({
     id: "minimal",
     display_name: "Minimal",
+    icon: "<svg onload=alert(1)>",
     status: {},
   });
   assert.equal(view.fields.length, 0);
   assert.equal(view.state, "unknown");
+  assert.equal(view.icon, "shield-check");
 
   const source = await read("../backend/exitlane/static/js/providers.js");
   const overviewStart = source.indexOf("export function providerOverviewView");

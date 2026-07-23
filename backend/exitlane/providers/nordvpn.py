@@ -195,7 +195,7 @@ class NordVPN(Provider):
         display_name=display_name,
         short_name="NordVPN",
         description="NordVPN Linux client",
-        icon="provider-nordvpn",
+        icon="shield-check",
     )
 
     def capabilities(

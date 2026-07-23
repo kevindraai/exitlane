@@ -59,6 +59,7 @@ import { runColdStart } from "./startup.js";
 import { getSlice, subscribe } from "./state.js";
 import { initialiseActivity } from "./activity.js";
 import { initialiseProviders, loadProviders } from "./providers.js";
+import { initialiseIcons } from "./icons.js";
 
 let apiState = "checking";
 const dashboardIsActive = () =>
@@ -165,6 +166,7 @@ async function initialise() {
   try {
     initialiseColorScheme();
     await initialiseI18n();
+    initialiseIcons();
 
     window.addEventListener(
       "exitlane:languagechange",

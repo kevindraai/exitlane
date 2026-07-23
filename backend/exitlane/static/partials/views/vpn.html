@@ -16,7 +16,7 @@
         <div class="panel-heading compact">
          <div>
           <p class="eyebrow" data-i18n="provider.management.authentication_eyebrow">AUTHENTICATION</p>
-          <h2 data-i18n="provider.management.authentication_title">Provider authentication</h2>
+          <h2 class="heading-with-icon"><span aria-hidden="true" data-lucide-icon="user-round-check"></span><span data-i18n="provider.management.authentication_title">Provider authentication</span></h2>
          </div>
         </div>
         <div class="provider-management-status-region">
@@ -27,7 +27,7 @@
         <div hidden="" id="provider-signed-in">
          <p data-i18n="provider.management.signed_in_limitation">This provider is signed in. End the current session before supplying another token.</p>
          <p class="sensitive-warning" data-i18n="provider.management.sign_out_warning">Ending the provider session also ends its active VPN tunnel.</p>
-         <button class="button button-danger" data-i18n="provider.management.end_session" id="provider-end-session" type="button">End current session</button>
+         <button class="button button-danger" id="provider-end-session" type="button"><span aria-hidden="true" data-lucide-icon="log-out"></span><span data-i18n="provider.management.end_session">End current session</span></button>
         </div>
         <form class="form-grid" id="provider-token-form" method="post">
          <p class="inline-error" hidden="" id="provider-token-error" role="alert"></p>
@@ -55,7 +55,7 @@
           <h3 id="vpn-provider-blocker-title"></h3>
           <p id="vpn-provider-blocker-description"></p>
           <div class="view-actions">
-           <button class="button button-primary" data-i18n="provider.access.go_to_sign_in" id="vpn-provider-go-to-sign-in" type="button">Go to sign in</button>
+           <button class="button button-primary" id="vpn-provider-go-to-sign-in" type="button"><span aria-hidden="true" data-lucide-icon="log-in"></span><span data-i18n="provider.access.go_to_sign_in">Go to sign in</span></button>
            <button class="button button-secondary" data-i18n="provider.access.retry" hidden="" id="vpn-provider-retry" type="button">Retry</button>
           </div>
          </div>
@@ -63,39 +63,39 @@
         <div aria-disabled="false" class="vpn-provider-controls" id="vpn-provider-controls">
        <div class="metric-grid" id="provider-metrics">
         <div class="metric">
-         <span data-i18n="dashboard.country">
+         <span class="metric-label"><span aria-hidden="true" data-lucide-icon="map-pinned"></span><span data-i18n="dashboard.country">
           Land
-         </span>
+         </span></span>
          <strong id="metric-country">
           &mdash;
          </strong>
         </div>
         <div class="metric">
-         <span data-i18n="dashboard.city">
+         <span class="metric-label"><span aria-hidden="true" data-lucide-icon="map-pinned"></span><span data-i18n="dashboard.city">
           Stad
-         </span>
+         </span></span>
          <strong id="metric-city">
           &mdash;
          </strong>
         </div>
         <div class="metric">
-         <span data-i18n="dashboard.server">
+         <span class="metric-label"><span aria-hidden="true" data-lucide-icon="server"></span><span data-i18n="dashboard.server">
           Server
-         </span>
+         </span></span>
          <strong id="metric-server">
           &mdash;
          </strong>
         </div>
         <div class="metric">
-         <span data-i18n="dashboard.external_ip">
+         <span class="metric-label"><span aria-hidden="true" data-lucide-icon="globe"></span><span data-i18n="dashboard.external_ip">
           Extern IP
-         </span>
+         </span></span>
          <strong id="metric-ip">
           &mdash;
          </strong>
         </div>
         <div class="metric">
-         <span data-i18n="provider.country_selection.latency">Latency</span>
+         <span class="metric-label"><span aria-hidden="true" data-lucide-icon="gauge"></span><span data-i18n="provider.country_selection.latency">Latency</span></span>
          <strong id="metric-latency">
           &mdash;
          </strong>
