@@ -43,6 +43,7 @@ class FakeNft:
 def database(tmp_path, monkeypatch):
     monkeypatch.setattr(core, "DATA", tmp_path)
     monkeypatch.setattr(core, "DB", tmp_path / "exitlane.db")
+    monkeypatch.setattr(core, "WG_DIR", tmp_path / "wireguard")
     core.init()
 
 
