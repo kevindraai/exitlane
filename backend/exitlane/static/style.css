@@ -1084,15 +1084,173 @@ pre {
 .provider-choice-list {
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
 }
 
-.provider-overview-card,
 .provider-choice {
   display: grid;
   gap: 0.4rem;
   color: inherit;
   text-align: left;
+}
+
+.vpn-overview-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-bottom: 1.25rem;
+}
+
+.vpn-overview-summary > div {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface-translucent);
+}
+
+.vpn-overview-summary span,
+.provider-overview-authentication span,
+.provider-overview-status-grid dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.provider-overview-card {
+  display: grid;
+  gap: 1rem;
+  padding: 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.provider-overview-card__header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  align-items: start;
+}
+
+.provider-overview-card__header h2,
+.provider-overview-card__header p {
+  margin: 0;
+}
+
+.provider-overview-card__header p {
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.provider-overview-card__icon {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid var(--accent-border-soft);
+  border-radius: 12px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-size: 1.25rem;
+}
+
+.provider-overview-status {
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.provider-overview-status--success {
+  color: var(--success);
+  border-color: var(--success-border);
+  background: var(--success-soft);
+}
+
+.provider-overview-status--warning {
+  color: var(--warning);
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+}
+
+.provider-overview-status--busy,
+.provider-overview-status--info {
+  color: var(--accent);
+  border-color: var(--accent-border-soft);
+  background: var(--accent-soft);
+}
+
+.provider-overview-status--busy::before {
+  content: "◌ ";
+}
+
+.provider-overview-authentication {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.provider-overview-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.provider-overview-status-grid > div {
+  min-width: 0;
+}
+
+.provider-overview-status-grid dt,
+.provider-overview-status-grid dd {
+  margin: 0;
+}
+
+.provider-overview-status-grid dd {
+  margin-top: 0.2rem;
+  overflow-wrap: anywhere;
+}
+
+.provider-overview-card__footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: auto;
+}
+
+@media (max-width: 800px) {
+  .vpn-overview-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 650px) {
+  .provider-overview-list,
+  .provider-choice-list,
+  .vpn-overview-summary,
+  .provider-overview-status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .provider-overview-card__header {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .provider-overview-status {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .provider-overview-card__footer .button {
+    width: 100%;
+  }
 }
 
 .provider-authentication-card {

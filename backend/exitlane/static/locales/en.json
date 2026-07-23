@@ -448,7 +448,23 @@
     "security": "Security",
     "settings": "Settings"
   },
-  "vpn": { "overview": { "eyebrow": "VPN", "title": "VPN overview", "description": "View the active VPN provider and its current state." } },
+  "vpn": {
+    "overview": {
+      "eyebrow": "VPN", "title": "VPN overview", "description": "View registered VPN providers and their current operational state.",
+      "active_provider": "Active provider", "current_status": "VPN status", "current_location": "Current location",
+      "last_updated": "Last status update", "authentication": "Authentication", "open_provider": "Open provider",
+      "not_available": "Not available",
+      "states": {
+        "connected": "Connected", "disconnected": "Disconnected", "connecting": "Connecting…",
+        "disconnecting": "Disconnecting…", "signed_in": "Signed in", "signed_out": "Signed out",
+        "unavailable": "Unavailable", "error": "Status error", "unknown": "Unknown"
+      },
+      "fields": {
+        "location": "Location", "server": "Server", "external_ip": "External IP",
+        "latency": "Latency", "connected_since": "Connected since"
+      }
+    }
+  },
   "activity": {
     "eyebrow": "ACTIVITY", "title": "Activity", "description": "Important events recorded by Exitlane.",
     "filters": { "category": "Category", "level": "Level", "all": "All" },

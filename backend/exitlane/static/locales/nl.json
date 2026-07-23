@@ -448,7 +448,23 @@
     "security": "Beveiliging",
     "settings": "Instellingen"
   },
-  "vpn": { "overview": { "eyebrow": "VPN", "title": "VPN-overzicht", "description": "Bekijk de actieve VPN-provider en de huidige status." } },
+  "vpn": {
+    "overview": {
+      "eyebrow": "VPN", "title": "VPN-overzicht", "description": "Bekijk geregistreerde VPN-providers en hun actuele operationele status.",
+      "active_provider": "Actieve provider", "current_status": "VPN-status", "current_location": "Huidige locatie",
+      "last_updated": "Laatste statusupdate", "authentication": "Authenticatie", "open_provider": "Provider openen",
+      "not_available": "Niet beschikbaar",
+      "states": {
+        "connected": "Verbonden", "disconnected": "Niet verbonden", "connecting": "Verbinden…",
+        "disconnecting": "Verbinding verbreken…", "signed_in": "Aangemeld", "signed_out": "Afgemeld",
+        "unavailable": "Niet beschikbaar", "error": "Statusfout", "unknown": "Onbekend"
+      },
+      "fields": {
+        "location": "Locatie", "server": "Server", "external_ip": "Extern IP",
+        "latency": "Latency", "connected_since": "Verbonden sinds"
+      }
+    }
+  },
   "activity": {
     "eyebrow": "ACTIVITEIT", "title": "Activiteit", "description": "Belangrijke gebeurtenissen die Exitlane heeft vastgelegd.",
     "filters": { "category": "Categorie", "level": "Niveau", "all": "Alle" },

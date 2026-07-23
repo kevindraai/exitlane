@@ -39,3 +39,12 @@ expiry stops pollers and clears the catalog and provider slices.
 Do not add provider conditionals to navigation or Settings. Do not model provider authentication
 as tunnel connectivity, expose credentials in metadata/events, or advertise a capability before
 its backend operation is safe. Provider killswitch management is not part of this architecture.
+
+## Overview metrics boundary
+
+The VPN Overview displays only values observed through the generic provider status contract and
+the existing latency cache. Exitlane does not currently expose a reliable provider connection
+start time or map provider tunnels to sampled interface counters. Throughput and session duration
+therefore remain intentionally absent. Adding them requires monotonic samples, elapsed-time rate
+calculation, and a trustworthy provider-to-interface mapping; that belongs in a later VPN
+hardening/monitoring sprint rather than this provider abstraction.

@@ -1,9 +1,9 @@
 import { api } from "./api.js";
-import { t } from "./i18n.js";
+import { getCurrentLanguage, t } from "./i18n.js";
 import { showProviderView, showView } from "./navigation.js";
 import { providerManagementView } from "./provider-management.js";
-import { refreshProviderState } from "./lifecycle.js";
-import { getSlice, subscribe, succeedRefresh, updateSlice } from "./state.js";
+import { refreshProviderState, refreshProvidersState } from "./lifecycle.js";
+import { getSlice, subscribe, updateSlice } from "./state.js";
 import {
   clearInlineError,
   select,
@@ -23,12 +23,7 @@ export function activeProviderId() {
 }
 
 export async function loadProviders() {
-  const response = await api("/api/vpn/providers");
-  const data = {
-    activeProviderId: response.active_provider_id,
-    items: response.providers || [],
-  };
-  succeedRefresh("providers", data);
+  const data = await refreshProvidersState();
   const requested = getSlice("application").providerId;
   if (requested && !data.items.some((item) => item.id === requested)) {
     updateSlice("providers", { error: "provider_not_found" });
@@ -42,6 +37,172 @@ export async function loadProviders() {
 function providerMetadata() {
   const id = activeProviderId();
   return getSlice("providers").data?.items?.find((item) => item.id === id) || null;
+}
+
+const KNOWN_OVERVIEW_STATES = new Set([
+  "connected",
+  "disconnected",
+  "connecting",
+  "disconnecting",
+  "signed_out",
+  "unavailable",
+  "error",
+  "unknown",
+]);
+
+export function providerOverviewView(provider = {}) {
+  const status = provider.status || {};
+  const management = providerManagementView(status);
+  const operationState = status.operation?.state;
+  let state = ["connecting", "disconnecting"].includes(operationState)
+    ? operationState
+    : management.authenticationState === "signed_out"
+      ? "signed_out"
+      : management.authenticationState === "unavailable"
+        || status.available === false
+        ? "unavailable"
+        : management.connectionState;
+  if (
+    management.errorCode
+    && !["signed_out", "connecting", "disconnecting", "unavailable"].includes(state)
+  ) {
+    state = "error";
+  }
+  if (!KNOWN_OVERVIEW_STATES.has(state)) state = "unknown";
+  const statusTone = state === "connected"
+    ? "success"
+    : ["unavailable", "error"].includes(state)
+      ? "warning"
+      : ["connecting", "disconnecting"].includes(state)
+        ? "busy"
+        : state === "signed_out"
+          ? "info"
+          : "neutral";
+  const fields = [
+    status.country ? { key: "location", value: status.country } : null,
+    status.server ? { key: "server", value: status.server } : null,
+    status.external_ip ? { key: "external_ip", value: status.external_ip } : null,
+    status.latency_ms != null
+      ? { key: "latency", value: `${status.latency_ms} ms` }
+      : null,
+    status.connected_since
+      ? { key: "connected_since", value: status.connected_since }
+      : null,
+  ].filter(Boolean);
+  return {
+    id: provider.id || null,
+    displayName: provider.display_name || "",
+    description: provider.description || "",
+    icon: provider.icon || "provider-generic",
+    active: provider.active === true,
+    authenticationState: management.authenticationState,
+    connectionState: management.connectionState,
+    state,
+    statusTone,
+    fields,
+    observedAt: status.observed_at || null,
+    canOpen: Boolean(provider.id) && provider.enabled !== false,
+  };
+}
+
+export function providerOverviewRoute(providerId) {
+  return `#vpn/provider/${encodeURIComponent(providerId)}`;
+}
+
+function overviewStatusLabel(state) {
+  return t(`vpn.overview.states.${state}`, {}, state);
+}
+
+function overviewFieldLabel(key) {
+  return t(`vpn.overview.fields.${key}`, {}, key);
+}
+
+function formatObservedAt(value) {
+  if (!value) return t("vpn.overview.not_available", {}, "Not available");
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return t("vpn.overview.not_available", {}, "Not available");
+  }
+  return new Intl.DateTimeFormat(getCurrentLanguage(), {
+    dateStyle: "short",
+    timeStyle: "medium",
+  }).format(date);
+}
+
+function createOverviewCard(provider) {
+  const view = providerOverviewView(provider);
+  const card = document.createElement("article");
+  card.className = "provider-overview-card";
+  card.dataset.providerId = view.id || "";
+  card.dataset.status = view.state;
+
+  const header = document.createElement("div");
+  header.className = "provider-overview-card__header";
+  const icon = document.createElement("span");
+  icon.className = "provider-overview-card__icon";
+  icon.dataset.icon = view.icon;
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "◇";
+  const identity = document.createElement("div");
+  const name = document.createElement("h2");
+  name.textContent = view.displayName;
+  const description = document.createElement("p");
+  description.textContent = view.description;
+  identity.append(name, description);
+  const badge = document.createElement("span");
+  badge.className = `provider-overview-status provider-overview-status--${view.statusTone}`;
+  badge.dataset.status = view.state;
+  badge.textContent = overviewStatusLabel(view.state);
+  header.append(icon, identity, badge);
+
+  const authentication = document.createElement("div");
+  authentication.className = "provider-overview-authentication";
+  const authenticationLabel = document.createElement("span");
+  authenticationLabel.textContent = t("vpn.overview.authentication", {}, "Authentication");
+  const authenticationValue = document.createElement("strong");
+  authenticationValue.textContent = overviewStatusLabel(view.authenticationState);
+  authentication.append(authenticationLabel, authenticationValue);
+
+  const grid = document.createElement("dl");
+  grid.className = "provider-overview-status-grid";
+  for (const field of view.fields) {
+    const item = document.createElement("div");
+    const label = document.createElement("dt");
+    label.textContent = overviewFieldLabel(field.key);
+    const value = document.createElement("dd");
+    value.textContent = field.value;
+    item.append(label, value);
+    grid.append(item);
+  }
+  grid.hidden = view.fields.length === 0;
+
+  const footer = document.createElement("div");
+  footer.className = "provider-overview-card__footer";
+  const action = document.createElement("button");
+  action.type = "button";
+  action.className = "button button-primary";
+  action.dataset.providerId = view.id || "";
+  action.dataset.route = view.id ? providerOverviewRoute(view.id) : "";
+  action.textContent = t("vpn.overview.open_provider", {}, "Open provider");
+  action.disabled = !view.canOpen;
+  action.addEventListener("click", () => showProviderView(view.id));
+  footer.append(action);
+  card.append(header, authentication, grid, footer);
+  return card;
+}
+
+function renderOverviewSummary(items, activeProviderId) {
+  const active = items.find((item) => item.id === activeProviderId) || items[0];
+  const view = active ? providerOverviewView(active) : null;
+  select("#vpn-overview-active-provider").textContent = view?.displayName
+    || t("vpn.overview.not_available", {}, "Not available");
+  select("#vpn-overview-current-status").textContent = view
+    ? overviewStatusLabel(view.state)
+    : t("vpn.overview.not_available", {}, "Not available");
+  const location = view?.fields.find((field) => field.key === "location")?.value;
+  select("#vpn-overview-location-item").hidden = !location;
+  select("#vpn-overview-current-location").textContent = location || "";
+  select("#vpn-overview-last-updated").textContent = formatObservedAt(view?.observedAt);
 }
 
 function providerStatusText(view, name) {
@@ -104,18 +265,9 @@ function renderProviderNavigation(slice = getSlice("providers")) {
     button.addEventListener("click", () => showProviderView(provider.id));
     navigation.append(button);
 
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "card provider-overview-card";
-    card.dataset.providerId = provider.id;
-    const name = document.createElement("strong");
-    name.textContent = provider.display_name;
-    const description = document.createElement("span");
-    description.textContent = provider.description || "";
-    card.append(name, description);
-    card.addEventListener("click", () => showProviderView(provider.id));
-    overview.append(card);
+    overview.append(createOverviewCard(provider));
   }
+  renderOverviewSummary(items, slice.data?.activeProviderId);
   select("#vpn-overview-error").hidden = !slice.error;
 }
 
@@ -188,8 +340,11 @@ export function initialiseProviders() {
   subscribe("providers", renderProviderNavigation, { immediate: true });
   subscribe("provider", (slice) => renderProviderManagement(slice.data || {}), { immediate: true });
   subscribe("application", (application) => {
-    if (application.activeView !== "vpn-provider") return;
+    if (!["vpn", "vpn-provider"].includes(application.activeView)) return;
     renderProviderNavigation();
-    renderProviderManagement(getSlice("provider").data || {});
+    if (application.activeView === "vpn-provider") {
+      renderProviderManagement(getSlice("provider").data || {});
+    }
   });
+  window.addEventListener("exitlane:languagechange", () => renderProviderNavigation());
 }

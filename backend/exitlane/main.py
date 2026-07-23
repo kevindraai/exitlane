@@ -11,6 +11,7 @@ import uuid
 from io import BytesIO
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import AsyncIterator
 from urllib.parse import urlsplit
@@ -938,11 +939,35 @@ async def nordvpn_countries() -> dict:
     }
 
 
+async def _provider_overview(provider_instance) -> dict:
+    status = await _fresh_status_for(provider_instance)
+    metadata = _provider_metadata(provider_instance)
+    if not metadata["active"]:
+        status.pop("operation", None)
+    summary = (
+        country_summary(status["country_code"], provider_id=provider_instance.id)
+        if status.get("country_code")
+        else {}
+    )
+    return {
+        **metadata,
+        "status": {
+            **status,
+            "latency_ms": summary.get("latency_ms"),
+            "latency_measured_at": summary.get("latency_measured_at"),
+            "observed_at": datetime.now(UTC).isoformat(),
+        },
+    }
+
+
 @app.get("/api/vpn/providers")
 async def vpn_providers() -> dict:
+    providers = await asyncio.gather(
+        *(_provider_overview(item) for item in provider_registry.all())
+    )
     return {
         "active_provider_id": setting("vpn.provider_id", provider_registry.default_id),
-        "providers": [_provider_metadata(item) for item in provider_registry.all()],
+        "providers": providers,
     }
 
 
@@ -994,6 +1019,7 @@ async def vpn_provider_locations(provider_id: str) -> dict:
                 item["country_code"],
                 connected_code=connected,
                 provider_name=item["provider_name"],
+                provider_id=provider_id,
             )
             for item in catalog
         ],

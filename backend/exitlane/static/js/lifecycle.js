@@ -72,6 +72,15 @@ export const refreshProviderState = (options) => {
     : "/api/vpn/status";
   return refreshSlice("provider", path, (response) => response.status || response, options);
 };
+export const refreshProvidersState = (options) => refreshSlice(
+  "providers",
+  "/api/vpn/providers",
+  (response) => ({
+    activeProviderId: response.active_provider_id,
+    items: response.providers || [],
+  }),
+  options,
+);
 export const refreshWireGuardState = (options) => refreshSlice("wireguard", "/api/ingress/wireguard/status", undefined, options);
 export async function refreshDashboardState(options) {
   const data = await refreshSlice("dashboard", "/api/dashboard", undefined, options);
@@ -84,17 +93,19 @@ export async function refreshDashboardState(options) {
 export function createApplicationLifecycle({ intervalSeconds, application = () => getSlice("application") } = {}) {
   const active = (...views) => application().mode === "dashboard" && views.includes(application().activeView);
   const provider = createDomainPoller({ refresh: refreshProviderState, isActive: () => active("vpn-provider"), intervalSeconds });
+  const providers = createDomainPoller({ refresh: refreshProvidersState, isActive: () => active("vpn"), intervalSeconds });
   const wireguard = createDomainPoller({ refresh: refreshWireGuardState, isActive: () => active("wireguard"), intervalSeconds });
   const dashboard = createDomainPoller({ refresh: refreshDashboardState, isActive: () => active("dashboard"), intervalSeconds });
   const activity = createDomainPoller({ refresh: refreshActivity, isActive: () => active("activity"), intervalSeconds: Math.max(intervalSeconds || 15, 15) });
   const sync = () => {
-    for (const poller of [provider, wireguard, dashboard, activity]) poller.start({ immediate: true });
+    for (const poller of [provider, providers, wireguard, dashboard, activity]) poller.start({ immediate: true });
     if (!active("vpn-provider")) provider.stop();
+    if (!active("vpn")) providers.stop();
     if (!active("wireguard")) wireguard.stop();
     if (!active("dashboard")) dashboard.stop();
     if (!active("activity")) activity.stop();
   };
-  const stop = () => [provider, wireguard, dashboard, activity].forEach((poller) => poller.stop());
-  const restart = (seconds) => { intervalSeconds = seconds; [provider, wireguard, dashboard].forEach((poller) => poller.restart(seconds)); activity.restart(Math.max(seconds, 15)); sync(); };
-  return { provider, wireguard, dashboard, activity, sync, stop, restart };
+  const stop = () => [provider, providers, wireguard, dashboard, activity].forEach((poller) => poller.stop());
+  const restart = (seconds) => { intervalSeconds = seconds; [provider, providers, wireguard, dashboard].forEach((poller) => poller.restart(seconds)); activity.restart(Math.max(seconds, 15)); sync(); };
+  return { provider, providers, wireguard, dashboard, activity, sync, stop, restart };
 }

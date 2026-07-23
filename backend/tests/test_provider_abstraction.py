@@ -84,6 +84,10 @@ def test_provider_catalog_exposes_safe_metadata_and_capabilities(client, monkeyp
     assert item["id"] == "nordvpn"
     assert item["icon"] == "provider-nordvpn"
     assert not {"token", "credential", "secret", "password"} & item.keys()
+    assert item["status"]["management"]["authentication"]["state"] == "signed_in"
+    assert item["status"]["management"]["connection"]["state"] == "disconnected"
+    assert item["status"]["observed_at"]
+    assert item["status"]["latency_ms"] is None
 
     detail = client.get("/api/vpn/providers/nordvpn/status")
     assert detail.status_code == 200
