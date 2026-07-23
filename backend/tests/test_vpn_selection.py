@@ -53,6 +53,24 @@ def test_last_country_and_latency_schema_are_persistent(tmp_path, monkeypatch):
     assert {"provider", "country_code", "server", "latency_ms", "status", "measured_at"} <= columns
 
 
+def test_country_summary_keeps_provider_latency_caches_separate(tmp_path, monkeypatch):
+    initialise_database(tmp_path, monkeypatch)
+    measured_at = vpn_selection._now().isoformat()
+    with sqlite3.connect(core.DB) as connection:
+        connection.executemany(
+            """INSERT INTO vpn_latency_cache
+               (provider, country_code, server, latency_ms, status, measured_at)
+               VALUES (?, 'NL', ?, ?, 'reachable', ?)""",
+            [
+                ("nordvpn", "nl1.example", 12, measured_at),
+                ("other", "nl2.example", 48, measured_at),
+            ],
+        )
+
+    assert vpn_selection.country_summary("NL", provider_id="nordvpn")["latency_ms"] == 12
+    assert vpn_selection.country_summary("NL", provider_id="other")["latency_ms"] == 48
+
+
 def test_icmp_latency_uses_median_without_dns_lookup(monkeypatch):
     calls = []
 

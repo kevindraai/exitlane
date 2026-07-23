@@ -11,6 +11,7 @@ import uuid
 from io import BytesIO
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import AsyncIterator
 from urllib.parse import urlsplit
@@ -44,6 +45,7 @@ from exitlane.settings import (
     update_settings,
 )
 from exitlane.providers.nordvpn import SIGN_OUT_ERROR_CODES, TOKEN_ERROR_CODES, provider
+from exitlane.providers.registry import ProviderNotFound, ProviderRegistry
 from exitlane.services.diagnostics import run as diagnostics
 from exitlane.services.dashboard import DashboardResponse, build_dashboard, system_status
 from exitlane.services import wireguard as wireguard_service
@@ -93,6 +95,7 @@ PASSWORD_CHANGE_WINDOW_SECONDS = 300
 PROVIDER_SIGN_OUT_ATTEMPTS = 5
 PROVIDER_SIGN_OUT_WINDOW_SECONDS = 60
 NORDVPN_HOST_COUNTRY_CODES = {"UK": "GB"}
+provider_registry = ProviderRegistry([provider], default_id=provider.id)
 
 
 class Admin(BaseModel):
@@ -143,6 +146,10 @@ class Connect(BaseModel):
 
 class CountryConnect(BaseModel):
     country_code: str = Field(pattern=r"^[A-Za-z]{2}$")
+
+
+class ProviderReconnect(BaseModel):
+    country_code: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")
 
 
 class WireGuard(BaseModel):
@@ -299,6 +306,19 @@ def is_setup_client_download(method: str, path: str) -> bool:
     return method == "GET" and path.startswith(prefix) and bool(client_name) and "/" not in client_name
 
 
+def is_setup_provider_route(method: str, path: str) -> bool:
+    if method != "POST":
+        return False
+    match = re.fullmatch(r"/api/vpn/providers/([a-z0-9_-]+)/authenticate", path)
+    if not match:
+        return False
+    try:
+        provider_registry.get(match.group(1))
+    except ProviderNotFound:
+        return False
+    return True
+
+
 def request_actor(request: Request) -> dict | None:
     return getattr(request.state, "user", None)
 
@@ -341,7 +361,11 @@ async def require_authentication(request: Request, call_next):
     request.state.user = user
     setup_complete = bool(setting("setup_complete", False))
     setup_client_download = is_setup_client_download(request.method, path)
-    if user or (not setup_complete and (route in SETUP_API_ROUTES or setup_client_download)):
+    setup_provider_route = is_setup_provider_route(request.method, path)
+    if user or (
+        not setup_complete
+        and (route in SETUP_API_ROUTES or setup_client_download or setup_provider_route)
+    ):
         return await call_next(request)
     return JSONResponse(status_code=401, content={"detail": "Authentication required"})
 
@@ -555,7 +579,9 @@ async def setup_state() -> dict:
     with sqlite3.connect(DB) as connection:
         admin_count = connection.execute("SELECT COUNT(*) FROM users").fetchone()[0]
 
-    provider_status = await provider.status()
+    selected_provider_id = setting("vpn.provider_id", provider_registry.default_id)
+    selected_provider = _provider_or_404(selected_provider_id)
+    provider_status = await selected_provider.status()
 
     steps = {
         "system": bool(setting("setup_system_complete", False)),
@@ -585,6 +611,8 @@ async def setup_state() -> dict:
         "current_step": current_step,
         "steps": steps,
         "provider": provider_status,
+        "providers": [_provider_metadata(item) for item in provider_registry.all()],
+        "selected_provider_id": selected_provider_id,
     }
 
 
@@ -718,9 +746,10 @@ async def nordvpn_install_status() -> dict:
 
 @app.post("/api/providers/nordvpn/login/token")
 async def login_token(req: Token) -> dict:
-    result = await provider.login_token(req.token)
+    result = await provider.authenticate(req.token)
 
     if result.get("ok"):
+        set_setting("vpn.provider_id", provider.id)
         set_setting("setup_provider_complete", True)
         set_setting("setup_current_step", 4)
 
@@ -729,10 +758,16 @@ async def login_token(req: Token) -> dict:
 
 @app.post("/api/providers/nordvpn/token")
 async def update_nordvpn_token(req: Token, request: Request) -> dict:
-    status = await provider.status(timeout=8)
+    return await _authenticate_provider(provider, req, request)
+
+
+async def _authenticate_provider(
+    provider_instance, req: Token, request: Request
+) -> dict:
+    status = await provider_instance.status(timeout=8)
     if status.get("authenticated"):
         raise HTTPException(status_code=409, detail="token_replacement_unsupported")
-    result = await provider.login_token(req.token)
+    result = await provider_instance.authenticate(req.token)
     if not result.get("ok"):
         error = result.get("error")
         if error not in TOKEN_ERROR_CODES:
@@ -750,8 +785,12 @@ async def update_nordvpn_token(req: Token, request: Request) -> dict:
     record_event(
         "provider.session_started",
         actor=request_actor(request),
-        metadata={"provider": provider.id},
+        metadata={"provider": provider_instance.id},
     )
+    set_setting("vpn.provider_id", provider_instance.id)
+    if not setting("setup_complete", False):
+        set_setting("setup_provider_complete", True)
+        set_setting("setup_current_step", 4)
     return {"ok": True, "reconnect_required": bool(result.get("reconnect_required", False))}
 
 
@@ -766,8 +805,28 @@ def _provider_authentication_state(status: dict) -> str:
     return "unknown"
 
 
+def _provider_or_404(provider_id: str):
+    try:
+        return provider_registry.get(provider_id)
+    except ProviderNotFound:
+        raise HTTPException(status_code=404, detail="provider_not_found") from None
+
+
+def _provider_metadata(provider_instance) -> dict:
+    return {
+        **provider_instance.metadata.as_dict(),
+        "enabled": True,
+        "active": provider_instance.id
+        == setting("vpn.provider_id", provider_registry.default_id),
+    }
+
+
 @app.post("/api/providers/nordvpn/session/end")
 async def end_nordvpn_session(request: Request) -> dict:
+    return await _end_provider_session(provider, request)
+
+
+async def _end_provider_session(provider_instance, request: Request) -> dict:
     failure_key = (DB.resolve(), request.state.user["id"])
     now = time.monotonic()
     failures = _provider_sign_out_failures[failure_key]
@@ -776,7 +835,7 @@ async def end_nordvpn_session(request: Request) -> dict:
     if len(failures) >= PROVIDER_SIGN_OUT_ATTEMPTS:
         raise HTTPException(status_code=429, detail="too_many_attempts")
 
-    before = await _fresh_vpn_status()
+    before = await _fresh_status_for(provider_instance)
     if _provider_authentication_state(before) == "signed_out":
         _provider_sign_out_failures.pop(failure_key, None)
         return {"ok": True, "already_signed_out": True, "status": before}
@@ -784,19 +843,19 @@ async def end_nordvpn_session(request: Request) -> dict:
         raise HTTPException(status_code=409, detail="provider_state_unknown")
 
     try:
-        result = await provider.sign_out()
+        result = await provider_instance.sign_out()
     except asyncio.CancelledError:
         raise
     except Exception:
         result = {"ok": False, "error": "provider_error"}
-    after = await _fresh_vpn_status()
+    after = await _fresh_status_for(provider_instance)
     signed_out = _provider_authentication_state(after) == "signed_out"
     if result.get("ok") and signed_out:
         _provider_sign_out_failures.pop(failure_key, None)
         record_event(
             "provider.session_ended",
             actor=request_actor(request),
-            metadata={"provider": provider.id},
+            metadata={"provider": provider_instance.id},
         )
         return {
             "ok": True,
@@ -812,7 +871,7 @@ async def end_nordvpn_session(request: Request) -> dict:
         record_event(
             "provider.session_ended",
             actor=request_actor(request),
-            metadata={"provider": provider.id},
+            metadata={"provider": provider_instance.id},
         )
         return {"ok": True, "already_signed_out": False, "status": after}
 
@@ -820,7 +879,7 @@ async def end_nordvpn_session(request: Request) -> dict:
     record_event(
         "provider.session_end_failed",
         actor=request_actor(request),
-        metadata={"provider": provider.id, "reason": error},
+        metadata={"provider": provider_instance.id, "reason": error},
     )
     status_code = (
         504
@@ -880,8 +939,95 @@ async def nordvpn_countries() -> dict:
     }
 
 
-async def _vpn_catalog() -> list[dict]:
-    return await provider.countries()
+async def _provider_overview(provider_instance) -> dict:
+    status = await _fresh_status_for(provider_instance)
+    metadata = _provider_metadata(provider_instance)
+    if not metadata["active"]:
+        status.pop("operation", None)
+    summary = (
+        country_summary(status["country_code"], provider_id=provider_instance.id)
+        if status.get("country_code")
+        else {}
+    )
+    return {
+        **metadata,
+        "status": {
+            **status,
+            "latency_ms": summary.get("latency_ms"),
+            "latency_measured_at": summary.get("latency_measured_at"),
+            "observed_at": datetime.now(UTC).isoformat(),
+        },
+    }
+
+
+@app.get("/api/vpn/providers")
+async def vpn_providers() -> dict:
+    providers = await asyncio.gather(
+        *(_provider_overview(item) for item in provider_registry.all())
+    )
+    return {
+        "active_provider_id": setting("vpn.provider_id", provider_registry.default_id),
+        "providers": providers,
+    }
+
+
+@app.get("/api/vpn/providers/{provider_id}")
+async def vpn_provider_detail(provider_id: str) -> dict:
+    return {"provider": _provider_metadata(_provider_or_404(provider_id))}
+
+
+@app.get("/api/vpn/providers/{provider_id}/status")
+async def vpn_provider_status(provider_id: str) -> dict:
+    provider_instance = _provider_or_404(provider_id)
+    return {
+        "provider": _provider_metadata(provider_instance),
+        "status": await _fresh_status_for(provider_instance),
+    }
+
+
+@app.post("/api/vpn/providers/{provider_id}/authenticate")
+async def authenticate_vpn_provider(
+    provider_id: str, req: Token, request: Request
+) -> dict:
+    return await _authenticate_provider(_provider_or_404(provider_id), req, request)
+
+
+@app.post("/api/vpn/providers/{provider_id}/sign-out")
+async def sign_out_vpn_provider(provider_id: str, request: Request) -> dict:
+    return await _end_provider_session(_provider_or_404(provider_id), request)
+
+
+@app.get("/api/vpn/providers/{provider_id}/locations")
+async def vpn_provider_locations(provider_id: str) -> dict:
+    provider_instance = _provider_or_404(provider_id)
+    vpn = await _require_provider_authentication(provider_instance)
+    catalog = await _vpn_catalog(provider_instance)
+    connected = vpn["country_code"]
+    codes = [item["country_code"] for item in catalog]
+    last = setting("vpn.last_country")
+    quick = list(
+        dict.fromkeys(
+            code for code in (connected, last, *QUICK_COUNTRIES) if code in codes
+        )
+    )
+    return {
+        "provider_id": provider_id,
+        "quick_country_codes": quick,
+        "vpn": vpn,
+        "countries": [
+            country_summary(
+                item["country_code"],
+                connected_code=connected,
+                provider_name=item["provider_name"],
+                provider_id=provider_id,
+            )
+            for item in catalog
+        ],
+    }
+
+
+async def _vpn_catalog(provider_instance=provider) -> list[dict]:
+    return await provider_instance.countries()
 
 
 def _country_id(catalog: list[dict], country_code: str) -> int | None:
@@ -917,10 +1063,10 @@ def _vpn_snapshot(status: dict) -> dict:
     }
 
 
-async def _fresh_vpn_status() -> dict:
+async def _fresh_vpn_status(provider_instance=provider) -> dict:
     try:
         return _vpn_snapshot(
-            await provider.status(timeout=vpn_operations.STATUS_TIMEOUT_SECONDS)
+            await provider_instance.status(timeout=vpn_operations.STATUS_TIMEOUT_SECONDS)
         )
     except Exception:
         return _vpn_snapshot(
@@ -933,8 +1079,16 @@ async def _fresh_vpn_status() -> dict:
         )
 
 
-async def _require_provider_authentication() -> dict:
-    status = await _fresh_vpn_status()
+async def _fresh_status_for(provider_instance) -> dict:
+    # Keep legacy tests and aliases patchable while provider-scoped routes can
+    # explicitly select another registered implementation.
+    if provider_instance is provider:
+        return await _fresh_vpn_status()
+    return await _fresh_vpn_status(provider_instance)
+
+
+async def _require_provider_authentication(provider_instance=provider) -> dict:
+    status = await _fresh_status_for(provider_instance)
     authentication_state = _provider_authentication_state(status)
     if authentication_state == "signed_out":
         raise HTTPException(status_code=409, detail="provider_authentication_required")
@@ -1305,6 +1459,79 @@ async def connect_nordvpn(req: Connect, request: Request) -> dict:
 @app.post("/api/providers/nordvpn/disconnect")
 async def disconnect_nordvpn(request: Request) -> dict:
     return await disconnect_vpn(request)
+
+
+def _require_active_provider(provider_id: str) -> None:
+    _provider_or_404(provider_id)
+    active_id = setting("vpn.provider_id", provider_registry.default_id)
+    if provider_id != active_id:
+        raise HTTPException(status_code=409, detail="provider_action_unsupported")
+
+
+@app.post("/api/vpn/providers/{provider_id}/connect")
+async def connect_vpn_provider(
+    provider_id: str, req: Connect, request: Request
+) -> dict:
+    _require_active_provider(provider_id)
+    return await connect_nordvpn(req, request)
+
+
+@app.post("/api/vpn/providers/{provider_id}/disconnect")
+async def disconnect_vpn_provider(provider_id: str, request: Request) -> dict:
+    _require_active_provider(provider_id)
+    return await disconnect_vpn(request)
+
+
+@app.post("/api/vpn/providers/{provider_id}/reconnect")
+async def reconnect_vpn_provider(
+    provider_id: str, req: ProviderReconnect, request: Request
+) -> dict:
+    _require_active_provider(provider_id)
+    if req.country_code:
+        return await connect_vpn_country(
+            CountryConnect(country_code=req.country_code), request
+        )
+    return await connect_nordvpn(Connect(target=None), request)
+
+
+@app.post("/api/vpn/providers/{provider_id}/location")
+async def select_vpn_provider_location(
+    provider_id: str, req: CountryConnect, request: Request
+) -> dict:
+    _require_active_provider(provider_id)
+    return await connect_vpn_country(req, request)
+
+
+@app.get("/api/vpn/providers/{provider_id}/locations/{country_code}/servers")
+async def vpn_provider_location_servers(
+    provider_id: str, country_code: str
+) -> dict:
+    _require_active_provider(provider_id)
+    return await vpn_country_servers(country_code)
+
+
+@app.post("/api/vpn/providers/{provider_id}/locations/{country_code}/measure")
+async def measure_vpn_provider_location(
+    provider_id: str, country_code: str
+) -> dict:
+    _require_active_provider(provider_id)
+    return await measure_vpn_country(country_code)
+
+
+@app.get("/api/vpn/providers/{provider_id}/latency")
+async def vpn_provider_latency(provider_id: str) -> dict:
+    locations = await vpn_provider_locations(provider_id)
+    return {
+        "provider_id": provider_id,
+        "locations": [
+            {
+                "country_code": item["country_code"],
+                "latency_ms": item.get("latency_ms"),
+                "latency_measured_at": item.get("latency_measured_at"),
+            }
+            for item in locations["countries"]
+        ],
+    }
 
 
 @app.post("/api/providers/nordvpn/login/browser/start")

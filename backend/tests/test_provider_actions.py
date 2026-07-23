@@ -78,7 +78,11 @@ Current technology: NORDLYNX""", ""
     assert status["server"] == "be255.nordvpn.com"
     assert status["country"] == "Belgium"
     assert status["management"] == {
-        "provider": {"id": "nordvpn", "installation_state": "installed"},
+        "provider": {
+            "id": "nordvpn",
+            "display_name": "NordVPN",
+            "installation_state": "installed",
+        },
         "authentication": {"state": "signed_in"},
         "connection": {"state": "connected"},
         "capabilities": {
@@ -86,7 +90,12 @@ Current technology: NORDLYNX""", ""
             "can_sign_out": True,
             "can_connect": False,
             "can_disconnect": True,
+            "can_reconnect": True,
+            "can_select_country": True,
+            "can_select_server": False,
+            "can_measure_latency": True,
             "can_select_location": True,
+            "can_manage_provider_killswitch": False,
             "can_manage_killswitch": False,
         },
         "error_code": None,

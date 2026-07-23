@@ -44,54 +44,6 @@
         </div>
        </form>
       </section>
-      <section class="panel" id="settings-vpn">
-       <div class="panel-heading compact">
-        <div>
-         <p class="eyebrow" data-i18n="settings.vpn.eyebrow">VPN</p>
-         <h2 data-i18n="settings.vpn.title">NordVPN token</h2>
-         <p data-i18n="settings.vpn.description">Manage authentication for the local NordVPN client.</p>
-        </div>
-       </div>
-       <div class="provider-management-status-region">
-        <span class="status-pill status-neutral" id="settings-provider-authentication-state">Unknown</span>
-        <p id="settings-provider-status-message">The NordVPN authentication state is unknown.</p>
-       </div>
-       <p class="inline-error" hidden="" id="settings-provider-error" role="alert"></p>
-       <div hidden="" id="settings-provider-signed-in">
-        <p data-i18n="settings.vpn.signed_in_limitation">NordVPN is currently signed in. The installed NordVPN client cannot validate a replacement token without ending the existing session.</p>
-        <p class="sensitive-warning" data-i18n="settings.vpn.sign_out_warning">Ending the current session disconnects NordVPN and requires a valid token to sign in again.</p>
-        <button class="button button-danger" data-i18n="settings.vpn.end_session" id="settings-provider-end-session" type="button">End current session</button>
-       </div>
-       <form class="form-grid" id="settings-token-form" method="post">
-        <p class="inline-error" hidden="" id="settings-token-error" role="alert"></p>
-        <label><span data-i18n="settings.vpn.new_token">New token</span><input autocomplete="off" id="settings-nordvpn-token" minlength="20" required="" type="password"/><small data-i18n="settings.vpn.token_hidden">The current token is never displayed.</small></label>
-        <div class="form-submit"><button class="button button-primary" data-i18n="settings.vpn.sign_in" id="settings-token-save" type="submit">Sign in with token</button></div>
-       </form>
-       <div hidden="" id="settings-provider-unavailable">
-        <button class="button button-secondary" data-i18n="settings.vpn.retry" id="settings-provider-retry" type="button">Retry</button>
-       </div>
-       <dialog aria-describedby="settings-provider-sign-out-description" aria-labelledby="settings-provider-sign-out-title" id="settings-provider-sign-out-dialog">
-        <form id="settings-provider-sign-out-form" method="post">
-         <h2 data-i18n="settings.vpn.confirm_title" id="settings-provider-sign-out-title">End NordVPN session?</h2>
-         <p data-i18n="settings.vpn.confirm_description" id="settings-provider-sign-out-description">The active NordVPN session and VPN connection will end. You need a valid token to sign in again.</p>
-         <p class="inline-error" hidden="" id="settings-provider-sign-out-error" role="alert"></p>
-         <div class="view-actions">
-          <button class="button button-secondary" data-i18n="settings.vpn.cancel" id="settings-provider-sign-out-cancel" type="button">Cancel</button>
-          <button class="button button-danger" data-i18n="settings.vpn.confirm_end_session" id="settings-provider-sign-out-confirm" type="button">End session</button>
-         </div>
-        </form>
-       </dialog>
-      </section>
-      <section class="panel" id="settings-wireguard">
-       <div class="panel-heading compact">
-        <div>
-         <p class="eyebrow" data-i18n="settings.wireguard.eyebrow">WIREGUARD</p>
-         <h2 data-i18n="settings.wireguard.title">WireGuard</h2>
-         <p data-i18n="settings.wireguard.description">View, download, or deliberately regenerate the current client configuration on the WireGuard page.</p>
-        </div>
-       </div>
-       <button class="button button-secondary" data-i18n="settings.wireguard.open" data-open-view="wireguard" type="button">Open WireGuard management</button>
-      </section>
       <section class="panel settings-future" id="settings-network">
        <div class="panel-heading compact">
         <div>

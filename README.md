@@ -6,7 +6,8 @@ Exitlane is a self-hosted egress gateway for routers, VLANs, and applications. I
 browser-based control plane for routing traffic through a VPN without coupling the core to a
 specific router platform.
 
-The current alpha release integrates with NordVPN and accepts traffic through WireGuard.
+The current alpha release has a provider-neutral VPN core with NordVPN as its first implementation,
+and accepts traffic through the independent WireGuard ingress.
 Exitlane is intended for a trusted management network and is currently tested primarily on a
 Debian-based Proxmox LXC.
 
@@ -22,7 +23,7 @@ security. See the [hardening guide](docs/security/hardening-guide.md),
 ### VPN management
 
 - Install, authenticate, configure, connect, and disconnect the NordVPN CLI.
-- View provider and tunnel status from one interface.
+- Discover registered VPN providers and view provider authentication and tunnel status separately.
 
 ### WireGuard ingress
 

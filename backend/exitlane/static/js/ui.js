@@ -1,3 +1,5 @@
+import { createIcon, statusIconName } from "./icons.js";
+
 export function select(selector) {
   return document.querySelector(selector);
 }
@@ -51,8 +53,10 @@ export function clearInlineError(selector = "#wizard-error") {
 }
 
 export function setStatusPill(element, label, state = "neutral") {
-  element.textContent = label;
   element.className = `status-pill status-${state}`;
+  const text = document.createElement("span");
+  text.textContent = label;
+  element.replaceChildren(createIcon(statusIconName(state)), text);
 }
 
 export function escapeHtml(value) {

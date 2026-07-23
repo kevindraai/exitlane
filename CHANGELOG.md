@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Introduced a central VPN provider registry, metadata and capability contract, generic provider
+  API routes, and compatibility aliases for the existing NordVPN routes.
+- Added provider-driven VPN navigation, Overview and management pages; removed provider credentials
+  from general Settings and made the first-run provider step metadata-driven.
+- Expanded VPN Overview with generic authentication and connection states, reliable operational
+  details, provider-scoped latency, status timestamps, and view-scoped polling.
+- Kept authenticated provider loaders and polling behind the administrator session lifecycle while
+  preserving atomic VPN operation conflicts and independent WireGuard ingress.
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 from exitlane.core import command
 
-from .base import Provider
+from .base import Provider, ProviderMetadata
 
 logger = logging.getLogger(__name__)
 SERVER_HOSTNAME_PATTERN = re.compile(r"^([a-z]{2}[0-9]+)\.nordvpn\.com$")
@@ -190,6 +190,13 @@ def _append_install_log(message: str) -> None:
 class NordVPN(Provider):
     id = "nordvpn"
     display_name = "NordVPN"
+    metadata = ProviderMetadata(
+        id=id,
+        display_name=display_name,
+        short_name="NordVPN",
+        description="NordVPN Linux client",
+        icon="shield-check",
+    )
 
     def capabilities(
         self,
@@ -212,14 +219,34 @@ class NordVPN(Provider):
                 and authentication_state == "signed_in"
                 and connection_state == "connected"
             ),
+            "can_reconnect": (
+                available
+                and authentication_state == "signed_in"
+                and connection_state in {"connected", "disconnected"}
+            ),
+            "can_select_country": (
+                available
+                and authentication_state == "signed_in"
+                and connection_state in {"connected", "disconnected"}
+            ),
+            "can_select_server": False,
+            "can_measure_latency": (
+                available
+                and authentication_state == "signed_in"
+                and connection_state in {"connected", "disconnected"}
+            ),
             "can_select_location": (
                 available
                 and authentication_state == "signed_in"
                 and connection_state in {"connected", "disconnected"}
             ),
             # Deliberately reserved for a later security/networking design.
+            "can_manage_provider_killswitch": False,
             "can_manage_killswitch": False,
         }
+
+    async def authenticate(self, credential: str) -> dict:
+        return await self.login_token(credential)
 
     async def status(self, *, timeout: float = 8):
         if not shutil.which("nordvpn"):

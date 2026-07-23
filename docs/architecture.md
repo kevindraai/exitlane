@@ -36,8 +36,9 @@ per-code metadata allowlists are stored in SQLite; the browser translates them a
 Event writes are best-effort so audit storage cannot break the primary action. This Activity log
 is intentionally distinct from systemd/journald operational logs.
 
-NordVPN CLI is currently the provider boundary. Exitlane delegates VPN tunnel ownership to a
-mature local client while presenting provider-neutral concepts where practical. WireGuard is the
+The provider registry and contract are the VPN boundary; see
+[VPN provider architecture](architecture/providers.md). NordVPN is currently the only registered
+implementation. Exitlane delegates VPN tunnel ownership to a mature local client. WireGuard is the
 ingress boundary: routers and clients send selected traffic to Exitlane without requiring
 router-specific logic in the core.
 

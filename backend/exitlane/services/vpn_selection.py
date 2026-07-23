@@ -37,11 +37,16 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _cached(country_code: str, *, fresh_only: bool = True) -> list[dict]:
+def _cached(
+    country_code: str,
+    *,
+    provider_id: str = PROVIDER,
+    fresh_only: bool = True,
+) -> list[dict]:
     cutoff = (_now() - CACHE_TTL).isoformat()
     query = """SELECT server, latency_ms, status, measured_at FROM vpn_latency_cache
                WHERE provider=? AND country_code=?"""
-    params: list[object] = [PROVIDER, country_code]
+    params: list[object] = [provider_id, country_code]
     if fresh_only:
         query += " AND measured_at>=?"
         params.append(cutoff)
@@ -55,9 +60,13 @@ def _cached(country_code: str, *, fresh_only: bool = True) -> list[dict]:
 
 
 def country_summary(
-    code: str, *, connected_code: str | None = None, provider_name: str | None = None
+    code: str,
+    *,
+    connected_code: str | None = None,
+    provider_name: str | None = None,
+    provider_id: str = PROVIDER,
 ) -> dict:
-    cached = _cached(code)
+    cached = _cached(code, provider_id=provider_id)
     best = next((item for item in cached if item["latency_ms"] is not None), None)
     newest = cached[0] if cached else None
     return {

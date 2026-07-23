@@ -186,6 +186,7 @@
     "minimum_length": "Minimaal {length} tekens."
   },
   "common": {
+    "cancel": "Annuleren",
     "next": "Volgende",
     "back": "Terug",
     "copy": "Kopiëren",
@@ -226,6 +227,15 @@
     "description": "NordVPN is de eerste providerimplementatie. Exitlane houdt de onderliggende architectuur provideronafhankelijk."
   },
   "provider": {
+    "management": {
+      "authentication_eyebrow": "AUTHENTICATIE", "authentication_title": "Providerauthenticatie",
+      "token": "Toegangstoken", "token_hidden": "Het token wordt alleen voor lokale provideraanmelding gebruikt en nooit getoond.",
+      "authentication_ready": "Authenticatie voor {provider} is gereed.", "authentication_required": "Meld je hieronder aan bij {provider} om de VPN-verbinding te beheren.",
+      "sign_in": "Aanmelden met token", "signed_in_limitation": "Deze provider is aangemeld. Beëindig de huidige sessie voordat je een ander token opgeeft.",
+      "sign_out_warning": "Het beëindigen van de providersessie verbreekt ook de actieve VPN-tunnel.", "end_session": "Huidige sessie beëindigen",
+      "confirm_title": "Providersessie beëindigen?", "confirm_description": "De providersessie en actieve VPN-verbinding worden beëindigd.",
+      "confirm_end_session": "Sessie beëindigen"
+    },
     "not_checked": "Linux-client nog niet gecontroleerd.",
     "install": "Installeren",
     "installing_title": "NordVPN installeren",
@@ -264,7 +274,7 @@
     "operation": { "connecting_country": "Verbinden met {country}…", "recovering": "NordVPN herstellen…" },
     "notifications": { "connecting": "Verbinden met {target}…", "connected": "Verbonden met {target} {server}.", "country_connected": "Verbonden met {server}.", "connect_failed": "Kon niet verbinden met {target}.", "disconnecting": "Verbinding verbreken…", "disconnected": "Verbinding verbroken.", "disconnect_failed": "Kon de verbinding niet verbreken." },
     "errors": { "target_required": "Kies een doel.", "timeout": "De statuscontrole duurde te lang.", "vpn_connect_timeout": "Verbinding met {country} duurde te lang. NordVPN kon geen werkende serververbinding opbouwen. Probeer het opnieuw.", "provider_recovery_rate_limited": "NordVPN kon niet opnieuw worden hersteld. Probeer het later nogmaals.", "provider_authentication_required": "Meld je aan bij NordVPN voordat je de VPN-verbinding beheert.", "status_unavailable": "VPN-status is niet beschikbaar.", "provider_status_unavailable": "De NordVPN-status kon niet worden uitgelezen.", "provider_cli_unavailable": "De NordVPN-client is niet beschikbaar in de runtime van ExitLane.", "unsupported_container_runtime": "Deze Docker-runtime kan de NordVPN-client op de host niet besturen. Installeer ExitLane native in dezelfde LXC of VM als NordVPN." },
-    "access": { "sign_in_required_title": "Aanmelden bij NordVPN vereist", "sign_in_required_description": "Meld je aan bij de lokale NordVPN-client voordat je een land kiest of de VPN-verbinding beheert.", "open_settings": "VPN-instellingen openen", "unavailable_title": "NordVPN is niet beschikbaar", "unavailable_description": "Controleer de lokale NordVPN-service en probeer het opnieuw.", "checking_title": "NordVPN-status controleren", "checking_description": "Providerbeheer blijft geblokkeerd totdat de authenticatie is bevestigd.", "signing_in_title": "Aanmelden bij NordVPN", "signing_out_title": "Afmelden bij NordVPN", "busy_description": "Providerbeheer wordt beschikbaar zodra deze actie is afgerond.", "retry": "Opnieuw proberen" },
+    "access": { "sign_in_required_title": "Aanmelden bij NordVPN vereist", "sign_in_required_description": "Meld je hierboven aan voordat je een land kiest of de VPN-verbinding beheert.", "go_to_sign_in": "Naar aanmelden", "unavailable_title": "NordVPN is niet beschikbaar", "unavailable_description": "Controleer de lokale NordVPN-service en probeer het opnieuw.", "checking_title": "NordVPN-status controleren", "checking_description": "Providerbeheer blijft geblokkeerd totdat de authenticatie is bevestigd.", "signing_in_title": "Aanmelden bij NordVPN", "signing_out_title": "Afmelden bij NordVPN", "busy_description": "Providerbeheer wordt beschikbaar zodra deze actie is afgerond.", "retry": "Opnieuw proberen" },
     "country_selection": { "latency": "Latency", "reconnect": "Opnieuw verbinden", "quick_choice": "SNELLE KEUZE", "choose_country": "Kies een VPN-land", "measure_again": "Opnieuw meten", "all_countries": "Alle landen", "search_country": "Zoek land", "search_placeholder": "Bijv. Nederland", "measuring": "Meten…", "latency_ms": "{latency} ms", "connected_latency": "Verbonden · {latency}", "last_used": "Laatst gebruikt", "measure_failed": "Niet alle latencywaarden konden worden gemeten.", "load_failed": "Landen konden niet worden geladen." }
   },
   "step4": {
@@ -433,10 +443,29 @@
   "nav": {
     "dashboard": "Dashboard",
     "vpn": "VPN",
+    "vpn_overview": "Overzicht",
     "wireguard": "WireGuard",
     "activity": "Activiteit",
     "security": "Beveiliging",
     "settings": "Instellingen"
+  },
+  "vpn": {
+    "overview": {
+      "eyebrow": "VPN", "title": "VPN-overzicht", "description": "Bekijk geregistreerde VPN-providers en hun actuele operationele status.",
+      "active_provider": "Actieve provider", "current_status": "VPN-status", "current_location": "Huidige locatie",
+      "last_updated": "Laatste statusupdate", "authentication": "Aanmeldstatus", "open_provider": "Provider openen",
+      "open_named_provider": "{provider} openen", "open_provider_aria": "Provider openen", "open_named_provider_aria": "{provider} openen",
+      "not_available": "Niet beschikbaar",
+      "states": {
+        "connected": "Verbonden", "disconnected": "Niet verbonden", "connecting": "Verbinden…",
+        "disconnecting": "Verbinding verbreken…", "signed_in": "Aangemeld", "signed_out": "Afgemeld",
+        "unavailable": "Niet beschikbaar", "error": "Statusfout", "unknown": "Onbekend"
+      },
+      "fields": {
+        "location": "Locatie", "server": "Server", "external_ip": "Extern IP",
+        "latency": "Latency", "connected_since": "Verbonden sinds"
+      }
+    }
   },
   "activity": {
     "eyebrow": "ACTIVITEIT", "title": "Activiteit", "description": "Belangrijke gebeurtenissen die Exitlane heeft vastgelegd.",

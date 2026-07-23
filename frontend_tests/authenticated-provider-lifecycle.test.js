@@ -23,15 +23,15 @@ test("protected provider data is gated by dashboard mode and authentication", ()
     { data: { authenticated: false } }, signedIn,
   ), false);
   assert.equal(shouldLoadAuthenticatedProviderData(
-    { mode: "dashboard", activeView: "vpn" },
+    { mode: "dashboard", activeView: "vpn-provider" },
     { data: { authenticated: false } }, signedIn,
   ), false);
   assert.equal(shouldLoadAuthenticatedProviderData(
-    { mode: "dashboard", activeView: "vpn" },
+    { mode: "dashboard", activeView: "vpn-provider" },
     { data: { authenticated: true } }, signedIn,
   ), true);
   assert.equal(shouldLoadAuthenticatedProviderData(
-    { mode: "dashboard", activeView: "vpn" },
+    { mode: "dashboard", activeView: "vpn-provider" },
     { data: { authenticated: true } },
     { data: { management: {
       authentication: { state: "signed_out" },
