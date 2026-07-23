@@ -45,8 +45,7 @@ def flatten_messages(
             flattened[full_key] = child
         else:
             raise ValueError(
-                f"Translation key '{full_key}' must contain "
-                "a string or object."
+                f"Translation key '{full_key}' must contain a string or object."
             )
 
     return flattened
@@ -68,38 +67,26 @@ class TranslationAttributeParser(HTMLParser):
             if not value:
                 continue
 
-            if name == "data-i18n" or name.startswith(
-                "data-i18n-"
-            ):
+            if name == "data-i18n" or name.startswith("data-i18n-"):
                 self.keys.add(value)
 
 
 def load_locales() -> dict[str, dict[str, str]]:
-    locale_files = sorted(
-        LOCALES_DIR.glob("*.json")
-    )
+    locale_files = sorted(LOCALES_DIR.glob("*.json"))
 
     if not locale_files:
-        raise RuntimeError(
-            f"No locale files found in {LOCALES_DIR}"
-        )
+        raise RuntimeError(f"No locale files found in {LOCALES_DIR}")
 
     locales: dict[str, dict[str, str]] = {}
 
     for path in locale_files:
         try:
-            raw = json.loads(
-                path.read_text(encoding="utf-8")
-            )
+            raw = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as error:
-            raise RuntimeError(
-                f"Invalid JSON in {path}: {error}"
-            ) from error
+            raise RuntimeError(f"Invalid JSON in {path}: {error}") from error
 
         if not isinstance(raw, dict):
-            raise RuntimeError(
-                f"Locale {path} must contain a JSON object."
-            )
+            raise RuntimeError(f"Locale {path} must contain a JSON object.")
 
         locales[path.stem] = flatten_messages(raw)
 
@@ -120,17 +107,13 @@ def collect_javascript_keys() -> set[str]:
     for path in sorted(JS_DIR.glob("*.js")):
         content = path.read_text(encoding="utf-8")
 
-        keys.update(
-            JS_TRANSLATION_PATTERN.findall(content)
-        )
+        keys.update(JS_TRANSLATION_PATTERN.findall(content))
 
     return keys
 
 
 def placeholders(value: str) -> set[str]:
-    return set(
-        PLACEHOLDER_PATTERN.findall(value)
-    )
+    return set(PLACEHOLDER_PATTERN.findall(value))
 
 
 def main() -> int:
@@ -142,15 +125,10 @@ def main() -> int:
         print(f"ERROR: {error}")
         return 1
 
-    reference = locales.get(
-        REFERENCE_LANGUAGE
-    )
+    reference = locales.get(REFERENCE_LANGUAGE)
 
     if reference is None:
-        print(
-            "ERROR: Reference locale "
-            f"'{REFERENCE_LANGUAGE}.json' is missing."
-        )
+        print(f"ERROR: Reference locale '{REFERENCE_LANGUAGE}.json' is missing.")
         return 1
 
     reference_keys = set(reference)
@@ -158,17 +136,11 @@ def main() -> int:
     for language, messages in locales.items():
         language_keys = set(messages)
 
-        missing = sorted(
-            reference_keys - language_keys
-        )
-        additional = sorted(
-            language_keys - reference_keys
-        )
+        missing = sorted(reference_keys - language_keys)
+        additional = sorted(language_keys - reference_keys)
 
         for key in missing:
-            errors.append(
-                f"{language}.json is missing key: {key}"
-            )
+            errors.append(f"{language}.json is missing key: {key}")
 
         for key in additional:
             errors.append(
@@ -176,15 +148,9 @@ def main() -> int:
                 f"in {REFERENCE_LANGUAGE}.json: {key}"
             )
 
-        for key in sorted(
-            reference_keys & language_keys
-        ):
-            expected = placeholders(
-                reference[key]
-            )
-            actual = placeholders(
-                messages[key]
-            )
+        for key in sorted(reference_keys & language_keys):
+            expected = placeholders(reference[key])
+            actual = placeholders(messages[key])
 
             if expected != actual:
                 errors.append(
@@ -194,10 +160,7 @@ def main() -> int:
                     f"{sorted(actual)}"
                 )
 
-    referenced_keys = (
-        collect_html_keys()
-        | collect_javascript_keys()
-    )
+    referenced_keys = collect_html_keys() | collect_javascript_keys()
 
     for key in sorted(referenced_keys):
         for language, messages in locales.items():
