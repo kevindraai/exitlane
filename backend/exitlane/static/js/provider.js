@@ -1,4 +1,5 @@
 import { api, postJson } from "./api.js";
+import { localisedCountryName } from "./country-format.js";
 import { appState, getSlice, subscribe, succeedRefresh, updateSlice } from "./state.js";
 import { refreshProviderState } from "./lifecycle.js";
 import { vpnProviderAccess } from "./provider-management.js";
@@ -70,13 +71,13 @@ function renderVpnProviderAccess(status) {
   const access = vpnProviderAccess(status);
   const blocker = select("#vpn-provider-blocker");
   const controls = select("#vpn-provider-controls");
-  const openSettings = select("#vpn-provider-open-settings");
+  const goToSignIn = select("#vpn-provider-go-to-sign-in");
   const retry = select("#vpn-provider-retry");
   blocker.hidden = !access.blocked;
   blocker.dataset.state = access.state;
   controls.inert = access.blocked;
   controls.setAttribute("aria-disabled", String(access.blocked));
-  openSettings.hidden = access.state !== "signed_out";
+  goToSignIn.hidden = access.state !== "signed_out";
   retry.hidden = access.state !== "unavailable";
 
   const content = {
@@ -137,7 +138,7 @@ function renderVpnView(status) {
     operationActive ? "neutral" : status.connected ? "success" : status.available === false ? "danger" : "neutral",
   );
 
-  select("#metric-country").textContent = status.country || "—";
+  select("#metric-country").textContent = localisedCountryName(status.country_code, status.country) || "—";
   select("#metric-city").textContent = status.city || "—";
   select("#metric-server").textContent = status.server || "—";
   select("#metric-ip").textContent = status.external_ip || "—";
@@ -209,7 +210,7 @@ function countryCard(country) {
   flag.textContent = country.flag;
   const name = document.createElement("span");
   name.className = "country-card__name";
-  name.textContent = country.name;
+  name.textContent = localisedCountryName(country.country_code, country.name);
   const detail = document.createElement("span");
   detail.className = "country-card__latency";
   detail.textContent = latency;
@@ -232,9 +233,11 @@ function countryCard(country) {
 function renderCountries() {
   const quick = select("#quick-countries");
   const all = select("#country-list");
-  const query = select("#country-search").value.trim().toLocaleLowerCase("nl");
+  const query = select("#country-search").value.trim().toLocaleLowerCase();
   quick.replaceChildren(...quickCountryCodes.map((code) => vpnCountries.find((country) => country.country_code === code)).filter(Boolean).map(countryCard));
-  all.replaceChildren(...vpnCountries.filter((country) => country.name.toLocaleLowerCase("nl").includes(query)).map(countryCard));
+  all.replaceChildren(...vpnCountries.filter((country) => (
+    localisedCountryName(country.country_code, country.name).toLocaleLowerCase().includes(query)
+  )).map(countryCard));
 }
 
 async function refreshCountries({ signal } = {}) {
@@ -336,7 +339,8 @@ function connectionErrorMessage(errorCode, countryCode) {
     );
   }
   if (errorCode === "vpn_connect_timeout") {
-    const country = vpnCountries.find((item) => item.country_code === countryCode)?.name || countryCode;
+    const item = vpnCountries.find((candidate) => candidate.country_code === countryCode);
+    const country = localisedCountryName(countryCode, item?.name);
     return t("provider.errors.vpn_connect_timeout", { country }, `Connection to ${country} took too long.`);
   }
   if (errorCode === "provider_recovery_rate_limited") {
@@ -928,7 +932,7 @@ export function initialiseProviderControls() {
   );
   select("#reconnect-button").addEventListener("click", reconnectCountry);
   select("#remeasure-countries").addEventListener("click", remeasureCountries);
-  select("#vpn-provider-open-settings").addEventListener("click", () => {
+  select("#vpn-provider-go-to-sign-in").addEventListener("click", () => {
     select("#provider-authentication-card").scrollIntoView({ block: "start" });
     select("#provider-token")?.focus();
   });

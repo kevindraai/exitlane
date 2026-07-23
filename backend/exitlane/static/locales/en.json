@@ -230,6 +230,7 @@
     "management": {
       "authentication_eyebrow": "AUTHENTICATION", "authentication_title": "Provider authentication",
       "token": "Access token", "token_hidden": "The token is only used for local provider sign-in and is never displayed.",
+      "authentication_ready": "{provider} authentication is ready.", "authentication_required": "Sign in to {provider} below to manage the VPN connection.",
       "sign_in": "Sign in with token", "signed_in_limitation": "This provider is signed in. End the current session before supplying another token.",
       "sign_out_warning": "Ending the provider session also ends its active VPN tunnel.", "end_session": "End current session",
       "confirm_title": "End provider session?", "confirm_description": "The provider session and active VPN connection will end.",
@@ -273,7 +274,7 @@
     "operation": { "connecting_country": "Connecting to {country}…", "recovering": "Recovering NordVPN…" },
     "notifications": { "connecting": "Connecting to {target}…", "connected": "Connected to {target} {server}.", "country_connected": "Connected to {server}.", "connect_failed": "Could not connect to {target}.", "disconnecting": "Disconnecting…", "disconnected": "Disconnected.", "disconnect_failed": "Could not disconnect." },
     "errors": { "target_required": "Choose a target.", "timeout": "The status check timed out.", "vpn_connect_timeout": "Connecting to {country} took too long. NordVPN could not establish a working server connection. Try again.", "provider_recovery_rate_limited": "NordVPN could not be recovered again. Try again later.", "provider_authentication_required": "Sign in to NordVPN before managing the VPN connection.", "status_unavailable": "VPN status is unavailable.", "provider_status_unavailable": "The NordVPN status could not be read.", "provider_cli_unavailable": "The NordVPN client is unavailable in the ExitLane runtime.", "unsupported_container_runtime": "This Docker runtime cannot control the NordVPN client on the host. Install ExitLane natively in the same LXC or VM as NordVPN." },
-    "access": { "sign_in_required_title": "NordVPN sign-in required", "sign_in_required_description": "Sign in to the local NordVPN client before selecting a country or managing the VPN connection.", "open_settings": "Open VPN settings", "unavailable_title": "NordVPN is unavailable", "unavailable_description": "Check the local NordVPN service and try again.", "checking_title": "Checking NordVPN status", "checking_description": "Provider management remains unavailable until authentication is confirmed.", "signing_in_title": "Signing in to NordVPN", "signing_out_title": "Signing out of NordVPN", "busy_description": "Provider management will become available when this action finishes.", "retry": "Retry" },
+    "access": { "sign_in_required_title": "NordVPN sign-in required", "sign_in_required_description": "Sign in above before selecting a country or managing the VPN connection.", "go_to_sign_in": "Go to sign in", "unavailable_title": "NordVPN is unavailable", "unavailable_description": "Check the local NordVPN service and try again.", "checking_title": "Checking NordVPN status", "checking_description": "Provider management remains unavailable until authentication is confirmed.", "signing_in_title": "Signing in to NordVPN", "signing_out_title": "Signing out of NordVPN", "busy_description": "Provider management will become available when this action finishes.", "retry": "Retry" },
     "country_selection": { "latency": "Latency", "reconnect": "Reconnect", "quick_choice": "QUICK CHOICE", "choose_country": "Choose a VPN country", "measure_again": "Measure again", "all_countries": "All countries", "search_country": "Search country", "search_placeholder": "For example, Netherlands", "measuring": "Measuring…", "latency_ms": "{latency} ms", "connected_latency": "Connected · {latency}", "last_used": "Last used", "measure_failed": "Not all latency values could be measured.", "load_failed": "Countries could not be loaded." }
   },
   "step4": {
@@ -453,6 +454,7 @@
       "eyebrow": "VPN", "title": "VPN overview", "description": "View registered VPN providers and their current operational state.",
       "active_provider": "Active provider", "current_status": "VPN status", "current_location": "Current location",
       "last_updated": "Last status update", "authentication": "Authentication", "open_provider": "Open provider",
+      "open_named_provider": "Open {provider}", "open_provider_aria": "Open provider", "open_named_provider_aria": "Open {provider}",
       "not_available": "Not available",
       "states": {
         "connected": "Connected", "disconnected": "Disconnected", "connecting": "Connecting…",

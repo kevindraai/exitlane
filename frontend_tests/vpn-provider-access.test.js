@@ -44,8 +44,27 @@ test("VPN markup provides an accessible inert blocking layer without killswitch 
   );
   assert.match(markup, /id="vpn-provider-blocker" role="status"/);
   assert.match(markup, /id="vpn-provider-controls"/);
-  assert.match(markup, /id="vpn-provider-open-settings"/);
+  assert.match(markup, /id="vpn-provider-go-to-sign-in"/);
+  assert.doesNotMatch(markup, /vpn-provider-open-settings|provider\.access\.open_settings/);
   assert.doesNotMatch(markup, /killswitch/i);
+});
+
+test("signed-out action stays on the provider route and focuses authentication", async () => {
+  const [source, english, dutch] = await Promise.all([
+    readFile(new URL("../backend/exitlane/static/js/provider.js", import.meta.url), "utf8"),
+    readFile(new URL("../backend/exitlane/static/locales/en.json", import.meta.url), "utf8").then(JSON.parse),
+    readFile(new URL("../backend/exitlane/static/locales/nl.json", import.meta.url), "utf8").then(JSON.parse),
+  ]);
+  assert.match(source, /vpn-provider-go-to-sign-in"\)\.addEventListener\("click"/);
+  assert.match(source, /provider-authentication-card"\)\.scrollIntoView/);
+  assert.match(source, /provider-token"\)\?\.focus\(\)/);
+  assert.doesNotMatch(source, /vpn-provider-go-to-sign-in[\s\S]{0,400}(showView|history|location\.)/);
+  assert.equal(english.provider.access.go_to_sign_in, "Go to sign in");
+  assert.equal(dutch.provider.access.go_to_sign_in, "Naar aanmelden");
+  assert.match(english.provider.access.sign_in_required_description, /Sign in above/);
+  assert.match(dutch.provider.access.sign_in_required_description, /hierboven aan/);
+  assert.equal("open_settings" in english.provider.access, false);
+  assert.equal("open_settings" in dutch.provider.access, false);
 });
 
 test("handlers and provider data loading use explicit provider capabilities", async () => {

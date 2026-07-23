@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
+  providerOverviewActionLabel,
   providerOverviewRoute,
   providerOverviewView,
 } from "../backend/exitlane/static/js/providers.js";
+import { localisedCountryName } from "../backend/exitlane/static/js/country-format.js";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
@@ -103,11 +105,14 @@ test("connected overview exposes provider metadata, status and reliable optional
 test("disconnected, signed-out, unavailable and unknown states have honest semantics", () => {
   const disconnected = providerOverviewView(provider());
   assert.equal(disconnected.state, "disconnected");
+  assert.equal(disconnected.authenticationState, "signed_in");
+  assert.equal(disconnected.connectionDisplayState, "disconnected");
   assert.equal(disconnected.statusTone, "neutral");
 
   const signedOut = providerOverviewView(provider({ authentication: "signed_out" }));
   assert.equal(signedOut.state, "signed_out");
   assert.equal(signedOut.authenticationState, "signed_out");
+  assert.equal(signedOut.connectionDisplayState, "disconnected");
   assert.equal(signedOut.fields.length, 0);
 
   const unavailable = providerOverviewView(provider({
@@ -124,6 +129,16 @@ test("disconnected, signed-out, unavailable and unknown states have honest seman
   }));
   assert.equal(unknown.state, "unknown");
   assert.equal(unknown.statusTone, "neutral");
+});
+
+test("overview provider action uses display name with a safe fallback", () => {
+  assert.equal(providerOverviewActionLabel("Example VPN"), "Open Example VPN");
+  assert.equal(providerOverviewActionLabel(""), "Open provider");
+});
+
+test("country names use generic locale formatting with a provider fallback", () => {
+  assert.equal(localisedCountryName("NL", "Provider country"), "Netherlands");
+  assert.equal(localisedCountryName("", "Provider country"), "Provider country");
 });
 
 test("overview omits missing optional values and contains no provider-specific logic", async () => {
@@ -149,17 +164,40 @@ test("overview translations and responsive status styling exist", async () => {
   ]);
   for (const locale of [english, dutch]) {
     assert.ok(locale.vpn.overview.open_provider);
+    assert.ok(locale.vpn.overview.open_named_provider);
+    assert.ok(locale.vpn.overview.open_provider_aria);
+    assert.ok(locale.vpn.overview.open_named_provider_aria);
     assert.ok(locale.vpn.overview.not_available);
     for (const state of [
       "connected", "disconnected", "connecting", "disconnecting",
-      "signed_out", "unavailable", "error", "unknown",
+      "signed_in", "signed_out", "unavailable", "error", "unknown",
     ]) {
       assert.ok(locale.vpn.overview.states[state]);
     }
   }
+  assert.equal(english.vpn.overview.authentication, "Authentication");
+  assert.equal(dutch.vpn.overview.authentication, "Aanmeldstatus");
+  assert.equal(english.vpn.overview.states.signed_in, "Signed in");
+  assert.equal(dutch.vpn.overview.states.signed_in, "Aangemeld");
+  assert.equal(english.vpn.overview.states.disconnected, "Disconnected");
+  assert.equal(dutch.vpn.overview.states.disconnected, "Niet verbonden");
+  assert.doesNotMatch(english.provider.management.authentication_required, /signed out/i);
+  assert.doesNotMatch(dutch.provider.management.authentication_required, /afgemeld/i);
   assert.match(styles, /provider-overview-status--success/);
   assert.match(styles, /provider-overview-status--busy/);
+  assert.match(styles, /\.vpn-overview-summary[\s\S]+grid-template-columns: repeat\(5,/);
   assert.match(styles, /@media \(max-width: 650px\)[\s\S]+provider-overview-list[\s\S]+grid-template-columns: 1fr/);
+});
+
+test("overview summary renders authentication separately from connection state", async () => {
+  const [markup, source] = await Promise.all([
+    read("../backend/exitlane/static/partials/views/vpn-overview.html"),
+    read("../backend/exitlane/static/js/providers.js"),
+  ]);
+  assert.match(markup, /id="vpn-overview-current-status"/);
+  assert.match(markup, /id="vpn-overview-authentication-state"/);
+  assert.match(source, /vpn-overview-current-status"\)\.textContent = view[\s\S]+connectionDisplayState/);
+  assert.match(source, /vpn-overview-authentication-state"\)\.textContent = view[\s\S]+authenticationState/);
 });
 
 test("VPN overview has its own authenticated catalog poller", async () => {

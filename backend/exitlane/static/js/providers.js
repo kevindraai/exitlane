@@ -1,4 +1,5 @@
 import { api } from "./api.js";
+import { localisedCountryName } from "./country-format.js";
 import { getCurrentLanguage, t } from "./i18n.js";
 import { showProviderView, showView } from "./navigation.js";
 import { providerManagementView } from "./provider-management.js";
@@ -54,6 +55,10 @@ export function providerOverviewView(provider = {}) {
   const status = provider.status || {};
   const management = providerManagementView(status);
   const operationState = status.operation?.state;
+  let connectionDisplayState = ["connecting", "disconnecting"].includes(operationState)
+    ? operationState
+    : management.connectionState;
+  if (!KNOWN_OVERVIEW_STATES.has(connectionDisplayState)) connectionDisplayState = "unknown";
   let state = ["connecting", "disconnecting"].includes(operationState)
     ? operationState
     : management.authenticationState === "signed_out"
@@ -69,17 +74,20 @@ export function providerOverviewView(provider = {}) {
     state = "error";
   }
   if (!KNOWN_OVERVIEW_STATES.has(state)) state = "unknown";
-  const statusTone = state === "connected"
+  const statusTone = connectionDisplayState === "connected"
     ? "success"
-    : ["unavailable", "error"].includes(state)
+    : ["unavailable", "error"].includes(connectionDisplayState)
       ? "warning"
-      : ["connecting", "disconnecting"].includes(state)
+      : ["connecting", "disconnecting"].includes(connectionDisplayState)
         ? "busy"
-        : state === "signed_out"
-          ? "info"
-          : "neutral";
+        : "neutral";
   const fields = [
-    status.country ? { key: "location", value: status.country } : null,
+    status.country || status.country_code
+      ? {
+          key: "location",
+          value: localisedCountryName(status.country_code, status.country),
+        }
+      : null,
     status.server ? { key: "server", value: status.server } : null,
     status.external_ip ? { key: "external_ip", value: status.external_ip } : null,
     status.latency_ms != null
@@ -97,6 +105,7 @@ export function providerOverviewView(provider = {}) {
     active: provider.active === true,
     authenticationState: management.authenticationState,
     connectionState: management.connectionState,
+    connectionDisplayState,
     state,
     statusTone,
     fields,
@@ -107,6 +116,12 @@ export function providerOverviewView(provider = {}) {
 
 export function providerOverviewRoute(providerId) {
   return `#vpn/provider/${encodeURIComponent(providerId)}`;
+}
+
+export function providerOverviewActionLabel(displayName) {
+  return displayName
+    ? t("vpn.overview.open_named_provider", { provider: displayName }, `Open ${displayName}`)
+    : t("vpn.overview.open_provider", {}, "Open provider");
 }
 
 function overviewStatusLabel(state) {
@@ -151,8 +166,8 @@ function createOverviewCard(provider) {
   identity.append(name, description);
   const badge = document.createElement("span");
   badge.className = `provider-overview-status provider-overview-status--${view.statusTone}`;
-  badge.dataset.status = view.state;
-  badge.textContent = overviewStatusLabel(view.state);
+  badge.dataset.status = view.connectionDisplayState;
+  badge.textContent = overviewStatusLabel(view.connectionDisplayState);
   header.append(icon, identity, badge);
 
   const authentication = document.createElement("div");
@@ -183,7 +198,13 @@ function createOverviewCard(provider) {
   action.className = "button button-primary";
   action.dataset.providerId = view.id || "";
   action.dataset.route = view.id ? providerOverviewRoute(view.id) : "";
-  action.textContent = t("vpn.overview.open_provider", {}, "Open provider");
+  action.textContent = providerOverviewActionLabel(view.displayName);
+  action.setAttribute(
+    "aria-label",
+    view.displayName
+      ? t("vpn.overview.open_named_provider_aria", { provider: view.displayName }, `Open ${view.displayName}`)
+      : t("vpn.overview.open_provider_aria", {}, "Open provider"),
+  );
   action.disabled = !view.canOpen;
   action.addEventListener("click", () => showProviderView(view.id));
   footer.append(action);
@@ -197,7 +218,10 @@ function renderOverviewSummary(items, activeProviderId) {
   select("#vpn-overview-active-provider").textContent = view?.displayName
     || t("vpn.overview.not_available", {}, "Not available");
   select("#vpn-overview-current-status").textContent = view
-    ? overviewStatusLabel(view.state)
+    ? overviewStatusLabel(view.connectionDisplayState)
+    : t("vpn.overview.not_available", {}, "Not available");
+  select("#vpn-overview-authentication-state").textContent = view
+    ? overviewStatusLabel(view.authenticationState)
     : t("vpn.overview.not_available", {}, "Not available");
   const location = view?.fields.find((field) => field.key === "location")?.value;
   select("#vpn-overview-location-item").hidden = !location;
@@ -210,10 +234,18 @@ function providerStatusText(view, name) {
     return t("settings.vpn.states.not_installed", { provider: name }, `${name} is not installed.`);
   }
   if (view.authenticationState === "signed_in") {
-    return t("settings.vpn.states.signed_in", { provider: name }, `${name} is signed in.`);
+    return t(
+      "provider.management.authentication_ready",
+      { provider: name },
+      `${name} authentication is ready.`,
+    );
   }
   if (view.authenticationState === "signed_out") {
-    return t("settings.vpn.states.signed_out", { provider: name }, `${name} is signed out.`);
+    return t(
+      "provider.management.authentication_required",
+      { provider: name },
+      `Sign in to ${name} below to manage the VPN connection.`,
+    );
   }
   return t("settings.vpn.states.unknown", { provider: name }, `${name} authentication is unknown.`);
 }
