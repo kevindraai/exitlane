@@ -45,7 +45,8 @@ security. See the [hardening guide](docs/security/hardening-guide.md),
 
 - Configure timezone and dashboard refresh interval in the WebUI.
 - Choose the interface language and light, dark, or system appearance.
-- Replace and validate the NordVPN token without rerunning setup.
+- Sign in with a NordVPN token when the local client is signed out; when it is already signed in,
+  Settings preserves that session and explains the upstream replacement limitation.
 - Open the existing WireGuard configuration management directly from Settings.
 
 ### Notifications

@@ -17,6 +17,8 @@ import {
 import {
   initialiseProviderControls,
   initialiseProviderState,
+  activateAuthenticatedProviderData,
+  deactivateAuthenticatedProviderData,
   refreshProvider,
   restoreInstallStatus,
 } from "./provider.js";
@@ -143,6 +145,7 @@ async function refreshApplication() {
       if (!select("#view-settings").hidden) await loadSettings({ force: true });
       try {
         await refreshProvider();
+        await activateAuthenticatedProviderData();
       } catch {
         renderProviderStatusError();
       }
@@ -189,7 +192,10 @@ async function initialise() {
 
     window.addEventListener("exitlane:viewchange", syncDashboardPolling);
     window.addEventListener("exitlane:modechange", syncDashboardPolling);
-    window.addEventListener("exitlane:authenticationrequired", () => lifecycle.stop());
+    window.addEventListener("exitlane:authenticationrequired", () => {
+      lifecycle.stop();
+      deactivateAuthenticatedProviderData();
+    });
     select("#dashboard-refresh").addEventListener("click", () => lifecycle.dashboard.refresh().catch(() => {}));
     select("#dashboard-wg-refresh").addEventListener("click", () => lifecycle.wireguard.refresh().catch(() => {}));
 

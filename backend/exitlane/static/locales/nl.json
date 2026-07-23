@@ -47,15 +47,29 @@
       "confirm_password": "Herhaal nieuw wachtwoord",
       "session_warning": "Na de wijziging eindigen alle sessies en moet je opnieuw inloggen.",
       "change": "Wachtwoord wijzigen",
+      "requirements": {
+        "minimum": "Minimaal {length} tekens",
+        "different": "Verschilt van het huidige wachtwoord",
+        "matches": "Komt overeen met het herhaalde wachtwoord"
+      },
       "errors": { "invalid_credentials": "Het huidige wachtwoord is onjuist.", "password_mismatch": "De nieuwe wachtwoorden komen niet overeen.", "mismatch": "De nieuwe wachtwoorden komen niet overeen.", "password_policy": "Het nieuwe wachtwoord voldoet niet aan het wachtwoordbeleid.", "password_unchanged": "Kies een ander wachtwoord dan het huidige wachtwoord.", "too_many_attempts": "Te veel pogingen. Probeer het later opnieuw.", "failed": "Het wachtwoord kon niet worden gewijzigd." }
     },
     "vpn": {
       "eyebrow": "VPN", "title": "NordVPN-token",
-      "description": "Vervang en valideer het token van de lokale NordVPN-client.",
+      "description": "Beheer de authenticatie van de lokale NordVPN-client.",
       "new_token": "Nieuw token", "token_hidden": "Het huidige token wordt nooit getoond.",
-      "update": "Token valideren en vervangen", "updating": "Valideren…",
-      "updated": "NordVPN-token bijgewerkt.",
-      "errors": { "invalid_token": "NordVPN heeft dit token geweigerd. De bestaande aanmelding is behouden.", "timeout": "De NordVPN-tokenvalidatie duurde te lang. De bestaande aanmelding is behouden." }
+      "sign_in": "Aanmelden met token", "updating": "Aanmelden…",
+      "updated": "NordVPN is aangemeld met het opgegeven token.",
+      "signed_in_limitation": "NordVPN is momenteel aangemeld. De geïnstalleerde NordVPN-client kan een vervangend token niet controleren zonder de bestaande sessie te beëindigen.",
+      "errors": {
+        "already_logged_in": "NordVPN is al aangemeld. De bestaande sessie is behouden.",
+        "invalid_token": "NordVPN heeft dit token geweigerd.",
+        "timeout": "De NordVPN-tokenaanmelding duurde te lang.",
+        "daemon_unavailable": "De NordVPN-daemon is niet beschikbaar.",
+        "command_unavailable": "Het NordVPN-commando is niet beschikbaar.",
+        "token_replacement_unsupported": "De geïnstalleerde NordVPN-client kan tijdens een actieve aanmelding geen vervangend token veilig controleren.",
+        "provider_error": "NordVPN kon de tokenaanmelding niet voltooien."
+      }
     },
     "wireguard": {
       "eyebrow": "WIREGUARD", "title": "WireGuard",

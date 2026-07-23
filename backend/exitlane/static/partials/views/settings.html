@@ -16,13 +16,32 @@
          <p data-i18n="settings.authentication.description">Change the local administrator password.</p>
         </div>
        </div>
-       <form class="form-grid" id="settings-password-form" method="post">
-        <p class="inline-error" hidden="" id="settings-password-error" role="alert"></p>
-        <label><span data-i18n="settings.authentication.current_password">Current password</span><input autocomplete="current-password" id="settings-current-password" required="" type="password"/></label>
-        <label><span data-i18n="settings.authentication.new_password">New password</span><input autocomplete="new-password" id="settings-new-password" required="" type="password"/></label>
-        <label><span data-i18n="settings.authentication.confirm_password">Repeat new password</span><input autocomplete="new-password" id="settings-confirm-password" required="" type="password"/></label>
-        <small data-i18n="settings.authentication.session_warning">After the change, all sessions end and you must sign in again.</small>
-        <div class="form-submit"><button class="button button-primary" data-i18n="settings.authentication.change" id="settings-password-save" type="submit">Change password</button></div>
+       <form class="authentication-password-form" id="settings-password-form" method="post">
+        <div class="authentication-status" hidden="" id="settings-password-status" role="status"></div>
+        <div class="form-grid authentication-fields" id="settings-password-fields">
+         <label>
+          <span data-i18n="settings.authentication.current_password">Current password</span>
+          <input aria-describedby="settings-current-password-error" autocomplete="current-password" id="settings-current-password" required="" type="password"/>
+          <small class="field-error" hidden="" id="settings-current-password-error"></small>
+         </label>
+         <label>
+          <span data-i18n="settings.authentication.new_password">New password</span>
+          <input aria-describedby="settings-password-minimum settings-password-different settings-new-password-error" autocomplete="new-password" id="settings-new-password" required="" type="password"/>
+          <small class="password-rule" id="settings-password-minimum"></small>
+          <small class="password-rule" id="settings-password-different"></small>
+          <small class="field-error" hidden="" id="settings-new-password-error"></small>
+         </label>
+         <label>
+          <span data-i18n="settings.authentication.confirm_password">Repeat new password</span>
+          <input aria-describedby="settings-password-match settings-confirm-password-error" autocomplete="new-password" id="settings-confirm-password" required="" type="password"/>
+          <small aria-live="polite" class="password-rule" id="settings-password-match"></small>
+          <small class="field-error" hidden="" id="settings-confirm-password-error"></small>
+         </label>
+        </div>
+        <div class="authentication-form-footer">
+         <small data-i18n="settings.authentication.session_warning">After the change, all sessions end and you must sign in again.</small>
+         <button class="button button-primary" data-i18n="settings.authentication.change" disabled="" id="settings-password-save" type="submit">Change password</button>
+        </div>
        </form>
       </section>
       <section class="panel" id="settings-vpn">
@@ -30,13 +49,14 @@
         <div>
          <p class="eyebrow" data-i18n="settings.vpn.eyebrow">VPN</p>
          <h2 data-i18n="settings.vpn.title">NordVPN token</h2>
-         <p data-i18n="settings.vpn.description">Replace and validate the token used by the local NordVPN client.</p>
+         <p data-i18n="settings.vpn.description">Manage authentication for the local NordVPN client.</p>
         </div>
        </div>
+       <p class="sensitive-warning" data-i18n="settings.vpn.signed_in_limitation" hidden="" id="settings-token-status">NordVPN is currently signed in. The installed NordVPN client cannot validate a replacement token without ending the existing session.</p>
        <form class="form-grid" id="settings-token-form" method="post">
         <p class="inline-error" hidden="" id="settings-token-error" role="alert"></p>
         <label><span data-i18n="settings.vpn.new_token">New token</span><input autocomplete="off" id="settings-nordvpn-token" minlength="20" required="" type="password"/><small data-i18n="settings.vpn.token_hidden">The current token is never displayed.</small></label>
-        <div class="form-submit"><button class="button button-primary" data-i18n="settings.vpn.update" id="settings-token-save" type="submit">Validate and replace token</button></div>
+        <div class="form-submit"><button class="button button-primary" data-i18n="settings.vpn.sign_in" id="settings-token-save" type="submit">Sign in with token</button></div>
        </form>
       </section>
       <section class="panel" id="settings-wireguard">

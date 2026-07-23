@@ -20,12 +20,66 @@ logger = logging.getLogger(__name__)
 SERVER_HOSTNAME_PATTERN = re.compile(r"^([a-z]{2}[0-9]+)\.nordvpn\.com$")
 CONNECT_FAILURE_TIMEOUT_SECONDS = 25
 TOKEN_LOGIN_TIMEOUT_SECONDS = 15
+TOKEN_ERROR_CODES = frozenset(
+    {
+        "already_logged_in",
+        "invalid_token",
+        "timeout",
+        "daemon_unavailable",
+        "command_unavailable",
+        "token_replacement_unsupported",
+        "provider_error",
+    }
+)
 
 
 def _token_login_environment() -> dict[str, str]:
     """Return the minimal non-secret environment needed by the installed CLI."""
     allowed = ("HOME", "LANG", "LC_ALL", "PATH", "XDG_RUNTIME_DIR")
     return {name: os.environ[name] for name in allowed if name in os.environ}
+
+
+def classify_token_login_failure(return_code: int, output: str, error: str) -> str:
+    """Classify known CLI failures without returning uncontrolled provider text."""
+    if return_code == 124:
+        return "timeout"
+    if return_code == 127:
+        return "command_unavailable"
+    message = f"{output}\n{error}".casefold()
+    if any(marker in message for marker in ("already logged in", "already logged-in", "already signed in")):
+        return "already_logged_in"
+    if any(
+        marker in message
+        for marker in (
+            "invalid token",
+            "token is invalid",
+            "token has expired",
+            "incorrect token",
+        )
+    ):
+        return "invalid_token"
+    if any(
+        marker in message
+        for marker in (
+            "daemon is not running",
+            "daemon not running",
+            "cannot reach daemon",
+            "can't connect to nordvpn daemon",
+            "nordvpnd",
+        )
+    ):
+        return "daemon_unavailable"
+    if any(
+        marker in message
+        for marker in (
+            "log out first",
+            "logout first",
+            "cannot login while",
+            "can't login while",
+        )
+    ):
+        return "token_replacement_unsupported"
+    return "provider_error"
 
 
 def _connect_timed_out(return_code: int, output: str, error: str, elapsed: float) -> bool:
@@ -301,7 +355,7 @@ echo "Installatie afgerond"
                 "message": "invalid token format",
             }
 
-        rc, _out, _err = await command(
+        rc, out, err = await command(
             "nordvpn",
             "login",
             "--token",
@@ -312,7 +366,7 @@ echo "Installatie afgerond"
 
         return {
             "ok": rc == 0,
-            "error": None if rc == 0 else ("timeout" if rc == 124 else "invalid_token"),
+            "error": None if rc == 0 else classify_token_login_failure(rc, out, err),
         }
 
     async def login_callback(self, url):

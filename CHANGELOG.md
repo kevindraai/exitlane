@@ -18,7 +18,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Protected cursor-paginated events API and a translated, lifecycle-aware Activity view.
 - Self-service administrator password changes with complete session revocation.
 - Root-only interactive `exitlane-cli reset-password` recovery on the local host.
-- Validated NordVPN-token replacement and a Settings link to existing WireGuard management.
+- Safe NordVPN token sign-in diagnostics, honest active-session handling, and a Settings link to
+  existing WireGuard management.
 - On-demand, authenticated WireGuard configuration QR codes generated with Segno.
 
 ### Changed
@@ -26,6 +27,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Split the frontend HTML into server-composed functional partials without changing runtime
   behavior.
 - Extended Settings with Authentication, VPN, and WireGuard management sections.
+- Kept protected provider data and polling inactive until administrator authentication succeeds.
+- Added stable password-form layout and accessible live checks backed by the central policy.
 
 ## [0.2.0-alpha.1] - 2026-07-22
 

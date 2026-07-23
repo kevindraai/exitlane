@@ -146,7 +146,11 @@ def test_token_update_is_authenticated_sanitized_and_audited(client, monkeypatch
         assert value == token
         return {"ok": True, "stdout": f"accepted {token}", "stderr": ""}
 
+    async def signed_out(**_options):
+        return {"authenticated": False}
+
     monkeypatch.setattr(main.provider, "login_token", accepted)
+    monkeypatch.setattr(main.provider, "status", signed_out)
     assert client.post("/api/providers/nordvpn/token", json={"token": token}).status_code == 401
     assert login(client).status_code == 200
     response = client.post("/api/providers/nordvpn/token", json={"token": token})
@@ -164,7 +168,11 @@ def test_invalid_token_is_not_audited_or_reflected(client, monkeypatch):
     async def rejected(_value):
         return {"ok": False, "error": "invalid_token", "stderr": token}
 
+    async def signed_out(**_options):
+        return {"authenticated": False}
+
     monkeypatch.setattr(main.provider, "login_token", rejected)
+    monkeypatch.setattr(main.provider, "status", signed_out)
     assert login(client).status_code == 200
     response = client.post("/api/providers/nordvpn/token", json={"token": token})
     assert response.status_code == 422
@@ -173,6 +181,27 @@ def test_invalid_token_is_not_audited_or_reflected(client, monkeypatch):
         assert connection.execute(
             "SELECT COUNT(*) FROM events WHERE code='provider.token_updated'"
         ).fetchone()[0] == 0
+
+
+def test_uncontrolled_provider_error_is_not_reflected(client, monkeypatch):
+    marker = "provider-output-must-not-be-reflected"
+
+    async def rejected(_value):
+        return {"ok": False, "error": marker}
+
+    async def signed_out(**_options):
+        return {"authenticated": False}
+
+    monkeypatch.setattr(main.provider, "login_token", rejected)
+    monkeypatch.setattr(main.provider, "status", signed_out)
+    assert login(client).status_code == 200
+    response = client.post(
+        "/api/providers/nordvpn/token",
+        json={"token": "response-dummy-token-1234567890"},
+    )
+    assert response.status_code == 503
+    assert response.json() == {"detail": "provider_error"}
+    assert marker not in response.text
 
 
 def test_nordvpn_token_login_has_bounded_explicit_subprocess_mitigations(monkeypatch, caplog):
@@ -190,7 +219,7 @@ def test_nordvpn_token_login_has_bounded_explicit_subprocess_mitigations(monkeyp
     assert captured["options"]["timeout"] == nordvpn.TOKEN_LOGIN_TIMEOUT_SECONDS
     assert marker not in captured["options"]["environment"].values()
     assert "environment" in captured["options"]
-    assert result["error"] == "invalid_token"
+    assert result["error"] == "provider_error"
     assert marker not in str(result)
     assert marker not in caplog.text
 
@@ -205,6 +234,63 @@ def test_nordvpn_token_timeout_is_safely_classified(monkeypatch):
     )
     assert result["ok"] is False
     assert result["error"] == "timeout"
+
+
+@pytest.mark.parametrize(
+    ("return_code", "output", "expected"),
+    [
+        (1, "You are already logged in.", "already_logged_in"),
+        (1, "The token is invalid.", "invalid_token"),
+        (1, "Cannot reach daemon.", "daemon_unavailable"),
+        (127, "", "command_unavailable"),
+        (1, "Please log out first.", "token_replacement_unsupported"),
+        (1, "Unrecognized provider failure.", "provider_error"),
+    ],
+)
+def test_token_failure_classification_is_specific_and_sanitized(
+    return_code, output, expected
+):
+    assert nordvpn.classify_token_login_failure(return_code, output, "") == expected
+
+
+def test_active_provider_session_blocks_replacement_without_cli_call(client, monkeypatch):
+    token = "active-session-dummy-token-123456"
+    called = False
+
+    async def signed_in(**_options):
+        return {"authenticated": True, "connected": True}
+
+    async def must_not_login(_value):
+        nonlocal called
+        called = True
+        return {"ok": True}
+
+    monkeypatch.setattr(main.provider, "status", signed_in)
+    monkeypatch.setattr(main.provider, "login_token", must_not_login)
+    assert login(client).status_code == 200
+    response = client.post("/api/providers/nordvpn/token", json={"token": token})
+    assert response.status_code == 409
+    assert response.json() == {"detail": "token_replacement_unsupported"}
+    assert token not in response.text
+    assert called is False
+
+
+def test_existing_wizard_token_login_still_works_while_signed_out(client, monkeypatch):
+    token = "wizard-dummy-token-123456789012"
+
+    async def accepted(value):
+        assert value == token
+        return {"ok": True, "error": None}
+
+    monkeypatch.setattr(main.provider, "login_token", accepted)
+    assert login(client).status_code == 200
+    response = client.post(
+        "/api/providers/nordvpn/login/token",
+        json={"token": token},
+    )
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert token not in response.text
 
 
 def test_core_subprocess_uses_exec_argv_and_explicit_environment(monkeypatch):

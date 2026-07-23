@@ -43,7 +43,7 @@ from exitlane.settings import (
     settings_response,
     update_settings,
 )
-from exitlane.providers.nordvpn import provider
+from exitlane.providers.nordvpn import TOKEN_ERROR_CODES, provider
 from exitlane.services.diagnostics import run as diagnostics
 from exitlane.services.dashboard import DashboardResponse, build_dashboard, system_status
 from exitlane.services import wireguard as wireguard_service
@@ -726,10 +726,23 @@ async def login_token(req: Token) -> dict:
 
 @app.post("/api/providers/nordvpn/token")
 async def update_nordvpn_token(req: Token, request: Request) -> dict:
+    status = await provider.status(timeout=8)
+    if status.get("authenticated"):
+        raise HTTPException(status_code=409, detail="token_replacement_unsupported")
     result = await provider.login_token(req.token)
     if not result.get("ok"):
-        error = result.get("error", "invalid_token")
-        status_code = 504 if error == "timeout" else 422
+        error = result.get("error")
+        if error not in TOKEN_ERROR_CODES:
+            error = "provider_error"
+        status_code = (
+            504
+            if error == "timeout"
+            else 503
+            if error in {"daemon_unavailable", "command_unavailable", "provider_error"}
+            else 409
+            if error in {"already_logged_in", "token_replacement_unsupported"}
+            else 422
+        )
         raise HTTPException(status_code=status_code, detail=error)
     record_event("provider.token_updated", actor=request_actor(request))
     return {"ok": True, "reconnect_required": bool(result.get("reconnect_required", False))}

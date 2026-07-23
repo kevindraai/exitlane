@@ -47,15 +47,29 @@
       "confirm_password": "Repeat new password",
       "session_warning": "After the change, all sessions end and you must sign in again.",
       "change": "Change password",
+      "requirements": {
+        "minimum": "At least {length} characters",
+        "different": "Different from the current password",
+        "matches": "Matches the repeated password"
+      },
       "errors": { "invalid_credentials": "The current password is incorrect.", "password_mismatch": "The new passwords do not match.", "mismatch": "The new passwords do not match.", "password_policy": "The new password does not meet the password policy.", "password_unchanged": "Choose a password different from the current password.", "too_many_attempts": "Too many attempts. Try again later.", "failed": "The password could not be changed." }
     },
     "vpn": {
       "eyebrow": "VPN", "title": "NordVPN token",
-      "description": "Replace and validate the token used by the local NordVPN client.",
+      "description": "Manage authentication for the local NordVPN client.",
       "new_token": "New token", "token_hidden": "The current token is never displayed.",
-      "update": "Validate and replace token", "updating": "Validating…",
-      "updated": "NordVPN token updated.",
-      "errors": { "invalid_token": "NordVPN rejected this token. The existing login was preserved.", "timeout": "NordVPN token validation timed out. The existing login was preserved." }
+      "sign_in": "Sign in with token", "updating": "Signing in…",
+      "updated": "NordVPN signed in with the supplied token.",
+      "signed_in_limitation": "NordVPN is currently signed in. The installed NordVPN client cannot validate a replacement token without ending the existing session.",
+      "errors": {
+        "already_logged_in": "NordVPN is already signed in. The existing session was preserved.",
+        "invalid_token": "NordVPN rejected this token.",
+        "timeout": "NordVPN token sign-in timed out.",
+        "daemon_unavailable": "The NordVPN daemon is unavailable.",
+        "command_unavailable": "The NordVPN command is unavailable.",
+        "token_replacement_unsupported": "The installed NordVPN client cannot safely validate a replacement token while signed in.",
+        "provider_error": "NordVPN could not complete token sign-in."
+      }
     },
     "wireguard": {
       "eyebrow": "WIREGUARD", "title": "WireGuard",

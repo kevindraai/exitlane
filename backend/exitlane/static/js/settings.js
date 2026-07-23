@@ -13,7 +13,12 @@ import {
   showInlineError,
   showMessage,
 } from "./ui.js";
-import { getSlice, resetAuthenticatedState } from "./state.js";
+import { getSlice, resetAuthenticatedState, subscribe } from "./state.js";
+import { frontendConfig } from "./config.js";
+import {
+  passwordErrorTarget,
+  passwordRequirementState,
+} from "./password-validation.js";
 
 let savedGeneral = null;
 let savedSettings = null;
@@ -142,6 +147,74 @@ function clearSecretFields(...selectors) {
   for (const selector of selectors) select(selector).value = "";
 }
 
+function clearPasswordFeedback() {
+  select("#settings-password-status").hidden = true;
+  select("#settings-password-status").textContent = "";
+  for (const selector of [
+    "#settings-current-password-error",
+    "#settings-new-password-error",
+    "#settings-confirm-password-error",
+  ]) {
+    select(selector).hidden = true;
+    select(selector).textContent = "";
+  }
+}
+
+function renderPasswordRule(selector, result, key, parameters = {}) {
+  const state = result === null ? "neutral" : result ? "valid" : "invalid";
+  const symbol = result === null ? "○" : result ? "✓" : "✕";
+  const element = select(selector);
+  element.dataset.state = state;
+  element.textContent = `${symbol} ${t(key, parameters)}`;
+}
+
+export function updatePasswordValidation() {
+  const currentPassword = select("#settings-current-password").value;
+  const newPassword = select("#settings-new-password").value;
+  const confirmation = select("#settings-confirm-password").value;
+  const minimumLength = frontendConfig.password.minimumLength;
+  const validation = passwordRequirementState({
+    currentPassword,
+    newPassword,
+    confirmation,
+    minimumLength,
+  });
+  renderPasswordRule(
+    "#settings-password-minimum",
+    validation.minimum,
+    "settings.authentication.requirements.minimum",
+    { length: minimumLength },
+  );
+  renderPasswordRule(
+    "#settings-password-different",
+    validation.different,
+    "settings.authentication.requirements.different",
+  );
+  renderPasswordRule(
+    "#settings-password-match",
+    validation.matches,
+    "settings.authentication.requirements.matches",
+  );
+  select("#settings-password-save").disabled = !validation.complete;
+  return validation;
+}
+
+function showPasswordError(code) {
+  const target = passwordErrorTarget(code);
+  const message = t(
+    `settings.authentication.errors.${code || "failed"}`,
+    {},
+    t("settings.authentication.errors.failed"),
+  );
+  if (target !== "#settings-password-status") {
+    select(target).textContent = message;
+    select(target).hidden = false;
+    return;
+  }
+  select("#settings-password-status").textContent = message;
+  select("#settings-password-status").hidden = false;
+}
+
 export async function changePassword(event) {
   event.preventDefault();
   const button = select("#settings-password-save");
@@ -150,16 +223,14 @@ export async function changePassword(event) {
     "#settings-new-password",
     "#settings-confirm-password",
   ];
-  clearInlineError("#settings-password-error");
+  clearPasswordFeedback();
+  if (!updatePasswordValidation().complete) return;
   setBusy(button, true, t("settings.messages.saving", {}, "Saving…"));
   try {
     const newPassword = select(fields[1]).value;
     const confirmation = select(fields[2]).value;
     if (newPassword !== confirmation) {
-      showInlineError(
-        t("settings.authentication.errors.mismatch", {}, "The new passwords do not match."),
-        "#settings-password-error",
-      );
+      showPasswordError("password_mismatch");
       return;
     }
     await api("/api/auth/password", {
@@ -173,14 +244,19 @@ export async function changePassword(event) {
     resetAuthenticatedState();
     window.dispatchEvent(new CustomEvent("exitlane:authenticationrequired"));
   } catch (error) {
-    showInlineError(
-      t(`settings.authentication.errors.${error.payload?.detail || "failed"}`, {}, t("settings.authentication.errors.failed")),
-      "#settings-password-error",
-    );
+    showPasswordError(error.payload?.detail || "failed");
   } finally {
     clearSecretFields(...fields);
     setBusy(button, false);
+    updatePasswordValidation();
   }
+}
+
+export function renderNordvpnTokenManagement(status = {}) {
+  const signedIn = status.authenticated === true;
+  select("#settings-token-status").hidden = !signedIn;
+  select("#settings-token-form").hidden = signedIn;
+  select("#settings-token-save").disabled = signedIn;
 }
 
 export async function updateNordvpnToken(event) {
@@ -212,7 +288,15 @@ export function initialiseSettings() {
   form.addEventListener("input", updateSaveState);
   form.addEventListener("change", updateSaveState);
   select("#settings-password-form").addEventListener("submit", changePassword);
+  select("#settings-password-form").addEventListener("input", () => {
+    clearPasswordFeedback();
+    updatePasswordValidation();
+  });
   select("#settings-token-form").addEventListener("submit", updateNordvpnToken);
+  subscribe("provider", (slice) => renderNordvpnTokenManagement(slice.data || {}), {
+    immediate: true,
+  });
+  updatePasswordValidation();
   window.addEventListener("exitlane:viewchange", (event) => {
     const dashboardActive = getSlice("application").mode === "dashboard";
     if (dashboardActive && event.detail.view === "settings") loadSettings();
@@ -220,5 +304,7 @@ export function initialiseSettings() {
   window.addEventListener("exitlane:languagechange", () => {
     const dashboardActive = getSlice("application").mode === "dashboard";
     if (dashboardActive && settingsLoaded) renderAbout(savedSettings.about);
+    updatePasswordValidation();
   });
+  window.addEventListener("exitlane:configchange", updatePasswordValidation);
 }

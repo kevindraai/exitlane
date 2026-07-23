@@ -147,7 +147,7 @@ def test_navigation_wizard_and_accessibility_references_are_complete():
         for attribute in ("aria-labelledby", "aria-describedby"):
             for target in (attrs.get(attribute) or "").split():
                 assert target in ids
-    assert len(values(parser, "aria-live")) == 6
+    assert len(values(parser, "aria-live")) == 7
 
 
 def test_javascript_static_id_selectors_exist_in_composed_markup():

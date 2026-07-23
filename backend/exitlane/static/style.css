@@ -650,6 +650,50 @@ input::placeholder {
   align-items: end;
 }
 
+.authentication-password-form {
+  margin-top: 18px;
+}
+
+.authentication-status {
+  width: 100%;
+  margin-bottom: 14px;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--danger-border);
+  border-radius: 0.75rem;
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.authentication-fields {
+  margin-top: 0;
+}
+
+.authentication-form-footer {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.password-rule,
+.field-error {
+  display: block;
+}
+
+.password-rule[data-state="neutral"] {
+  color: var(--muted);
+}
+
+.password-rule[data-state="valid"] {
+  color: var(--success);
+}
+
+.password-rule[data-state="invalid"],
+.field-error {
+  color: var(--danger);
+}
+
 .provider-card,
 .result-card,
 .details-card,
@@ -934,6 +978,11 @@ pre {
 
   .form-submit {
     align-items: stretch;
+  }
+
+  .authentication-form-footer {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .metric-grid {

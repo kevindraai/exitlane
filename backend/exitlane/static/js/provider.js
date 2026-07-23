@@ -86,6 +86,14 @@ function renderVpnView(status) {
 
 let vpnCountries = [];
 let quickCountryCodes = [];
+let countryLoadPromise = null;
+let countryLoadController = null;
+let countryLoadGeneration = 0;
+let countriesLoaded = false;
+
+export function shouldLoadAuthenticatedProviderData(application, auth) {
+  return application.mode === "dashboard" && auth.data?.authenticated === true;
+}
 
 function reconcileCountries(status) {
   const operation = status.operation || {};
@@ -164,12 +172,73 @@ function renderCountries() {
   all.replaceChildren(...vpnCountries.filter((country) => country.name.toLocaleLowerCase("nl").includes(query)).map(countryCard));
 }
 
-async function refreshCountries() {
-  const result = await api("/api/vpn/countries", { deduplicate: false });
+async function refreshCountries({ signal } = {}) {
+  const result = await api("/api/vpn/countries", { deduplicate: false, signal });
   vpnCountries = result.countries || [];
   quickCountryCodes = result.quick_country_codes || [];
   if (result.vpn) succeedRefresh("provider", result.vpn);
   renderCountries();
+}
+
+export function activateAuthenticatedProviderData() {
+  if (!shouldLoadAuthenticatedProviderData(
+    getSlice("application"),
+    getSlice("auth"),
+  )) {
+    return Promise.resolve(false);
+  }
+  if (countriesLoaded) return Promise.resolve(true);
+  if (!countryLoadPromise) {
+    const generation = countryLoadGeneration;
+    const controller = new AbortController();
+    countryLoadController = controller;
+    countryLoadPromise = refreshCountries({ signal: controller.signal })
+      .then(() => measureMissingCountries({ signal: controller.signal }))
+      .then(() => {
+        if (
+          generation !== countryLoadGeneration
+          || !shouldLoadAuthenticatedProviderData(
+            getSlice("application"),
+            getSlice("auth"),
+          )
+        ) return false;
+        countriesLoaded = true;
+        return true;
+      })
+      .catch((error) => {
+        if (
+          error.code === "aborted"
+          || generation !== countryLoadGeneration
+          || !shouldLoadAuthenticatedProviderData(
+            getSlice("application"),
+            getSlice("auth"),
+          )
+        ) return false;
+        showMessage(
+          t("provider.country_selection.load_failed", {}, "Countries could not be loaded."),
+          "error",
+        );
+        throw error;
+      })
+      .finally(() => {
+        if (generation === countryLoadGeneration) {
+          countryLoadPromise = null;
+          countryLoadController = null;
+        }
+      });
+  }
+  return countryLoadPromise;
+}
+
+export function deactivateAuthenticatedProviderData() {
+  countryLoadGeneration += 1;
+  countryLoadController?.abort("authentication-ended");
+  stopActionPolling();
+  vpnCountries = [];
+  quickCountryCodes = [];
+  countryLoadPromise = null;
+  countryLoadController = null;
+  countriesLoaded = false;
 }
 
 function applyVpnSnapshot(vpn) {
@@ -260,14 +329,21 @@ async function remeasureCountries() {
   }
 }
 
-async function measureMissingCountries() {
+async function measureMissingCountries({ signal } = {}) {
   const missing = quickCountryCodes.filter((code) => {
     const country = vpnCountries.find((item) => item.country_code === code);
     return country && country.latency_measured_at == null;
   });
   if (!missing.length) return;
-  await Promise.allSettled(missing.map((code) => postJson(`/api/vpn/countries/${code}/measure`)));
-  await refreshCountries();
+  await Promise.allSettled(
+    missing.map((code) => postJson(
+      `/api/vpn/countries/${code}/measure`,
+      undefined,
+      { signal },
+    )),
+  );
+  if (signal?.aborted) return;
+  await refreshCountries({ signal });
 }
 
 async function reconnectCountry() {
@@ -760,11 +836,15 @@ export function initialiseProviderControls() {
   select("#reconnect-button").addEventListener("click", reconnectCountry);
   select("#remeasure-countries").addEventListener("click", remeasureCountries);
   select("#country-search").addEventListener("input", renderCountries);
-  refreshCountries()
-    .then(measureMissingCountries)
-    .catch(() => showMessage(t("provider.country_selection.load_failed", {}, "Countries could not be loaded."), "error"));
   window.addEventListener("focus", () => {
-    refreshProviderState({ deduplicate: false }).catch(() => {});
+    if (
+      shouldLoadAuthenticatedProviderData(
+        getSlice("application"),
+        getSlice("auth"),
+      )
+    ) {
+      refreshProviderState({ deduplicate: false }).catch(() => {});
+    }
   });
 
   document

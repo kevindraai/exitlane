@@ -57,3 +57,9 @@ Exitlane invokes a fixed argument array without a shell, uses a short timeout an
 non-secret environment, and never logs, stores in its own configuration, reflects, or adds the
 token to Activity metadata. This is an upstream provider-interface limitation. Future providers
 must not inherit this exception automatically.
+
+The CLI also offers no supported, non-destructive way to validate a replacement token while an
+account session is active. Exitlane therefore does not log out automatically or claim that it
+validated a replacement: Settings preserves the working session and explains the limitation.
+Token sign-in remains available when the local client is signed out. A future replacement flow
+would require an officially supported account-switch operation or a deliberate rollback design.
