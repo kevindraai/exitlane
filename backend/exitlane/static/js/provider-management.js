@@ -25,7 +25,8 @@ export function providerManagementView(status = {}) {
     canConnect: capabilities.can_connect === true,
     canDisconnect: capabilities.can_disconnect === true,
     canSelectLocation: capabilities.can_select_location === true,
-    canManageKillswitch: capabilities.can_manage_killswitch === true,
+    canManageProviderKillswitch:
+      capabilities.can_manage_provider_killswitch === true,
   };
 }
 

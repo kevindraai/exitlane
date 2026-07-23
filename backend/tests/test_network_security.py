@@ -4,9 +4,7 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
-import exitlane.core as core
-import exitlane.main as main
-from exitlane import cli
+from exitlane import cli, core, main
 from exitlane.services import network_security
 
 
@@ -107,9 +105,7 @@ def test_broad_private_range_requires_confirmation():
 )
 def test_inconsistent_cookie_policy_is_rejected(public_url, policy):
     with pytest.raises(network_security.NetworkSecurityError) as caught:
-        network_security.validate_configuration(
-            public_url, ["127.0.0.1"], policy
-        )
+        network_security.validate_configuration(public_url, ["127.0.0.1"], policy)
     assert caught.value.code == "inconsistent_cookie_policy"
 
 
@@ -123,14 +119,20 @@ def test_reset_cli_is_root_only_and_revokes_sessions(isolated_database, monkeypa
             """INSERT INTO sessions(token_hash,user_id,expires_at,public_id,created_at,
                last_seen_at,idle_expires_at) VALUES('token',1,9999999999,'id',1,1,9999999999)"""
         )
-    assert cli.reset_network_security(
-        input_reader=lambda _prompt: "RESET NETWORK SECURITY", effective_user_id=1000
-    ) == 77
+    assert (
+        cli.reset_network_security(
+            input_reader=lambda _prompt: "RESET NETWORK SECURITY", effective_user_id=1000
+        )
+        == 77
+    )
     recorded = []
     monkeypatch.setattr(cli, "record_event", lambda code, **_values: recorded.append(code))
-    assert cli.reset_network_security(
-        input_reader=lambda _prompt: "RESET NETWORK SECURITY", effective_user_id=0
-    ) == 0
+    assert (
+        cli.reset_network_security(
+            input_reader=lambda _prompt: "RESET NETWORK SECURITY", effective_user_id=0
+        )
+        == 0
+    )
     assert network_security.current_config().public_url == ""
     with sqlite3.connect(isolated_database) as connection:
         assert connection.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0
@@ -152,10 +154,13 @@ def test_authenticated_update_requires_reauthentication_and_records_safe_event(
         main, "record_event", lambda code, **values: recorded.append((code, values))
     )
     with TestClient(main.app) as client:
-        assert client.post(
-            "/api/auth/login",
-            json={"username": "admin", "password": "correct horse battery staple"},
-        ).status_code == 200
+        assert (
+            client.post(
+                "/api/auth/login",
+                json={"username": "admin", "password": "correct horse battery staple"},
+            ).status_code
+            == 200
+        )
         rejected = client.put(
             "/api/deployment/security",
             json={
@@ -185,9 +190,7 @@ def test_authenticated_update_requires_reauthentication_and_records_safe_event(
     assert "password" not in str(event)
 
 
-def test_update_requires_totp_when_mfa_is_enabled(
-    isolated_database, monkeypatch
-):
+def test_update_requires_totp_when_mfa_is_enabled(isolated_database, monkeypatch):
     digest, salt = core.hash_password("correct horse battery staple")
     with sqlite3.connect(isolated_database) as connection:
         connection.execute(
@@ -207,10 +210,13 @@ def test_update_requires_totp_when_mfa_is_enabled(
         lambda user_id, code: verified.append((user_id, code)) or code == "123456",
     )
     with TestClient(main.app) as client:
-        assert client.post(
-            "/api/auth/login",
-            json={"username": "admin", "password": "correct horse battery staple"},
-        ).status_code == 200
+        assert (
+            client.post(
+                "/api/auth/login",
+                json={"username": "admin", "password": "correct horse battery staple"},
+            ).status_code
+            == 200
+        )
         with sqlite3.connect(isolated_database) as connection:
             connection.execute("UPDATE users SET mfa_enabled=1")
         payload = {
@@ -220,9 +226,10 @@ def test_update_requires_totp_when_mfa_is_enabled(
             "current_password": "correct horse battery staple",
         }
         assert client.put("/api/deployment/security", json=payload).status_code == 401
-        assert client.put(
-            "/api/deployment/security", json={**payload, "code": "123456"}
-        ).status_code == 200
+        assert (
+            client.put("/api/deployment/security", json={**payload, "code": "123456"}).status_code
+            == 200
+        )
     assert verified == [(1, "123456")]
 
 

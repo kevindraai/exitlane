@@ -1,38 +1,49 @@
 from __future__ import annotations
 
 import asyncio
-import logging
-import sqlite3
-import hashlib
 import base64
+import hashlib
 import ipaddress
+import logging
 import re
+import sqlite3
 import time
 import uuid
-from io import BytesIO
 from collections import defaultdict, deque
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
-from typing import AsyncIterator
 from urllib.parse import urlsplit
 
+import pyotp
+import segno
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
-from fastapi.responses import FileResponse
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-import segno
-import pyotp
 
 from exitlane import __version__
+from exitlane.config import (
+    DEFAULT_WIREGUARD_CLIENT,
+    DEFAULT_WIREGUARD_DNS,
+    DEFAULT_WIREGUARD_INTERFACE,
+    DEFAULT_WIREGUARD_PORT,
+    DEFAULT_WIREGUARD_SUBNET,
+    MAX_PASSWORD_LENGTH,
+    MAX_REQUEST_BODY_BYTES,
+    MIN_PASSWORD_LENGTH,
+    SESSION_COOKIE_POLICY,
+    SESSION_MAX_AGE_SECONDS,
+    validate_config,
+)
 from exitlane.core import (
-    DB,
     DATA,
-    SettingsStorageError,
+    DB,
     WG_DIR,
+    SettingsStorageError,
     command,
     hash_password,
     init,
@@ -40,43 +51,6 @@ from exitlane.core import (
     set_settings,
     setting,
     verify_password,
-)
-from exitlane.settings import (
-    SettingsUpdate,
-    current_general_settings,
-    settings_response,
-    update_settings,
-)
-from exitlane.providers.nordvpn import SIGN_OUT_ERROR_CODES, TOKEN_ERROR_CODES, provider
-from exitlane.providers.registry import ProviderNotFound, ProviderRegistry
-from exitlane.services.diagnostics import run as diagnostics
-from exitlane.services.dashboard import DashboardResponse, build_dashboard, system_status
-from exitlane.services import wireguard as wireguard_service
-from exitlane.services.vpn_selection import (
-    QUICK_COUNTRIES,
-    country_summary,
-    measure_servers,
-    remember_country,
-    select_server,
-    server_latency,
-)
-from exitlane.services import vpn_operations
-from exitlane.services.credentials import CredentialError, change_password
-from exitlane.services import auth_security
-from exitlane.services import network_security
-from exitlane.proxy import deployment_status, normalized_origin, request_security, trusted_origin
-from exitlane.config import (
-    DEFAULT_WIREGUARD_CLIENT,
-    DEFAULT_WIREGUARD_INTERFACE,
-    DEFAULT_WIREGUARD_DNS,
-    DEFAULT_WIREGUARD_PORT,
-    DEFAULT_WIREGUARD_SUBNET,
-    MAX_PASSWORD_LENGTH,
-    MIN_PASSWORD_LENGTH,
-    MAX_REQUEST_BODY_BYTES,
-    SESSION_COOKIE_POLICY,
-    SESSION_MAX_AGE_SECONDS,
-    validate_config,
 )
 from exitlane.events import (
     EVENT_DEFINITIONS,
@@ -87,6 +61,28 @@ from exitlane.events import (
     record_event,
 )
 from exitlane.html import render_index
+from exitlane.providers.nordvpn import SIGN_OUT_ERROR_CODES, TOKEN_ERROR_CODES, provider
+from exitlane.providers.registry import ProviderNotFound, ProviderRegistry
+from exitlane.proxy import deployment_status, normalized_origin, request_security, trusted_origin
+from exitlane.services import auth_security, killswitch, network_security, vpn_operations
+from exitlane.services import wireguard as wireguard_service
+from exitlane.services.credentials import CredentialError, change_password
+from exitlane.services.dashboard import DashboardResponse, build_dashboard, system_status
+from exitlane.services.diagnostics import run as diagnostics
+from exitlane.services.vpn_selection import (
+    QUICK_COUNTRIES,
+    country_summary,
+    measure_servers,
+    remember_country,
+    select_server,
+    server_latency,
+)
+from exitlane.settings import (
+    SettingsUpdate,
+    current_general_settings,
+    settings_response,
+    update_settings,
+)
 
 SYSTEM_WIREGUARD_DIR = Path("/etc/wireguard")
 _system_started_databases: set[Path] = set()
@@ -98,6 +94,7 @@ _provider_sign_out_failures: dict[tuple[Path, int], deque[float]] = defaultdict(
 _login_failures: dict[tuple[Path, str, str], deque[float]] = defaultdict(deque)
 _security_rejection_logs: dict[str, deque[float]] = defaultdict(deque)
 _network_reauth_failures: dict[tuple[Path, int], deque[float]] = defaultdict(deque)
+_killswitch_reauth_failures: dict[tuple[Path, int], deque[float]] = defaultdict(deque)
 logger = logging.getLogger("exitlane.security")
 PASSWORD_CHANGE_ATTEMPTS = 5
 PASSWORD_CHANGE_WINDOW_SECONDS = 300
@@ -139,6 +136,36 @@ class MfaVerify(BaseModel):
     mode: str = Field(default="totp", pattern=r"^(totp|recovery)$")
 
 
+class KillswitchChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+    code: str | None = Field(default=None, min_length=6, max_length=64)
+    confirm_access_loss: bool = False
+
+
+def _reauthenticate_killswitch(req: KillswitchChange, request: Request) -> None:
+    user = request.state.user
+    failure_key = (DB.resolve(), user["id"])
+    now = time.monotonic()
+    failures = _killswitch_reauth_failures[failure_key]
+    while failures and failures[0] <= now - NETWORK_REAUTH_WINDOW_SECONDS:
+        failures.popleft()
+    if len(failures) >= NETWORK_REAUTH_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="too_many_attempts")
+    with sqlite3.connect(DB) as connection:
+        row = connection.execute(
+            "SELECT password_hash,salt,mfa_enabled FROM users WHERE id=?", (user["id"],)
+        ).fetchone()
+    if not row or not verify_password(req.current_password, row[0], row[1]):
+        failures.append(now)
+        raise HTTPException(status_code=401, detail="invalid_credentials")
+    if row[2] and (not req.code or not auth_security.verify_totp(user["id"], req.code)):
+        failures.append(now)
+        raise HTTPException(status_code=401, detail="invalid_mfa_code")
+    if not req.confirm_access_loss:
+        raise HTTPException(status_code=409, detail="access_loss_confirmation_required")
+    _killswitch_reauth_failures.pop(failure_key, None)
+
+
 class MfaEnrollmentStart(BaseModel):
     current_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
 
@@ -155,9 +182,7 @@ class MfaDisable(BaseModel):
 
 class PasswordChange(BaseModel):
     current_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
-    new_password: str = Field(
-        min_length=MIN_PASSWORD_LENGTH, max_length=MAX_PASSWORD_LENGTH
-    )
+    new_password: str = Field(min_length=MIN_PASSWORD_LENGTH, max_length=MAX_PASSWORD_LENGTH)
     confirmation: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
 
 
@@ -246,7 +271,48 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     if database not in _system_started_databases:
         record_event("system.started")
         _system_started_databases.add(database)
-    yield
+    monitor = asyncio.create_task(_monitor_killswitch())
+    try:
+        yield
+    finally:
+        monitor.cancel()
+        with suppress(asyncio.CancelledError):
+            await monitor
+
+
+async def _monitor_killswitch() -> None:
+    previous: str | None = None
+    previous_facts: killswitch.TunnelFacts | None = None
+    while True:
+        await asyncio.sleep(5)
+        if not setting(killswitch.SETTING_CONFIGURED, False):
+            previous = None
+            previous_facts = None
+            continue
+        try:
+            selected = provider_registry.get(
+                setting("vpn.provider_id", provider_registry.default_id)
+            )
+            facts = await selected.network_facts()
+            current = (
+                await killswitch.reconcile(facts)
+                if facts != previous_facts
+                else await killswitch.status(facts)
+            )
+            previous_facts = facts
+        except (killswitch.KillswitchError, ProviderNotFound):
+            if previous != "error":
+                record_event(
+                    "network.killswitch_error", metadata={"reason": "firewall_apply_failed"}
+                )
+            previous = "error"
+            continue
+        if current.state != previous:
+            if current.state == "enabled_protected" and previous is not None:
+                record_event("network.killswitch_released")
+            elif current.state in {"enabled_waiting_for_tunnel", "enabled_degraded"}:
+                record_event("network.killswitch_engaged", metadata={"reason": current.reason})
+            previous = current.state
 
 
 app = FastAPI(
@@ -262,6 +328,7 @@ async def safe_request_validation_error(
     _request: Request, _error: RequestValidationError
 ) -> JSONResponse:
     return JSONResponse(status_code=422, content={"detail": "invalid_request"})
+
 
 SESSION_COOKIE = "exitlane_session"
 MFA_CHALLENGE_COOKIE = "exitlane_mfa_challenge"
@@ -362,7 +429,9 @@ def log_security_rejection(reason: str) -> None:
 def is_setup_client_download(method: str, path: str) -> bool:
     prefix = "/api/ingress/wireguard/client/"
     client_name = path.removeprefix(prefix)
-    return method == "GET" and path.startswith(prefix) and bool(client_name) and "/" not in client_name
+    return (
+        method == "GET" and path.startswith(prefix) and bool(client_name) and "/" not in client_name
+    )
 
 
 def is_setup_provider_route(method: str, path: str) -> bool:
@@ -382,7 +451,9 @@ def request_actor(request: Request) -> dict | None:
     return getattr(request.state, "user", None)
 
 
-def observe_wireguard_state(*, configured: bool, active: bool, handshake: bool, interface: str, client: str) -> None:
+def observe_wireguard_state(
+    *, configured: bool, active: bool, handshake: bool, interface: str, client: str
+) -> None:
     """Record only confirmed poll transitions; the first observation establishes a baseline."""
     global _wireguard_observed_state
     current = (active, handshake)
@@ -402,12 +473,15 @@ def observe_wireguard_state(*, configured: bool, active: bool, handshake: bool, 
 async def require_authentication(request: Request, call_next):
     path = request.url.path
     route = (request.method, path)
-    if path.startswith("/api/") and request.method not in SAFE_METHODS:
-        # SameSite=Lax is the first CSRF boundary. Origin/Referer validation also
-        # protects deployments where an attacker controls another same-site origin.
-        if reason := request_origin_rejection(request):
-            log_security_rejection(reason)
-            return JSONResponse(status_code=403, content={"detail": reason})
+    # SameSite=Lax is the first CSRF boundary. Origin/Referer validation also
+    # protects deployments where an attacker controls another same-site origin.
+    if (
+        path.startswith("/api/")
+        and request.method not in SAFE_METHODS
+        and (reason := request_origin_rejection(request))
+    ):
+        log_security_rejection(reason)
+        return JSONResponse(status_code=403, content={"detail": reason})
     if path in PROTECTED_APPLICATION_ROUTES:
         user = session_user(request.cookies.get(SESSION_COOKIE))
         if user:
@@ -437,7 +511,9 @@ async def security_baseline(request: Request, call_next):
     if content_length:
         try:
             if int(content_length) > MAX_REQUEST_BODY_BYTES:
-                response = JSONResponse(status_code=413, content={"detail": "Request body too large"})
+                response = JSONResponse(
+                    status_code=413, content={"detail": "Request body too large"}
+                )
             else:
                 response = await require_authentication(request, call_next)
         except ValueError:
@@ -459,6 +535,7 @@ async def security_baseline(request: Request, call_next):
     if request_security(request).scheme == "https":
         response.headers["Strict-Transport-Security"] = "max-age=31536000"
     return response
+
 
 static_dir = Path(__file__).parent / "static"
 app.mount(
@@ -503,7 +580,9 @@ async def put_settings(req: SettingsUpdate, request: Request) -> dict:
     try:
         result = update_settings(req)
     except SettingsStorageError as error:
-        raise HTTPException(status_code=503, detail="Settings storage is temporarily unavailable") from error
+        raise HTTPException(
+            status_code=503, detail="Settings storage is temporarily unavailable"
+        ) from error
     after = result["general"]
     changed = [field for field in req.general.model_fields_set if before[field] != after[field]]
     if changed:
@@ -547,8 +626,13 @@ async def login(req: Login, request: Request, response: Response) -> dict:
     if row[4]:
         challenge = auth_security.start_challenge(row[0], client_ip)
         response.set_cookie(
-            MFA_CHALLENGE_COOKIE, challenge, max_age=auth_security.MFA_CHALLENGE_SECONDS,
-            httponly=True, secure=_cookie_secure(request), samesite="strict", path="/api/auth",
+            MFA_CHALLENGE_COOKIE,
+            challenge,
+            max_age=auth_security.MFA_CHALLENGE_SECONDS,
+            httponly=True,
+            secure=_cookie_secure(request),
+            samesite="strict",
+            path="/api/auth",
         )
         return {"authenticated": False, "mfa_required": True}
 
@@ -579,26 +663,45 @@ async def login_mfa(req: MfaVerify, request: Request, response: Response) -> dic
     except auth_security.AuthSecurityError as error:
         if error.code != "invalid_mfa_code":
             response.delete_cookie(
-                MFA_CHALLENGE_COOKIE, httponly=True, secure=_cookie_secure(request),
-                samesite="strict", path="/api/auth",
+                MFA_CHALLENGE_COOKIE,
+                httponly=True,
+                secure=_cookie_secure(request),
+                samesite="strict",
+                path="/api/auth",
             )
         raise HTTPException(status_code=401, detail=error.code) from None
     with sqlite3.connect(DB) as connection:
-        username = connection.execute("SELECT username FROM users WHERE id=?", (user_id,)).fetchone()[0]
+        username = connection.execute(
+            "SELECT username FROM users WHERE id=?", (user_id,)
+        ).fetchone()[0]
     token = auth_security.create_session(
         user_id, request_security(request).client_ip, request.headers.get("user-agent", "")
     )
     response.set_cookie(
-        SESSION_COOKIE, token, max_age=SESSION_MAX_AGE_SECONDS, httponly=True,
-        secure=_cookie_secure(request), samesite="lax", path="/",
+        SESSION_COOKIE,
+        token,
+        max_age=SESSION_MAX_AGE_SECONDS,
+        httponly=True,
+        secure=_cookie_secure(request),
+        samesite="lax",
+        path="/",
     )
     response.delete_cookie(
-        MFA_CHALLENGE_COOKIE, httponly=True, secure=_cookie_secure(request),
-        samesite="strict", path="/api/auth",
+        MFA_CHALLENGE_COOKIE,
+        httponly=True,
+        secure=_cookie_secure(request),
+        samesite="strict",
+        path="/api/auth",
     )
-    record_event("auth.recovery_code_used" if recovery_used else "auth.login_succeeded",
-                 actor={"id": user_id, "username": username})
-    return {"authenticated": True, "user": {"username": username}, "recovery_code_used": recovery_used}
+    record_event(
+        "auth.recovery_code_used" if recovery_used else "auth.login_succeeded",
+        actor={"id": user_id, "username": username},
+    )
+    return {
+        "authenticated": True,
+        "user": {"username": username},
+        "recovery_code_used": recovery_used,
+    }
 
 
 @app.delete("/api/auth/mfa")
@@ -611,8 +714,11 @@ async def cancel_login_mfa(request: Request, response: Response) -> dict:
                 (auth_security.token_hash(challenge),),
             )
     response.delete_cookie(
-        MFA_CHALLENGE_COOKIE, httponly=True, secure=_cookie_secure(request),
-        samesite="strict", path="/api/auth",
+        MFA_CHALLENGE_COOKIE,
+        httponly=True,
+        secure=_cookie_secure(request),
+        samesite="strict",
+        path="/api/auth",
     )
     return {"ok": True}
 
@@ -714,7 +820,9 @@ async def auth_security_status(request: Request) -> dict:
 async def begin_mfa_enrollment(req: MfaEnrollmentStart, request: Request) -> Response:
     user, session_token = request.state.user, request.cookies.get(SESSION_COOKIE, "")
     with sqlite3.connect(DB) as connection:
-        row = connection.execute("SELECT password_hash,salt FROM users WHERE id=?", (user["id"],)).fetchone()
+        row = connection.execute(
+            "SELECT password_hash,salt FROM users WHERE id=?", (user["id"],)
+        ).fetchone()
     if not row or not verify_password(req.current_password, row[0], row[1]):
         raise HTTPException(status_code=401, detail="invalid_credentials")
     enrollment, secret = auth_security.start_enrollment(user["id"], session_token)
@@ -734,8 +842,13 @@ async def begin_mfa_enrollment(req: MfaEnrollmentStart, request: Request) -> Res
     )
     record_event("auth.mfa_enrollment_started", actor=user)
     return JSONResponse(
-        {"enrollment": enrollment, "setup_key": secret, "issuer": "ExitLane",
-         "account_label": label, "qr_svg": buffer.getvalue().decode()},
+        {
+            "enrollment": enrollment,
+            "setup_key": secret,
+            "issuer": "ExitLane",
+            "account_label": label,
+            "qr_svg": buffer.getvalue().decode(),
+        },
         headers={"Cache-Control": "no-store, private", "Pragma": "no-cache"},
     )
 
@@ -743,7 +856,9 @@ async def begin_mfa_enrollment(req: MfaEnrollmentStart, request: Request) -> Res
 @app.delete("/api/auth/mfa/enrollment")
 async def cancel_mfa_enrollment(request: Request) -> dict:
     with sqlite3.connect(DB) as connection:
-        connection.execute("DELETE FROM mfa_enrollments WHERE user_id=?", (request.state.user["id"],))
+        connection.execute(
+            "DELETE FROM mfa_enrollments WHERE user_id=?", (request.state.user["id"],)
+        )
     return {"ok": True}
 
 
@@ -751,7 +866,10 @@ async def cancel_mfa_enrollment(request: Request) -> dict:
 async def finish_mfa_enrollment(req: MfaEnrollmentConfirm, request: Request) -> Response:
     try:
         codes = auth_security.confirm_enrollment(
-            request.state.user["id"], request.cookies.get(SESSION_COOKIE, ""), req.enrollment, req.code
+            request.state.user["id"],
+            request.cookies.get(SESSION_COOKIE, ""),
+            req.enrollment,
+            req.code,
         )
     except auth_security.AuthSecurityError as error:
         raise HTTPException(status_code=401, detail=error.code) from None
@@ -764,8 +882,14 @@ async def finish_mfa_enrollment(req: MfaEnrollmentConfirm, request: Request) -> 
 async def regenerate_mfa_recovery_codes(req: MfaDisable, request: Request) -> Response:
     user = request.state.user
     with sqlite3.connect(DB) as connection:
-        row = connection.execute("SELECT password_hash,salt FROM users WHERE id=?", (user["id"],)).fetchone()
-    if not row or not verify_password(req.current_password, row[0], row[1]) or not auth_security.verify_totp(user["id"], req.code):
+        row = connection.execute(
+            "SELECT password_hash,salt FROM users WHERE id=?", (user["id"],)
+        ).fetchone()
+    if (
+        not row
+        or not verify_password(req.current_password, row[0], row[1])
+        or not auth_security.verify_totp(user["id"], req.code)
+    ):
         raise HTTPException(status_code=401, detail="invalid_credentials")
     codes = auth_security.regenerate_recovery_codes(user["id"], user["session_id"])
     record_event("auth.recovery_codes_regenerated", actor=user)
@@ -776,8 +900,14 @@ async def regenerate_mfa_recovery_codes(req: MfaDisable, request: Request) -> Re
 async def disable_mfa(req: MfaDisable, request: Request, response: Response) -> dict:
     user = request.state.user
     with sqlite3.connect(DB) as connection:
-        row = connection.execute("SELECT password_hash,salt FROM users WHERE id=?", (user["id"],)).fetchone()
-    if not row or not verify_password(req.current_password, row[0], row[1]) or not auth_security.verify_totp(user["id"], req.code):
+        row = connection.execute(
+            "SELECT password_hash,salt FROM users WHERE id=?", (user["id"],)
+        ).fetchone()
+    if (
+        not row
+        or not verify_password(req.current_password, row[0], row[1])
+        or not auth_security.verify_totp(user["id"], req.code)
+    ):
         raise HTTPException(status_code=401, detail="invalid_credentials")
     auth_security.disable_mfa(user["id"])
     response.delete_cookie(
@@ -817,10 +947,49 @@ async def get_deployment_security(request: Request) -> dict:
     return status
 
 
+@app.get("/api/vpn/killswitch")
+async def get_killswitch_status(request: Request) -> dict:
+    selected = provider_registry.get(setting("vpn.provider_id", provider_registry.default_id))
+    facts = await selected.network_facts()
+    result = (await killswitch.status(facts)).as_dict()
+    result["mfa_required"] = auth_security.mfa_status(request.state.user["id"])["enabled"]
+    return result
+
+
+@app.post("/api/vpn/killswitch/enable")
+async def enable_killswitch(req: KillswitchChange, request: Request) -> dict:
+    _reauthenticate_killswitch(req, request)
+    selected = provider_registry.get(setting("vpn.provider_id", provider_registry.default_id))
+    facts = await selected.network_facts()
+    try:
+        result = await killswitch.enable(facts)
+    except killswitch.KillswitchError as error:
+        record_event(
+            "network.killswitch_error", actor=request.state.user, metadata={"reason": error.code}
+        )
+        raise HTTPException(status_code=503, detail=error.code) from None
+    record_event("network.killswitch_enabled", actor=request.state.user)
+    if not result.tunnel_available:
+        record_event("network.killswitch_engaged", metadata={"reason": result.reason})
+    return result.as_dict()
+
+
+@app.post("/api/vpn/killswitch/disable")
+async def disable_killswitch(req: KillswitchChange, request: Request) -> dict:
+    _reauthenticate_killswitch(req, request)
+    try:
+        result = await killswitch.disable()
+    except killswitch.KillswitchError as error:
+        record_event(
+            "network.killswitch_error", actor=request.state.user, metadata={"reason": error.code}
+        )
+        raise HTTPException(status_code=503, detail=error.code) from None
+    record_event("network.killswitch_disabled", actor=request.state.user)
+    return result.as_dict()
+
+
 @app.put("/api/deployment/security")
-async def update_deployment_security(
-    req: NetworkSecurityUpdate, request: Request
-) -> dict:
+async def update_deployment_security(req: NetworkSecurityUpdate, request: Request) -> dict:
     user = request.state.user
     failure_key = (DB.resolve(), user["id"])
     now = time.monotonic()
@@ -853,7 +1022,9 @@ async def update_deployment_security(
             detail={"code": error.code, "field": error.field},
         ) from None
     current_origin = request.headers.get("origin") or request.headers.get("referer") or ""
-    origin_risk = bool(public_url and normalized_origin(current_origin) != normalized_origin(public_url))
+    origin_risk = bool(
+        public_url and normalized_origin(current_origin) != normalized_origin(public_url)
+    )
     peer = request.client.host if request.client else str(ipaddress.IPv4Address(0))
     try:
         peer_address = ipaddress.ip_address(peer)
@@ -1083,9 +1254,7 @@ async def update_nordvpn_token(req: Token, request: Request) -> dict:
     return await _authenticate_provider(provider, req, request)
 
 
-async def _authenticate_provider(
-    provider_instance, req: Token, request: Request
-) -> dict:
+async def _authenticate_provider(provider_instance, req: Token, request: Request) -> dict:
     status = await provider_instance.status(timeout=8)
     if status.get("authenticated"):
         raise HTTPException(status_code=409, detail="token_replacement_unsupported")
@@ -1138,8 +1307,7 @@ def _provider_metadata(provider_instance) -> dict:
     return {
         **provider_instance.metadata.as_dict(),
         "enabled": True,
-        "active": provider_instance.id
-        == setting("vpn.provider_id", provider_registry.default_id),
+        "active": provider_instance.id == setting("vpn.provider_id", provider_registry.default_id),
     }
 
 
@@ -1168,7 +1336,7 @@ async def _end_provider_session(provider_instance, request: Request) -> dict:
         result = await provider_instance.sign_out()
     except asyncio.CancelledError:
         raise
-    except Exception:
+    except Exception:  # noqa: BLE001 - provider boundary normalizes unknown implementation failures.
         result = {"ok": False, "error": "provider_error"}
     after = await _fresh_status_for(provider_instance)
     signed_out = _provider_authentication_state(after) == "signed_out"
@@ -1244,11 +1412,7 @@ async def nordvpn_status() -> dict:
         record_event(
             "provider.connected",
             actor=pending["actor"],
-            metadata={
-                key: status[key]
-                for key in ("country", "city", "server")
-                if status.get(key)
-            },
+            metadata={key: status[key] for key in ("country", "city", "server") if status.get(key)},
             correlation_id=pending["correlation_id"],
         )
     return {"status": {**status, **server_latency(status.get("server"))}}
@@ -1308,9 +1472,7 @@ async def vpn_provider_status(provider_id: str) -> dict:
 
 
 @app.post("/api/vpn/providers/{provider_id}/authenticate")
-async def authenticate_vpn_provider(
-    provider_id: str, req: Token, request: Request
-) -> dict:
+async def authenticate_vpn_provider(provider_id: str, req: Token, request: Request) -> dict:
     return await _authenticate_provider(_provider_or_404(provider_id), req, request)
 
 
@@ -1328,9 +1490,7 @@ async def vpn_provider_locations(provider_id: str) -> dict:
     codes = [item["country_code"] for item in catalog]
     last = setting("vpn.last_country")
     quick = list(
-        dict.fromkeys(
-            code for code in (connected, last, *QUICK_COUNTRIES) if code in codes
-        )
+        dict.fromkeys(code for code in (connected, last, *QUICK_COUNTRIES) if code in codes)
     )
     return {
         "provider_id": provider_id,
@@ -1367,11 +1527,7 @@ def _vpn_snapshot(status: dict) -> dict:
     operation = vpn_operations.snapshot()
     if operation["state"] not in vpn_operations.ACTIVE_STATES:
         operation["state"] = (
-            "connected"
-            if connected
-            else "failed"
-            if operation.get("last_error_code")
-            else "idle"
+            "connected" if connected else "failed" if operation.get("last_error_code") else "idle"
         )
     return {
         **status,
@@ -1390,7 +1546,9 @@ async def _fresh_vpn_status(provider_instance=provider) -> dict:
         return _vpn_snapshot(
             await provider_instance.status(timeout=vpn_operations.STATUS_TIMEOUT_SECONDS)
         )
-    except Exception:
+    except asyncio.CancelledError:
+        raise
+    except Exception:  # noqa: BLE001 - provider boundary returns a sanitized availability snapshot.
         return _vpn_snapshot(
             {
                 "available": False,
@@ -1440,7 +1598,11 @@ def _release_vpn_claim_after_failure(error: BaseException) -> None:
 async def vpn_status() -> dict:
     status = await _fresh_vpn_status()
     summary = country_summary(status["country_code"]) if status["country_code"] else {}
-    return {**status, "latency_ms": summary.get("latency_ms"), "latency_measured_at": summary.get("latency_measured_at")}
+    return {
+        **status,
+        "latency_ms": summary.get("latency_ms"),
+        "latency_measured_at": summary.get("latency_measured_at"),
+    }
 
 
 @app.get("/api/vpn/countries")
@@ -1450,7 +1612,9 @@ async def vpn_countries() -> dict:
     connected = vpn["country_code"]
     codes = [item["country_code"] for item in catalog]
     last = setting("vpn.last_country")
-    quick = list(dict.fromkeys(code for code in (connected, last, *QUICK_COUNTRIES) if code in codes))
+    quick = list(
+        dict.fromkeys(code for code in (connected, last, *QUICK_COUNTRIES) if code in codes)
+    )
     return {
         "quick_country_codes": quick,
         "vpn": vpn,
@@ -1536,10 +1700,7 @@ async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
         )
         status = await _fresh_vpn_status()
 
-        if (
-            result.get("error_code") == "vpn_connect_timeout"
-            and not status.get("connected")
-        ):
+        if result.get("error_code") == "vpn_connect_timeout" and not status.get("connected"):
             if vpn_operations.recovery_allowed():
                 vpn_operations.record_recovery()
                 vpn_operations.transition("recovering")
@@ -1593,7 +1754,7 @@ async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
             error_code=None if status.get("connected") else "provider_connect_cancelled",
         )
         raise
-    except Exception:
+    except Exception:  # noqa: BLE001 - provider boundary normalizes implementation-specific failures.
         result = {"ok": False, "exit_code": None, "error_code": "provider_connect_failed"}
         status = await _fresh_vpn_status()
 
@@ -1613,11 +1774,7 @@ async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
             actor=actor,
             metadata={
                 **event_technical,
-                **{
-                    key: status[key]
-                    for key in ("country", "city", "server")
-                    if status.get(key)
-                },
+                **{key: status[key] for key in ("country", "city", "server") if status.get(key)},
             },
             correlation_id=correlation_id,
         )
@@ -1681,12 +1838,14 @@ async def disconnect_vpn(request: Request) -> dict:
             error_code="provider_disconnect_cancelled" if status.get("connected") else None,
         )
         raise
-    except Exception:
+    except Exception:  # noqa: BLE001 - provider boundary normalizes implementation-specific failures.
         result = {"ok": False, "error_code": "provider_disconnect_failed"}
     status = await _fresh_vpn_status()
     success = not status.get("connected")
     error_code = None if success else result.get("error_code") or "provider_disconnect_failed"
-    operation = vpn_operations.finish(connected=status.get("connected", False), error_code=error_code)
+    operation = vpn_operations.finish(
+        connected=status.get("connected", False), error_code=error_code
+    )
     status["operation"] = operation
     record_event(
         "provider.disconnected" if success else "provider.disconnect_failed",
@@ -1719,24 +1878,31 @@ async def connect_nordvpn(req: Connect, request: Request) -> dict:
         raise
     correlation_id = str(uuid.uuid4())
     metadata = {"target": req.target or "recommended"}
-    record_event("provider.connect_started", actor=request_actor(request), metadata=metadata, correlation_id=correlation_id)
+    record_event(
+        "provider.connect_started",
+        actor=request_actor(request),
+        metadata=metadata,
+        correlation_id=correlation_id,
+    )
     try:
         result = await provider.connect(req.target, timeout=vpn_operations.CONNECT_TIMEOUT_SECONDS)
-    except Exception:
+    except asyncio.CancelledError:
+        raise
+    except Exception:  # noqa: BLE001 - provider boundary normalizes implementation-specific failures.
         result = {"ok": False, "error_code": "provider_connect_failed"}
     if result.get("ok"):
         try:
             status = await provider.status()
-        except Exception:  # Provider detail is intentionally not exposed to the event log.
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - provider detail must not reach the event log.
             status = None
         if status and status.get("connected"):
             record_event(
                 "provider.connected",
                 actor=request_actor(request),
                 metadata={
-                    key: status[key]
-                    for key in ("country", "city", "server")
-                    if status.get(key)
+                    key: status[key] for key in ("country", "city", "server") if status.get(key)
                 },
                 correlation_id=correlation_id,
             )
@@ -1762,7 +1928,12 @@ async def connect_nordvpn(req: Connect, request: Request) -> dict:
             if result.get("error_code") == "vpn_connect_timeout"
             else "connection_failed"
         )
-        record_event("provider.connect_failed", actor=request_actor(request), metadata={**metadata, "reason": reason}, correlation_id=correlation_id)
+        record_event(
+            "provider.connect_failed",
+            actor=request_actor(request),
+            metadata={**metadata, "reason": reason},
+            correlation_id=correlation_id,
+        )
         _pending_provider_connection = None
     status = await _fresh_vpn_status()
     proven = bool(result.get("ok") and status.get("connected"))
@@ -1791,9 +1962,7 @@ def _require_active_provider(provider_id: str) -> None:
 
 
 @app.post("/api/vpn/providers/{provider_id}/connect")
-async def connect_vpn_provider(
-    provider_id: str, req: Connect, request: Request
-) -> dict:
+async def connect_vpn_provider(provider_id: str, req: Connect, request: Request) -> dict:
     _require_active_provider(provider_id)
     return await connect_nordvpn(req, request)
 
@@ -1810,9 +1979,7 @@ async def reconnect_vpn_provider(
 ) -> dict:
     _require_active_provider(provider_id)
     if req.country_code:
-        return await connect_vpn_country(
-            CountryConnect(country_code=req.country_code), request
-        )
+        return await connect_vpn_country(CountryConnect(country_code=req.country_code), request)
     return await connect_nordvpn(Connect(target=None), request)
 
 
@@ -1825,17 +1992,13 @@ async def select_vpn_provider_location(
 
 
 @app.get("/api/vpn/providers/{provider_id}/locations/{country_code}/servers")
-async def vpn_provider_location_servers(
-    provider_id: str, country_code: str
-) -> dict:
+async def vpn_provider_location_servers(provider_id: str, country_code: str) -> dict:
     _require_active_provider(provider_id)
     return await vpn_country_servers(country_code)
 
 
 @app.post("/api/vpn/providers/{provider_id}/locations/{country_code}/measure")
-async def measure_vpn_provider_location(
-    provider_id: str, country_code: str
-) -> dict:
+async def measure_vpn_provider_location(provider_id: str, country_code: str) -> dict:
     _require_active_provider(provider_id)
     return await measure_vpn_country(country_code)
 
@@ -1943,7 +2106,9 @@ async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
     generation_lock = wireguard_generation_lock()
     try:
         if generation_lock.locked():
-            return JSONResponse(status_code=409, content={"error": "wireguard_generation_in_progress"})
+            return JSONResponse(
+                status_code=409, content={"error": "wireguard_generation_in_progress"}
+            )
         async with generation_lock:
             result = await wireguard_service.provision(
                 activate=activate_wireguard_interface,
@@ -1978,8 +2143,16 @@ async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
         }
     )
 
-    record_event("wireguard.configuration_generated", actor=request_actor(request), metadata={"client_name": req.client})
-    record_event("wireguard.interface_active", actor=request_actor(request), metadata={"interface": req.interface})
+    record_event(
+        "wireguard.configuration_generated",
+        actor=request_actor(request),
+        metadata={"client_name": req.client},
+    )
+    record_event(
+        "wireguard.interface_active",
+        actor=request_actor(request),
+        metadata={"interface": req.interface},
+    )
     _wireguard_observed_state = (True, False)
 
     return result
@@ -2077,9 +2250,7 @@ async def regenerate_wireguard_configuration(request: Request) -> JSONResponse:
     client = setting("wireguard_client_name", DEFAULT_WIREGUARD_CLIENT)
     try:
         if await wireguard_service.read_current(interface, client) is None:
-            raise wireguard_service.WireGuardConfigurationError(
-                "wireguard_configuration_missing"
-            )
+            raise wireguard_service.WireGuardConfigurationError("wireguard_configuration_missing")
         parameters = {
             "endpoint": setting("wireguard_endpoint"),
             "subnet": setting("wireguard_subnet"),
@@ -2096,7 +2267,10 @@ async def regenerate_wireguard_configuration(request: Request) -> JSONResponse:
                 **parameters,
             )
     except wireguard_service.WireGuardConfigurationError as error:
-        return _private_response({"error": error.code}, status_code=409 if "invalid" in error.code or "missing" in error.code else 500)
+        return _private_response(
+            {"error": error.code},
+            status_code=409 if "invalid" in error.code or "missing" in error.code else 500,
+        )
     except (ValueError, RuntimeError):
         return _private_response({"error": "wireguard_regeneration_failed"}, status_code=500)
 
@@ -2264,7 +2438,9 @@ async def create_webhook(req: Webhook, request: Request) -> dict:
             ),
         )
 
-    record_event("notifications.webhook_added", actor=request_actor(request), metadata={"name": req.name})
+    record_event(
+        "notifications.webhook_added", actor=request_actor(request), metadata={"name": req.name}
+    )
 
     return {
         "ok": True,

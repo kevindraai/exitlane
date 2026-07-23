@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 UNIT = Path(__file__).parents[2] / "systemd" / "exitlane.service"
 
 

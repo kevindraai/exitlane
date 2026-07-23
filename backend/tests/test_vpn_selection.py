@@ -76,9 +76,13 @@ def test_icmp_latency_uses_median_without_dns_lookup(monkeypatch):
 
     async def command(*args, **kwargs):
         calls.append(args)
-        return 0, """64 bytes: time=21.4 ms
+        return (
+            0,
+            """64 bytes: time=21.4 ms
 64 bytes: time=19.4 ms
-64 bytes: time=20.6 ms""", ""
+64 bytes: time=20.6 ms""",
+            "",
+        )
 
     monkeypatch.setattr(vpn_selection.shutil, "which", lambda _name: "/usr/bin/ping")
     monkeypatch.setattr(core, "command", command)

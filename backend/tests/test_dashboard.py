@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from exitlane.services.dashboard import (
     DashboardResponse,
@@ -27,29 +27,37 @@ def system(memory=20.0, disk=20.0):
 
 
 def test_health_is_healthy_when_all_explicit_statuses_are_good():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     result = determine_health(
         VPNStatus(available=True, connected=True),
         WireGuardStatus(
-            available=True, configured=True, active=True, connected=True,
+            available=True,
+            configured=True,
+            active=True,
+            connected=True,
             latest_handshake_at=now - timedelta(seconds=10),
         ),
-        system(), now,
+        system(),
+        now,
     )
     assert result.status == "healthy"
     assert result.issues == []
 
 
 def test_health_warns_for_disconnected_vpn_stale_handshake_and_resources():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     result = determine_health(
         VPNStatus(available=True, connected=False),
         WireGuardStatus(available=True, configured=True, active=True),
-        system(memory=90, disk=90), now,
+        system(memory=90, disk=90),
+        now,
     )
     assert result.status == "warning"
     assert result.issues == [
-        "vpn_disconnected", "wireguard_handshake_stale", "disk_usage_high", "memory_usage_high"
+        "vpn_disconnected",
+        "wireguard_handshake_stale",
+        "disk_usage_high",
+        "memory_usage_high",
     ]
 
 
@@ -65,9 +73,12 @@ def test_health_errors_for_inactive_configured_wireguard_and_critical_disk():
 
 def test_health_thresholds_are_exact():
     vpn = VPNStatus(available=True, connected=True)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     wireguard = WireGuardStatus(
-        available=True, configured=True, active=True, connected=True,
+        available=True,
+        configured=True,
+        active=True,
+        connected=True,
         latest_handshake_at=now,
     )
     assert determine_health(vpn, wireguard, system(memory=84.9, disk=84.9), now).status == "healthy"
@@ -90,7 +101,10 @@ def test_error_has_priority_and_keeps_multiple_stable_issue_codes():
     )
     assert result.status == "error"
     assert result.issues == [
-        "wireguard_inactive", "disk_usage_critical", "vpn_status_unavailable", "memory_usage_high"
+        "wireguard_inactive",
+        "disk_usage_critical",
+        "vpn_status_unavailable",
+        "memory_usage_high",
     ]
 
 
@@ -135,7 +149,9 @@ def test_dashboard_preserves_ipv6_long_values_and_uses_first_of_multiple_peers(m
 
     async def wireguard():
         return {
-            "configured": True, "active": True, "connected": True,
+            "configured": True,
+            "active": True,
+            "connected": True,
             "latest_handshake": 1,
             "peers": [
                 {"endpoint": ipv6_endpoint, "received_bytes": 10, "sent_bytes": 20},
@@ -213,7 +229,9 @@ def test_system_status_tolerates_missing_proc_fields_and_uses_requested_filesyst
 
     monkeypatch.setattr(Path, "read_text", read_text)
     monkeypatch.setattr("exitlane.services.dashboard.shutil.disk_usage", disk_usage)
-    monkeypatch.setattr("exitlane.services.dashboard.os.getloadavg", lambda: (_ for _ in ()).throw(OSError()))
+    monkeypatch.setattr(
+        "exitlane.services.dashboard.os.getloadavg", lambda: (_ for _ in ()).throw(OSError())
+    )
     requested = Path("/var/lib/exitlane")
     result = asyncio.run(system_status(requested))
     assert seen == [requested]

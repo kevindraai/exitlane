@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import os
 import ipaddress
+import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -138,7 +138,9 @@ def validate_config() -> None:
             or parsed.query
             or parsed.fragment
         ):
-            raise RuntimeError("EXITLANE_PUBLIC_URL must be an http(s) origin without credentials or path")
+            raise RuntimeError(
+                "EXITLANE_PUBLIC_URL must be an http(s) origin without credentials or path"
+            )
 
     if not 1024 <= MAX_REQUEST_BODY_BYTES <= 16 * 1024 * 1024:
         raise RuntimeError("EXITLANE_MAX_REQUEST_BODY_BYTES must be between 1024 and 16777216")

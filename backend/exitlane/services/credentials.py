@@ -29,8 +29,7 @@ def change_password(
         if row is None:
             raise CredentialError("invalid_credentials")
         if verify_current and (
-            current_password is None
-            or not core.verify_password(current_password, row[0], row[1])
+            current_password is None or not core.verify_password(current_password, row[0], row[1])
         ):
             raise CredentialError("invalid_credentials")
         if current_password is not None and core.verify_password(new_password, row[0], row[1]):

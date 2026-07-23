@@ -1,17 +1,18 @@
 from __future__ import annotations
 
-import re
-import shutil
 import asyncio
 import http.client
 import json
 import logging
+import os
+import re
+import shutil
 import time
 import urllib.parse
-import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
 from exitlane.core import command
 
 from .base import Provider, ProviderMetadata
@@ -56,7 +57,10 @@ def classify_token_login_failure(return_code: int, output: str, error: str) -> s
     if return_code == 127:
         return "command_unavailable"
     message = f"{output}\n{error}".casefold()
-    if any(marker in message for marker in ("already logged in", "already logged-in", "already signed in")):
+    if any(
+        marker in message
+        for marker in ("already logged in", "already logged-in", "already signed in")
+    ):
         return "already_logged_in"
     if any(
         marker in message
@@ -163,7 +167,7 @@ _country_catalog_cache: list[dict] = []
 
 
 def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _reset_install_job() -> None:
@@ -242,11 +246,30 @@ class NordVPN(Provider):
             ),
             # Deliberately reserved for a later security/networking design.
             "can_manage_provider_killswitch": False,
-            "can_manage_killswitch": False,
         }
 
     async def authenticate(self, credential: str) -> dict:
         return await self.login_token(credential)
+
+    async def network_facts(self):
+        from exitlane.services.killswitch import TunnelFacts
+
+        current = await self.status()
+        connected = bool(current.get("connected"))
+        technology = str(current.get("technology", "")).casefold()
+        # Provider-specific interface knowledge is translated here; the generic
+        # firewall service never hardcodes NordLynx.
+        interface = None
+        if connected and "nordlynx" in technology:
+            interface = "nordlynx"
+        return TunnelFacts(
+            available=connected and interface is not None,
+            interface=interface,
+            supports_ipv4=connected,
+            supports_ipv6=False,
+            protected_egress=connected and interface is not None,
+            reason="tunnel_unavailable" if not connected else "tunnel_interface_unknown",
+        )
 
     async def status(self, *, timeout: float = 8):
         if not shutil.which("nordvpn"):
@@ -283,7 +306,6 @@ class NordVPN(Provider):
             timeout=timeout,
         )
         values = parse(status_out or status_err)
-
         account_rc, account_out, account_err = await command(
             "nordvpn",
             "account",
@@ -293,6 +315,7 @@ class NordVPN(Provider):
         account_output = account_out or account_err
         daemon_active = daemon_rc == 0
         account_message = account_output.casefold()
+
         if daemon_rc == 124:
             authentication_state = "unknown"
             authentication_error = "timeout"
@@ -487,8 +510,12 @@ echo "Installatie afgerond"
                 }
             )
 
-        except Exception as error:
-            _append_install_log(str(error))
+        except asyncio.CancelledError:
+            raise
+        # This background-job boundary must always publish a terminal state.
+        except Exception:
+            logger.exception("Unexpected NordVPN installation failure")
+            _append_install_log("Onverwachte fout tijdens de installatie.")
 
             _install_job.update(
                 {
@@ -581,6 +608,12 @@ echo "Installatie afgerond"
                 "expected_value": "enabled",
             },
             {
+                "setting": "autoconnect",
+                "value": "on",
+                "expected_key": "Auto-connect",
+                "expected_value": "enabled",
+            },
+            {
                 "setting": "firewall",
                 "value": "on",
                 "expected_key": "Firewall",
@@ -657,7 +690,7 @@ echo "Installatie afgerond"
         return results
 
     async def start_browser_login(self):
-        rc, out, err = await command(
+        _rc, out, err = await command(
             "nordvpn",
             "login",
             timeout=30,
@@ -689,8 +722,13 @@ echo "Installatie afgerond"
         data = await self._api_json("/v1/servers/countries")
         countries = sorted(
             (
-                {"id": item["id"], "country_code": item["code"].upper(), "provider_name": item["name"]}
-                for item in data if item.get("id") is not None and item.get("code")
+                {
+                    "id": item["id"],
+                    "country_code": item["code"].upper(),
+                    "provider_name": item["name"],
+                }
+                for item in data
+                if item.get("id") is not None and item.get("code")
             ),
             key=lambda item: item["provider_name"],
         )
@@ -708,7 +746,8 @@ echo "Installatie afgerond"
                 "station": item.get("station"),
                 "load": item.get("load"),
             }
-            for item in data if item.get("hostname")
+            for item in data
+            if item.get("hostname")
         ][:limit]
 
     async def _api_json(self, path: str) -> list[dict]:
@@ -770,7 +809,11 @@ echo "Installatie afgerond"
             "target": target,
             "exit_code": rc,
             "error_code": (
-                None if rc == 0 else "vpn_connect_timeout" if timed_out else "provider_connect_failed"
+                None
+                if rc == 0
+                else "vpn_connect_timeout"
+                if timed_out
+                else "provider_connect_failed"
             ),
         }
 
@@ -809,7 +852,11 @@ echo "Installatie afgerond"
             "state": "disconnecting" if rc == 0 else "error",
             "target": None,
             "error_code": (
-                None if rc == 0 else "vpn_disconnect_timeout" if rc == 124 else "provider_disconnect_failed"
+                None
+                if rc == 0
+                else "vpn_disconnect_timeout"
+                if rc == 124
+                else "provider_disconnect_failed"
             ),
         }
 
@@ -827,7 +874,8 @@ echo "Installatie afgerond"
             return {"ok": False, "error_code": "provider_recovery_failed"}
         status = await self.status(timeout=6)
         responsive = status.get("available") is True and status.get("state") in {
-            "connected", "disconnected"
+            "connected",
+            "disconnected",
         }
         return {
             "ok": responsive,

@@ -5,9 +5,9 @@ import ipaddress
 import re
 import shutil
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from statistics import median
-from typing import Awaitable, Callable
 
 from exitlane import core
 from exitlane.core import set_setting, setting
@@ -16,15 +16,41 @@ PROVIDER = "nordvpn"
 CACHE_TTL = timedelta(minutes=5)
 QUICK_COUNTRIES = ("NL", "BE", "DE", "FR", "GB")
 COUNTRY_NAMES = {
-    "AT": "Oostenrijk", "AU": "Australië", "BE": "België", "BR": "Brazilië",
-    "CA": "Canada", "CH": "Zwitserland", "CZ": "Tsjechië", "DE": "Duitsland",
-    "DK": "Denemarken", "ES": "Spanje", "FI": "Finland", "FR": "Frankrijk",
-    "GB": "Verenigd Koninkrijk", "GR": "Griekenland", "HK": "Hongkong",
-    "HU": "Hongarije", "IE": "Ierland", "IN": "India", "IS": "IJsland",
-    "IT": "Italië", "JP": "Japan", "KR": "Zuid-Korea", "LU": "Luxemburg",
-    "MX": "Mexico", "NL": "Nederland", "NO": "Noorwegen", "NZ": "Nieuw-Zeeland",
-    "PL": "Polen", "PT": "Portugal", "RO": "Roemenië", "SE": "Zweden",
-    "SG": "Singapore", "SK": "Slowakije", "TR": "Turkije", "US": "Verenigde Staten",
+    "AT": "Oostenrijk",
+    "AU": "Australië",
+    "BE": "België",
+    "BR": "Brazilië",
+    "CA": "Canada",
+    "CH": "Zwitserland",
+    "CZ": "Tsjechië",
+    "DE": "Duitsland",
+    "DK": "Denemarken",
+    "ES": "Spanje",
+    "FI": "Finland",
+    "FR": "Frankrijk",
+    "GB": "Verenigd Koninkrijk",
+    "GR": "Griekenland",
+    "HK": "Hongkong",
+    "HU": "Hongarije",
+    "IE": "Ierland",
+    "IN": "India",
+    "IS": "IJsland",
+    "IT": "Italië",
+    "JP": "Japan",
+    "KR": "Zuid-Korea",
+    "LU": "Luxemburg",
+    "MX": "Mexico",
+    "NL": "Nederland",
+    "NO": "Noorwegen",
+    "NZ": "Nieuw-Zeeland",
+    "PL": "Polen",
+    "PT": "Portugal",
+    "RO": "Roemenië",
+    "SE": "Zweden",
+    "SG": "Singapore",
+    "SK": "Slowakije",
+    "TR": "Turkije",
+    "US": "Verenigde Staten",
     "ZA": "Zuid-Afrika",
 }
 
@@ -34,7 +60,7 @@ def flag(code: str) -> str:
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _cached(
@@ -108,7 +134,7 @@ async def tcp_latency(hostname: str, *, attempts: int = 3, timeout: float = 1.5)
             measurements.append((asyncio.get_running_loop().time() - started) * 1000)
             writer.close()
             await writer.wait_closed()
-        except (OSError, asyncio.TimeoutError):
+        except (TimeoutError, OSError):
             continue
     return {
         "latency_ms": round(median(measurements)) if measurements else None,

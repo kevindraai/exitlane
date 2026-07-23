@@ -13,7 +13,7 @@ dependencies=["cryptography>=48.0.1,<50","fastapi>=0.139,<1","pyotp>=2.9,<3","uv
 exitlane-cli = "exitlane.cli:main"
 
 [project.optional-dependencies]
-dev=["bandit[toml]>=1.8,<2","build>=1.2,<2","httpx>=0.28,<1","pip-audit>=2.9,<3","pytest>=9.0.3,<10","ruff>=0.11,<1"]
+dev=["bandit[toml]>=1.8,<2","build>=1.2,<2","httpx>=0.28,<1","pip-audit>=2.9,<3","pytest>=9.0.3,<10","ruff==0.16.0"]
 
 [tool.hatch.build.targets.wheel]
 packages=["exitlane"]

@@ -57,10 +57,13 @@ def client(tmp_path, monkeypatch):
                 ("admin", digest, salt),
             )
         core.set_setting("setup_complete", True)
-        assert test_client.post(
-            "/api/auth/login",
-            json={"username": "admin", "password": "correct horse battery staple"},
-        ).status_code == 200
+        assert (
+            test_client.post(
+                "/api/auth/login",
+                json={"username": "admin", "password": "correct horse battery staple"},
+            ).status_code
+            == 200
+        )
         yield test_client
 
 
@@ -98,9 +101,7 @@ def test_provider_catalog_exposes_safe_metadata_and_capabilities(client, monkeyp
 
 
 def test_unknown_provider_is_safe_and_legacy_status_remains_available(client, monkeypatch):
-    assert client.get("/api/vpn/providers/missing").json() == {
-        "detail": "provider_not_found"
-    }
+    assert client.get("/api/vpn/providers/missing").json() == {"detail": "provider_not_found"}
 
     async def status(*, timeout=8):
         return {"installed": True, "authenticated": False, "connected": False}
@@ -110,9 +111,7 @@ def test_unknown_provider_is_safe_and_legacy_status_remains_available(client, mo
     assert client.get("/api/providers/nordvpn/status").status_code == 200
 
 
-def test_generic_wizard_authentication_selects_and_completes_provider_step(
-    client, monkeypatch
-):
+def test_generic_wizard_authentication_selects_and_completes_provider_step(client, monkeypatch):
     async def signed_out(*, timeout=8):
         return {"installed": True, "authenticated": False, "connected": False}
 

@@ -2,9 +2,7 @@ import json
 import sqlite3
 from datetime import UTC, datetime, timedelta
 
-import exitlane.core as core
-import exitlane.events as events
-import exitlane.main as main
+from exitlane import core, events, main
 
 
 def database(tmp_path, monkeypatch):
@@ -20,10 +18,18 @@ def test_init_migrates_idempotently_and_creates_event_indexes(tmp_path, monkeypa
     db = database(tmp_path, monkeypatch)
     core.init()
     with sqlite3.connect(db) as connection:
-        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        tables = {
+            row[0]
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
         indexes = {row[1] for row in connection.execute("PRAGMA index_list(events)")}
     assert "events" in tables
-    assert {"events_created_at_idx", "events_category_idx", "events_level_idx", "events_code_idx"} <= indexes
+    assert {
+        "events_created_at_idx",
+        "events_category_idx",
+        "events_level_idx",
+        "events_code_idx",
+    } <= indexes
 
 
 def test_record_validates_metadata_and_preserves_actor_snapshot(tmp_path, monkeypatch):
@@ -89,9 +95,17 @@ def test_cursor_filters_and_retention(tmp_path, monkeypatch):
 
 def test_wireguard_polling_records_only_transitions(monkeypatch):
     recorded = []
-    monkeypatch.setattr(main, "record_event", lambda code, **values: recorded.append((code, values)))
+    monkeypatch.setattr(
+        main, "record_event", lambda code, **values: recorded.append((code, values))
+    )
     monkeypatch.setattr(main, "_wireguard_observed_state", None)
-    values = {"configured": True, "active": True, "handshake": False, "interface": "wg0", "client": "router"}
+    values = {
+        "configured": True,
+        "active": True,
+        "handshake": False,
+        "interface": "wg0",
+        "client": "router",
+    }
     main.observe_wireguard_state(**values)
     main.observe_wireguard_state(**values)
     main.observe_wireguard_state(**(values | {"handshake": True}))

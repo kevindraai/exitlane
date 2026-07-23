@@ -1,0 +1,22 @@
+[Unit]
+Description=ExitLane fail-closed client traffic killswitch
+DefaultDependencies=no
+After=local-fs.target
+Before=network-pre.target network.target network-online.target exitlane.service wg-quick@wg0.service nordvpnd.service
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+User=root
+Environment=HOME=/var/lib/exitlane
+EnvironmentFile=-/etc/default/exitlane
+ExecStart=/usr/local/sbin/exitlane-cli restore-killswitch
+RemainAfterExit=yes
+UMask=0077
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/etc/exitlane
+
+[Install]
+WantedBy=sysinit.target

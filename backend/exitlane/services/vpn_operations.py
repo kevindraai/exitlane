@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 ACTIVE_STATES = frozenset({"connecting", "disconnecting", "recovering", "measuring"})
 CONNECT_TIMEOUT_SECONDS = 40
@@ -24,7 +24,7 @@ class VPNActionInProgress(RuntimeError):
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def snapshot() -> dict:

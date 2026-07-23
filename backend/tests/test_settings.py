@@ -4,10 +4,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-import exitlane.core as core
-import exitlane.main as main
+from exitlane import core, main, settings
 from exitlane.html import render_index
-import exitlane.settings as settings
 
 PASSWORD = "correct horse battery staple"
 STATIC_DIR = Path(__file__).parents[1] / "exitlane" / "static"
@@ -37,9 +35,7 @@ def client(tmp_path, monkeypatch):
 
 
 def login(client):
-    response = client.post(
-        "/api/auth/login", json={"username": "admin", "password": PASSWORD}
-    )
+    response = client.post("/api/auth/login", json={"username": "admin", "password": PASSWORD})
     assert response.status_code == 200
 
 
@@ -120,17 +116,18 @@ def test_unknown_root_field_is_rejected(client):
 @pytest.mark.parametrize("field", ["display_name", "instance_name"])
 def test_removed_name_fields_are_rejected(client, field):
     login(client)
-    response = client.put(
-        "/api/settings", json={"general": {field: "Legacy appliance"}}
-    )
+    response = client.put("/api/settings", json={"general": {field: "Legacy appliance"}})
     assert response.status_code == 422
 
 
 def test_invalid_timezone_is_rejected(client):
     login(client)
-    assert client.put(
-        "/api/settings", json=valid_update(timezone="Moon/Sea_of_Tranquility")
-    ).status_code == 422
+    assert (
+        client.put(
+            "/api/settings", json=valid_update(timezone="Moon/Sea_of_Tranquility")
+        ).status_code
+        == 422
+    )
 
 
 @pytest.mark.parametrize("interval", [1, 301, 2.5, "5", None])
@@ -157,9 +154,7 @@ def test_polling_interval_boundaries_are_accepted(client, interval):
 def test_partial_update_preserves_unspecified_values(client):
     login(client)
     assert client.put("/api/settings", json=valid_update()).status_code == 200
-    response = client.put(
-        "/api/settings", json={"general": {"timezone": "Europe/Amsterdam"}}
-    )
+    response = client.put("/api/settings", json={"general": {"timezone": "Europe/Amsterdam"}})
     assert response.status_code == 200
     assert response.json()["general"] == {
         "timezone": "Europe/Amsterdam",
@@ -223,9 +218,10 @@ def test_legacy_name_settings_are_ignored(client):
 
 def test_browser_preferences_are_not_stored_in_sqlite(client):
     login(client)
-    assert client.put(
-        "/api/settings", json={"general": {"timezone": "Europe/London"}}
-    ).status_code == 200
+    assert (
+        client.put("/api/settings", json={"general": {"timezone": "Europe/London"}}).status_code
+        == 200
+    )
     with sqlite3.connect(main.DB) as connection:
         keys = {row[0] for row in connection.execute("SELECT key FROM settings")}
     assert "language" not in keys

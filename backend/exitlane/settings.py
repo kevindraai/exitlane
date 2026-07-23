@@ -66,9 +66,7 @@ class GeneralSettingsUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     timezone: str | None = Field(default=None, min_length=1, max_length=128)
-    provider_refresh_interval_seconds: int | None = Field(
-        default=None, ge=2, le=300, strict=True
-    )
+    provider_refresh_interval_seconds: int | None = Field(default=None, ge=2, le=300, strict=True)
 
     @field_validator("timezone")
     @classmethod
@@ -85,7 +83,7 @@ class GeneralSettingsUpdate(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def require_change(self) -> "GeneralSettingsUpdate":
+    def require_change(self) -> GeneralSettingsUpdate:
         if not self.model_fields_set:
             raise ValueError("At least one general setting is required")
         return self

@@ -39,9 +39,23 @@ EVENT_DEFINITIONS = {
         {"fields", "public_scheme", "trusted_proxy_count"},
     ),
     "network.security_settings_reset_locally": ("settings", "warning", set()),
+    "network.killswitch_enabled": ("network", "warning", set()),
+    "network.killswitch_disabled": ("network", "warning", set()),
+    "network.killswitch_engaged": ("network", "warning", {"reason"}),
+    "network.killswitch_released": ("network", "info", set()),
+    "network.killswitch_error": ("network", "error", {"reason"}),
+    "network.killswitch_disabled_locally": ("network", "warning", set()),
     "provider.connect_started": ("provider", "info", {"target", "country_code", "cli_action"}),
-    "provider.connected": ("provider", "info", {"country", "city", "server", "country_code", "cli_action", "exit_code"}),
-    "provider.connect_failed": ("provider", "error", {"target", "reason", "country_code", "cli_action", "exit_code"}),
+    "provider.connected": (
+        "provider",
+        "info",
+        {"country", "city", "server", "country_code", "cli_action", "exit_code"},
+    ),
+    "provider.connect_failed": (
+        "provider",
+        "error",
+        {"target", "reason", "country_code", "cli_action", "exit_code"},
+    ),
     "provider.recovery_started": ("provider", "warning", {"country_code", "reason"}),
     "provider.recovered": ("provider", "info", {"country_code"}),
     "provider.recovery_failed": ("provider", "error", {"country_code", "reason"}),
@@ -62,7 +76,30 @@ EVENT_DEFINITIONS = {
 }
 FILTER_CATEGORIES = frozenset(value[0] for value in EVENT_DEFINITIONS.values())
 FILTER_LEVELS = frozenset({"info", "warning", "error"})
-SAFE_REASONS = frozenset({"invalid_credentials", "timeout", "healthcheck_failed", "provider_unavailable", "provider_status_unavailable", "connection_failed", "not_connected", "wrong_country", "invalid_target", "unknown", "already_signed_out", "daemon_unavailable", "command_unavailable", "provider_error"})
+SAFE_REASONS = frozenset(
+    {
+        "invalid_credentials",
+        "timeout",
+        "healthcheck_failed",
+        "provider_unavailable",
+        "provider_status_unavailable",
+        "connection_failed",
+        "not_connected",
+        "wrong_country",
+        "invalid_target",
+        "unknown",
+        "already_signed_out",
+        "daemon_unavailable",
+        "command_unavailable",
+        "provider_error",
+        "tunnel_unavailable",
+        "tunnel_interface_unknown",
+        "firewall_unavailable",
+        "firewall_apply_failed",
+        "firewall_rules_missing",
+        "invalid_configuration",
+    }
+)
 MAX_STRING = 160
 MAX_METADATA_BYTES = 2048
 
@@ -90,7 +127,7 @@ class EventPage(BaseModel):
 
 def _safe_string(value: object) -> str:
     if not isinstance(value, str):
-        raise ValueError("Event metadata strings must be strings")
+        raise TypeError("Event metadata strings must be strings")
     return value.strip()[:MAX_STRING]
 
 
@@ -115,13 +152,25 @@ def validate_metadata(code: str, metadata: dict[str, object] | None) -> dict[str
     return normalized
 
 
-def cleanup_events(connection: sqlite3.Connection, *, now: datetime, max_count: int, max_days: int) -> None:
+def cleanup_events(
+    connection: sqlite3.Connection, *, now: datetime, max_count: int, max_days: int
+) -> None:
     cutoff = (now - timedelta(days=max_days)).isoformat(timespec="seconds").replace("+00:00", "Z")
     connection.execute("DELETE FROM events WHERE created_at < ?", (cutoff,))
-    connection.execute("DELETE FROM events WHERE id NOT IN (SELECT id FROM events ORDER BY id DESC LIMIT ?)", (max_count,))
+    connection.execute(
+        "DELETE FROM events WHERE id NOT IN (SELECT id FROM events ORDER BY id DESC LIMIT ?)",
+        (max_count,),
+    )
 
 
-def record_event(code: str, *, actor: dict | None = None, metadata: dict[str, object] | None = None, correlation_id: str | None = None, now: datetime | None = None) -> bool:
+def record_event(
+    code: str,
+    *,
+    actor: dict | None = None,
+    metadata: dict[str, object] | None = None,
+    correlation_id: str | None = None,
+    now: datetime | None = None,
+) -> bool:
     """Best-effort event write; audit storage never breaks the primary operation."""
     try:
         category, level, _ = EVENT_DEFINITIONS[code]
@@ -136,16 +185,37 @@ def record_event(code: str, *, actor: dict | None = None, metadata: dict[str, ob
             connection.execute(
                 """INSERT INTO events(created_at, level, category, code, actor_user_id,
                    actor_username, metadata_json, correlation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (timestamp, level, category, code, actor_id, username, json.dumps(safe_metadata), correlation),
+                (
+                    timestamp,
+                    level,
+                    category,
+                    code,
+                    actor_id,
+                    username,
+                    json.dumps(safe_metadata),
+                    correlation,
+                ),
             )
-            cleanup_events(connection, now=current, max_count=EVENT_RETENTION_MAX_COUNT, max_days=EVENT_RETENTION_MAX_DAYS)
+            cleanup_events(
+                connection,
+                now=current,
+                max_count=EVENT_RETENTION_MAX_COUNT,
+                max_days=EVENT_RETENTION_MAX_DAYS,
+            )
         return True
     except (KeyError, TypeError, ValueError, sqlite3.Error):
         logger.warning("Could not store application event %s", code, exc_info=True)
         return False
 
 
-def list_events(*, limit: int = 50, cursor: int | None = None, category: str | None = None, level: str | None = None, code: str | None = None) -> EventPage:
+def list_events(
+    *,
+    limit: int = 50,
+    cursor: int | None = None,
+    category: str | None = None,
+    level: str | None = None,
+    code: str | None = None,
+) -> EventPage:
     clauses: list[str] = []
     parameters: list[object] = []
     if cursor is not None:
@@ -176,5 +246,18 @@ def list_events(*, limit: int = 50, cursor: int | None = None, category: str | N
             metadata = validate_metadata(row[4], json.loads(row[6]))
         except (json.JSONDecodeError, TypeError, ValueError):
             metadata = {}
-        items.append(EventItem(id=row[0], created_at=row[1], level=row[2], category=row[3], code=row[4], actor=EventActor(username=row[5]) if row[5] else None, metadata=metadata, correlation_id=row[7]))
-    return EventPage(items=items, next_cursor=items[-1].id if has_more and items else None, has_more=has_more)
+        items.append(
+            EventItem(
+                id=row[0],
+                created_at=row[1],
+                level=row[2],
+                category=row[3],
+                code=row[4],
+                actor=EventActor(username=row[5]) if row[5] else None,
+                metadata=metadata,
+                correlation_id=row[7],
+            )
+        )
+    return EventPage(
+        items=items, next_cursor=items[-1].id if has_more and items else None, has_more=has_more
+    )

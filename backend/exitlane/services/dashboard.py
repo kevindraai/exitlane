@@ -4,9 +4,10 @@ import asyncio
 import os
 import shutil
 import socket
-from datetime import datetime, timezone
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Awaitable, Callable, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -17,7 +18,7 @@ HANDSHAKE_WARNING_SECONDS = 180
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class HealthStatus(BaseModel):
@@ -88,7 +89,9 @@ def determine_health(
     now = now or utc_now()
     warnings: list[str] = []
     errors: list[str] = []
-    unavailable_sources = int(not vpn.available) + int(not wireguard.available) + int(not system.available)
+    unavailable_sources = (
+        int(not vpn.available) + int(not wireguard.available) + int(not system.available)
+    )
 
     if unavailable_sources >= 2:
         errors.append("multiple_status_sources_unavailable")
@@ -132,7 +135,9 @@ def determine_health(
 
 def _read_cpu_ticks() -> tuple[int, int] | None:
     try:
-        values = [int(value) for value in Path("/proc/stat").read_text().splitlines()[0].split()[1:]]
+        values = [
+            int(value) for value in Path("/proc/stat").read_text().splitlines()[0].split()[1:]
+        ]
     except (OSError, ValueError, IndexError):
         return None
     idle = values[3] + (values[4] if len(values) > 4 else 0)
@@ -246,7 +251,7 @@ async def build_dashboard(
             connected=bool(wireguard_result.get("connected")),
             client=wireguard_result.get("client") or None,
             peer_count=len(peers),
-            latest_handshake_at=datetime.fromtimestamp(latest, timezone.utc) if latest else None,
+            latest_handshake_at=datetime.fromtimestamp(latest, UTC) if latest else None,
             received_bytes=int(primary_peer.get("received_bytes", 0) or 0),
             sent_bytes=int(primary_peer.get("sent_bytes", 0) or 0),
             endpoint=primary_peer.get("endpoint") or None,

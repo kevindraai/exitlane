@@ -245,6 +245,7 @@
   },
   "common": {
     "cancel": "Cancel",
+    "confirm": "Confirm",
     "next": "Next",
     "back": "Back",
     "copy": "Copy",
@@ -588,6 +589,46 @@
   "disconnecting": "Disconnecting…",
   "generating": "Generating…",
   "adding": "Adding…"
+},
+"killswitch": {
+  "title": "ExitLane killswitch",
+  "description": "Blocks routed client traffic when no usable VPN tunnel is active.",
+  "configured": "Configured",
+  "effective": "Effective",
+  "tunnel": "Tunnel available",
+  "sources": "Protected sources",
+  "last_transition": "Last change",
+  "ipv6_notice": "IPv6 client traffic remains blocked when the provider offers no protected IPv6 tunnel.",
+  "recovery": "Recovery:",
+  "enable": "Enable",
+  "disable": "Disable",
+  "refresh": "Refresh status",
+  "confirm_title": "Confirm killswitch change",
+  "warning": "This can interrupt client connectivity. Local management remains allowed.",
+  "password": "Current password",
+  "totp": "Authenticator code",
+  "confirm_loss": "I understand client connectivity may be interrupted.",
+  "changing": "Applying…",
+  "enabled": "Killswitch enabled.",
+  "disabled": "Killswitch disabled.",
+  "states": {
+    "disabled": "Disabled",
+    "enabling": "Enabling",
+    "enabled_protected": "Enabled and protected",
+    "enabled_waiting_for_tunnel": "Waiting for tunnel",
+    "enabled_degraded": "Enabled, degraded",
+    "error": "Error",
+    "unknown": "Unknown"
+  },
+  "errors": {
+    "status": "Killswitch status is unavailable.",
+    "invalid_credentials": "The current password is incorrect.",
+    "invalid_mfa_code": "The authenticator code is invalid.",
+    "too_many_attempts": "Too many attempts. Try again later.",
+    "access_loss_confirmation_required": "Confirm the connectivity warning.",
+    "firewall_apply_failed": "The firewall change failed and was rolled back.",
+    "invalid_configuration": "The protected network configuration is invalid."
+  }
 },
 "messages": {
   "system_checks_passed": "All system checks passed.",
