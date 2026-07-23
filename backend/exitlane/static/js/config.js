@@ -37,6 +37,7 @@ export async function loadPublicConfig() {
     response.frontend.provider_refresh_interval_seconds;
 
   applyPublicConfig();
+  window.dispatchEvent(new CustomEvent("exitlane:configchange"));
   return frontendConfig;
 }
 function renderPasswordRequirement() {

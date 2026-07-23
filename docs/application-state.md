@@ -37,6 +37,9 @@ the outcome.
   confirmed data.
 - Logout and an authentication failure stop all authenticated polling and clear provider,
   WireGuard, dashboard, and system state before returning to login.
+- Exitlane authentication and provider authentication are independent gates. Central provider
+  status may be refreshed while NordVPN is signed out, but countries, servers, latency checks,
+  and VPN mutations start only after the explicit provider capability permits them.
 
 Not every form field belongs in central state. Short-lived input and purely presentational state
 can remain local. Central state is reserved for information that crosses views, participates in

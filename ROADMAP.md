@@ -19,6 +19,7 @@ alpha is tested in real networks.
 - Generic webhook notifications
 - Structured application Activity log
 - Security-hardening and repeatable security-assurance baseline
+- Self-service administrator password, NordVPN-token, and WireGuard management
 
 ## Next
 

@@ -77,6 +77,71 @@ Current technology: NORDLYNX""", ""
     assert status["connected"] is True
     assert status["server"] == "be255.nordvpn.com"
     assert status["country"] == "Belgium"
+    assert status["management"] == {
+        "provider": {"id": "nordvpn", "installation_state": "installed"},
+        "authentication": {"state": "signed_in"},
+        "connection": {"state": "connected"},
+        "capabilities": {
+            "can_sign_in": False,
+            "can_sign_out": True,
+            "can_connect": False,
+            "can_disconnect": True,
+            "can_select_location": True,
+            "can_manage_killswitch": False,
+        },
+        "error_code": None,
+        "reconnect_required": False,
+    }
+
+
+def test_signed_out_status_has_distinct_authentication_and_connection_states(monkeypatch):
+    async def command(*args, **kwargs):
+        if args == ("systemctl", "is-active", "nordvpnd"):
+            return 0, "active", ""
+        if args == ("nordvpn", "account"):
+            return 1, "You are not logged in.", ""
+        return 1, "Status: Disconnected", ""
+
+    monkeypatch.setattr(nordvpn, "command", command)
+    monkeypatch.setattr(nordvpn.shutil, "which", lambda _name: "/usr/bin/nordvpn")
+    status = asyncio.run(nordvpn.NordVPN().status())
+    management = status["management"]
+    assert management["authentication"]["state"] == "signed_out"
+    assert management["connection"]["state"] == "disconnected"
+    assert management["capabilities"]["can_sign_in"] is True
+    assert management["capabilities"]["can_sign_out"] is False
+    assert management["capabilities"]["can_disconnect"] is False
+    assert management["capabilities"]["can_select_location"] is False
+    assert management["capabilities"]["can_manage_killswitch"] is False
+
+
+@pytest.mark.parametrize(
+    ("command_name", "expected_authentication"),
+    [
+        (("systemctl", "is-active", "nordvpnd"), "unknown"),
+        (("nordvpn", "status"), "signed_in"),
+    ],
+)
+def test_provider_status_preserves_timeout_error(
+    monkeypatch, command_name, expected_authentication
+):
+    async def command(*args, **kwargs):
+        if args == command_name:
+            return 124, "", "timeout"
+        if args == ("systemctl", "is-active", "nordvpnd"):
+            return 0, "active", ""
+        if args == ("nordvpn", "status"):
+            return 0, "Status: Disconnected", ""
+        return 0, "Subscription: Active", ""
+
+    monkeypatch.setattr(nordvpn, "command", command)
+    monkeypatch.setattr(nordvpn.shutil, "which", lambda _name: "/usr/bin/nordvpn")
+    management = asyncio.run(nordvpn.NordVPN().status())["management"]
+    assert management["authentication"]["state"] == expected_authentication
+    assert management["error_code"] == "timeout"
+    assert management["capabilities"]["can_sign_out"] is (
+        expected_authentication == "signed_in"
+    )
 
 
 def test_actions_fail_safely_when_cli_is_outside_runtime(monkeypatch):
@@ -88,6 +153,8 @@ def test_actions_fail_safely_when_cli_is_outside_runtime(monkeypatch):
 
     assert status["available"] is False
     assert status["state"] == "unavailable"
+    assert status["management"]["authentication"]["state"] == "unavailable"
+    assert status["management"]["capabilities"]["can_manage_killswitch"] is False
     assert connect["error_code"] == "provider_cli_unavailable"
     assert disconnect["error_code"] == "provider_cli_unavailable"
 

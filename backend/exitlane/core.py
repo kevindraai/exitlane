@@ -133,13 +133,14 @@ def verify_password(password: str, password_hash: str, salt: str) -> bool:
     return hmac.compare_digest(candidate, password_hash)
 
 
-async def command(*args, timeout=60, input_text=None):
+async def command(*args, timeout=60, input_text=None, environment=None):
     try:
         p = await asyncio.create_subprocess_exec(
             *args,
             stdin=asyncio.subprocess.PIPE if input_text else None,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=environment,
         )
     except FileNotFoundError:
         return 127, "", "command not found"

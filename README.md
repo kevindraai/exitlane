@@ -38,11 +38,16 @@ security. See the [hardening guide](docs/security/hardening-guide.md),
 
 - Create the first local administrator account during setup.
 - Protect the application and API with expiring server-side sessions.
+- Change the administrator password in Settings, revoking all existing sessions.
+- Recover a forgotten password locally with `sudo exitlane-cli reset-password`.
 
 ### Settings
 
 - Configure timezone and dashboard refresh interval in the WebUI.
 - Choose the interface language and light, dark, or system appearance.
+- End the current NordVPN authentication session deliberately, then sign in with another token
+  without rerunning setup. Ending the session also ends the active VPN tunnel.
+- Open the existing WireGuard configuration management directly from Settings.
 
 ### Notifications
 

@@ -13,6 +13,18 @@
         </span>
        </div>
        <p class="inline-error" hidden="" id="vpn-runtime-error"></p>
+       <div class="vpn-management-stage" id="vpn-management-stage">
+        <section aria-live="polite" class="vpn-provider-blocker" hidden="" id="vpn-provider-blocker" role="status">
+         <div>
+          <h3 id="vpn-provider-blocker-title"></h3>
+          <p id="vpn-provider-blocker-description"></p>
+          <div class="view-actions">
+           <button class="button button-primary" data-i18n="provider.access.open_settings" id="vpn-provider-open-settings" type="button">Open VPN settings</button>
+           <button class="button button-secondary" data-i18n="provider.access.retry" hidden="" id="vpn-provider-retry" type="button">Retry</button>
+          </div>
+         </div>
+        </section>
+        <div aria-disabled="false" class="vpn-provider-controls" id="vpn-provider-controls">
        <div class="metric-grid" id="provider-metrics">
         <div class="metric">
          <span data-i18n="dashboard.country">
@@ -75,6 +87,8 @@
          <span data-i18n="provider.country_selection.search_country">Zoek land</span>
          <input autocomplete="off" data-i18n-placeholder="provider.country_selection.search_placeholder" id="country-search" placeholder="Bijv. Nederland" type="search"/>
         </label>
-        <div class="country-grid" id="country-list"></div>
+       <div class="country-grid" id="country-list"></div>
        </details>
+        </div>
+       </div>
       </section>

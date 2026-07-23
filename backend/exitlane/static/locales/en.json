@@ -40,6 +40,74 @@
       "session_duration_help": "Controlled by EXITLANE_SESSION_MAX_AGE and cannot be weakened here.",
       "save": "Save general settings"
     },
+    "authentication": {
+      "eyebrow": "AUTHENTICATION", "title": "Authentication",
+      "description": "Change the local administrator password.",
+      "current_password": "Current password", "new_password": "New password",
+      "confirm_password": "Repeat new password",
+      "session_warning": "After the change, all sessions end and you must sign in again.",
+      "change": "Change password",
+      "requirements": {
+        "minimum": "At least {length} characters",
+        "different": "Different from the current password",
+        "matches": "Matches the repeated password"
+      },
+      "errors": { "invalid_credentials": "The current password is incorrect.", "password_mismatch": "The new passwords do not match.", "mismatch": "The new passwords do not match.", "password_policy": "The new password does not meet the password policy.", "password_unchanged": "Choose a password different from the current password.", "too_many_attempts": "Too many attempts. Try again later.", "failed": "The password could not be changed." }
+    },
+    "vpn": {
+      "eyebrow": "VPN", "title": "NordVPN token",
+      "description": "Manage authentication for the local NordVPN client.",
+      "new_token": "New token", "token_hidden": "The current token is never displayed.",
+      "sign_in": "Sign in with token", "updating": "Signing in…",
+      "updated": "NordVPN signed in with the supplied token.",
+      "signed_in_limitation": "NordVPN is currently signed in. The installed NordVPN client cannot validate a replacement token without ending the existing session.",
+      "sign_out_warning": "Ending the current session disconnects NordVPN and requires a valid token to sign in again.",
+      "end_session": "End current session",
+      "signing_out": "Ending session…",
+      "signed_out": "NordVPN session ended.",
+      "retry": "Retry",
+      "retrying": "Checking…",
+      "confirm_title": "End NordVPN session?",
+      "confirm_description": "The active NordVPN session and VPN connection will end. You need a valid token to sign in again.",
+      "cancel": "Cancel",
+      "confirm_end_session": "End session",
+      "authentication": {
+        "signed_in": "Signed in",
+        "signed_out": "Signed out",
+        "unknown": "Unknown",
+        "unavailable": "Unavailable"
+      },
+      "states": {
+        "signed_in": "The local NordVPN client is signed in.",
+        "signed_out": "The local NordVPN client is signed out.",
+        "unknown": "The NordVPN authentication state is unknown.",
+        "not_installed": "The NordVPN CLI is not installed."
+      },
+      "errors": {
+        "already_signed_out": "The NordVPN session had already ended.",
+        "already_logged_in": "NordVPN is already signed in. The existing session was preserved.",
+        "invalid_token": "NordVPN rejected this token.",
+        "timeout": "NordVPN token sign-in timed out.",
+        "daemon_unavailable": "The NordVPN daemon is unavailable.",
+        "command_unavailable": "The NordVPN command is unavailable.",
+        "token_replacement_unsupported": "The installed NordVPN client cannot safely validate a replacement token while signed in.",
+        "provider_error": "NordVPN could not complete the action.",
+        "provider_state_unknown": "The NordVPN authentication state could not be confirmed.",
+        "provider_status_unavailable": "The NordVPN status is temporarily unavailable.",
+        "provider_cli_unavailable": "The NordVPN command is unavailable.",
+        "unsupported_container_runtime": "This runtime cannot manage the host NordVPN client.",
+        "too_many_attempts": "Too many attempts. Try again later."
+      }
+    },
+    "wireguard": {
+      "eyebrow": "WIREGUARD", "title": "WireGuard",
+      "description": "View, download, or deliberately regenerate the current client configuration on the WireGuard page.",
+      "open": "Open WireGuard management"
+    },
+    "network": {
+      "eyebrow": "NETWORK", "title": "Network",
+      "description": "Advanced network settings are not yet available in the WebUI."
+    },
     "appearance": {
       "eyebrow": "APPEARANCE",
       "title": "Appearance",
@@ -76,7 +144,7 @@
     "future": {
       "eyebrow": "FUTURE",
       "title": "Maintenance and security",
-      "description": "HTTPS, certificates, updates, backups and reset controls will be added in a future release."
+      "description": "HTTPS, certificates, updates and backups will be added in a future release."
     },
     "messages": {
       "saving": "Saving…",
@@ -195,7 +263,8 @@
     "action": { "connecting": "Connecting…", "disconnecting": "Disconnecting…" },
     "operation": { "connecting_country": "Connecting to {country}…", "recovering": "Recovering NordVPN…" },
     "notifications": { "connecting": "Connecting to {target}…", "connected": "Connected to {target} {server}.", "country_connected": "Connected to {server}.", "connect_failed": "Could not connect to {target}.", "disconnecting": "Disconnecting…", "disconnected": "Disconnected.", "disconnect_failed": "Could not disconnect." },
-    "errors": { "target_required": "Choose a target.", "timeout": "The status check timed out.", "vpn_connect_timeout": "Connecting to {country} took too long. NordVPN could not establish a working server connection. Try again.", "provider_recovery_rate_limited": "NordVPN could not be recovered again. Try again later.", "status_unavailable": "VPN status is unavailable.", "provider_status_unavailable": "The NordVPN status could not be read.", "provider_cli_unavailable": "The NordVPN client is unavailable in the ExitLane runtime.", "unsupported_container_runtime": "This Docker runtime cannot control the NordVPN client on the host. Install ExitLane natively in the same LXC or VM as NordVPN." },
+    "errors": { "target_required": "Choose a target.", "timeout": "The status check timed out.", "vpn_connect_timeout": "Connecting to {country} took too long. NordVPN could not establish a working server connection. Try again.", "provider_recovery_rate_limited": "NordVPN could not be recovered again. Try again later.", "provider_authentication_required": "Sign in to NordVPN before managing the VPN connection.", "status_unavailable": "VPN status is unavailable.", "provider_status_unavailable": "The NordVPN status could not be read.", "provider_cli_unavailable": "The NordVPN client is unavailable in the ExitLane runtime.", "unsupported_container_runtime": "This Docker runtime cannot control the NordVPN client on the host. Install ExitLane natively in the same LXC or VM as NordVPN." },
+    "access": { "sign_in_required_title": "NordVPN sign-in required", "sign_in_required_description": "Sign in to the local NordVPN client before selecting a country or managing the VPN connection.", "open_settings": "Open VPN settings", "unavailable_title": "NordVPN is unavailable", "unavailable_description": "Check the local NordVPN service and try again.", "checking_title": "Checking NordVPN status", "checking_description": "Provider management remains unavailable until authentication is confirmed.", "signing_in_title": "Signing in to NordVPN", "signing_out_title": "Signing out of NordVPN", "busy_description": "Provider management will become available when this action finishes.", "retry": "Retry" },
     "country_selection": { "latency": "Latency", "reconnect": "Reconnect", "quick_choice": "QUICK CHOICE", "choose_country": "Choose a VPN country", "measure_again": "Measure again", "all_countries": "All countries", "search_country": "Search country", "search_placeholder": "For example, Netherlands", "measuring": "Measuring…", "latency_ms": "{latency} ms", "connected_latency": "Connected · {latency}", "last_used": "Last used", "measure_failed": "Not all latency values could be measured.", "load_failed": "Countries could not be loaded." }
   },
   "step4": {
@@ -237,6 +306,11 @@
     "hide": "Hide",
     "copy": "Copy",
     "copied": "WireGuard configuration copied.",
+    "qr": "QR code",
+    "qr_title": "WireGuard QR code",
+    "qr_description": "Scan this code only with the device that will use this tunnel.",
+    "qr_loading": "Generating QR code…",
+    "close": "Close",
     "download": "Download",
     "regenerate": "Regenerate",
     "regenerating": "Regenerating…",
@@ -248,6 +322,7 @@
     "errors": {
       "load_failed": "The WireGuard configuration could not be loaded.",
       "copy_failed": "Copying failed. Show and select the configuration manually.",
+      "qr_failed": "The QR code could not be generated.",
       "wireguard_configuration_invalid": "The existing WireGuard configuration is invalid or incomplete.",
       "wireguard_configuration_missing": "No WireGuard client configuration exists yet.",
       "wireguard_reload_failed": "The new configuration could not be activated. The previous configuration was restored.",
@@ -371,14 +446,14 @@
     "last_refresh": "Last successful refresh", "details": "Details",
     "level": { "info": "Info", "warning": "Warning", "error": "Error" },
     "category": { "auth": "Authentication", "setup": "Setup", "provider": "Provider", "wireguard": "WireGuard", "settings": "Settings", "notifications": "Notifications", "system": "System" },
-    "metadata": { "target": "Target", "country": "Country", "city": "City", "server": "Server", "reason": "Reason", "fields": "Fields", "client_name": "Client", "interface": "Interface", "name": "Name" }
+    "metadata": { "target": "Target", "country": "Country", "city": "City", "server": "Server", "reason": "Reason", "provider": "Provider", "fields": "Fields", "client_name": "Client", "interface": "Interface", "name": "Name" }
   },
   "events": {
     "system": { "started": "Exitlane started" },
     "setup": { "completed": "Setup completed" },
-    "auth": { "login_succeeded": "Administrator signed in", "login_failed": "Sign-in attempt failed", "logout": "Administrator signed out", "session_expired": "Session expired", "session_revoked": "Session revoked" },
+    "auth": { "login_succeeded": "Administrator signed in", "login_failed": "Sign-in attempt failed", "logout": "Administrator signed out", "session_expired": "Session expired", "session_revoked": "Session revoked", "password_changed": "Administrator password changed", "password_reset": "Administrator password reset locally" },
     "settings": { "updated": "Settings updated: {fields}" },
-    "provider": { "connect_started": "Connecting to {target}", "connected": "Connected to {country} {server}", "connect_failed": "Could not connect to {target}", "recovery_started": "NordVPN recovery started", "recovered": "NordVPN recovered", "recovery_failed": "NordVPN recovery failed", "recovery_rate_limited": "NordVPN recovery temporarily rate-limited", "retry_started": "Retrying connection", "disconnect_started": "Disconnecting VPN", "disconnected": "VPN disconnected", "disconnect_failed": "Could not disconnect VPN" },
+    "provider": { "connect_started": "Connecting to {target}", "connected": "Connected to {country} {server}", "connect_failed": "Could not connect to {target}", "recovery_started": "NordVPN recovery started", "recovered": "NordVPN recovered", "recovery_failed": "NordVPN recovery failed", "recovery_rate_limited": "NordVPN recovery temporarily rate-limited", "retry_started": "Retrying connection", "disconnect_started": "Disconnecting VPN", "disconnected": "VPN disconnected", "disconnect_failed": "Could not disconnect VPN", "session_started": "NordVPN session started", "session_ended": "NordVPN session ended", "session_end_failed": "NordVPN session could not be ended" },
     "wireguard": { "configuration_generated": "WireGuard configuration generated for {client_name}", "configuration_regenerated": "WireGuard configuration replaced for {client_name}", "interface_active": "WireGuard interface {interface} became active", "interface_inactive": "WireGuard interface {interface} became inactive", "handshake_received": "WireGuard handshake received for {client_name}" },
     "notifications": { "webhook_added": "Webhook {name} added" }
   },

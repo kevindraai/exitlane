@@ -1,6 +1,8 @@
 import { api, postJson } from "./api.js";
 import { appState, getSlice, subscribe, succeedRefresh, updateSlice } from "./state.js";
 import { refreshProviderState } from "./lifecycle.js";
+import { showView } from "./navigation.js";
+import { vpnProviderAccess } from "./provider-management.js";
 import {
   clearInlineError,
   select,
@@ -40,6 +42,7 @@ export function renderProviderStatus(status) {
   select("#provider-next").disabled = !authenticated;
 
   renderVpnView(status);
+  renderVpnProviderAccess(status);
   reconcileCountries(status);
   const operation = status.operation || { state: status.connected ? "connected" : "idle" };
   updateSlice("providerAction", {
@@ -48,6 +51,55 @@ export function renderProviderStatus(status) {
     error: operation.last_error_code || null,
   });
   renderProviderControls(status, operation);
+  if (shouldLoadAuthenticatedProviderData(
+    getSlice("application"),
+    getSlice("auth"),
+    getSlice("provider"),
+  )) {
+    void activateAuthenticatedProviderData();
+  }
+}
+
+function renderVpnProviderAccess(status) {
+  const access = vpnProviderAccess(status);
+  const blocker = select("#vpn-provider-blocker");
+  const controls = select("#vpn-provider-controls");
+  const openSettings = select("#vpn-provider-open-settings");
+  const retry = select("#vpn-provider-retry");
+  blocker.hidden = !access.blocked;
+  blocker.dataset.state = access.state;
+  controls.inert = access.blocked;
+  controls.setAttribute("aria-disabled", String(access.blocked));
+  openSettings.hidden = access.state !== "signed_out";
+  retry.hidden = access.state !== "unavailable";
+
+  const content = {
+    signed_out: [
+      t("provider.access.sign_in_required_title", {}, "NordVPN sign-in required"),
+      t("provider.access.sign_in_required_description", {}, "Sign in to the local NordVPN client before selecting a country or managing the VPN connection."),
+    ],
+    unavailable: [
+      t("provider.access.unavailable_title", {}, "NordVPN is unavailable"),
+      t("provider.access.unavailable_description", {}, "Check the local NordVPN service and try again."),
+    ],
+    signing_in: [
+      t("provider.access.signing_in_title", {}, "Signing in to NordVPN"),
+      t("provider.access.busy_description", {}, "Provider management will become available when this action finishes."),
+    ],
+    signing_out: [
+      t("provider.access.signing_out_title", {}, "Signing out of NordVPN"),
+      t("provider.access.busy_description", {}, "Provider management will become available when this action finishes."),
+    ],
+    unknown: [
+      t("provider.access.checking_title", {}, "Checking NordVPN status"),
+      t("provider.access.checking_description", {}, "Provider management remains unavailable until authentication is confirmed."),
+    ],
+  }[access.state];
+  if (content) {
+    select("#vpn-provider-blocker-title").textContent = content[0];
+    select("#vpn-provider-blocker-description").textContent = content[1];
+  }
+  if (access.blocked) suspendProviderData();
 }
 
 function renderVpnView(status) {
@@ -57,9 +109,11 @@ function renderVpnView(status) {
     ? t(`provider.errors.${status.error_code}`, {}, t("provider.errors.status_unavailable", {}, "VPN status is unavailable."))
     : "";
   const operation = status.operation || {};
-  const operationActive = ["connecting", "disconnecting", "recovering"].includes(operation.state);
+  const operationActive = ["connecting", "disconnecting", "recovering", "measuring"].includes(operation.state);
   const operationLabel = operation.state === "recovering"
     ? t("provider.operation.recovering", {}, "Recovering NordVPN…")
+    : operation.state === "measuring"
+      ? t("provider.country_selection.measuring", {}, "Measuring…")
     : operation.state === "connecting"
       ? t("provider.operation.connecting_country", { country: operation.requested_country_code || "" }, "Connecting…")
       : operation.state === "disconnecting"
@@ -86,6 +140,18 @@ function renderVpnView(status) {
 
 let vpnCountries = [];
 let quickCountryCodes = [];
+let countryLoadPromise = null;
+let countryLoadController = null;
+let countryLoadGeneration = 0;
+let countriesLoaded = false;
+
+export function shouldLoadAuthenticatedProviderData(application, auth, providerSlice) {
+  return application.mode === "dashboard"
+    && application.activeView === "vpn"
+    && auth.data?.authenticated === true
+    && vpnProviderAccess(providerSlice?.data || {}).state === "signed_in"
+    && vpnProviderAccess(providerSlice?.data || {}).canSelectLocation;
+}
 
 function reconcileCountries(status) {
   const operation = status.operation || {};
@@ -97,7 +163,7 @@ function reconcileCountries(status) {
 }
 
 export function isCountryConnected(countryCode, status, operation = status.operation || {}) {
-  const active = ["connecting", "disconnecting", "recovering"].includes(operation.state);
+  const active = ["connecting", "disconnecting", "recovering", "measuring"].includes(operation.state);
   return !active && status.connected === true && status.country_code === countryCode;
 }
 
@@ -109,11 +175,12 @@ function renderProviderControls(status = getSlice("provider").data || {}, operat
 }
 
 export function providerControlState(status, operation = status.operation || {}) {
-  const active = ["connecting", "disconnecting", "recovering"].includes(operation.state);
+  const active = ["connecting", "disconnecting", "recovering", "measuring"].includes(operation.state);
+  const access = vpnProviderAccess(status);
   return {
-    reconnectDisabled: active,
-    disconnectDisabled: active || status.connected !== true,
-    measureDisabled: active,
+    reconnectDisabled: active || !access.canSelectLocation,
+    disconnectDisabled: active || !access.canDisconnect,
+    measureDisabled: active || !access.canSelectLocation,
   };
 }
 
@@ -121,12 +188,12 @@ function countryCard(country) {
   const button = document.createElement("button");
   button.type = "button";
   const action = getSlice("providerAction");
-  const active = ["connecting", "disconnecting", "recovering"].includes(action.state);
+  const active = ["connecting", "disconnecting", "recovering", "measuring"].includes(action.state);
   const requested = action.target === country.country_code;
   button.className = `country-card${country.is_connected ? " country-card--active" : ""}${requested && active ? " country-card--connecting" : ""}`;
   button.dataset.countryCode = country.country_code;
   button.setAttribute("aria-pressed", String(country.is_connected));
-  button.disabled = active || appState.provider?.available === false;
+  button.disabled = active || !vpnProviderAccess(appState.provider || {}).canSelectLocation;
   const latency = country.latency_ms == null
     ? t("provider.country_selection.measuring", {}, "Measuring…")
     : t("provider.country_selection.latency_ms", { latency: country.latency_ms }, `${country.latency_ms} ms`);
@@ -164,12 +231,90 @@ function renderCountries() {
   all.replaceChildren(...vpnCountries.filter((country) => country.name.toLocaleLowerCase("nl").includes(query)).map(countryCard));
 }
 
-async function refreshCountries() {
-  const result = await api("/api/vpn/countries", { deduplicate: false });
+async function refreshCountries({ signal } = {}) {
+  const result = await api("/api/vpn/countries", { deduplicate: false, signal });
   vpnCountries = result.countries || [];
   quickCountryCodes = result.quick_country_codes || [];
   if (result.vpn) succeedRefresh("provider", result.vpn);
   renderCountries();
+}
+
+export function activateAuthenticatedProviderData() {
+  if (!shouldLoadAuthenticatedProviderData(
+    getSlice("application"),
+    getSlice("auth"),
+    getSlice("provider"),
+  )) {
+    return Promise.resolve(false);
+  }
+  if (countriesLoaded) return Promise.resolve(true);
+  if (!countryLoadPromise) {
+    const generation = countryLoadGeneration;
+    const controller = new AbortController();
+    countryLoadController = controller;
+    countryLoadPromise = refreshCountries({ signal: controller.signal })
+      .then(() => measureMissingCountries({ signal: controller.signal }))
+      .then(() => {
+        if (
+          generation !== countryLoadGeneration
+          || !shouldLoadAuthenticatedProviderData(
+            getSlice("application"),
+            getSlice("auth"),
+            getSlice("provider"),
+          )
+        ) return false;
+        countriesLoaded = true;
+        return true;
+      })
+      .catch((error) => {
+        if (
+          error.code === "aborted"
+          || generation !== countryLoadGeneration
+          || !shouldLoadAuthenticatedProviderData(
+          getSlice("application"),
+          getSlice("auth"),
+          getSlice("provider"),
+          )
+        ) return false;
+        showMessage(
+          t("provider.country_selection.load_failed", {}, "Countries could not be loaded."),
+          "error",
+        );
+        throw error;
+      })
+      .finally(() => {
+        if (generation === countryLoadGeneration) {
+          countryLoadPromise = null;
+          countryLoadController = null;
+        }
+      });
+  }
+  return countryLoadPromise;
+}
+
+function suspendProviderData() {
+  if (!countriesLoaded && !countryLoadPromise && !vpnCountries.length) return;
+  countryLoadGeneration += 1;
+  countryLoadController?.abort("provider-authentication-ended");
+  stopActionPolling();
+  vpnCountries = [];
+  quickCountryCodes = [];
+  countryLoadPromise = null;
+  countryLoadController = null;
+  countriesLoaded = false;
+  select("#quick-countries")?.replaceChildren();
+  select("#country-list")?.replaceChildren();
+}
+
+export function deactivateAuthenticatedProviderData() {
+  countryLoadGeneration += 1;
+  countryLoadController?.abort("authentication-ended");
+  stopActionPolling();
+  vpnCountries = [];
+  quickCountryCodes = [];
+  countryLoadPromise = null;
+  countryLoadController = null;
+  countriesLoaded = false;
 }
 
 function applyVpnSnapshot(vpn) {
@@ -177,6 +322,13 @@ function applyVpnSnapshot(vpn) {
 }
 
 function connectionErrorMessage(errorCode, countryCode) {
+  if (errorCode === "provider_authentication_required") {
+    return t(
+      "provider.errors.provider_authentication_required",
+      {},
+      "Sign in to NordVPN before managing the VPN connection.",
+    );
+  }
   if (errorCode === "vpn_connect_timeout") {
     const country = vpnCountries.find((item) => item.country_code === countryCode)?.name || countryCode;
     return t("provider.errors.vpn_connect_timeout", { country }, `Connection to ${country} took too long.`);
@@ -206,7 +358,7 @@ function startActionPolling() {
       // The last confirmed provider snapshot remains visible.
     } finally {
       actionPollInFlight = false;
-      if (["connecting", "disconnecting", "recovering"].includes(getSlice("providerAction").state)) {
+      if (["connecting", "disconnecting", "recovering", "measuring"].includes(getSlice("providerAction").state)) {
         actionPollTimer = window.setTimeout(poll, 2000);
       }
     }
@@ -215,7 +367,8 @@ function startActionPolling() {
 }
 
 async function connectCountry(countryCode, button) {
-  if (["connecting", "disconnecting", "recovering"].includes(getSlice("providerAction").state)) return;
+  if (!vpnProviderAccess(getSlice("provider").data || {}).canSelectLocation) return;
+  if (["connecting", "disconnecting", "recovering", "measuring"].includes(getSlice("providerAction").state)) return;
   const statusLabel = button.querySelector(".country-card__status");
   button.disabled = true;
   button.classList.add("country-card--connecting");
@@ -248,6 +401,7 @@ async function connectCountry(countryCode, button) {
 }
 
 async function remeasureCountries() {
+  if (!vpnProviderAccess(getSlice("provider").data || {}).canSelectLocation) return;
   const button = select("#remeasure-countries");
   setBusy(button, true, t("provider.country_selection.measuring", {}, "Measuring…"));
   try {
@@ -260,17 +414,25 @@ async function remeasureCountries() {
   }
 }
 
-async function measureMissingCountries() {
+async function measureMissingCountries({ signal } = {}) {
   const missing = quickCountryCodes.filter((code) => {
     const country = vpnCountries.find((item) => item.country_code === code);
     return country && country.latency_measured_at == null;
   });
   if (!missing.length) return;
-  await Promise.allSettled(missing.map((code) => postJson(`/api/vpn/countries/${code}/measure`)));
-  await refreshCountries();
+  await Promise.allSettled(
+    missing.map((code) => postJson(
+      `/api/vpn/countries/${code}/measure`,
+      undefined,
+      { signal },
+    )),
+  );
+  if (signal?.aborted) return;
+  await refreshCountries({ signal });
 }
 
 async function reconnectCountry() {
+  if (!vpnProviderAccess(getSlice("provider").data || {}).canSelectLocation) return;
   const current = vpnCountries.find((country) => country.is_connected)
     || vpnCountries.find((country) => country.is_recent);
   if (current) await connectCountry(current.country_code, select("#reconnect-button"));
@@ -703,7 +865,8 @@ async function loginWithCallback(event) {
 }
 
 async function disconnectProvider() {
-  if (["connecting", "disconnecting", "recovering"].includes(getSlice("providerAction").state)) return;
+  if (!vpnProviderAccess(getSlice("provider").data || {}).canDisconnect) return;
+  if (["connecting", "disconnecting", "recovering", "measuring"].includes(getSlice("providerAction").state)) return;
   const button = select("#disconnect-button");
   updateSlice("providerAction", { state: "disconnecting", target: null, error: null });
   startActionPolling();
@@ -759,12 +922,26 @@ export function initialiseProviderControls() {
   );
   select("#reconnect-button").addEventListener("click", reconnectCountry);
   select("#remeasure-countries").addEventListener("click", remeasureCountries);
-  select("#country-search").addEventListener("input", renderCountries);
-  refreshCountries()
-    .then(measureMissingCountries)
-    .catch(() => showMessage(t("provider.country_selection.load_failed", {}, "Countries could not be loaded."), "error"));
-  window.addEventListener("focus", () => {
+  select("#vpn-provider-open-settings").addEventListener("click", () => {
+    showView("settings", { section: "vpn" });
+  });
+  select("#vpn-provider-retry").addEventListener("click", () => {
     refreshProviderState({ deduplicate: false }).catch(() => {});
+  });
+  select("#country-search").addEventListener("input", renderCountries);
+  window.addEventListener("focus", () => {
+    if (
+      shouldLoadAuthenticatedProviderData(
+        getSlice("application"),
+        getSlice("auth"),
+        getSlice("provider"),
+      )
+    ) {
+      refreshProviderState({ deduplicate: false }).catch(() => {});
+    }
+  });
+  window.addEventListener("exitlane:viewchange", (event) => {
+    if (event.detail?.view === "vpn") void activateAuthenticatedProviderData();
   });
 
   document

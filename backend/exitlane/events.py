@@ -22,6 +22,8 @@ EVENT_DEFINITIONS = {
     "auth.logout": ("auth", "info", set()),
     "auth.session_expired": ("auth", "info", set()),
     "auth.session_revoked": ("auth", "warning", set()),
+    "auth.password_changed": ("auth", "info", set()),
+    "auth.password_reset": ("auth", "warning", set()),
     "settings.updated": ("settings", "info", {"fields"}),
     "provider.connect_started": ("provider", "info", {"target", "country_code", "cli_action"}),
     "provider.connected": ("provider", "info", {"country", "city", "server", "country_code", "cli_action", "exit_code"}),
@@ -34,6 +36,9 @@ EVENT_DEFINITIONS = {
     "provider.disconnect_started": ("provider", "info", set()),
     "provider.disconnected": ("provider", "info", set()),
     "provider.disconnect_failed": ("provider", "error", {"reason"}),
+    "provider.session_started": ("provider", "info", {"provider"}),
+    "provider.session_ended": ("provider", "warning", {"provider"}),
+    "provider.session_end_failed": ("provider", "error", {"provider", "reason"}),
     "wireguard.configuration_generated": ("wireguard", "info", {"client_name"}),
     "wireguard.configuration_regenerated": ("wireguard", "warning", {"client_name"}),
     "wireguard.interface_active": ("wireguard", "info", {"interface"}),
@@ -43,7 +48,7 @@ EVENT_DEFINITIONS = {
 }
 FILTER_CATEGORIES = frozenset(value[0] for value in EVENT_DEFINITIONS.values())
 FILTER_LEVELS = frozenset({"info", "warning", "error"})
-SAFE_REASONS = frozenset({"invalid_credentials", "timeout", "healthcheck_failed", "provider_unavailable", "provider_status_unavailable", "connection_failed", "not_connected", "wrong_country", "invalid_target", "unknown"})
+SAFE_REASONS = frozenset({"invalid_credentials", "timeout", "healthcheck_failed", "provider_unavailable", "provider_status_unavailable", "connection_failed", "not_connected", "wrong_country", "invalid_target", "unknown", "already_signed_out", "daemon_unavailable", "command_unavailable", "provider_error"})
 MAX_STRING = 160
 MAX_METADATA_BYTES = 2048
 

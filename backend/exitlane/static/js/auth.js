@@ -6,6 +6,7 @@ import {
   select,
   setBusy,
 } from "./ui.js";
+import { deactivateAuthenticatedProviderData } from "./provider.js";
 
 let refreshApplication;
 let initialised = false;
@@ -62,6 +63,7 @@ async function login(event) {
 }
 
 async function logout() {
+  deactivateAuthenticatedProviderData();
   await postJson("/api/auth/logout");
   appState.session = { authenticated: false, user: null };
   succeedRefresh("auth", appState.session);

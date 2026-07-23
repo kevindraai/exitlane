@@ -8,6 +8,7 @@ import json
 import logging
 import time
 import urllib.parse
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,103 @@ from .base import Provider
 logger = logging.getLogger(__name__)
 SERVER_HOSTNAME_PATTERN = re.compile(r"^([a-z]{2}[0-9]+)\.nordvpn\.com$")
 CONNECT_FAILURE_TIMEOUT_SECONDS = 25
+TOKEN_LOGIN_TIMEOUT_SECONDS = 15
+SIGN_OUT_TIMEOUT_SECONDS = 15
+TOKEN_ERROR_CODES = frozenset(
+    {
+        "already_logged_in",
+        "invalid_token",
+        "timeout",
+        "daemon_unavailable",
+        "command_unavailable",
+        "token_replacement_unsupported",
+        "provider_error",
+    }
+)
+SIGN_OUT_ERROR_CODES = frozenset(
+    {
+        "already_signed_out",
+        "timeout",
+        "daemon_unavailable",
+        "command_unavailable",
+        "provider_error",
+    }
+)
+
+
+def _provider_cli_environment() -> dict[str, str]:
+    """Return the minimal non-secret environment needed by the installed CLI."""
+    allowed = ("HOME", "LANG", "LC_ALL", "PATH", "XDG_RUNTIME_DIR")
+    return {name: os.environ[name] for name in allowed if name in os.environ}
+
+
+def classify_token_login_failure(return_code: int, output: str, error: str) -> str:
+    """Classify known CLI failures without returning uncontrolled provider text."""
+    if return_code == 124:
+        return "timeout"
+    if return_code == 127:
+        return "command_unavailable"
+    message = f"{output}\n{error}".casefold()
+    if any(marker in message for marker in ("already logged in", "already logged-in", "already signed in")):
+        return "already_logged_in"
+    if any(
+        marker in message
+        for marker in (
+            "invalid token",
+            "token is invalid",
+            "token has expired",
+            "incorrect token",
+        )
+    ):
+        return "invalid_token"
+    if any(
+        marker in message
+        for marker in (
+            "daemon is not running",
+            "daemon not running",
+            "cannot reach daemon",
+            "can't connect to nordvpn daemon",
+            "nordvpnd",
+        )
+    ):
+        return "daemon_unavailable"
+    if any(
+        marker in message
+        for marker in (
+            "log out first",
+            "logout first",
+            "cannot login while",
+            "can't login while",
+        )
+    ):
+        return "token_replacement_unsupported"
+    return "provider_error"
+
+
+def classify_sign_out_failure(return_code: int, output: str, error: str) -> str:
+    """Classify logout failures without exposing provider-controlled output."""
+    if return_code == 124:
+        return "timeout"
+    if return_code == 127:
+        return "command_unavailable"
+    message = f"{output}\n{error}".casefold()
+    if any(
+        marker in message
+        for marker in ("not logged in", "not signed in", "already logged out", "already signed out")
+    ):
+        return "already_signed_out"
+    if any(
+        marker in message
+        for marker in (
+            "daemon is not running",
+            "daemon not running",
+            "cannot reach daemon",
+            "can't connect to nordvpn daemon",
+            "nordvpnd",
+        )
+    ):
+        return "daemon_unavailable"
+    return "provider_error"
 
 
 def _connect_timed_out(return_code: int, output: str, error: str, elapsed: float) -> bool:
@@ -93,9 +191,42 @@ class NordVPN(Provider):
     id = "nordvpn"
     display_name = "NordVPN"
 
+    def capabilities(
+        self,
+        *,
+        installation_state: str,
+        authentication_state: str,
+        connection_state: str,
+    ) -> dict[str, bool]:
+        available = installation_state == "installed"
+        return {
+            "can_sign_in": available and authentication_state == "signed_out",
+            "can_sign_out": available and authentication_state == "signed_in",
+            "can_connect": (
+                available
+                and authentication_state == "signed_in"
+                and connection_state == "disconnected"
+            ),
+            "can_disconnect": (
+                available
+                and authentication_state == "signed_in"
+                and connection_state == "connected"
+            ),
+            "can_select_location": (
+                available
+                and authentication_state == "signed_in"
+                and connection_state in {"connected", "disconnected"}
+            ),
+            # Deliberately reserved for a later security/networking design.
+            "can_manage_killswitch": False,
+        }
+
     async def status(self, *, timeout: float = 8):
         if not shutil.which("nordvpn"):
             in_container = Path("/.dockerenv").exists()
+            error_code = (
+                "unsupported_container_runtime" if in_container else "provider_cli_unavailable"
+            )
             return {
                 "installed": False,
                 "available": False,
@@ -103,8 +234,12 @@ class NordVPN(Provider):
                 "authenticated": False,
                 "connected": False,
                 "state": "unavailable",
-                "error_code": (
-                    "unsupported_container_runtime" if in_container else "provider_cli_unavailable"
+                "error_code": error_code,
+                "management": self.management_status(
+                    installation_state="not_installed",
+                    authentication_state="unavailable",
+                    connection_state="unknown",
+                    error_code=error_code,
                 ),
             }
 
@@ -129,15 +264,64 @@ class NordVPN(Provider):
         )
 
         account_output = account_out or account_err
+        daemon_active = daemon_rc == 0
+        account_message = account_output.casefold()
+        if daemon_rc == 124:
+            authentication_state = "unknown"
+            authentication_error = "timeout"
+        elif not daemon_active:
+            authentication_state = "unavailable"
+            authentication_error = "daemon_unavailable"
+        elif account_rc == 0 and "not logged in" not in account_message:
+            authentication_state = "signed_in"
+            authentication_error = None
+        elif "not logged in" in account_message or "not signed in" in account_message:
+            authentication_state = "signed_out"
+            authentication_error = None
+        elif account_rc == 124:
+            authentication_state = "unknown"
+            authentication_error = "timeout"
+        elif account_rc == 127:
+            authentication_state = "unavailable"
+            authentication_error = "command_unavailable"
+        else:
+            authentication_state = "unknown"
+            authentication_error = "provider_status_unavailable"
+
+        raw_connection_state = values.get("Status", "").casefold()
+        if raw_connection_state in {
+            "connected",
+            "disconnected",
+            "connecting",
+            "disconnecting",
+        }:
+            connection_state = raw_connection_state
+        elif authentication_state == "signed_out":
+            connection_state = "disconnected"
+        elif not daemon_active:
+            connection_state = "error"
+        else:
+            connection_state = "unknown"
+        connected = connection_state == "connected"
+        if authentication_error:
+            status_error = authentication_error
+        elif status_rc == 124:
+            status_error = "timeout"
+        elif status_rc == 127:
+            status_error = "command_unavailable"
+        elif status_rc == 0 or authentication_state == "signed_out":
+            status_error = None
+        else:
+            status_error = "provider_status_unavailable"
 
         return {
             "installed": True,
-            "available": status_rc == 0,
-            "daemon_active": daemon_rc == 0,
-            "authenticated": (account_rc == 0 and "not logged in" not in account_output.lower()),
-            "connected": (status_rc == 0 and values.get("Status", "").lower() == "connected"),
+            "available": daemon_active and authentication_state != "unavailable",
+            "daemon_active": daemon_active,
+            "authenticated": authentication_state == "signed_in",
+            "connected": connected,
             "state": values.get("Status", "error").lower() if status_rc == 0 else "error",
-            "error_code": None if status_rc == 0 else "provider_status_unavailable",
+            "error_code": status_error,
             "country": values.get("Country", ""),
             "city": values.get("City", ""),
             "server": values.get(
@@ -148,6 +332,12 @@ class NordVPN(Provider):
             "technology": values.get(
                 "Current technology",
                 "",
+            ),
+            "management": self.management_status(
+                installation_state="installed",
+                authentication_state=authentication_state,
+                connection_state=connection_state,
+                error_code=status_error,
             ),
         }
 
@@ -298,12 +488,27 @@ echo "Installatie afgerond"
             "login",
             "--token",
             token,
+            timeout=TOKEN_LOGIN_TIMEOUT_SECONDS,
+            environment=_provider_cli_environment(),
         )
 
         return {
             "ok": rc == 0,
-            "stdout": out,
-            "stderr": err,
+            "error": None if rc == 0 else classify_token_login_failure(rc, out, err),
+        }
+
+    async def sign_out(self) -> dict:
+        rc, out, err = await command(
+            "nordvpn",
+            "logout",
+            timeout=SIGN_OUT_TIMEOUT_SECONDS,
+            environment=_provider_cli_environment(),
+        )
+        error = None if rc == 0 else classify_sign_out_failure(rc, out, err)
+        return {
+            "ok": rc == 0 or error == "already_signed_out",
+            "error": error,
+            "already_signed_out": error == "already_signed_out",
         }
 
     async def login_callback(self, url):

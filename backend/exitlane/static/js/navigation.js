@@ -57,9 +57,27 @@ export function setApplicationMode(mode) {
   window.dispatchEvent(new CustomEvent("exitlane:modechange", { detail: { mode: state.mode } }));
 }
 
-export function showView(name, { persist = true } = {}) {
+function focusViewSection(name, section, root = document) {
+  if (name !== "settings" || section !== "vpn") return;
+  const heading = root.querySelector("#settings-vpn h2");
+  if (!heading) return;
+  heading.setAttribute("tabindex", "-1");
+  heading.focus({ preventScroll: true });
+  root.querySelector("#settings-vpn").scrollIntoView({ block: "start" });
+}
+
+export function showView(
+  name,
+  { persist = true, section = null, historyMode = "push" } = {},
+) {
   const state = transitionApplication({ activeView: name }, { persistView: persist });
   window.dispatchEvent(new CustomEvent("exitlane:viewchange", { detail: { view: state.activeView } }));
+  const route = `#${state.activeView}${section ? `/${section}` : ""}`;
+  if (window.location.hash !== route && historyMode !== "none") {
+    window.history[historyMode === "replace" ? "replaceState" : "pushState"](null, "", route);
+  }
+  if (section) focusViewSection(state.activeView, section);
+  return state;
 }
 
 export const setActiveView = showView;
@@ -75,9 +93,18 @@ export function initialiseNavigation() {
     button.addEventListener("click", () => showView(button.dataset.view));
   });
   document.querySelectorAll("[data-open-view]").forEach((button) => {
-    button.addEventListener("click", () => showView(button.dataset.openView));
+    button.addEventListener("click", () => showView(button.dataset.openView, {
+      section: button.dataset.openSection || null,
+    }));
   });
-  showView(localStorage.getItem(STORAGE_KEY) || getSlice("application").activeView, {
+  window.addEventListener("popstate", () => {
+    const [view, section] = window.location.hash.replace(/^#/, "").split("/");
+    showView(view, { section: section || null, historyMode: "none" });
+  });
+  const [routeView, routeSection] = window.location.hash.replace(/^#/, "").split("/");
+  showView(validView(routeView, document) ? routeView : localStorage.getItem(STORAGE_KEY) || getSlice("application").activeView, {
     persist: false,
+    section: routeSection || null,
+    historyMode: "replace",
   });
 }
