@@ -9,7 +9,7 @@ User=root
 Environment=HOME=/var/lib/exitlane
 EnvironmentFile=-/etc/default/exitlane
 WorkingDirectory=/opt/exitlane/backend
-ExecStart=/opt/exitlane/venv/bin/uvicorn exitlane.main:app --host ${EXITLANE_HOST} --port ${EXITLANE_PORT} --no-server-header
+ExecStart=/opt/exitlane/venv/bin/uvicorn exitlane.main:app --host ${EXITLANE_HOST} --port ${EXITLANE_PORT} --no-server-header --no-proxy-headers
 Restart=on-failure
 RestartSec=5
 UMask=0077

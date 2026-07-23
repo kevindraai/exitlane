@@ -24,6 +24,75 @@ let savedGeneral = null;
 let savedSettings = null;
 let settingsLoaded = false;
 let loadingSettings = false;
+let pendingEnrollment = null;
+
+function clearEnrollmentSecrets() {
+  pendingEnrollment = null;
+  select("#settings-mfa-setup-key").textContent = "";
+  select("#settings-mfa-qr").replaceChildren();
+  select("#settings-mfa-confirm-code").value = "";
+  select("#settings-mfa-enrollment").hidden = true;
+}
+
+function showRecoveryCodes(codes) {
+  select("#settings-recovery-code-list").textContent = codes.join("\n");
+  select("#settings-recovery-codes").hidden = false;
+}
+
+async function loadAuthenticationSecurity() {
+  const [security, deployment] = await Promise.all([
+    api("/api/auth/security"),
+    api("/api/deployment/security"),
+  ]);
+  select("#settings-mfa-status").textContent = security.mfa.enabled
+    ? t("settings.authentication.mfa.enabled", {}, "Enabled")
+    : t("settings.authentication.mfa.disabled", {}, "Disabled");
+  select("#settings-mfa-recovery-count").textContent = t(
+    "settings.authentication.mfa.remaining",
+    { count: security.mfa.recovery_codes_remaining },
+    `${security.mfa.recovery_codes_remaining} recovery codes remaining`,
+  );
+  select("#settings-mfa-enable-form").hidden = security.mfa.enabled;
+  select("#settings-mfa-manage-form").hidden = !security.mfa.enabled;
+  const list = select("#settings-session-list");
+  list.replaceChildren();
+  for (const session of security.sessions) {
+    const row = document.createElement("div");
+    row.className = "session-row";
+    const description = document.createElement("span");
+    description.textContent = `${session.user_agent} · ${session.client_ip}${session.current ? ` · ${t("settings.authentication.sessions.current", {}, "Current session")}` : ""}`;
+    row.appendChild(description);
+    if (!session.current) {
+      const revoke = document.createElement("button");
+      revoke.className = "button button-secondary";
+      revoke.textContent = t("settings.authentication.sessions.revoke", {}, "Revoke");
+      revoke.addEventListener("click", async () => {
+        await api(`/api/auth/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
+        await loadAuthenticationSecurity();
+      });
+      row.appendChild(revoke);
+    }
+    list.appendChild(row);
+  }
+  const status = select("#settings-deployment-status");
+  status.replaceChildren();
+  for (const [key, value] of Object.entries({
+    https: deployment.https,
+    reverse_proxy: deployment.reverse_proxy,
+    trusted_proxy: deployment.direct_peer_trusted,
+    secure_cookie: deployment.secure_cookie,
+    public_url: deployment.public_url || "—",
+    warnings: deployment.warnings.join(", ") || "—",
+  })) {
+    const row = document.createElement("div");
+    const term = document.createElement("dt");
+    const detail = document.createElement("dd");
+    term.textContent = t(`settings.network.${key}`, {}, key);
+    detail.textContent = typeof value === "boolean" ? (value ? t("common.yes", {}, "Yes") : t("common.no", {}, "No")) : value;
+    row.append(term, detail);
+    status.appendChild(row);
+  }
+}
 
 function generalFormValue() {
   return {
@@ -98,6 +167,7 @@ export async function loadSettings({ force = false } = {}) {
   try {
     const data = await api("/api/settings");
     renderSettings(data);
+    await loadAuthenticationSecurity();
     settingsLoaded = true;
     return data;
   } catch (error) {
@@ -106,6 +176,55 @@ export async function loadSettings({ force = false } = {}) {
     loadingSettings = false;
   }
   return null;
+}
+
+async function beginMfa(event) {
+  event.preventDefault();
+  const result = await api("/api/auth/mfa/enrollment", {
+    method: "POST",
+    body: JSON.stringify({ current_password: select("#settings-mfa-password").value }),
+  });
+  select("#settings-mfa-password").value = "";
+  pendingEnrollment = result.enrollment;
+  select("#settings-mfa-setup-key").textContent = result.setup_key;
+  const documentNode = new DOMParser().parseFromString(result.qr_svg, "image/svg+xml");
+  select("#settings-mfa-qr").replaceChildren(document.importNode(documentNode.documentElement, true));
+  select("#settings-mfa-enrollment").hidden = false;
+  select("#settings-mfa-confirm-code").focus();
+}
+
+async function confirmMfa(event) {
+  event.preventDefault();
+  const result = await api("/api/auth/mfa/enrollment/confirm", {
+    method: "POST",
+    body: JSON.stringify({ enrollment: pendingEnrollment, code: select("#settings-mfa-confirm-code").value }),
+  });
+  clearEnrollmentSecrets();
+  showRecoveryCodes(result.recovery_codes);
+  await loadAuthenticationSecurity();
+}
+
+async function cancelMfa() {
+  await api("/api/auth/mfa/enrollment", { method: "DELETE" });
+  clearEnrollmentSecrets();
+}
+
+async function manageMfa(event) {
+  event.preventDefault();
+  const action = event.submitter?.dataset.action;
+  const payload = {
+    current_password: select("#settings-mfa-manage-password").value,
+    code: select("#settings-mfa-manage-code").value,
+  };
+  if (action === "disable") {
+    await api("/api/auth/mfa/disable", { method: "POST", body: JSON.stringify(payload) });
+    window.dispatchEvent(new CustomEvent("exitlane:authenticationrequired"));
+  } else {
+    const result = await api("/api/auth/mfa/recovery-codes", { method: "POST", body: JSON.stringify(payload) });
+    showRecoveryCodes(result.recovery_codes);
+    await loadAuthenticationSecurity();
+  }
+  clearSecretFields("#settings-mfa-manage-password", "#settings-mfa-manage-code");
 }
 
 export async function saveGeneralSettings(event) {
@@ -258,6 +377,18 @@ export function initialiseSettings() {
   form.addEventListener("input", updateSaveState);
   form.addEventListener("change", updateSaveState);
   select("#settings-password-form").addEventListener("submit", changePassword);
+  select("#settings-mfa-enable-form").addEventListener("submit", beginMfa);
+  select("#settings-mfa-confirm-form").addEventListener("submit", confirmMfa);
+  select("#settings-mfa-cancel").addEventListener("click", cancelMfa);
+  select("#settings-mfa-manage-form").addEventListener("submit", manageMfa);
+  select("#settings-recovery-close").addEventListener("click", () => {
+    select("#settings-recovery-code-list").textContent = "";
+    select("#settings-recovery-codes").hidden = true;
+  });
+  select("#settings-revoke-sessions").addEventListener("click", async () => {
+    await api("/api/auth/sessions/revoke-others", { method: "POST" });
+    await loadAuthenticationSecurity();
+  });
   select("#settings-password-form").addEventListener("input", () => {
     clearPasswordFeedback();
     updatePasswordValidation();
@@ -272,5 +403,6 @@ export function initialiseSettings() {
     if (dashboardActive && settingsLoaded) renderAbout(savedSettings.about);
     updatePasswordValidation();
   });
+  window.addEventListener("exitlane:authenticationrequired", clearEnrollmentSecrets);
   window.addEventListener("exitlane:configchange", updatePasswordValidation);
 }

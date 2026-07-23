@@ -20,4 +20,24 @@
         <button class="button button-primary" data-i18n="auth.login" type="submit">Sign in</button>
        </div>
       </form>
+      <form class="form-grid" hidden="" id="mfa-login-form" method="post">
+       <p class="inline-error" hidden="" id="mfa-login-error"></p>
+       <h2 data-i18n="auth.mfa.title">Verify your sign-in</h2>
+       <p data-i18n="auth.mfa.description">Enter a code from your authenticator app or a recovery code.</p>
+       <label>
+        <span data-i18n="auth.mfa.code">Verification code</span>
+        <input autocomplete="one-time-code" id="mfa-login-code" inputmode="numeric" required=""/>
+       </label>
+       <label>
+        <span data-i18n="auth.mfa.mode">Code type</span>
+        <select id="mfa-login-mode">
+         <option data-i18n="auth.mfa.authenticator" value="totp">Authenticator app</option>
+         <option data-i18n="auth.mfa.recovery" value="recovery">Recovery code</option>
+        </select>
+       </label>
+       <div class="form-submit">
+        <button class="button button-primary" data-i18n="auth.mfa.verify" type="submit">Verify</button>
+        <button class="button button-secondary" data-i18n="auth.mfa.back" id="mfa-login-back" type="button">Back</button>
+       </div>
+      </form>
      </section>

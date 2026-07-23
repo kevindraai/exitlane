@@ -43,15 +43,56 @@
          <button class="button button-primary" data-i18n="settings.authentication.change" disabled="" id="settings-password-save" type="submit">Change password</button>
         </div>
        </form>
+       <hr/>
+       <div class="panel-heading compact">
+        <div>
+         <h3 data-i18n="settings.authentication.mfa.title">Multifactor authentication</h3>
+         <p data-i18n="settings.authentication.mfa.description">Protect administrator sign-in with an authenticator app.</p>
+        </div>
+        <strong id="settings-mfa-status">—</strong>
+       </div>
+       <div class="form-grid">
+        <p id="settings-mfa-recovery-count"></p>
+        <form id="settings-mfa-enable-form" method="post">
+         <label><span data-i18n="settings.authentication.current_password">Current password</span><input autocomplete="current-password" id="settings-mfa-password" type="password"/></label>
+         <button class="button button-primary" data-i18n="settings.authentication.mfa.enable" type="submit">Enable MFA</button>
+        </form>
+        <div hidden="" id="settings-mfa-enrollment">
+         <p data-i18n="settings.authentication.mfa.scan">Scan this QR code and store the setup key securely.</p>
+         <div id="settings-mfa-qr"></div>
+         <code id="settings-mfa-setup-key"></code>
+         <form id="settings-mfa-confirm-form" method="post">
+          <label><span data-i18n="settings.authentication.mfa.verify">Verification code</span><input autocomplete="one-time-code" id="settings-mfa-confirm-code" inputmode="numeric"/></label>
+          <button class="button button-primary" data-i18n="settings.authentication.mfa.confirm" type="submit">Confirm</button>
+          <button class="button button-secondary" data-i18n="common.cancel" id="settings-mfa-cancel" type="button">Cancel</button>
+         </form>
+        </div>
+        <form hidden="" id="settings-mfa-manage-form" method="post">
+         <label><span data-i18n="settings.authentication.current_password">Current password</span><input autocomplete="current-password" id="settings-mfa-manage-password" type="password"/></label>
+         <label><span data-i18n="settings.authentication.mfa.verify">Verification code</span><input autocomplete="one-time-code" id="settings-mfa-manage-code" inputmode="numeric"/></label>
+         <button class="button button-secondary" data-action="regenerate" data-i18n="settings.authentication.mfa.regenerate" type="submit">Regenerate recovery codes</button>
+         <button class="button button-danger" data-action="disable" data-i18n="settings.authentication.mfa.disable" type="submit">Disable MFA</button>
+        </form>
+        <div hidden="" id="settings-recovery-codes">
+         <p data-i18n="settings.authentication.mfa.recovery_once">Save these recovery codes now. They will not be shown again.</p>
+         <pre id="settings-recovery-code-list"></pre>
+         <button class="button button-secondary" data-i18n="common.close" id="settings-recovery-close" type="button">Close</button>
+        </div>
+       </div>
+       <hr/>
+       <h3 data-i18n="settings.authentication.sessions.title">Active sessions</h3>
+       <div id="settings-session-list"></div>
+       <button class="button button-secondary" data-i18n="settings.authentication.sessions.revoke_others" id="settings-revoke-sessions" type="button">Revoke all other sessions</button>
       </section>
-      <section class="panel settings-future" id="settings-network">
+      <section class="panel" id="settings-network">
        <div class="panel-heading compact">
         <div>
          <p class="eyebrow" data-i18n="settings.network.eyebrow">NETWORK</p>
          <h2 data-i18n="settings.network.title">Network</h2>
-         <p data-i18n="settings.network.description">Advanced network settings are not yet available in the WebUI.</p>
+         <p data-i18n="settings.network.description">HTTPS and reverse-proxy deployment security.</p>
         </div>
        </div>
+       <dl class="settings-facts" id="settings-deployment-status"></dl>
       </section>
       <section class="panel">
        <div class="panel-heading compact">

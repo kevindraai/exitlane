@@ -53,8 +53,13 @@ curl --fail http://127.0.0.1:8787/api/health
 ## Security and operations
 
 Do not expose port 8787 directly to the public internet. Limit the management interface at the
-network boundary and protect local configuration, state, and logs. HTTPS can be terminated by a
-trusted reverse proxy; secure session cookies must be enabled for an HTTPS-only deployment.
+network boundary and protect local configuration, state, and logs. Configure HTTPS using the
+[reverse-proxy guide](deployment/reverse-proxy.md); forwarding headers are ignored unless their
+direct peer is explicitly trusted.
+
+The installer creates `/etc/exitlane/secret.key` with mode `0600` and never replaces it during an
+upgrade. Preserve the database and key together. Losing the key never bypasses MFA: run
+`sudo exitlane-cli disable-mfa` locally and enroll again.
 
 The current release has no built-in update, rollback, backup, or restore workflow. Preserve the
 appliance's configuration and data directories using an operator-managed backup process, and test

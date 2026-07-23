@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added optional TOTP MFA, encrypted secrets, one-time hashed recovery codes, replay protection,
+  staged login challenges and root-only `exitlane-cli disable-mfa` recovery.
+- Added idle plus absolute session expiry, safe active-session management and migration-driven
+  logout for legacy sessions while retaining digest-only session-token storage.
+- Added explicit trusted-proxy CIDRs, reliable client-IP/HTTPS awareness, automatic Secure cookies,
+  conditional HSTS, deployment diagnostics and Caddy/Nginx/Traefik guidance.
 - Introduced a central VPN provider registry, metadata and capability contract, generic provider
   API routes, and compatibility aliases for the existing NordVPN routes.
 - Added provider-driven VPN navigation, Overview and management pages; removed provider credentials

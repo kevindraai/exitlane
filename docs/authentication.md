@@ -6,7 +6,7 @@ setup, application API access requires an authenticated session.
 
 ## Session model
 
-Sessions are server-side and expire after a configured lifetime. The browser receives an opaque
+Sessions are server-side and have idle and absolute expiry. The browser receives an opaque
 cookie while the stored representation does not contain the reusable token. This allows logout,
 expiry, password changes, and account removal to invalidate access centrally.
 
@@ -22,9 +22,8 @@ session discovery remain public so service monitoring and login routing can work
 
 ## Operational assumptions
 
-Exitlane currently has a local administrator model rather than roles, federation, multi-factor
-authentication, or API tokens. Keep the interface on a trusted management network. Where HTTPS is
-terminated by a reverse proxy, configure secure cookies and preserve same-origin access.
+Exitlane has one local administrator rather than roles, federation, WebAuthn or API tokens.
+Optional TOTP MFA and recovery codes are described in [MFA](security/mfa.md).
 
 Security concerns should follow the private process in [SECURITY.md](../SECURITY.md).
 

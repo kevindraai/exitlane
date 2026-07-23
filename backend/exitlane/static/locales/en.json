@@ -47,6 +47,15 @@
       "confirm_password": "Repeat new password",
       "session_warning": "After the change, all sessions end and you must sign in again.",
       "change": "Change password",
+      "mfa": {
+        "title": "Multifactor authentication", "description": "Protect administrator sign-in with an authenticator app.",
+        "enable": "Enable MFA", "enabled": "Enabled", "disabled": "Disabled", "scan": "Scan this QR code and store the setup key securely.",
+        "verify": "Verification code", "confirm": "Confirm", "regenerate": "Regenerate recovery codes", "disable": "Disable MFA",
+        "remaining": "{count} recovery codes remaining", "recovery_once": "Save these recovery codes now. They will not be shown again."
+      },
+      "sessions": {
+        "title": "Active sessions", "current": "Current session", "revoke": "Revoke", "revoke_others": "Revoke all other sessions"
+      },
       "requirements": {
         "minimum": "At least {length} characters",
         "different": "Different from the current password",
@@ -106,7 +115,9 @@
     },
     "network": {
       "eyebrow": "NETWORK", "title": "Network",
-      "description": "Advanced network settings are not yet available in the WebUI."
+      "description": "HTTPS and reverse-proxy deployment security.",
+      "https": "HTTPS connection", "reverse_proxy": "Reverse proxy", "trusted_proxy": "Trusted proxy",
+      "secure_cookie": "Secure cookie", "public_url": "Public URL", "warnings": "Warnings"
     },
     "appearance": {
       "eyebrow": "APPEARANCE",
@@ -200,7 +211,7 @@
     "alternative": "Alternative",
     "check_again": "Check again",
     "status_error": "Status error",
-    "hide": "Hide"
+    "hide": "Hide", "close": "Close", "yes": "Yes", "no": "No"
   },
   "step1": {
     "kicker": "Step 1",
@@ -480,7 +491,7 @@
   "events": {
     "system": { "started": "Exitlane started" },
     "setup": { "completed": "Setup completed" },
-    "auth": { "login_succeeded": "Administrator signed in", "login_failed": "Sign-in attempt failed", "logout": "Administrator signed out", "session_expired": "Session expired", "session_revoked": "Session revoked", "password_changed": "Administrator password changed", "password_reset": "Administrator password reset locally" },
+    "auth": { "login_succeeded": "Administrator signed in", "login_failed": "Sign-in attempt failed", "logout": "Administrator signed out", "session_expired": "Session expired", "session_revoked": "Session revoked", "password_changed": "Administrator password changed", "password_reset": "Administrator password reset locally", "mfa_enrollment_started": "MFA enrollment started", "mfa_enabled": "MFA enabled", "mfa_disabled": "MFA disabled", "mfa_disabled_locally": "MFA disabled locally", "recovery_codes_generated": "Recovery codes generated", "recovery_codes_regenerated": "Recovery codes regenerated", "recovery_code_used": "Recovery code used", "other_sessions_revoked": "Other sessions revoked" },
     "settings": { "updated": "Settings updated: {fields}" },
     "provider": { "connect_started": "Connecting to {target}", "connected": "Connected to {country} {server}", "connect_failed": "Could not connect to {target}", "recovery_started": "NordVPN recovery started", "recovered": "NordVPN recovered", "recovery_failed": "NordVPN recovery failed", "recovery_rate_limited": "NordVPN recovery temporarily rate-limited", "retry_started": "Retrying connection", "disconnect_started": "Disconnecting VPN", "disconnected": "VPN disconnected", "disconnect_failed": "Could not disconnect VPN", "session_started": "NordVPN session started", "session_ended": "NordVPN session ended", "session_end_failed": "NordVPN session could not be ended" },
     "wireguard": { "configuration_generated": "WireGuard configuration generated for {client_name}", "configuration_regenerated": "WireGuard configuration replaced for {client_name}", "interface_active": "WireGuard interface {interface} became active", "interface_inactive": "WireGuard interface {interface} became inactive", "handshake_received": "WireGuard handshake received for {client_name}" },
@@ -495,7 +506,13 @@
     "login": "Sign in",
     "logout": "Log out",
     "logging_in": "Signing in…",
-    "invalid_credentials": "Invalid username or password."
+    "invalid_credentials": "Invalid username or password.",
+    "mfa": {
+      "title": "Verify your sign-in", "description": "Enter a code from your authenticator app or a recovery code.",
+      "code": "Verification code", "mode": "Code type", "authenticator": "Authenticator app", "recovery": "Recovery code",
+      "verify": "Verify", "verifying": "Verifying…", "back": "Back",
+      "errors": {"invalid": "The code is invalid or expired.", "invalid_mfa_code": "The code is invalid.", "mfa_challenge_expired": "The sign-in expired. Start again.", "too_many_attempts": "Too many attempts. Start again."}
+    }
   },
 "busy": {
   "default": "Working…",

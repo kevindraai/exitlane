@@ -5,7 +5,6 @@ import sqlite3
 import hashlib
 import base64
 import re
-import secrets
 import time
 import uuid
 from io import BytesIO
@@ -23,6 +22,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import segno
+import pyotp
 
 from exitlane import __version__
 from exitlane.core import (
@@ -59,6 +59,8 @@ from exitlane.services.vpn_selection import (
 )
 from exitlane.services import vpn_operations
 from exitlane.services.credentials import CredentialError, change_password
+from exitlane.services import auth_security
+from exitlane.proxy import deployment_status, request_security, trusted_origin
 from exitlane.config import (
     DEFAULT_WIREGUARD_CLIENT,
     DEFAULT_WIREGUARD_INTERFACE,
@@ -68,8 +70,7 @@ from exitlane.config import (
     MAX_PASSWORD_LENGTH,
     MIN_PASSWORD_LENGTH,
     MAX_REQUEST_BODY_BYTES,
-    HTTPS_ONLY,
-    SESSION_COOKIE_SECURE,
+    SESSION_COOKIE_POLICY,
     SESSION_MAX_AGE_SECONDS,
     validate_config,
 )
@@ -90,10 +91,13 @@ _pending_provider_connection: dict | None = None
 _wireguard_generation_lock: asyncio.Lock | None = None
 _password_change_failures: dict[tuple[Path, int], deque[float]] = defaultdict(deque)
 _provider_sign_out_failures: dict[tuple[Path, int], deque[float]] = defaultdict(deque)
+_login_failures: dict[tuple[Path, str, str], deque[float]] = defaultdict(deque)
 PASSWORD_CHANGE_ATTEMPTS = 5
 PASSWORD_CHANGE_WINDOW_SECONDS = 300
 PROVIDER_SIGN_OUT_ATTEMPTS = 5
 PROVIDER_SIGN_OUT_WINDOW_SECONDS = 60
+LOGIN_ATTEMPTS = 5
+LOGIN_WINDOW_SECONDS = 300
 NORDVPN_HOST_COUNTRY_CODES = {"UK": "GB"}
 provider_registry = ProviderRegistry([provider], default_id=provider.id)
 
@@ -113,6 +117,25 @@ class Admin(BaseModel):
 class Login(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+
+
+class MfaVerify(BaseModel):
+    code: str = Field(min_length=6, max_length=64)
+    mode: str = Field(default="totp", pattern=r"^(totp|recovery)$")
+
+
+class MfaEnrollmentStart(BaseModel):
+    current_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+
+
+class MfaEnrollmentConfirm(BaseModel):
+    enrollment: str = Field(min_length=20, max_length=128)
+    code: str = Field(min_length=6, max_length=8)
+
+
+class MfaDisable(BaseModel):
+    current_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+    code: str = Field(min_length=6, max_length=8)
 
 
 class PasswordChange(BaseModel):
@@ -193,6 +216,7 @@ class Webhook(BaseModel):
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     validate_config()
     init()
+    auth_security.ensure_master_key()
     database = DB.resolve()
     if database not in _system_started_databases:
         record_event("system.started")
@@ -208,9 +232,14 @@ app = FastAPI(
 )
 
 SESSION_COOKIE = "exitlane_session"
+MFA_CHALLENGE_COOKIE = "exitlane_mfa_challenge"
+# Kept for compatibility with integrations importing the former boolean.
+SESSION_COOKIE_SECURE = SESSION_COOKIE_POLICY == "always"
 PUBLIC_API_ROUTES = {
     ("GET", "/api/health"),
     ("POST", "/api/auth/login"),
+    ("POST", "/api/auth/mfa"),
+    ("DELETE", "/api/auth/mfa"),
     ("GET", "/api/auth/session"),
 }
 SETUP_API_ROUTES = {
@@ -262,19 +291,7 @@ CONTENT_SECURITY_POLICY = "; ".join(
 
 
 def session_user(token: str | None) -> dict | None:
-    if not token:
-        return None
-    now = int(time.time())
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
-    with sqlite3.connect(DB) as connection:
-        connection.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
-        row = connection.execute(
-            """SELECT users.id, users.username FROM sessions
-               JOIN users ON users.id = sessions.user_id
-               WHERE sessions.token_hash = ? AND sessions.expires_at > ?""",
-            (token_hash, now),
-        ).fetchone()
-    return None if row is None else {"id": row[0], "username": row[1]}
+    return auth_security.session_user(token)
 
 
 def request_has_trusted_origin(request: Request) -> bool:
@@ -285,9 +302,7 @@ def request_has_trusted_origin(request: Request) -> bool:
     if not source:
         return True
     parsed = urlsplit(source)
-    host = request.headers.get("host", "")
-    if not host or any(character in host for character in "\r\n/\\"):
-        return False
+    expected = trusted_origin(request, request_security(request))
     return (
         parsed.scheme in {"http", "https"}
         and bool(parsed.hostname)
@@ -296,7 +311,7 @@ def request_has_trusted_origin(request: Request) -> bool:
         and parsed.path in {"", "/"}
         and not parsed.query
         and not parsed.fragment
-        and parsed.netloc.casefold() == host.casefold()
+        and f"{parsed.scheme}://{parsed.netloc}".casefold() == expected
     )
 
 
@@ -396,7 +411,7 @@ async def security_baseline(request: Request, call_next):
     response.headers["Cache-Control"] = SENSITIVE_CACHE_CONTROL
     if "server" in response.headers:
         del response.headers["server"]
-    if HTTPS_ONLY:
+    if request_security(request).scheme == "https":
         response.headers["Strict-Transport-Security"] = "max-age=31536000"
     return response
 
@@ -451,11 +466,23 @@ async def put_settings(req: SettingsUpdate, request: Request) -> dict:
     return result
 
 
+def _cookie_secure(request: Request) -> bool:
+    return SESSION_COOKIE_SECURE or request_security(request).secure_cookie
+
+
 @app.post("/api/auth/login")
-async def login(req: Login, response: Response) -> dict:
+async def login(req: Login, request: Request, response: Response) -> dict:
+    client_ip = request_security(request).client_ip
+    failure_key = (DB.resolve(), req.username.casefold(), client_ip)
+    now_monotonic = time.monotonic()
+    failures = _login_failures[failure_key]
+    while failures and failures[0] <= now_monotonic - LOGIN_WINDOW_SECONDS:
+        failures.popleft()
+    if len(failures) >= LOGIN_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="too_many_attempts")
     with sqlite3.connect(DB) as connection:
         row = connection.execute(
-            "SELECT id, username, password_hash, salt FROM users WHERE username = ?",
+            "SELECT id, username, password_hash, salt, mfa_enabled FROM users WHERE username = ?",
             (req.username,),
         ).fetchone()
 
@@ -466,28 +493,80 @@ async def login(req: Login, response: Response) -> dict:
         row[3] if row else "0" * 32,
     )
     if row is None or not valid:
+        failures.append(now_monotonic)
         record_event("auth.login_failed", metadata={"reason": "invalid_credentials"})
         raise HTTPException(status_code=401, detail="Invalid username or password")
-
-    token = secrets.token_urlsafe(32)
-    expires_at = int(time.time()) + SESSION_MAX_AGE_SECONDS
-    with sqlite3.connect(DB) as connection:
-        connection.execute(
-            "INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
-            (hashlib.sha256(token.encode()).hexdigest(), row[0], expires_at),
+    _login_failures.pop(failure_key, None)
+    if row[4]:
+        challenge = auth_security.start_challenge(row[0], client_ip)
+        response.set_cookie(
+            MFA_CHALLENGE_COOKIE, challenge, max_age=auth_security.MFA_CHALLENGE_SECONDS,
+            httponly=True, secure=_cookie_secure(request), samesite="strict", path="/api/auth",
         )
+        return {"authenticated": False, "mfa_required": True}
 
+    token = auth_security.create_session(row[0], client_ip, request.headers.get("user-agent", ""))
     response.set_cookie(
         SESSION_COOKIE,
         token,
         max_age=SESSION_MAX_AGE_SECONDS,
         httponly=True,
-        secure=SESSION_COOKIE_SECURE,
+        secure=_cookie_secure(request),
         samesite="lax",
         path="/",
     )
     record_event("auth.login_succeeded", actor={"id": row[0], "username": row[1]})
     return {"authenticated": True, "user": {"username": row[1]}}
+
+
+@app.post("/api/auth/mfa")
+async def login_mfa(req: MfaVerify, request: Request, response: Response) -> dict:
+    challenge = request.cookies.get(MFA_CHALLENGE_COOKIE)
+    if not challenge:
+        raise HTTPException(status_code=401, detail="mfa_challenge_expired")
+    try:
+        user_id, recovery_used = auth_security.consume_challenge(
+            challenge, req.code, req.mode, request_security(request).client_ip
+        )
+    except auth_security.AuthSecurityError as error:
+        if error.code != "invalid_mfa_code":
+            response.delete_cookie(
+                MFA_CHALLENGE_COOKIE, httponly=True, secure=_cookie_secure(request),
+                samesite="strict", path="/api/auth",
+            )
+        raise HTTPException(status_code=401, detail=error.code) from None
+    with sqlite3.connect(DB) as connection:
+        username = connection.execute("SELECT username FROM users WHERE id=?", (user_id,)).fetchone()[0]
+    token = auth_security.create_session(
+        user_id, request_security(request).client_ip, request.headers.get("user-agent", "")
+    )
+    response.set_cookie(
+        SESSION_COOKIE, token, max_age=SESSION_MAX_AGE_SECONDS, httponly=True,
+        secure=_cookie_secure(request), samesite="lax", path="/",
+    )
+    response.delete_cookie(
+        MFA_CHALLENGE_COOKIE, httponly=True, secure=_cookie_secure(request),
+        samesite="strict", path="/api/auth",
+    )
+    record_event("auth.recovery_code_used" if recovery_used else "auth.login_succeeded",
+                 actor={"id": user_id, "username": username})
+    return {"authenticated": True, "user": {"username": username}, "recovery_code_used": recovery_used}
+
+
+@app.delete("/api/auth/mfa")
+async def cancel_login_mfa(request: Request, response: Response) -> dict:
+    challenge = request.cookies.get(MFA_CHALLENGE_COOKIE)
+    if challenge:
+        with sqlite3.connect(DB) as connection:
+            connection.execute(
+                "DELETE FROM mfa_challenges WHERE token_hash=?",
+                (auth_security.token_hash(challenge),),
+            )
+    response.delete_cookie(
+        MFA_CHALLENGE_COOKIE, httponly=True, secure=_cookie_secure(request),
+        samesite="strict", path="/api/auth",
+    )
+    return {"ok": True}
 
 
 @app.post("/api/auth/logout")
@@ -502,7 +581,7 @@ async def logout(request: Request, response: Response) -> dict:
     response.delete_cookie(
         SESSION_COOKIE,
         httponly=True,
-        secure=SESSION_COOKIE_SECURE,
+        secure=_cookie_secure(request),
         samesite="lax",
         path="/",
     )
@@ -537,7 +616,7 @@ async def update_password(req: PasswordChange, request: Request, response: Respo
     response.delete_cookie(
         SESSION_COOKIE,
         httponly=True,
-        secure=SESSION_COOKIE_SECURE,
+        secure=_cookie_secure(request),
         samesite="lax",
         path="/",
     )
@@ -572,6 +651,110 @@ async def auth_session(request: Request) -> dict:
         "user": None if user is None else {"username": user["username"]},
         "setup_complete": bool(setting("setup_complete", False)),
     }
+
+
+@app.get("/api/auth/security")
+async def auth_security_status(request: Request) -> dict:
+    user = request.state.user
+    return {
+        "mfa": auth_security.mfa_status(user["id"]),
+        "sessions": auth_security.list_sessions(user["id"], user["session_id"]),
+    }
+
+
+@app.post("/api/auth/mfa/enrollment")
+async def begin_mfa_enrollment(req: MfaEnrollmentStart, request: Request) -> Response:
+    user, session_token = request.state.user, request.cookies.get(SESSION_COOKIE, "")
+    with sqlite3.connect(DB) as connection:
+        row = connection.execute("SELECT password_hash,salt FROM users WHERE id=?", (user["id"],)).fetchone()
+    if not row or not verify_password(req.current_password, row[0], row[1]):
+        raise HTTPException(status_code=401, detail="invalid_credentials")
+    enrollment, secret = auth_security.start_enrollment(user["id"], session_token)
+    label = f"{user['username']}@ExitLane"
+    uri = pyotp.TOTP(secret).provisioning_uri(name=label, issuer_name="ExitLane")
+    buffer = BytesIO()
+    segno.make(uri, micro=False).save(buffer, kind="svg", scale=4)
+    record_event("auth.mfa_enrollment_started", actor=user)
+    return JSONResponse(
+        {"enrollment": enrollment, "setup_key": secret, "issuer": "ExitLane",
+         "account_label": label, "qr_svg": buffer.getvalue().decode()},
+        headers={"Cache-Control": "no-store, private", "Pragma": "no-cache"},
+    )
+
+
+@app.delete("/api/auth/mfa/enrollment")
+async def cancel_mfa_enrollment(request: Request) -> dict:
+    with sqlite3.connect(DB) as connection:
+        connection.execute("DELETE FROM mfa_enrollments WHERE user_id=?", (request.state.user["id"],))
+    return {"ok": True}
+
+
+@app.post("/api/auth/mfa/enrollment/confirm")
+async def finish_mfa_enrollment(req: MfaEnrollmentConfirm, request: Request) -> Response:
+    try:
+        codes = auth_security.confirm_enrollment(
+            request.state.user["id"], request.cookies.get(SESSION_COOKIE, ""), req.enrollment, req.code
+        )
+    except auth_security.AuthSecurityError as error:
+        raise HTTPException(status_code=401, detail=error.code) from None
+    record_event("auth.mfa_enabled", actor=request.state.user)
+    record_event("auth.recovery_codes_generated", actor=request.state.user)
+    return JSONResponse({"recovery_codes": codes}, headers={"Cache-Control": "no-store, private"})
+
+
+@app.post("/api/auth/mfa/recovery-codes")
+async def regenerate_mfa_recovery_codes(req: MfaDisable, request: Request) -> Response:
+    user = request.state.user
+    with sqlite3.connect(DB) as connection:
+        row = connection.execute("SELECT password_hash,salt FROM users WHERE id=?", (user["id"],)).fetchone()
+    if not row or not verify_password(req.current_password, row[0], row[1]) or not auth_security.verify_totp(user["id"], req.code):
+        raise HTTPException(status_code=401, detail="invalid_credentials")
+    codes = auth_security.regenerate_recovery_codes(user["id"], user["session_id"])
+    record_event("auth.recovery_codes_regenerated", actor=user)
+    return JSONResponse({"recovery_codes": codes}, headers={"Cache-Control": "no-store, private"})
+
+
+@app.post("/api/auth/mfa/disable")
+async def disable_mfa(req: MfaDisable, request: Request, response: Response) -> dict:
+    user = request.state.user
+    with sqlite3.connect(DB) as connection:
+        row = connection.execute("SELECT password_hash,salt FROM users WHERE id=?", (user["id"],)).fetchone()
+    if not row or not verify_password(req.current_password, row[0], row[1]) or not auth_security.verify_totp(user["id"], req.code):
+        raise HTTPException(status_code=401, detail="invalid_credentials")
+    auth_security.disable_mfa(user["id"])
+    response.delete_cookie(
+        SESSION_COOKIE, httponly=True, secure=_cookie_secure(request), samesite="lax", path="/"
+    )
+    record_event("auth.mfa_disabled", actor=user)
+    return {"ok": True, "reauthentication_required": True}
+
+
+@app.delete("/api/auth/sessions/{session_id}")
+async def revoke_auth_session(session_id: str, request: Request) -> dict:
+    try:
+        revoked = auth_security.revoke_session(
+            request.state.user["id"], session_id, request.state.user["session_id"]
+        )
+    except auth_security.AuthSecurityError as error:
+        raise HTTPException(status_code=409, detail=error.code) from None
+    if not revoked:
+        raise HTTPException(status_code=404, detail="session_not_found")
+    record_event("auth.session_revoked", actor=request.state.user)
+    return {"ok": True}
+
+
+@app.post("/api/auth/sessions/revoke-others")
+async def revoke_other_auth_sessions(request: Request) -> dict:
+    count = auth_security.revoke_other_sessions(
+        request.state.user["id"], request.state.user["session_id"]
+    )
+    record_event("auth.other_sessions_revoked", actor=request.state.user)
+    return {"ok": True, "revoked": count}
+
+
+@app.get("/api/deployment/security")
+async def get_deployment_security(request: Request) -> dict:
+    return deployment_status(request)
 
 
 @app.get("/api/setup/state")

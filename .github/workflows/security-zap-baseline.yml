@@ -27,7 +27,7 @@ jobs:
         run: |
           python -m pip install ./backend
           export EXITLANE_DATA_DIR="${RUNNER_TEMP}/exitlane-zap"
-          python -m uvicorn exitlane.main:app --host 127.0.0.1 --port 8787 --no-server-header &
+          python -m uvicorn exitlane.main:app --host 127.0.0.1 --port 8787 --no-server-header --no-proxy-headers &
           server_pid=$!
           ready=false
           for attempt in {1..20}; do

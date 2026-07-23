@@ -1,0 +1,61 @@
+# HTTPS reverse proxy
+
+ExitLane does not terminate TLS. It trusts `X-Forwarded-For` and `X-Forwarded-Proto` only when the
+direct TCP peer is in `EXITLANE_TRUSTED_PROXIES`. Values are comma-separated IPv4/IPv6 addresses
+or CIDRs; hostnames and wildcards are unsupported. Without this setting forwarding headers are
+ignored. `X-Forwarded-*` is primary; RFC `Forwarded` is not combined with it.
+
+Addresses are processed right-to-left, removing trusted proxy hops and stopping at the first
+untrusted address. Malformed, oversized or overlong chains are ignored. `X-Forwarded-Host` is
+never trusted; configure the external origin:
+
+```ini
+EXITLANE_TRUSTED_PROXIES=127.0.0.1
+EXITLANE_PUBLIC_URL=https://exitlane.example.internal
+EXITLANE_SECURE_COOKIES=auto
+```
+
+Restart ExitLane after changing environment. Serve it at `/`, not a subpath. Verify status under
+**Settings → Network**. Direct HTTP remains available for trusted local networks and warns.
+`always` forces Secure cookies; `never` is only for explicit local development. HSTS is emitted
+only when HTTPS is reliably detected.
+
+## Caddy
+
+```caddy
+exitlane.example.internal {
+    reverse_proxy 127.0.0.1:8787 {
+        header_up Host {host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto https
+        header_up -Forwarded
+    }
+}
+```
+
+## Nginx
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name exitlane.example.internal;
+    client_max_body_size 1m;
+    location / {
+        proxy_pass http://127.0.0.1:8787;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Forwarded "";
+        proxy_read_timeout 60s;
+    }
+}
+```
+
+## Traefik
+
+Use an HTTP service URL such as `http://127.0.0.1:8787`, attach a TLS router, and configure
+Traefik's forwarded-header trusted IPs so client-supplied headers are discarded. Trust only the
+exact Traefik peer in ExitLane. Do not enable Traefik's insecure forwarded-header mode.
+
+If the public URL is HTTPS but Settings reports HTTP, check the proxy peer CIDR and that the proxy
+overwrites `X-Forwarded-Proto`. Forwarding headers on a direct request are intentionally ignored.

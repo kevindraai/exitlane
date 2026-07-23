@@ -29,6 +29,10 @@ warrants one. Rotate any session, provider credential or WireGuard key that may 
 Alpha fixes normally ship forward, with backports considered only for materially deployed older
 alphas.
 
+TOTP MFA reduces the impact of a stolen password but is not phishing-resistant. Keep recovery
+codes offline. The SQLite database and `/etc/exitlane/secret.key` are jointly sensitive and must
+be preserved together for operator-managed disaster recovery.
+
 ## Scope
 
 In scope are vulnerabilities in the Exitlane backend, browser application, authentication and
