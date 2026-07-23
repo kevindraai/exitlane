@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import sqlite3
 import hashlib
 import base64
@@ -13,9 +14,9 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import AsyncIterator
-from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse
 from fastapi.responses import HTMLResponse
@@ -60,7 +61,7 @@ from exitlane.services.vpn_selection import (
 from exitlane.services import vpn_operations
 from exitlane.services.credentials import CredentialError, change_password
 from exitlane.services import auth_security
-from exitlane.proxy import deployment_status, request_security, trusted_origin
+from exitlane.proxy import deployment_status, normalized_origin, request_security, trusted_origin
 from exitlane.config import (
     DEFAULT_WIREGUARD_CLIENT,
     DEFAULT_WIREGUARD_INTERFACE,
@@ -92,14 +93,22 @@ _wireguard_generation_lock: asyncio.Lock | None = None
 _password_change_failures: dict[tuple[Path, int], deque[float]] = defaultdict(deque)
 _provider_sign_out_failures: dict[tuple[Path, int], deque[float]] = defaultdict(deque)
 _login_failures: dict[tuple[Path, str, str], deque[float]] = defaultdict(deque)
+_security_rejection_logs: dict[str, deque[float]] = defaultdict(deque)
+logger = logging.getLogger("exitlane.security")
 PASSWORD_CHANGE_ATTEMPTS = 5
 PASSWORD_CHANGE_WINDOW_SECONDS = 300
 PROVIDER_SIGN_OUT_ATTEMPTS = 5
 PROVIDER_SIGN_OUT_WINDOW_SECONDS = 60
 LOGIN_ATTEMPTS = 5
 LOGIN_WINDOW_SECONDS = 300
+SECURITY_REJECTION_LOG_ATTEMPTS = 5
+SECURITY_REJECTION_LOG_WINDOW_SECONDS = 60
 NORDVPN_HOST_COUNTRY_CODES = {"UK": "GB"}
 provider_registry = ProviderRegistry([provider], default_id=provider.id)
+
+
+def observe_auth_phase(_request: Request, _phase: str) -> None:
+    """Stable no-op seam for tests that prove where an authentication request stops."""
 
 
 class Admin(BaseModel):
@@ -231,6 +240,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+@app.exception_handler(RequestValidationError)
+async def safe_request_validation_error(
+    _request: Request, _error: RequestValidationError
+) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": "invalid_request"})
+
 SESSION_COOKIE = "exitlane_session"
 MFA_CHALLENGE_COOKIE = "exitlane_mfa_challenge"
 # Kept for compatibility with integrations importing the former boolean.
@@ -294,25 +310,37 @@ def session_user(token: str | None) -> dict | None:
     return auth_security.session_user(token)
 
 
-def request_has_trusted_origin(request: Request) -> bool:
+def request_origin_rejection(request: Request) -> str | None:
     """Reject browser cross-site writes; non-browser clients may omit these headers."""
     origin = request.headers.get("origin")
     referer = request.headers.get("referer")
     source = origin or referer
     if not source:
-        return True
-    parsed = urlsplit(source)
-    expected = trusted_origin(request, request_security(request))
-    return (
-        parsed.scheme in {"http", "https"}
-        and bool(parsed.hostname)
-        and parsed.username is None
-        and parsed.password is None
-        and parsed.path in {"", "/"}
-        and not parsed.query
-        and not parsed.fragment
-        and f"{parsed.scheme}://{parsed.netloc}".casefold() == expected
-    )
+        return None
+    security = request_security(request)
+    if security.forwarded_rejected:
+        return "deployment_origin_mismatch"
+    actual = normalized_origin(source)
+    expected = normalized_origin(trusted_origin(request, security))
+    if actual is None:
+        return "invalid_origin"
+    if expected is None or actual != expected:
+        return "invalid_origin"
+    return None
+
+
+def request_has_trusted_origin(request: Request) -> bool:
+    return request_origin_rejection(request) is None
+
+
+def log_security_rejection(reason: str) -> None:
+    now = time.monotonic()
+    attempts = _security_rejection_logs[reason]
+    while attempts and attempts[0] <= now - SECURITY_REJECTION_LOG_WINDOW_SECONDS:
+        attempts.popleft()
+    if len(attempts) < SECURITY_REJECTION_LOG_ATTEMPTS:
+        logger.warning("Request rejected by deployment security: reason=%s", reason)
+        attempts.append(now)
 
 
 def is_setup_client_download(method: str, path: str) -> bool:
@@ -361,8 +389,9 @@ async def require_authentication(request: Request, call_next):
     if path.startswith("/api/") and request.method not in SAFE_METHODS:
         # SameSite=Lax is the first CSRF boundary. Origin/Referer validation also
         # protects deployments where an attacker controls another same-site origin.
-        if not request_has_trusted_origin(request):
-            return JSONResponse(status_code=403, content={"detail": "Request origin not allowed"})
+        if reason := request_origin_rejection(request):
+            log_security_rejection(reason)
+            return JSONResponse(status_code=403, content={"detail": reason})
     if path in PROTECTED_APPLICATION_ROUTES:
         user = session_user(request.cookies.get(SESSION_COOKIE))
         if user:
@@ -472,6 +501,7 @@ def _cookie_secure(request: Request) -> bool:
 
 @app.post("/api/auth/login")
 async def login(req: Login, request: Request, response: Response) -> dict:
+    observe_auth_phase(request, "login_handler")
     client_ip = request_security(request).client_ip
     failure_key = (DB.resolve(), req.username.casefold(), client_ip)
     now_monotonic = time.monotonic()
@@ -487,6 +517,7 @@ async def login(req: Login, request: Request, response: Response) -> dict:
         ).fetchone()
 
     # Always run scrypt, including for unknown users, to avoid a username timing oracle.
+    observe_auth_phase(request, "credential_validation")
     valid = verify_password(
         req.password,
         row[2] if row else "0" * 128,
@@ -495,7 +526,7 @@ async def login(req: Login, request: Request, response: Response) -> dict:
     if row is None or not valid:
         failures.append(now_monotonic)
         record_event("auth.login_failed", metadata={"reason": "invalid_credentials"})
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+        raise HTTPException(status_code=401, detail="invalid_credentials")
     _login_failures.pop(failure_key, None)
     if row[4]:
         challenge = auth_security.start_challenge(row[0], client_ip)
@@ -505,6 +536,7 @@ async def login(req: Login, request: Request, response: Response) -> dict:
         )
         return {"authenticated": False, "mfa_required": True}
 
+    observe_auth_phase(request, "session_creation")
     token = auth_security.create_session(row[0], client_ip, request.headers.get("user-agent", ""))
     response.set_cookie(
         SESSION_COOKIE,

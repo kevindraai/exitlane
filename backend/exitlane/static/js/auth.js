@@ -23,6 +23,18 @@ export function applyLogoutVisibility(button, application, auth) {
   button.hidden = !isLogoutVisible(application, auth);
 }
 
+export function loginErrorTranslationKey(error) {
+  const detail = error?.payload?.detail;
+  if (detail === "invalid_credentials") return "auth.invalid_credentials";
+  if (["invalid_origin", "csrf_failed", "deployment_origin_mismatch"].includes(detail)) {
+    return "auth.deployment_security";
+  }
+  if (detail === "too_many_attempts" || error?.status === 429) return "auth.rate_limited";
+  if (error?.status === 422) return "auth.invalid_request";
+  if (!error?.status || error.status >= 500) return "auth.service_unavailable";
+  return "auth.sign_in_failed";
+}
+
 function updateLogoutVisibility() {
   applyLogoutVisibility(
     select("#logout-button"),
@@ -56,12 +68,9 @@ async function login(event) {
       return;
     }
     await refreshApplication();
-  } catch {
-    errorElement.textContent = t(
-      "auth.invalid_credentials",
-      {},
-      "Invalid username or password.",
-    );
+  } catch (error) {
+    const translationKey = loginErrorTranslationKey(error);
+    errorElement.textContent = t(translationKey, {}, "Sign-in could not be completed.");
     errorElement.hidden = false;
   } finally {
     setBusy(button, false);

@@ -513,6 +513,11 @@
     "logout": "Afmelden",
     "logging_in": "Aanmelden…",
     "invalid_credentials": "Ongeldige gebruikersnaam of ongeldig wachtwoord.",
+    "deployment_security": "Aanmelden is geweigerd door de beveiligingsconfiguratie. Controleer de publieke URL en de vertrouwde reverse proxy.",
+    "rate_limited": "Te veel aanmeldpogingen. Probeer het later opnieuw.",
+    "invalid_request": "Het aanmeldverzoek is ongeldig. Controleer de velden en probeer opnieuw.",
+    "service_unavailable": "Aanmelden is tijdelijk niet beschikbaar. Probeer het later opnieuw.",
+    "sign_in_failed": "Aanmelden kon niet worden voltooid.",
     "mfa": {
       "title": "Controleer je aanmelding", "description": "Voer een code uit je authenticator-app of een herstelcode in.",
       "code": "Verificatiecode", "mode": "Codetype", "authenticator": "Authenticator-app", "recovery": "Herstelcode",

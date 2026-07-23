@@ -19,6 +19,7 @@ class RequestSecurity:
     direct_peer_trusted: bool
     reverse_proxy: bool
     forwarded_ignored: bool
+    forwarded_rejected: bool = False
 
     @property
     def secure_cookie(self) -> bool:
@@ -62,6 +63,7 @@ def request_security(request: Request) -> RequestSecurity:
     raw_proto = request.headers.get("x-forwarded-proto", "")
     client = peer
     reverse_proxy = False
+    forwarded_rejected = False
     if raw_for and len(raw_for) <= MAX_FORWARD_HEADER_LENGTH:
         parts = [part.strip() for part in raw_for.split(",")]
         if 0 < len(parts) <= MAX_PROXY_HOPS:
@@ -75,13 +77,49 @@ def request_security(request: Request) -> RequestSecurity:
                     client = candidate
                     if not _trusted(candidate):
                         break
+            else:
+                forwarded_rejected = True
+        else:
+            forwarded_rejected = True
     scheme = request.url.scheme
     if raw_proto and len(raw_proto) <= 32:
         protos = [part.strip().lower() for part in raw_proto.split(",")]
-        if protos and all(proto in {"http", "https"} for proto in protos):
+        if protos and len(set(protos)) == 1 and protos[0] in {"http", "https"}:
             scheme = protos[0]
             reverse_proxy = True
-    return RequestSecurity(str(client), scheme, True, reverse_proxy, False)
+        else:
+            forwarded_rejected = True
+    elif raw_proto:
+        forwarded_rejected = True
+    return RequestSecurity(
+        str(client),
+        scheme,
+        True,
+        reverse_proxy,
+        forwarded_rejected,
+        forwarded_rejected,
+    )
+
+
+def normalized_origin(value: str) -> tuple[str, str, int] | None:
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.scheme.casefold() not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+    scheme = parsed.scheme.casefold()
+    effective_port = port or (443 if scheme == "https" else 80)
+    return scheme, parsed.hostname.casefold(), effective_port
 
 
 def trusted_origin(request: Request, security: RequestSecurity) -> str:

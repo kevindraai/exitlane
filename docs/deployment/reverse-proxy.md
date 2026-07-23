@@ -59,3 +59,48 @@ exact Traefik peer in ExitLane. Do not enable Traefik's insecure forwarded-heade
 
 If the public URL is HTTPS but Settings reports HTTP, check the proxy peer CIDR and that the proxy
 overwrites `X-Forwarded-Proto`. Forwarding headers on a direct request are intentionally ignored.
+
+## Nginx Proxy Manager
+
+Create a Proxy Host with these **Details**:
+
+- Domain Name: the public ExitLane hostname, for example `exitlane.example.internal`
+- Scheme: `http`
+- Forward Hostname / IP: the private ExitLane address
+- Forward Port: `8787`
+- Websockets Support: off; ExitLane does not currently require it
+- Block Common Exploits: enable only after testing that login and API requests still work
+
+Under **SSL**, select a valid certificate and enable Force SSL. HTTP/2 is optional. Enable HSTS
+only after the HTTPS deployment works reliably and you have deliberately accepted its persistence.
+
+Nginx Proxy Manager normally supplies `Host`, `X-Real-IP`, `X-Forwarded-For`, and
+`X-Forwarded-Proto`; do not add duplicate headers. If an Advanced snippet is necessary because
+the local NPM configuration does not overwrite client-supplied values, use only:
+
+```nginx
+proxy_set_header Host $host;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+```
+
+`X-Forwarded-Protocol` is not used by ExitLane. Determine NPM's direct peer as seen by ExitLane
+from the host/container network (it may be the NPM container address, Docker gateway, or proxy
+host address). Configure exactly that address or the smallest stable CIDR, never an entire broad
+RFC1918 range:
+
+```ini
+EXITLANE_TRUSTED_PROXIES=<exact-npm-peer-ip-or-small-cidr>
+EXITLANE_PUBLIC_URL=https://exitlane.example.internal
+EXITLANE_SECURE_COOKIES=auto
+```
+
+Restart ExitLane after editing its environment. Then use **Settings → Network** to verify HTTPS,
+reverse proxy detection, trusted direct peer, Secure cookies, and the public URL.
+
+Origin and other deployment-security rejections happen before credentials are evaluated. They
+do not create the misleading `auth.login_failed` Activity event. ExitLane emits only a bounded,
+reason-code-only warning in the service security log (`invalid_origin` or
+`deployment_origin_mismatch`); it never logs raw origins, proxy headers, usernames, request
+bodies, or credentials for these rejections.

@@ -513,6 +513,11 @@
     "logout": "Log out",
     "logging_in": "Signing in…",
     "invalid_credentials": "Invalid username or password.",
+    "deployment_security": "Sign-in was rejected by the deployment security configuration. Check the public URL and trusted reverse proxy.",
+    "rate_limited": "Too many sign-in attempts. Try again later.",
+    "invalid_request": "The sign-in request was invalid. Check the fields and try again.",
+    "service_unavailable": "Sign-in is temporarily unavailable. Try again later.",
+    "sign_in_failed": "Sign-in could not be completed.",
     "mfa": {
       "title": "Verify your sign-in", "description": "Enter a code from your authenticator app or a recovery code.",
       "code": "Verification code", "mode": "Code type", "authenticator": "Authenticator app", "recovery": "Recovery code",

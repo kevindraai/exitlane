@@ -6,16 +6,18 @@
         <p class="lead" data-i18n="auth.description">Use your local administrator account.</p>
        </div>
       </div>
-      <form class="form-grid" id="login-form" method="post">
-       <p class="inline-error" hidden="" id="login-error"></p>
-       <label>
-        <span data-i18n="auth.username">Username</span>
-        <input autocomplete="username" id="login-username" required=""/>
-       </label>
-       <label>
-        <span data-i18n="auth.password">Password</span>
-        <input autocomplete="current-password" id="login-password" required="" type="password"/>
-       </label>
+      <form class="login-form" id="login-form" method="post">
+       <p aria-live="assertive" class="inline-error login-status" hidden="" id="login-error" role="alert"></p>
+       <div class="form-grid login-fields" id="login-fields">
+        <label>
+         <span data-i18n="auth.username">Username</span>
+         <input autocomplete="username" id="login-username" required=""/>
+        </label>
+        <label>
+         <span data-i18n="auth.password">Password</span>
+         <input autocomplete="current-password" id="login-password" required="" type="password"/>
+        </label>
+       </div>
        <div class="form-submit">
         <button class="button button-primary" data-i18n="auth.login" type="submit">Sign in</button>
        </div>

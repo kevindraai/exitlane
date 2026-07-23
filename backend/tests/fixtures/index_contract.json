@@ -74,6 +74,7 @@
     "finish-download",
     "finish-view",
     "login-error",
+    "login-fields",
     "login-form",
     "login-method-browser",
     "login-method-token",

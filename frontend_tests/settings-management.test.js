@@ -59,6 +59,16 @@ test("password status is a stable full-width region outside the field grid", asy
   assert.match(markup, /class="authentication-form-footer"/);
 });
 
+test("password field wrappers do not stretch to the tallest validation column", async () => {
+  const css = await readFile(
+    new URL("../backend/exitlane/static/style.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(css, /\.authentication-fields[\s\S]{0,100}align-items: start/);
+  assert.match(css, /\.authentication-fields > label[\s\S]{0,140}align-self: start/);
+  assert.doesNotMatch(css, /\.authentication-fields[\s\S]{0,160}height:\s*100%/);
+});
+
 test("password requirements validate minimum, difference, match, and submit readiness", () => {
   const neutral = passwordRequirementState({
     currentPassword: "",

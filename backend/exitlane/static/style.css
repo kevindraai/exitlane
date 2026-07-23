@@ -686,6 +686,12 @@ input::placeholder {
 
 .authentication-fields {
   margin-top: 0;
+  align-items: start;
+}
+
+.authentication-fields > label {
+  align-self: start;
+  grid-auto-rows: max-content;
 }
 
 .authentication-form-footer {
@@ -1973,6 +1979,21 @@ pre {
 .login-panel {
   max-width: 34rem;
   margin: 3rem auto;
+}
+
+.login-form {
+  margin-top: 18px;
+  display: grid;
+  gap: 16px;
+}
+
+.login-status {
+  width: 100%;
+  margin: 0;
+}
+
+.login-fields {
+  margin-top: 0;
 }
 
 .app-view {
