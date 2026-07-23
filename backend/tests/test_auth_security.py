@@ -11,6 +11,7 @@ import exitlane.core as core
 import exitlane.main as main
 import exitlane.proxy as proxy
 from exitlane.services import auth_security
+from exitlane.services.network_security import NetworkSecurityConfig
 
 
 @pytest.fixture
@@ -177,14 +178,25 @@ def _request(peer, headers=(), scheme="http"):
 
 def test_forwarded_headers_require_trusted_direct_peer(monkeypatch):
     headers = (("x-forwarded-for", "198.51.100.8"), ("x-forwarded-proto", "https"))
-    monkeypatch.setattr(proxy, "TRUSTED_PROXIES", ())
+    monkeypatch.setattr(
+        proxy,
+        "current_config",
+        lambda: NetworkSecurityConfig("", (), "auto", frozenset()),
+    )
     direct = proxy.request_security(_request("10.0.0.5", headers))
     assert direct.client_ip == "10.0.0.5"
     assert direct.scheme == "http"
     assert direct.forwarded_ignored
 
     monkeypatch.setattr(
-        proxy, "TRUSTED_PROXIES", (ipaddress.ip_network("10.0.0.0/24"),)
+        proxy,
+        "current_config",
+        lambda: NetworkSecurityConfig(
+            "",
+            (ipaddress.ip_network("10.0.0.0/24"),),
+            "auto",
+            frozenset(),
+        ),
     )
     forwarded = proxy.request_security(_request("10.0.0.5", headers))
     assert forwarded.client_ip == "198.51.100.8"
