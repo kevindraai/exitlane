@@ -109,9 +109,11 @@ function renderVpnView(status) {
     ? t(`provider.errors.${status.error_code}`, {}, t("provider.errors.status_unavailable", {}, "VPN status is unavailable."))
     : "";
   const operation = status.operation || {};
-  const operationActive = ["connecting", "disconnecting", "recovering"].includes(operation.state);
+  const operationActive = ["connecting", "disconnecting", "recovering", "measuring"].includes(operation.state);
   const operationLabel = operation.state === "recovering"
     ? t("provider.operation.recovering", {}, "Recovering NordVPN…")
+    : operation.state === "measuring"
+      ? t("provider.country_selection.measuring", {}, "Measuring…")
     : operation.state === "connecting"
       ? t("provider.operation.connecting_country", { country: operation.requested_country_code || "" }, "Connecting…")
       : operation.state === "disconnecting"
@@ -161,7 +163,7 @@ function reconcileCountries(status) {
 }
 
 export function isCountryConnected(countryCode, status, operation = status.operation || {}) {
-  const active = ["connecting", "disconnecting", "recovering"].includes(operation.state);
+  const active = ["connecting", "disconnecting", "recovering", "measuring"].includes(operation.state);
   return !active && status.connected === true && status.country_code === countryCode;
 }
 
@@ -173,7 +175,7 @@ function renderProviderControls(status = getSlice("provider").data || {}, operat
 }
 
 export function providerControlState(status, operation = status.operation || {}) {
-  const active = ["connecting", "disconnecting", "recovering"].includes(operation.state);
+  const active = ["connecting", "disconnecting", "recovering", "measuring"].includes(operation.state);
   const access = vpnProviderAccess(status);
   return {
     reconnectDisabled: active || !access.canSelectLocation,
@@ -186,7 +188,7 @@ function countryCard(country) {
   const button = document.createElement("button");
   button.type = "button";
   const action = getSlice("providerAction");
-  const active = ["connecting", "disconnecting", "recovering"].includes(action.state);
+  const active = ["connecting", "disconnecting", "recovering", "measuring"].includes(action.state);
   const requested = action.target === country.country_code;
   button.className = `country-card${country.is_connected ? " country-card--active" : ""}${requested && active ? " country-card--connecting" : ""}`;
   button.dataset.countryCode = country.country_code;
@@ -356,7 +358,7 @@ function startActionPolling() {
       // The last confirmed provider snapshot remains visible.
     } finally {
       actionPollInFlight = false;
-      if (["connecting", "disconnecting", "recovering"].includes(getSlice("providerAction").state)) {
+      if (["connecting", "disconnecting", "recovering", "measuring"].includes(getSlice("providerAction").state)) {
         actionPollTimer = window.setTimeout(poll, 2000);
       }
     }
@@ -366,7 +368,7 @@ function startActionPolling() {
 
 async function connectCountry(countryCode, button) {
   if (!vpnProviderAccess(getSlice("provider").data || {}).canSelectLocation) return;
-  if (["connecting", "disconnecting", "recovering"].includes(getSlice("providerAction").state)) return;
+  if (["connecting", "disconnecting", "recovering", "measuring"].includes(getSlice("providerAction").state)) return;
   const statusLabel = button.querySelector(".country-card__status");
   button.disabled = true;
   button.classList.add("country-card--connecting");
@@ -864,7 +866,7 @@ async function loginWithCallback(event) {
 
 async function disconnectProvider() {
   if (!vpnProviderAccess(getSlice("provider").data || {}).canDisconnect) return;
-  if (["connecting", "disconnecting", "recovering"].includes(getSlice("providerAction").state)) return;
+  if (["connecting", "disconnecting", "recovering", "measuring"].includes(getSlice("providerAction").state)) return;
   const button = select("#disconnect-button");
   updateSlice("providerAction", { state: "disconnecting", target: null, error: null });
   startActionPolling();

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import deque
 from datetime import datetime, timedelta, timezone
 
-ACTIVE_STATES = frozenset({"connecting", "disconnecting", "recovering"})
+ACTIVE_STATES = frozenset({"connecting", "disconnecting", "recovering", "measuring"})
 CONNECT_TIMEOUT_SECONDS = 40
 STATUS_TIMEOUT_SECONDS = 6
 RECOVERY_WINDOW = timedelta(minutes=10)

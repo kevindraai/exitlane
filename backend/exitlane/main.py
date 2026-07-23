@@ -951,6 +951,15 @@ def _action_conflict() -> JSONResponse:
     )
 
 
+def _release_vpn_claim_after_failure(error: BaseException) -> None:
+    error_code = (
+        error.detail
+        if isinstance(error, HTTPException) and isinstance(error.detail, str)
+        else "provider_action_failed"
+    )
+    vpn_operations.finish(connected=False, error_code=error_code)
+
+
 @app.get("/api/vpn/status")
 async def vpn_status() -> dict:
     status = await _fresh_vpn_status()
@@ -992,33 +1001,43 @@ async def vpn_country_servers(country_code: str) -> dict:
 
 @app.post("/api/vpn/countries/{country_code}/measure")
 async def measure_vpn_country(country_code: str) -> dict:
-    await _require_provider_authentication()
-    if vpn_operations.snapshot()["state"] in vpn_operations.ACTIVE_STATES:
+    try:
+        vpn_operations.begin("measuring", country_code=country_code.upper(), timeout=30)
+    except vpn_operations.VPNActionInProgress:
         return _action_conflict()
-    code = country_code.upper()
-    country_id = _country_id(await _vpn_catalog(), code)
-    if country_id is None:
-        raise HTTPException(404, "Unsupported country")
-    servers = await provider.servers(country_id)
-    measurements = await measure_servers(code, servers, force=True)
-    return {**country_summary(code), "servers": measurements}
+    try:
+        vpn = await _require_provider_authentication()
+        code = country_code.upper()
+        country_id = _country_id(await _vpn_catalog(), code)
+        if country_id is None:
+            raise HTTPException(404, "Unsupported country")
+        servers = await provider.servers(country_id)
+        measurements = await measure_servers(code, servers, force=True)
+        vpn_operations.finish(connected=vpn.get("connected", False))
+        return {**country_summary(code), "servers": measurements}
+    except (asyncio.CancelledError, Exception) as error:
+        _release_vpn_claim_after_failure(error)
+        raise
 
 
 @app.post("/api/vpn/connect")
 async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
     global _pending_provider_connection
-    await _require_provider_authentication()
     code = req.country_code.upper()
-    catalog = await _vpn_catalog()
-    country = next((item for item in catalog if item["country_code"] == code), None)
-    country_id = country["id"] if country else None
-    if country_id is None:
-        raise HTTPException(404, "Unsupported country")
-
     try:
         vpn_operations.begin("connecting", country_code=code, timeout=125)
     except vpn_operations.VPNActionInProgress:
         return _action_conflict()
+    try:
+        await _require_provider_authentication()
+        catalog = await _vpn_catalog()
+        country = next((item for item in catalog if item["country_code"] == code), None)
+        country_id = country["id"] if country else None
+        if country_id is None:
+            raise HTTPException(404, "Unsupported country")
+    except (asyncio.CancelledError, Exception) as error:
+        _release_vpn_claim_after_failure(error)
+        raise
 
     actor = request_actor(request)
     correlation_id = str(uuid.uuid4())
@@ -1165,11 +1184,15 @@ async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
 
 @app.post("/api/vpn/disconnect")
 async def disconnect_vpn(request: Request) -> dict:
-    await _require_provider_authentication()
     try:
         vpn_operations.begin("disconnecting", timeout=25)
     except vpn_operations.VPNActionInProgress:
         return _action_conflict()
+    try:
+        await _require_provider_authentication()
+    except (asyncio.CancelledError, Exception) as error:
+        _release_vpn_claim_after_failure(error)
+        raise
     correlation_id = str(uuid.uuid4())
     actor = request_actor(request)
     record_event("provider.disconnect_started", actor=actor, correlation_id=correlation_id)
@@ -1207,13 +1230,17 @@ async def disconnect_vpn(request: Request) -> dict:
 @app.post("/api/providers/nordvpn/connect")
 async def connect_nordvpn(req: Connect, request: Request) -> dict:
     global _pending_provider_connection
-    await _require_provider_authentication()
     if req.target and re.fullmatch(r"[A-Za-z]{2}", req.target):
         return await connect_vpn_country(CountryConnect(country_code=req.target), request)
     try:
         vpn_operations.begin("connecting", timeout=50)
     except vpn_operations.VPNActionInProgress:
         return _action_conflict()
+    try:
+        await _require_provider_authentication()
+    except (asyncio.CancelledError, Exception) as error:
+        _release_vpn_claim_after_failure(error)
+        raise
     correlation_id = str(uuid.uuid4())
     metadata = {"target": req.target or "recommended"}
     record_event("provider.connect_started", actor=request_actor(request), metadata=metadata, correlation_id=correlation_id)
