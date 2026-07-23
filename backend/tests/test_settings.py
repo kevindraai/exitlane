@@ -91,6 +91,7 @@ def test_get_settings_as_authenticated_user(client):
     }
     assert body["system"]["hostname"] == "exitlane-host"
     assert body["about"]["product"] == "Exitlane"
+    assert body["about"]["release_channel"] == "alpha"
     assert "Europe/London" in body["timezones"]
     assert body["timezones"] == sorted(body["timezones"])
     assert len(body["timezones"]) == len(set(body["timezones"]))
@@ -241,8 +242,10 @@ def test_setup_admin_payload_and_hostname_placement_are_unchanged():
     assert "language" not in admin_payload
     assert "color" not in admin_payload
     assert html.count('id="settings-hostname"') == 1
+    general = html.split('data-settings-page="general"', 1)[1]
     about = html.split('data-i18n="settings.about.eyebrow"', 1)[1]
-    assert 'id="settings-hostname"' in about
+    assert 'id="settings-hostname"' in general
+    assert 'id="settings-hostname"' not in about
 
 
 def test_corrupt_database_setting_uses_default(client):

@@ -28,6 +28,11 @@
     "eyebrow": "SETTINGS",
     "title": "Settings",
     "description": "Manage this Exitlane installation.",
+    "security": {
+      "eyebrow": "SETTINGS · SECURITY",
+      "title": "Security",
+      "description": "Manage passwords, MFA, recovery codes and active sessions."
+    },
     "general": {
       "eyebrow": "GENERAL",
       "title": "General",
@@ -38,6 +43,8 @@
       "polling_interval_help": "Applied immediately in this browser.",
       "session_duration": "Session duration (seconds)",
       "session_duration_help": "Controlled by EXITLANE_SESSION_MAX_AGE and cannot be weakened here.",
+      "host_information": "Host information",
+      "host_information_description": "Basic identity and timezone information for this installation.",
       "save": "Save general settings"
     },
     "authentication": {
@@ -166,7 +173,7 @@
     },
     "notifications": {
       "eyebrow": "NOTIFICATIONS",
-      "title": "Webhook",
+      "title": "Notifications",
       "description": "Send notifications to an HTTP endpoint.",
       "name": "Name",
       "url": "URL",
@@ -176,6 +183,8 @@
     "about": {
       "eyebrow": "ABOUT",
       "title": "About",
+      "description": "Version and project information for this ExitLane installation.",
+      "release_channel": "Release channel",
       "product": "Product",
       "hostname": "Linux hostname",
       "system_timezone": "System timezone",
@@ -495,8 +504,14 @@
     "vpn_overview": "Overview",
     "wireguard": "WireGuard",
     "activity": "Activity",
-    "security": "Security",
-    "settings": "Settings"
+    "settings": "Settings",
+    "settings_general": "General",
+    "settings_security": "Security",
+    "settings_network": "Network",
+    "settings_notifications": "Notifications",
+    "settings_backup": "Backup & Restore",
+    "settings_updates": "Updates",
+    "settings_about": "About"
   },
   "vpn": {
     "overview": {

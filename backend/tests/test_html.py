@@ -37,7 +37,6 @@ CRITICAL_IDS = {
     "view-vpn",
     "view-wireguard",
     "view-activity",
-    "view-security",
     "view-settings",
     "toast-region",
 }
@@ -137,9 +136,11 @@ def test_navigation_wizard_and_accessibility_references_are_complete():
     ids = set(values(parser, "id"))
     views = values(parser, "data-view")
     panels = values(parser, "data-view-panel")
-    # Provider navigation entries are created from authenticated registry
-    # metadata, so the static provider panel deliberately has no fixed button.
-    assert Counter(views) == Counter(panel for panel in panels if panel != "vpn-provider")
+    # Provider and Settings entries are created from their allowlisted registries,
+    # so their panels deliberately have no fixed static button.
+    assert Counter(views) == Counter(
+        panel for panel in panels if panel not in {"vpn-provider", "settings"}
+    )
     assert all(count == 1 for count in Counter(panels).values())
     assert {f"step-{number}" for number in range(1, 6)} <= ids
     assert all(f"step-{target}" in ids for target in values(parser, "data-back"))
@@ -163,7 +164,7 @@ def test_javascript_static_id_selectors_exist_in_composed_markup():
 
 
 def test_partials_are_passive_markup_fragments():
-    assert len(PARTIALS) == 16
+    assert len(PARTIALS) == 15
     for relative_path in PARTIALS.values():
         html = (STATIC_DIR / relative_path).read_text(encoding="utf-8")
         lowered = html.lower()

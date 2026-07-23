@@ -129,6 +129,15 @@ def current_general_settings() -> GeneralSettings:
 
 def settings_response() -> dict:
     hostname = system_hostname()
+    release_channel = (
+        "alpha"
+        if "a" in __version__
+        else "beta"
+        if "b" in __version__
+        else "release candidate"
+        if "rc" in __version__
+        else "stable"
+    )
     return {
         "general": current_general_settings().model_dump(),
         "system": {
@@ -139,6 +148,7 @@ def settings_response() -> dict:
         "about": {
             "product": APP_NAME,
             "version": __version__,
+            "release_channel": release_channel,
             "runtime_environment": "Python / FastAPI",
             "python_version": platform.python_version(),
             "platform": platform.system(),
