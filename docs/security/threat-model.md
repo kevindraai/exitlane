@@ -19,17 +19,22 @@ Plausible attackers include an unauthorised management-LAN user, compromised bro
 | Threat / attack path | Impact | Existing mitigation | Baseline measure | Residual risk / verification |
 | --- | --- | --- | --- | --- |
 | Bootstrap route reused after setup | Appliance takeover or privileged network changes | Explicit setup allowlist and persisted completion | Route-boundary regressions, trailing/encoded-path checks | LAN attacker can race an unfinished setup; finish setup promptly and firewall it |
-| Stolen session cookie replay | Full administrator authority | Random token, digest-only storage, HttpOnly/SameSite, expiry/revocation | Uniform cookie attributes, no-store responses, CSP; Secure configurable | No MFA and no binding; terminate sessions/change password and require HTTPS |
+| Stolen session cookie replay | Full administrator authority | Random token, digest-only storage, HttpOnly/SameSite/Secure, idle/absolute expiry and revocation | Active-session management and no-store responses | A stolen live cookie remains usable until revoked or expired |
+| Stolen password | Administrator access attempt | Optional TOTP MFA, bounded challenge and one-time recovery codes | Replay counter and rate-limit regressions | TOTP is phishable and recovery codes must remain offline |
 | Cross-site mutating request | Configuration/network changes | SameSite=Lax and Origin/Referer comparison | Strict source parsing and regression matrix | Headerless non-browser clients remain intentionally allowed; protect network/API clients |
 | Command/path injection | Root command execution or key disclosure | Pydantic patterns, explicit argv, `shell=False`, fixed command names | Bandit and negative tests; fixed download/client paths | `wg-quick` interprets generated config directives; all interpolated fields remain allowlisted |
 | Malicious provider/subprocess output | Secret leak, UI injection or parser confusion | Parsers and frontend `textContent` in dynamic paths | Safe error codes, bounded Activity metadata, CSP | Some setup diagnostic/provider output remains visible to an authorised/setup operator; deferred sanitisation review |
 | Local Linux file read/write | Credential/key/database theft | 0700 directories, 0600 key files, umask 0077 | systemd filesystem sandbox and permission tests | Root or equivalent host control defeats these controls |
 | Compromised dependency or Action | Build/runtime compromise | Narrow dependencies | CodeQL, Bandit, pip-audit, dependency review, Gitleaks, SHA-pinned Actions, Dependabot | Python ranges are not a lockfile; reproducible constraints are deferred |
 | Malicious backup/update/release | Persistent compromise | Manual operator workflow | release checklist, package-content and checksum review | No signed update channel exists in alpha |
-| Proxy/Internet misconfiguration | CSRF/cookie downgrade and remote attack surface | Direct Host-based same-origin policy | hardening guide; HSTS/Secure opt-in only with HTTPS | Forwarded headers are not trusted; Internet exposure is unsupported |
+| Proxy/Internet misconfiguration | Client-IP/CSRF/cookie downgrade | Forwarded headers accepted only from configured IP/CIDR peers | Right-to-left chain parsing, reliable HTTPS status and conditional HSTS | Incorrectly broad operator trust remains dangerous |
 | Logs/errors/Activity mined | Secret disclosure | allowlisted metadata and generic auth/storage errors | size/control-character bounds, scanner checks | system journal contains third-party process messages outside application control |
 
 STRIDE was used as a checklist: spoofing (sessions/setup), tampering (settings/files/releases), repudiation (Activity), information disclosure (errors/logs/downloads), denial of service (request sizes/subprocess timeouts) and elevation of privilege (root commands/systemd).
+
+Database-only theft does not expose the encrypted TOTP secret or usable recovery codes without the
+separate masterkey. Theft of both permits offline verification/decryption. Local root compromise
+defeats the application key, CLI and filesystem boundaries.
 
 ## Accepted alpha assumptions
 

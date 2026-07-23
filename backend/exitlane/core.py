@@ -43,6 +43,13 @@ def init():
                 token_hash TEXT PRIMARY KEY,
                 user_id INTEGER NOT NULL,
                 expires_at INTEGER NOT NULL,
+                public_id TEXT,
+                created_at INTEGER,
+                last_seen_at INTEGER,
+                idle_expires_at INTEGER,
+                revoked_at INTEGER,
+                client_ip TEXT,
+                user_agent_summary TEXT,
                 FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
             );
             CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
@@ -84,8 +91,59 @@ def init():
             );
             CREATE INDEX IF NOT EXISTS vpn_latency_country_idx
                 ON vpn_latency_cache(provider, country_code, measured_at);
+            CREATE TABLE IF NOT EXISTS recovery_codes(
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                code_hash TEXT NOT NULL UNIQUE,
+                created_at INTEGER NOT NULL,
+                used_at INTEGER,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS mfa_enrollments(
+                token_hash TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                session_hash TEXT NOT NULL,
+                encrypted_secret BLOB NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS mfa_challenges(
+                token_hash TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                client_ip TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
             """
         )
+        user_columns = {row[1] for row in c.execute("PRAGMA table_info(users)")}
+        for name, declaration in {
+            "mfa_enabled": "INTEGER NOT NULL DEFAULT 0",
+            "encrypted_totp_secret": "BLOB",  # nosec B105
+            "last_totp_counter": "INTEGER",
+            "mfa_enabled_at": "INTEGER",
+            "mfa_updated_at": "INTEGER",
+        }.items():
+            if name not in user_columns:
+                c.execute(f"ALTER TABLE users ADD COLUMN {name} {declaration}")
+        session_columns = {row[1] for row in c.execute("PRAGMA table_info(sessions)")}
+        for name, declaration in {
+            "public_id": "TEXT",
+            "created_at": "INTEGER",
+            "last_seen_at": "INTEGER",
+            "idle_expires_at": "INTEGER",
+            "revoked_at": "INTEGER",
+            "client_ip": "TEXT",
+            "user_agent_summary": "TEXT",
+        }.items():
+            if name not in session_columns:
+                c.execute(f"ALTER TABLE sessions ADD COLUMN {name} {declaration}")
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS sessions_public_id_idx ON sessions(public_id)")
+        # Legacy sessions lack the metadata needed to enforce the new idle policy.
+        c.execute("DELETE FROM sessions WHERE public_id IS NULL")
 
 
 def setting(key, default=None):

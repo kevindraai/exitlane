@@ -20,6 +20,9 @@ alpha is tested in real networks.
 - Structured application Activity log
 - Security-hardening and repeatable security-assurance baseline
 - Self-service administrator password, NordVPN-token, and WireGuard management
+- TOTP MFA and one-time recovery codes
+- Active administrator session management
+- Trusted reverse-proxy support and HTTPS awareness
 
 ## Next
 
@@ -34,6 +37,7 @@ alpha is tested in real networks.
 ## Later
 
 - Independent security review and penetration test
+- WebAuthn/passkeys
 - High availability
 - Metrics and monitoring integrations
 - API tokens

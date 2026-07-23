@@ -20,6 +20,7 @@ readonly CLI_TARGET="/usr/local/sbin/exitlane-cli"
 readonly CONFIG_DIR="${EXITLANE_CONFIG_DIR:-/etc/exitlane}"
 readonly DATA_DIR="${EXITLANE_DATA_DIR:-/var/lib/exitlane}"
 readonly LOG_DIR="${EXITLANE_LOG_DIR:-/var/log/exitlane}"
+readonly MASTER_KEY="${CONFIG_DIR}/secret.key"
 
 readonly SERVICE_NAME="exitlane.service"
 readonly SERVICE_SOURCE="${SOURCE_DIR}/systemd/${SERVICE_NAME}"
@@ -213,6 +214,20 @@ create_directories() {
   success "Mappen aangemaakt"
 }
 
+create_master_key() {
+  if [[ -e "${MASTER_KEY}" ]]; then
+    chmod 0600 "${MASTER_KEY}"
+    success "Bestaande applicatiemasterkey behouden"
+    return
+  fi
+  (
+    umask 0177
+    head -c 32 /dev/urandom > "${MASTER_KEY}"
+  )
+  chmod 0600 "${MASTER_KEY}"
+  success "Applicatiemasterkey veilig aangemaakt"
+}
+
 stop_existing_service() {
   if systemctl is-active --quiet "${SERVICE_NAME}"; then
     log "Bestaande Exitlane-service stoppen"
@@ -263,6 +278,7 @@ create_virtual_environment() {
     --upgrade \
     "${TARGET}/backend"
 
+  chmod -R a+rX "${VENV_DIR}"
   success "Exitlane Python-package geïnstalleerd"
 }
 
@@ -409,6 +425,7 @@ main() {
   check_network_administration
 
   create_directories
+  create_master_key
   stop_existing_service
   copy_application
   create_virtual_environment

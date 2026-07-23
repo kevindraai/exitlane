@@ -45,8 +45,31 @@
       "description": "Wijzig het wachtwoord van de lokale beheerder.",
       "current_password": "Huidig wachtwoord", "new_password": "Nieuw wachtwoord",
       "confirm_password": "Herhaal nieuw wachtwoord",
+      "password_changed": "Wachtwoord gewijzigd. Meld je opnieuw aan.",
       "session_warning": "Na de wijziging eindigen alle sessies en moet je opnieuw inloggen.",
       "change": "Wachtwoord wijzigen",
+      "mfa": {
+        "title": "Multifactorauthenticatie", "description": "Beveilig de beheerdersaanmelding met een authenticator-app.",
+        "enable": "MFA inschakelen", "enabled": "Ingeschakeld", "disabled": "Uitgeschakeld", "disabled_help": "Voeg een authenticator-app toe als tweede aanmeldstap.",
+        "enrollment_title": "Authenticator instellen", "scan": "Scan de QR-code met je authenticator-app.",
+        "scan_or_manual": "Scan de QR-code met je authenticator-app of voer de setup key handmatig in.",
+        "or": "OF", "manual_label": "Setup key voor handmatige invoer",
+        "manual": "Of voer deze setup key handmatig in:", "setup_key": "Setup key", "copy_setup_key": "Setup key kopiëren", "copied": "Gekopieerd.",
+        "setup_key_safety": "Bewaar deze setup key alleen zolang je de authenticator instelt. Na een geslaagde activering heb je deze niet meer nodig.",
+        "qr_description": "QR-code voor het instellen van de authenticator", "verify_help": "Voer de zescijferige code uit je app in.",
+        "verify": "Verificatiecode", "verify_six_digits": "Voer de 6-cijferige code in die je app net heeft gegenereerd.",
+        "confirm": "Bevestigen", "confirming": "Bevestigen…", "invalid_code": "Voer een geldige zescijferige code in.",
+        "setting_up": "Instellen", "enabled_success": "MFA ingeschakeld.", "disabled_success": "MFA uitgeschakeld.",
+        "recovery_regenerated_success": "Herstelcodes opnieuw gegenereerd.",
+        "regenerate": "Herstelcodes opnieuw genereren", "disable": "MFA uitschakelen",
+        "remaining": "{count} herstelcodes resterend", "recovery_title": "Bewaar je herstelcodes",
+        "recovery_once": "Bewaar deze herstelcodes nu. Ze worden niet opnieuw getoond.",
+        "copy_codes": "Alle codes kopiëren", "codes_saved": "Ik heb deze herstelcodes veilig opgeslagen",
+        "close_codes": "Herstelcodes sluiten"
+      },
+      "sessions": {
+        "title": "Actieve sessies", "current": "Huidige sessie", "revoke": "Sessie intrekken", "revoke_others": "Alle andere sessies intrekken"
+      },
       "requirements": {
         "minimum": "Minimaal {length} tekens",
         "different": "Verschilt van het huidige wachtwoord",
@@ -106,7 +129,33 @@
     },
     "network": {
       "eyebrow": "NETWERK", "title": "Netwerk",
-      "description": "Geavanceerde netwerkinstellingen zijn nog niet beschikbaar in de webinterface."
+      "description": "HTTPS- en reverse-proxybeveiliging voor deployment.",
+      "https": "HTTPS-verbinding", "reverse_proxy": "Reverse proxy", "trusted_proxy": "Directe peer vertrouwd",
+      "direct_peer": "Directe peer", "secure_cookie": "Beveiligde cookie", "public_url": "Publieke URL", "warnings": "Waarschuwingen",
+      "status_title": "Deploymentstatus", "configuration_title": "Reverse-proxyconfiguratie",
+      "configuration_help": "Wijzigingen worden direct toegepast.",
+      "managed_environment_information": "Omgevingsvariabelen zijn alleen-lezen. Andere wijzigingen worden direct toegepast.",
+      "public_url_help": "De URL waarmee je ExitLane in de browser opent.",
+      "trusted_proxies": "Vertrouwde proxies", "trusted_proxies_help": "Eén IPv4-, IPv6- of CIDR-entry per regel.",
+      "cookie_policy": "Beveiligde cookies", "cookie_auto": "Automatisch", "cookie_always": "Altijd",
+      "cookie_never": "Nooit, alleen voor lokaal HTTP-gebruik", "managed_environment": "Beheerd via omgevingsconfiguratie.",
+      "current_password": "Huidig wachtwoord", "totp": "Verificatiecode", "save": "Configuratie opslaan",
+      "saving": "Opslaan…", "saved": "Netwerkconfiguratie opgeslagen.",
+      "confirm_title": "Mogelijk verstorende configuratie opslaan?",
+      "confirm_description": "Deze wijziging kan toegang via je huidige browserorigin of directe HTTP beëindigen.",
+      "confirm_save": "Configuratie toch opslaan", "cancel": "Annuleren",
+      "errors": {
+        "invalid_public_url": "Voer een geldige HTTP- of HTTPS-origin zonder pad in.",
+        "invalid_trusted_proxy": "Voer alleen geldige IP-adressen of CIDR-ranges in.",
+        "proxy_range_too_broad": "Universele proxyranges zijn niet toegestaan.",
+        "trusted_proxy_required": "Een publieke HTTPS-URL vereist minimaal één vertrouwde proxy.",
+        "inconsistent_cookie_policy": "Het cookiebeleid conflicteert met de publieke URL.",
+        "invalid_credentials": "Het huidige wachtwoord is onjuist.",
+        "invalid_mfa_code": "De verificatiecode is onjuist.",
+        "too_many_attempts": "Te veel pogingen. Probeer het later opnieuw.",
+        "environment_override": "Deze waarde wordt beheerd via omgevingsconfiguratie.",
+        "save_failed": "De netwerkconfiguratie kon niet worden opgeslagen."
+      }
     },
     "appearance": {
       "eyebrow": "WEERGAVE",
@@ -200,7 +249,7 @@
     "alternative": "Alternatief",
     "check_again": "Opnieuw controleren",
     "status_error": "Statusfout",
-    "hide": "Verbergen"
+    "hide": "Verbergen", "close": "Sluiten", "yes": "Ja", "no": "Nee"
   },
   "step1": {
     "kicker": "Stap 1",
@@ -480,8 +529,9 @@
   "events": {
     "system": { "started": "Exitlane gestart" },
     "setup": { "completed": "Setup afgerond" },
-    "auth": { "login_succeeded": "Beheerder aangemeld", "login_failed": "Aanmeldpoging mislukt", "logout": "Beheerder afgemeld", "session_expired": "Sessie verlopen", "session_revoked": "Sessie ingetrokken", "password_changed": "Beheerderswachtwoord gewijzigd", "password_reset": "Beheerderswachtwoord lokaal hersteld" },
+    "auth": { "login_succeeded": "Beheerder aangemeld", "login_failed": "Aanmeldpoging mislukt", "logout": "Beheerder afgemeld", "session_expired": "Sessie verlopen", "session_revoked": "Sessie ingetrokken", "password_changed": "Beheerderswachtwoord gewijzigd", "password_reset": "Beheerderswachtwoord lokaal hersteld", "mfa_enrollment_started": "MFA-activering gestart", "mfa_enabled": "MFA ingeschakeld", "mfa_disabled": "MFA uitgeschakeld", "mfa_disabled_locally": "MFA lokaal uitgeschakeld", "recovery_codes_generated": "Herstelcodes gegenereerd", "recovery_codes_regenerated": "Herstelcodes opnieuw gegenereerd", "recovery_code_used": "Herstelcode gebruikt", "other_sessions_revoked": "Andere sessies ingetrokken" },
     "settings": { "updated": "Instellingen bijgewerkt: {fields}" },
+    "network": { "security_settings_updated": "Netwerkbeveiligingsinstellingen bijgewerkt", "security_settings_reset_locally": "Netwerkbeveiligingsinstellingen lokaal hersteld" },
     "provider": { "connect_started": "Verbinden met {target}", "connected": "Verbonden met {country} {server}", "connect_failed": "Kon niet verbinden met {target}", "recovery_started": "NordVPN-herstel gestart", "recovered": "NordVPN hersteld", "recovery_failed": "NordVPN-herstel mislukt", "recovery_rate_limited": "NordVPN-herstel tijdelijk begrensd", "retry_started": "Verbinding opnieuw proberen", "disconnect_started": "VPN-verbinding verbreken", "disconnected": "VPN-verbinding verbroken", "disconnect_failed": "VPN-verbinding kon niet worden verbroken", "session_started": "NordVPN-sessie gestart", "session_ended": "NordVPN-sessie beëindigd", "session_end_failed": "NordVPN-sessie kon niet worden beëindigd" },
     "wireguard": { "configuration_generated": "WireGuard-configuratie gegenereerd voor {client_name}", "configuration_regenerated": "WireGuard-configuratie vervangen voor {client_name}", "interface_active": "WireGuard-interface {interface} is actief geworden", "interface_inactive": "WireGuard-interface {interface} is inactief geworden", "handshake_received": "WireGuard-handshake ontvangen voor {client_name}" },
     "notifications": { "webhook_added": "Webhook {name} toegevoegd" }
@@ -495,7 +545,18 @@
     "login": "Aanmelden",
     "logout": "Afmelden",
     "logging_in": "Aanmelden…",
-    "invalid_credentials": "Ongeldige gebruikersnaam of ongeldig wachtwoord."
+    "invalid_credentials": "Ongeldige gebruikersnaam of ongeldig wachtwoord.",
+    "deployment_security": "Aanmelden is geweigerd door de beveiligingsconfiguratie. Controleer de publieke URL en de vertrouwde reverse proxy.",
+    "rate_limited": "Te veel aanmeldpogingen. Probeer het later opnieuw.",
+    "invalid_request": "Het aanmeldverzoek is ongeldig. Controleer de velden en probeer opnieuw.",
+    "service_unavailable": "Aanmelden is tijdelijk niet beschikbaar. Probeer het later opnieuw.",
+    "sign_in_failed": "Aanmelden kon niet worden voltooid.",
+    "mfa": {
+      "title": "Controleer je aanmelding", "description": "Voer een code uit je authenticator-app of een herstelcode in.",
+      "code": "Verificatiecode", "mode": "Codetype", "authenticator": "Authenticator-app", "recovery": "Herstelcode",
+      "verify": "Controleren", "verifying": "Controleren…", "back": "Terug",
+      "errors": {"invalid": "De code is ongeldig of verlopen.", "invalid_mfa_code": "De code is ongeldig.", "mfa_challenge_expired": "De aanmelding is verlopen. Begin opnieuw.", "too_many_attempts": "Te veel pogingen. Begin opnieuw."}
+    }
   },
   "busy": {
     "default": "Bezig…",

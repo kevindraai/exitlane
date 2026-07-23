@@ -41,6 +41,8 @@ security. See the [hardening guide](docs/security/hardening-guide.md),
 - Protect the application and API with expiring server-side sessions.
 - Change the administrator password in Settings, revoking all existing sessions.
 - Recover a forgotten password locally with `sudo exitlane-cli reset-password`.
+- Enable TOTP multifactor authentication, use one-time recovery codes, and manage active sessions.
+- Run safely behind an explicitly trusted HTTPS reverse proxy.
 
 ### Settings
 
@@ -106,6 +108,9 @@ sudo ./installer/install-debian.sh
 Open `http://<host>:8787` and complete the first-run wizard. Read the
 [deployment guide](docs/deployment.md) and [Proxmox LXC notes](docs/proxmox-lxc.md) before using
 Exitlane outside a development environment.
+
+Direct HTTP remains available on a trusted local network. For HTTPS termination, follow the
+[reverse-proxy guide](docs/deployment/reverse-proxy.md); ExitLane does not terminate TLS itself.
 
 ## Development
 

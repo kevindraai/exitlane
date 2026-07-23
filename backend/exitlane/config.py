@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import ipaddress
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 def environment_int(name: str, default: int) -> int:
@@ -48,9 +50,17 @@ MAX_PASSWORD_LENGTH = environment_int(
     256,
 )
 SESSION_MAX_AGE_SECONDS = environment_int("EXITLANE_SESSION_MAX_AGE", 86400)
-SESSION_COOKIE_SECURE = environment_bool("EXITLANE_SESSION_COOKIE_SECURE", False)
+SESSION_IDLE_TIMEOUT_SECONDS = environment_int("EXITLANE_SESSION_IDLE_TIMEOUT", 3600)
+SESSION_COOKIE_POLICY = os.getenv("EXITLANE_SECURE_COOKIES", "auto").strip().lower()
+# Backwards-compatible opt-in: the old boolean can only strengthen the new policy.
+if environment_bool("EXITLANE_SESSION_COOKIE_SECURE", False):
+    SESSION_COOKIE_POLICY = "always"
 MAX_REQUEST_BODY_BYTES = environment_int("EXITLANE_MAX_REQUEST_BODY_BYTES", 1_048_576)
-HTTPS_ONLY = environment_bool("EXITLANE_HTTPS_ONLY", False)
+PUBLIC_URL = os.getenv("EXITLANE_PUBLIC_URL", "").strip()
+TRUSTED_PROXY_VALUES = tuple(
+    item.strip() for item in os.getenv("EXITLANE_TRUSTED_PROXIES", "").split(",") if item.strip()
+)
+TRUSTED_PROXIES = tuple(ipaddress.ip_network(item, strict=False) for item in TRUSTED_PROXY_VALUES)
 
 DEFAULT_WIREGUARD_INTERFACE = os.getenv(
     "EXITLANE_WIREGUARD_INTERFACE",
@@ -111,8 +121,24 @@ def validate_config() -> None:
     if not 1 <= DEFAULT_WIREGUARD_PORT <= 65535:
         raise RuntimeError("EXITLANE_WIREGUARD_PORT must be between 1 and 65535")
 
-    if SESSION_MAX_AGE_SECONDS < 60:
+    if SESSION_MAX_AGE_SECONDS < 60 or SESSION_IDLE_TIMEOUT_SECONDS < 60:
         raise RuntimeError("EXITLANE_SESSION_MAX_AGE must be at least 60 seconds")
+    if SESSION_IDLE_TIMEOUT_SECONDS > SESSION_MAX_AGE_SECONDS:
+        raise RuntimeError("EXITLANE_SESSION_IDLE_TIMEOUT cannot exceed the absolute session age")
+    if SESSION_COOKIE_POLICY not in {"auto", "always", "never"}:
+        raise RuntimeError("EXITLANE_SECURE_COOKIES must be auto, always, or never")
+    if PUBLIC_URL:
+        parsed = urlsplit(PUBLIC_URL)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise RuntimeError("EXITLANE_PUBLIC_URL must be an http(s) origin without credentials or path")
 
     if not 1024 <= MAX_REQUEST_BODY_BYTES <= 16 * 1024 * 1024:
         raise RuntimeError("EXITLANE_MAX_REQUEST_BODY_BYTES must be between 1024 and 16777216")

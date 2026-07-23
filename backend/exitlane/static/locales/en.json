@@ -45,8 +45,31 @@
       "description": "Change the local administrator password.",
       "current_password": "Current password", "new_password": "New password",
       "confirm_password": "Repeat new password",
+      "password_changed": "Password changed. Sign in again.",
       "session_warning": "After the change, all sessions end and you must sign in again.",
       "change": "Change password",
+      "mfa": {
+        "title": "Multifactor authentication", "description": "Protect administrator sign-in with an authenticator app.",
+        "enable": "Enable MFA", "enabled": "Enabled", "disabled": "Disabled", "disabled_help": "Add an authenticator app as a second sign-in step.",
+        "enrollment_title": "Set up your authenticator", "scan": "Scan the QR code with your authenticator app.",
+        "scan_or_manual": "Scan the QR code with your authenticator app or enter the setup key manually.",
+        "or": "OR", "manual_label": "Setup key for manual entry",
+        "manual": "Or enter this setup key manually:", "setup_key": "Setup key", "copy_setup_key": "Copy setup key", "copied": "Copied.",
+        "setup_key_safety": "Keep this setup key only while configuring your authenticator. You will not need it after activation.",
+        "qr_description": "Authenticator setup QR code", "verify_help": "Enter the six-digit code shown by your app.",
+        "verify": "Verification code", "verify_six_digits": "Enter the 6-digit code your app just generated.",
+        "confirm": "Confirm", "confirming": "Confirming…", "invalid_code": "Enter a valid six-digit code.",
+        "setting_up": "Setting up", "enabled_success": "MFA enabled.", "disabled_success": "MFA disabled.",
+        "recovery_regenerated_success": "Recovery codes regenerated.",
+        "regenerate": "Regenerate recovery codes", "disable": "Disable MFA",
+        "remaining": "{count} recovery codes remaining", "recovery_title": "Save your recovery codes",
+        "recovery_once": "Save these recovery codes now. They will not be shown again.",
+        "copy_codes": "Copy all codes", "codes_saved": "I have stored these recovery codes safely",
+        "close_codes": "Close recovery codes"
+      },
+      "sessions": {
+        "title": "Active sessions", "current": "Current session", "revoke": "Revoke", "revoke_others": "Revoke all other sessions"
+      },
       "requirements": {
         "minimum": "At least {length} characters",
         "different": "Different from the current password",
@@ -106,7 +129,33 @@
     },
     "network": {
       "eyebrow": "NETWORK", "title": "Network",
-      "description": "Advanced network settings are not yet available in the WebUI."
+      "description": "HTTPS and reverse-proxy deployment security.",
+      "https": "HTTPS connection", "reverse_proxy": "Reverse proxy", "trusted_proxy": "Direct peer trusted",
+      "direct_peer": "Direct peer", "secure_cookie": "Secure cookie", "public_url": "Public URL", "warnings": "Warnings",
+      "status_title": "Deployment status", "configuration_title": "Reverse-proxy configuration",
+      "configuration_help": "Changes are applied immediately.",
+      "managed_environment_information": "Environment-managed values are read-only. Other changes apply immediately.",
+      "public_url_help": "The URL you use to open ExitLane in your browser.",
+      "trusted_proxies": "Trusted proxies", "trusted_proxies_help": "One IPv4, IPv6, or CIDR entry per line.",
+      "cookie_policy": "Secure cookies", "cookie_auto": "Automatic", "cookie_always": "Always",
+      "cookie_never": "Never, for local HTTP only", "managed_environment": "Managed through environment configuration.",
+      "current_password": "Current password", "totp": "Verification code", "save": "Save configuration",
+      "saving": "Saving…", "saved": "Network configuration saved.",
+      "confirm_title": "Save potentially disruptive configuration?",
+      "confirm_description": "This change may end access through your current browser origin or direct HTTP.",
+      "confirm_save": "Save configuration anyway", "cancel": "Cancel",
+      "errors": {
+        "invalid_public_url": "Enter a valid HTTP or HTTPS origin without a path.",
+        "invalid_trusted_proxy": "Enter only valid IP addresses or CIDR ranges.",
+        "proxy_range_too_broad": "Universal proxy ranges are not allowed.",
+        "trusted_proxy_required": "An HTTPS public URL requires at least one trusted proxy.",
+        "inconsistent_cookie_policy": "The cookie policy conflicts with the public URL.",
+        "invalid_credentials": "The current password is incorrect.",
+        "invalid_mfa_code": "The verification code is incorrect.",
+        "too_many_attempts": "Too many attempts. Try again later.",
+        "environment_override": "This value is managed through environment configuration.",
+        "save_failed": "The network configuration could not be saved."
+      }
     },
     "appearance": {
       "eyebrow": "APPEARANCE",
@@ -200,7 +249,7 @@
     "alternative": "Alternative",
     "check_again": "Check again",
     "status_error": "Status error",
-    "hide": "Hide"
+    "hide": "Hide", "close": "Close", "yes": "Yes", "no": "No"
   },
   "step1": {
     "kicker": "Step 1",
@@ -480,8 +529,9 @@
   "events": {
     "system": { "started": "Exitlane started" },
     "setup": { "completed": "Setup completed" },
-    "auth": { "login_succeeded": "Administrator signed in", "login_failed": "Sign-in attempt failed", "logout": "Administrator signed out", "session_expired": "Session expired", "session_revoked": "Session revoked", "password_changed": "Administrator password changed", "password_reset": "Administrator password reset locally" },
+    "auth": { "login_succeeded": "Administrator signed in", "login_failed": "Sign-in attempt failed", "logout": "Administrator signed out", "session_expired": "Session expired", "session_revoked": "Session revoked", "password_changed": "Administrator password changed", "password_reset": "Administrator password reset locally", "mfa_enrollment_started": "MFA enrollment started", "mfa_enabled": "MFA enabled", "mfa_disabled": "MFA disabled", "mfa_disabled_locally": "MFA disabled locally", "recovery_codes_generated": "Recovery codes generated", "recovery_codes_regenerated": "Recovery codes regenerated", "recovery_code_used": "Recovery code used", "other_sessions_revoked": "Other sessions revoked" },
     "settings": { "updated": "Settings updated: {fields}" },
+    "network": { "security_settings_updated": "Network security settings updated", "security_settings_reset_locally": "Network security settings reset locally" },
     "provider": { "connect_started": "Connecting to {target}", "connected": "Connected to {country} {server}", "connect_failed": "Could not connect to {target}", "recovery_started": "NordVPN recovery started", "recovered": "NordVPN recovered", "recovery_failed": "NordVPN recovery failed", "recovery_rate_limited": "NordVPN recovery temporarily rate-limited", "retry_started": "Retrying connection", "disconnect_started": "Disconnecting VPN", "disconnected": "VPN disconnected", "disconnect_failed": "Could not disconnect VPN", "session_started": "NordVPN session started", "session_ended": "NordVPN session ended", "session_end_failed": "NordVPN session could not be ended" },
     "wireguard": { "configuration_generated": "WireGuard configuration generated for {client_name}", "configuration_regenerated": "WireGuard configuration replaced for {client_name}", "interface_active": "WireGuard interface {interface} became active", "interface_inactive": "WireGuard interface {interface} became inactive", "handshake_received": "WireGuard handshake received for {client_name}" },
     "notifications": { "webhook_added": "Webhook {name} added" }
@@ -495,7 +545,18 @@
     "login": "Sign in",
     "logout": "Log out",
     "logging_in": "Signing in…",
-    "invalid_credentials": "Invalid username or password."
+    "invalid_credentials": "Invalid username or password.",
+    "deployment_security": "Sign-in was rejected by the deployment security configuration. Check the public URL and trusted reverse proxy.",
+    "rate_limited": "Too many sign-in attempts. Try again later.",
+    "invalid_request": "The sign-in request was invalid. Check the fields and try again.",
+    "service_unavailable": "Sign-in is temporarily unavailable. Try again later.",
+    "sign_in_failed": "Sign-in could not be completed.",
+    "mfa": {
+      "title": "Verify your sign-in", "description": "Enter a code from your authenticator app or a recovery code.",
+      "code": "Verification code", "mode": "Code type", "authenticator": "Authenticator app", "recovery": "Recovery code",
+      "verify": "Verify", "verifying": "Verifying…", "back": "Back",
+      "errors": {"invalid": "The code is invalid or expired.", "invalid_mfa_code": "The code is invalid.", "mfa_challenge_expired": "The sign-in expired. Start again.", "too_many_attempts": "Too many attempts. Start again."}
+    }
   },
 "busy": {
   "default": "Working…",

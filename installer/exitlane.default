@@ -1,3 +1,9 @@
 EXITLANE_HOST=0.0.0.0
 EXITLANE_PORT=8787
 EXITLANE_DATA_DIR=/etc/exitlane
+# Comma-separated IP addresses/CIDRs of explicit reverse-proxy peers.
+EXITLANE_TRUSTED_PROXIES=
+# Optional external origin, for example https://exitlane.example.internal
+EXITLANE_PUBLIC_URL=
+# auto uses Secure cookies only when HTTPS is reliably detected.
+EXITLANE_SECURE_COOKIES=auto

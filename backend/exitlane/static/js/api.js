@@ -72,7 +72,7 @@ async function performRequest(path, options) {
     const message = response.status === 401 ? "Authentication required." : `Request failed (${response.status}).`;
 
     const error = new ApiError(message, response.status, payload);
-    if (response.status === 401) {
+    if (response.status === 401 && !["/api/auth/login", "/api/auth/mfa"].includes(path)) {
       window.dispatchEvent(new CustomEvent("exitlane:authenticationrequired"));
     }
     throw error;

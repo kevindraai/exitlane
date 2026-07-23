@@ -17,7 +17,7 @@
         </div>
        </div>
        <form class="authentication-password-form" id="settings-password-form" method="post">
-        <div class="authentication-status" hidden="" id="settings-password-status" role="status"></div>
+        <div class="alert" hidden="" id="settings-password-status"></div>
         <div class="form-grid authentication-fields" id="settings-password-fields">
          <label>
           <span data-i18n="settings.authentication.current_password">Current password</span>
@@ -43,15 +43,143 @@
          <button class="button button-primary" data-i18n="settings.authentication.change" disabled="" id="settings-password-save" type="submit">Change password</button>
         </div>
        </form>
+       <section class="authentication-card mfa-card" id="settings-mfa-card">
+        <div class="panel-heading compact">
+         <div>
+          <h3 data-i18n="settings.authentication.mfa.title">Multifactor authentication</h3>
+          <p data-i18n="settings.authentication.mfa.description">Protect administrator sign-in with an authenticator app.</p>
+         </div>
+         <strong class="status-badge" id="settings-mfa-status">—</strong>
+        </div>
+        <div aria-live="polite" class="alert" hidden="" id="settings-mfa-message"></div>
+        <form class="mfa-state-panel" hidden="" id="settings-mfa-enable-form" method="post">
+         <p data-i18n="settings.authentication.mfa.disabled_help">Add an authenticator app as a second sign-in step.</p>
+         <label><span data-i18n="settings.authentication.current_password">Current password</span><input autocomplete="current-password" id="settings-mfa-password" required="" type="password"/></label>
+         <button class="button button-primary" data-i18n="settings.authentication.mfa.enable" id="settings-mfa-enable" type="submit">Enable MFA</button>
+        </form>
+        <section aria-labelledby="settings-mfa-enrollment-title" class="mfa-state-panel mfa-enrollment" hidden="" id="settings-mfa-enrollment">
+         <div class="mfa-enrollment-heading" tabindex="-1">
+          <h4 data-i18n="settings.authentication.mfa.enrollment_title" id="settings-mfa-enrollment-title">Set up your authenticator</h4>
+          <p data-i18n="settings.authentication.mfa.scan_or_manual">Scan the QR code with your authenticator app or enter the setup key manually.</p>
+         </div>
+         <div aria-live="polite" class="alert" hidden="" id="settings-mfa-enrollment-status"></div>
+         <div class="mfa-enrollment-grid">
+          <div class="mfa-enrollment-method">
+           <div class="mfa-qr-zone">
+            <div aria-label="Authenticator setup QR code" class="mfa-qr-frame" data-i18n-aria-label="settings.authentication.mfa.qr_description" id="settings-mfa-qr" role="img"></div>
+           </div>
+           <div aria-hidden="true" class="mfa-method-separator"><span></span><strong data-i18n="settings.authentication.mfa.or">OR</strong><span></span></div>
+           <div class="mfa-setup-key-block">
+            <span class="field-label" data-i18n="settings.authentication.mfa.manual_label">Setup key for manual entry</span>
+            <div class="mfa-setup-key-control">
+             <code aria-label="Setup key" data-i18n-aria-label="settings.authentication.mfa.setup_key" id="settings-mfa-setup-key" tabindex="0"></code>
+             <button aria-label="Copy setup key" class="icon-button" data-i18n-aria-label="settings.authentication.mfa.copy_setup_key" id="settings-mfa-copy-key" title="Copy setup key" type="button"><span aria-hidden="true" data-lucide-icon="copy"></span></button>
+            </div>
+            <p class="mfa-setup-info"><span aria-hidden="true" data-lucide-icon="info"></span><span data-i18n="settings.authentication.mfa.setup_key_safety">Keep this setup key only while configuring your authenticator. You will not need it after activation.</span></p>
+           </div>
+          </div>
+          <form class="mfa-verification-column" id="settings-mfa-confirm-form" method="post">
+           <p data-i18n="settings.authentication.mfa.verify_help">Enter the six-digit code shown by your app.</p>
+           <label><span data-i18n="settings.authentication.mfa.verify">Verification code</span><input aria-describedby="settings-mfa-confirm-help settings-mfa-confirm-error" autocomplete="one-time-code" id="settings-mfa-confirm-code" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required=""/></label>
+           <small data-i18n="settings.authentication.mfa.verify_six_digits" id="settings-mfa-confirm-help">Enter the 6-digit code your app just generated.</small>
+           <small class="field-error" hidden="" id="settings-mfa-confirm-error"></small>
+           <div class="mfa-actions">
+            <button class="button button-primary" data-i18n="settings.authentication.mfa.confirm" id="settings-mfa-confirm" type="submit">Confirm</button>
+            <button class="button button-secondary" data-i18n="common.cancel" id="settings-mfa-cancel" type="button">Cancel</button>
+           </div>
+          </form>
+         </div>
+        </section>
+        <form class="mfa-state-panel" hidden="" id="settings-mfa-manage-form" method="post">
+         <p id="settings-mfa-recovery-count"></p>
+         <div class="mfa-manage-fields">
+          <label><span data-i18n="settings.authentication.current_password">Current password</span><input autocomplete="current-password" id="settings-mfa-manage-password" required="" type="password"/></label>
+          <label><span data-i18n="settings.authentication.mfa.verify">Verification code</span><input autocomplete="one-time-code" id="settings-mfa-manage-code" inputmode="numeric" required=""/></label>
+         </div>
+         <div class="mfa-actions">
+          <button class="button button-secondary" data-action="regenerate" data-i18n="settings.authentication.mfa.regenerate" type="submit">Regenerate recovery codes</button>
+          <button class="button button-danger mfa-disable" data-action="disable" data-i18n="settings.authentication.mfa.disable" type="submit">Disable MFA</button>
+         </div>
+        </form>
+       </section>
+       <section class="authentication-card">
+        <h3 data-i18n="settings.authentication.sessions.title">Active sessions</h3>
+        <div class="session-list" id="settings-session-list"></div>
+        <button class="button button-secondary" data-i18n="settings.authentication.sessions.revoke_others" id="settings-revoke-sessions" type="button">Revoke all other sessions</button>
+       </section>
+       <dialog aria-describedby="settings-recovery-description" aria-labelledby="settings-recovery-title" id="settings-recovery-codes">
+        <div class="recovery-dialog-content">
+         <h3 data-i18n="settings.authentication.mfa.recovery_title" id="settings-recovery-title" tabindex="-1">Save your recovery codes</h3>
+         <p data-i18n="settings.authentication.mfa.recovery_once" id="settings-recovery-description">Save these recovery codes now. They will not be shown again.</p>
+         <pre aria-label="Recovery codes" data-i18n-aria-label="settings.authentication.mfa.recovery_title" id="settings-recovery-code-list"></pre>
+         <button class="button button-secondary" id="settings-recovery-copy" type="button"><span aria-hidden="true" data-lucide-icon="copy"></span><span data-i18n="settings.authentication.mfa.copy_codes">Copy all codes</span></button>
+         <label class="recovery-confirmation"><input id="settings-recovery-saved" type="checkbox"/> <span data-i18n="settings.authentication.mfa.codes_saved">I have stored these recovery codes safely</span></label>
+         <button class="button button-primary" data-i18n="settings.authentication.mfa.close_codes" disabled="" id="settings-recovery-close" type="button">Close recovery codes</button>
+        </div>
+       </dialog>
       </section>
-      <section class="panel settings-future" id="settings-network">
+      <section class="panel" id="settings-network">
        <div class="panel-heading compact">
         <div>
          <p class="eyebrow" data-i18n="settings.network.eyebrow">NETWORK</p>
          <h2 data-i18n="settings.network.title">Network</h2>
-         <p data-i18n="settings.network.description">Advanced network settings are not yet available in the WebUI.</p>
+         <p data-i18n="settings.network.description">HTTPS and reverse-proxy deployment security.</p>
         </div>
        </div>
+       <section class="authentication-card" aria-labelledby="settings-network-status-title">
+        <h3 data-i18n="settings.network.status_title" id="settings-network-status-title">Deployment status</h3>
+        <dl class="settings-facts" id="settings-deployment-status"></dl>
+       </section>
+       <section class="authentication-card" aria-labelledby="settings-network-configuration-title">
+        <h3 data-i18n="settings.network.configuration_title" id="settings-network-configuration-title">Reverse-proxy configuration</h3>
+        <div class="alert" hidden="" id="settings-network-information"></div>
+        <form class="form-grid network-security-form" id="settings-network-form" method="post">
+         <div class="alert" hidden="" id="settings-network-error"></div>
+         <div class="alert" hidden="" id="settings-network-status"></div>
+         <label>
+          <span data-i18n="settings.network.public_url">Public URL</span>
+          <input aria-describedby="settings-network-public-url-help settings-network-public-url-override" id="settings-network-public-url" maxlength="2048" placeholder="https://exitlane.example.internal" type="url"/>
+          <small data-i18n="settings.network.public_url_help" id="settings-network-public-url-help">The URL you use to open ExitLane in your browser.</small>
+          <small data-i18n="settings.network.managed_environment" hidden="" id="settings-network-public-url-override">Managed through environment configuration.</small>
+         </label>
+         <label>
+          <span data-i18n="settings.network.trusted_proxies">Trusted proxies</span>
+          <textarea aria-describedby="settings-network-proxies-help settings-network-proxies-override" id="settings-network-proxies" rows="5" spellcheck="false"></textarea>
+          <small data-i18n="settings.network.trusted_proxies_help" id="settings-network-proxies-help">One IPv4, IPv6, or CIDR entry per line.</small>
+          <small data-i18n="settings.network.managed_environment" hidden="" id="settings-network-proxies-override">Managed through environment configuration.</small>
+         </label>
+         <label>
+          <span data-i18n="settings.network.cookie_policy">Secure cookies</span>
+          <select aria-describedby="settings-network-cookie-override" id="settings-network-cookie-policy">
+           <option data-i18n="settings.network.cookie_auto" value="auto">Automatic</option>
+           <option data-i18n="settings.network.cookie_always" value="always">Always</option>
+           <option data-i18n="settings.network.cookie_never" value="never">Never, for local HTTP only</option>
+          </select>
+          <small data-i18n="settings.network.managed_environment" hidden="" id="settings-network-cookie-override">Managed through environment configuration.</small>
+         </label>
+         <label>
+          <span data-i18n="settings.network.current_password">Current password</span>
+          <input autocomplete="current-password" id="settings-network-password" required="" type="password"/>
+         </label>
+         <label hidden="" id="settings-network-totp-field">
+          <span data-i18n="settings.network.totp">Verification code</span>
+          <input autocomplete="one-time-code" id="settings-network-totp" inputmode="numeric" maxlength="6" pattern="[0-9]{6}"/>
+         </label>
+         <div class="form-submit">
+          <button class="button button-primary" data-i18n="settings.network.save" id="settings-network-save" type="submit">Save configuration</button>
+         </div>
+        </form>
+       </section>
+       <dialog aria-describedby="settings-network-confirm-description" aria-labelledby="settings-network-confirm-title" id="settings-network-confirm">
+        <div class="recovery-dialog-content">
+         <h3 data-i18n="settings.network.confirm_title" id="settings-network-confirm-title">Save potentially disruptive configuration?</h3>
+         <div class="alert" id="settings-network-confirm-description"></div>
+         <div class="mfa-actions">
+          <button class="button button-secondary" data-i18n="settings.network.cancel" id="settings-network-confirm-cancel" type="button">Cancel</button>
+          <button class="button button-danger" data-i18n="settings.network.confirm_save" id="settings-network-confirm-save" type="button">Save configuration anyway</button>
+         </div>
+        </div>
+       </dialog>
       </section>
       <section class="panel">
        <div class="panel-heading compact">
@@ -62,7 +190,7 @@
         </div>
        </div>
        <form class="form-grid" id="settings-general-form" method="post">
-        <p class="inline-error" hidden="" id="settings-general-error"></p>
+        <div class="alert" hidden="" id="settings-general-error"></div>
         <label>
          <span data-i18n="settings.general.timezone">Timezone</span>
          <select id="settings-timezone" required=""></select>

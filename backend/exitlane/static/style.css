@@ -35,6 +35,12 @@ html[data-color-scheme="dark"] {
   --success-soft: rgba(66, 216, 157, 0.07);
   --success-border: rgba(66, 216, 157, 0.38);
   --success-contrast: #07150f;
+  --information-soft: rgba(110, 140, 255, 0.1);
+  --information-border: rgba(110, 140, 255, 0.38);
+  --information-text: #c9d4ff;
+  --warning-soft: rgba(243, 201, 105, 0.09);
+  --warning-border: rgba(243, 201, 105, 0.42);
+  --warning-text: #ffe7ad;
 
   --danger-soft: rgba(255, 113, 128, 0.08);
   --danger-border: rgba(255, 113, 128, 0.4);
@@ -88,6 +94,12 @@ html[data-color-scheme="light"] {
   --success-soft: rgba(18, 132, 93, 0.08);
   --success-border: rgba(18, 132, 93, 0.3);
   --success-contrast: #ffffff;
+  --information-soft: rgba(82, 111, 228, 0.08);
+  --information-border: rgba(82, 111, 228, 0.3);
+  --information-text: #3653bd;
+  --warning-soft: rgba(154, 106, 0, 0.08);
+  --warning-border: rgba(154, 106, 0, 0.3);
+  --warning-text: #7b5400;
 
   --danger-soft: rgba(198, 61, 80, 0.08);
   --danger-border: rgba(198, 61, 80, 0.3);
@@ -674,18 +686,60 @@ input::placeholder {
   margin-top: 18px;
 }
 
-.authentication-status {
+.alert {
   width: 100%;
   margin-bottom: 14px;
   padding: 0.8rem 1rem;
-  border: 1px solid var(--danger-border);
+  border: 1px solid var(--border);
   border-radius: 0.75rem;
-  color: var(--danger);
+}
+
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  color: var(--text);
+}
+
+.alert .lucide-icon {
+  width: 1.2rem;
+  height: 1.2rem;
+  flex: 0 0 auto;
+  margin-top: 0.05rem;
+}
+
+.alert-success {
+  border-color: var(--success-border);
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.alert-information {
+  border-color: var(--information-border);
+  color: var(--information-text);
+  background: var(--information-soft);
+}
+
+.alert-warning {
+  border-color: var(--warning-border);
+  color: var(--warning-text);
+  background: var(--warning-soft);
+}
+
+.alert-error {
+  border-color: var(--danger-border);
+  color: var(--danger-text);
   background: var(--danger-soft);
 }
 
 .authentication-fields {
   margin-top: 0;
+  align-items: start;
+}
+
+.authentication-fields > label {
+  align-self: start;
+  grid-auto-rows: max-content;
 }
 
 .authentication-form-footer {
@@ -694,6 +748,264 @@ input::placeholder {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+}
+
+.authentication-card {
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-translucent);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 5px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--panel-soft);
+  white-space: nowrap;
+}
+
+.mfa-state-panel {
+  margin-top: 18px;
+  display: grid;
+  gap: 16px;
+}
+
+.mfa-state-panel[hidden] {
+  display: none;
+}
+
+.mfa-state-panel > label,
+.mfa-state-panel > p,
+.mfa-state-panel > button {
+  max-width: 38rem;
+}
+
+.mfa-enrollment {
+  width: 100%;
+  max-width: 64rem;
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-soft);
+}
+
+.mfa-enrollment-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.45fr) minmax(0, 0.55fr);
+  gap: clamp(24px, 4vw, 40px);
+  align-items: start;
+}
+
+.mfa-manage-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.mfa-enrollment-method,
+.mfa-verification-column,
+.mfa-setup-key-block {
+  min-width: 0;
+}
+
+.mfa-enrollment-method,
+.mfa-verification-column {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.mfa-qr-zone {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+}
+
+.mfa-qr-frame {
+  width: clamp(240px, 90%, 280px);
+  max-width: 100%;
+  aspect-ratio: 1;
+  padding: 16px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.mfa-qr-frame > svg.mfa-qr-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  color: #000;
+  background: #fff;
+}
+
+.mfa-method-separator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.mfa-method-separator span {
+  height: 1px;
+  flex: 1;
+  background: var(--border);
+}
+
+.mfa-setup-key-block {
+  display: grid;
+  gap: 8px;
+}
+
+.mfa-setup-key-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.mfa-setup-key-control .icon-button {
+  width: 44px;
+  min-height: 44px;
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0 9px 9px 0;
+  background: transparent;
+  color: var(--text);
+}
+
+#settings-mfa-setup-key {
+  min-width: 0;
+  padding: 10px 12px;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: 0.04em;
+  white-space: normal;
+}
+
+.mfa-setup-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.mfa-setup-info [data-lucide-icon] {
+  flex: 0 0 auto;
+}
+
+.mfa-verification-column {
+  max-width: 24rem;
+}
+
+#settings-mfa-confirm-code {
+  width: 100%;
+  max-width: 20rem;
+  letter-spacing: 0.12em;
+}
+
+#settings-mfa-confirm-error {
+  min-height: 1.25em;
+}
+
+#settings-mfa-confirm-error[hidden] {
+  display: block;
+  visibility: hidden;
+}
+
+.mfa-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.mfa-disable {
+  margin-left: auto;
+}
+
+.network-security-form textarea {
+  min-height: 8rem;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.network-security-form > .inline-error,
+.network-security-form > .alert,
+.network-security-form > .form-submit {
+  grid-column: 1 / -1;
+}
+
+.session-list {
+  margin: 16px 0;
+  display: grid;
+  gap: 10px;
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+#settings-recovery-codes {
+  width: min(38rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--surface);
+  color: var(--text);
+}
+
+#settings-recovery-codes::backdrop {
+  background: rgb(15 23 42 / 70%);
+}
+
+.recovery-dialog-content {
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+}
+
+#settings-recovery-code-list {
+  margin: 0;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 18px;
+  overflow-x: auto;
+  border-radius: 10px;
+  background: #111827;
+  color: #f8fafc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.recovery-confirmation {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.recovery-confirmation input {
+  width: auto;
+  min-height: auto;
 }
 
 .provider-management-status-region {
@@ -986,18 +1298,16 @@ pre {
 }
 
 .toast {
-  padding: 13px 15px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  color: var(--text);
   background: var(--toast-background);
   box-shadow: 0 16px 44px rgba(0, 0, 0, 0.34);
   animation: toast-in 180ms ease;
 }
 
-.toast.error {
-  border-color: var(--danger-border);
-  color: var(--danger-text);
+.toast.alert-success,
+.toast.alert-information,
+.toast.alert-warning,
+.toast.alert-error {
+  margin-bottom: 0;
 }
 
 @keyframes toast-in {
@@ -1072,6 +1382,24 @@ pre {
     flex-direction: column;
   }
 
+  .mfa-manage-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .mfa-qr-frame {
+    width: clamp(220px, 75vw, 260px);
+    margin-inline: auto;
+  }
+
+  .session-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .mfa-disable {
+    margin-left: 0;
+  }
+
   .metric-grid {
     grid-template-columns: 1fr 1fr;
   }
@@ -1082,6 +1410,17 @@ pre {
 
   .result-actions .button {
     flex: 1;
+  }
+}
+
+@media (max-width: 820px) {
+  .mfa-enrollment-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mfa-verification-column {
+    width: 100%;
+    max-width: none;
   }
 }
 
@@ -1797,6 +2136,21 @@ pre {
 .login-panel {
   max-width: 34rem;
   margin: 3rem auto;
+}
+
+.login-form {
+  margin-top: 18px;
+  display: grid;
+  gap: 16px;
+}
+
+.login-status {
+  width: 100%;
+  margin: 0;
+}
+
+.login-fields {
+  margin-top: 0;
 }
 
 .app-view {
