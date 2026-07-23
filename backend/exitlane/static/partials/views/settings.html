@@ -17,7 +17,7 @@
         </div>
        </div>
        <form class="authentication-password-form" id="settings-password-form" method="post">
-        <div class="authentication-status" hidden="" id="settings-password-status" role="status"></div>
+        <div class="alert" hidden="" id="settings-password-status"></div>
         <div class="form-grid authentication-fields" id="settings-password-fields">
          <label>
           <span data-i18n="settings.authentication.current_password">Current password</span>
@@ -51,7 +51,7 @@
          </div>
          <strong class="status-badge" id="settings-mfa-status">—</strong>
         </div>
-        <p aria-live="polite" class="authentication-status" id="settings-mfa-message"></p>
+        <div aria-live="polite" class="alert" hidden="" id="settings-mfa-message"></div>
         <form class="mfa-state-panel" hidden="" id="settings-mfa-enable-form" method="post">
          <p data-i18n="settings.authentication.mfa.disabled_help">Add an authenticator app as a second sign-in step.</p>
          <label><span data-i18n="settings.authentication.current_password">Current password</span><input autocomplete="current-password" id="settings-mfa-password" required="" type="password"/></label>
@@ -62,7 +62,7 @@
           <h4 data-i18n="settings.authentication.mfa.enrollment_title" id="settings-mfa-enrollment-title">Set up your authenticator</h4>
           <p data-i18n="settings.authentication.mfa.scan_or_manual">Scan the QR code with your authenticator app or enter the setup key manually.</p>
          </div>
-         <p aria-live="polite" class="authentication-status" hidden="" id="settings-mfa-enrollment-status"></p>
+         <div aria-live="polite" class="alert" hidden="" id="settings-mfa-enrollment-status"></div>
          <div class="mfa-enrollment-grid">
           <div class="mfa-enrollment-method">
            <div class="mfa-qr-zone">
@@ -132,10 +132,10 @@
        </section>
        <section class="authentication-card" aria-labelledby="settings-network-configuration-title">
         <h3 data-i18n="settings.network.configuration_title" id="settings-network-configuration-title">Reverse-proxy configuration</h3>
-        <p data-i18n="settings.network.configuration_help">Applied immediately. Environment-managed values are read-only.</p>
+        <div class="alert" hidden="" id="settings-network-information"></div>
         <form class="form-grid network-security-form" id="settings-network-form" method="post">
-         <p class="inline-error" hidden="" id="settings-network-error"></p>
-         <p class="authentication-status" hidden="" id="settings-network-status" role="status"></p>
+         <div class="alert" hidden="" id="settings-network-error"></div>
+         <div class="alert" hidden="" id="settings-network-status"></div>
          <label>
           <span data-i18n="settings.network.public_url">Public URL</span>
           <input aria-describedby="settings-network-public-url-help settings-network-public-url-override" id="settings-network-public-url" maxlength="2048" placeholder="https://exitlane.example.internal" type="url"/>
@@ -173,7 +173,7 @@
        <dialog aria-describedby="settings-network-confirm-description" aria-labelledby="settings-network-confirm-title" id="settings-network-confirm">
         <div class="recovery-dialog-content">
          <h3 data-i18n="settings.network.confirm_title" id="settings-network-confirm-title">Save potentially disruptive configuration?</h3>
-         <p data-i18n="settings.network.confirm_description" id="settings-network-confirm-description">This change may end access through your current browser origin or direct HTTP.</p>
+         <div class="alert" id="settings-network-confirm-description"></div>
          <div class="mfa-actions">
           <button class="button button-secondary" data-i18n="settings.network.cancel" id="settings-network-confirm-cancel" type="button">Cancel</button>
           <button class="button button-danger" data-i18n="settings.network.confirm_save" id="settings-network-confirm-save" type="button">Save configuration anyway</button>
@@ -190,7 +190,7 @@
         </div>
        </div>
        <form class="form-grid" id="settings-general-form" method="post">
-        <p class="inline-error" hidden="" id="settings-general-error"></p>
+        <div class="alert" hidden="" id="settings-general-error"></div>
         <label>
          <span data-i18n="settings.general.timezone">Timezone</span>
          <select id="settings-timezone" required=""></select>

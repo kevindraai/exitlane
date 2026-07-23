@@ -7,10 +7,11 @@ import {
   getColorSchemePreference,
 } from "./theme.js";
 import {
-  clearInlineError,
+  ALERT_TYPES,
+  clearAlert,
+  renderAlert,
   select,
   setBusy,
-  showInlineError,
   showMessage,
 } from "./ui.js";
 import { getSlice, resetAuthenticatedState } from "./state.js";
@@ -101,6 +102,19 @@ function showRecoveryCodes(codes) {
   renderMfaState();
 }
 
+function showMfaError(error) {
+  const code = error?.payload?.detail;
+  const message = code === "invalid_mfa_code"
+    ? t("settings.authentication.mfa.invalid_code", {}, "Enter a valid six-digit code.")
+    : t(
+      "settings.authentication.errors.invalid_credentials",
+      {},
+      "The current password is incorrect.",
+    );
+  renderAlert(select("#settings-mfa-message"), message, ALERT_TYPES.ERROR);
+  return message;
+}
+
 async function loadAuthenticationSecurity() {
   const [security, deployment] = await Promise.all([
     api("/api/auth/security"),
@@ -173,6 +187,33 @@ async function loadAuthenticationSecurity() {
     select(controlSelector).disabled = locked;
     select(helpSelector).hidden = !locked;
   }
+  const hasEnvironmentOverrides = Object.values(
+    configuration.environment_overrides,
+  ).some(Boolean);
+  renderAlert(
+    select("#settings-network-information"),
+    hasEnvironmentOverrides
+      ? t(
+        "settings.network.managed_environment_information",
+        {},
+        "Environment-managed values are read-only. Other changes apply immediately.",
+      )
+      : t(
+        "settings.network.configuration_help",
+        {},
+        "Changes are applied immediately.",
+      ),
+    ALERT_TYPES.INFORMATION,
+  );
+  renderAlert(
+    select("#settings-network-confirm-description"),
+    t(
+      "settings.network.confirm_description",
+      {},
+      "This change may end access through your current browser origin or direct HTTP.",
+    ),
+    ALERT_TYPES.WARNING,
+  );
   networkMfaRequired = Boolean(deployment.mfa_required);
   select("#settings-network-totp-field").hidden = !networkMfaRequired;
   select("#settings-network-totp").required = networkMfaRequired;
@@ -241,7 +282,7 @@ export function renderSettings(data) {
   select("#settings-language").value = getCurrentLanguage();
   select("#settings-color-scheme").value = getColorSchemePreference();
   renderAbout(data.about);
-  clearInlineError("#settings-general-error");
+  clearAlert(select("#settings-general-error"));
   updateSaveState();
 }
 
@@ -264,15 +305,22 @@ export async function loadSettings({ force = false } = {}) {
 
 async function beginMfa(event) {
   event.preventDefault();
-  const result = await api("/api/auth/mfa/enrollment", {
-    method: "POST",
-    body: JSON.stringify({ current_password: select("#settings-mfa-password").value }),
-  });
-  select("#settings-mfa-password").value = "";
-  beginEnrollmentState(mfaState, result);
-  removeRenderedMfaSecrets();
-  renderMfaState();
-  select("#settings-mfa-confirm-code").focus();
+  clearAlert(select("#settings-mfa-message"));
+  try {
+    const result = await api("/api/auth/mfa/enrollment", {
+      method: "POST",
+      body: JSON.stringify({ current_password: select("#settings-mfa-password").value }),
+    });
+    beginEnrollmentState(mfaState, result);
+    removeRenderedMfaSecrets();
+    renderMfaState();
+    select("#settings-mfa-confirm-code").focus();
+  } catch (error) {
+    showMfaError(error);
+    select("#settings-mfa-password").focus();
+  } finally {
+    select("#settings-mfa-password").value = "";
+  }
 }
 
 async function confirmMfa(event) {
@@ -280,6 +328,7 @@ async function confirmMfa(event) {
   const button = select("#settings-mfa-confirm");
   const error = select("#settings-mfa-confirm-error");
   error.hidden = true;
+  clearAlert(select("#settings-mfa-message"));
   setBusy(button, true, t("settings.authentication.mfa.confirming", {}, "Confirming…"));
   try {
     const result = await api("/api/auth/mfa/enrollment/confirm", {
@@ -289,12 +338,14 @@ async function confirmMfa(event) {
         code: select("#settings-mfa-confirm-code").value,
       }),
     });
+    showMessage(
+      t("settings.authentication.mfa.enabled_success", {}, "MFA enabled."),
+      ALERT_TYPES.SUCCESS,
+    );
     showRecoveryCodes(result.recovery_codes);
     await loadAuthenticationSecurity();
-  } catch {
-    error.textContent = t(
-      "settings.authentication.mfa.invalid_code", {}, "Enter a valid six-digit code.",
-    );
+  } catch (apiError) {
+    error.textContent = showMfaError(apiError);
     error.hidden = false;
     select("#settings-mfa-confirm-code").focus();
   } finally {
@@ -316,17 +367,35 @@ async function manageMfa(event) {
     current_password: select("#settings-mfa-manage-password").value,
     code: select("#settings-mfa-manage-code").value,
   };
-  if (action === "disable") {
-    await api("/api/auth/mfa/disable", { method: "POST", body: JSON.stringify(payload) });
-    clearTemporaryMfaState(MFA_STATES.DISABLED);
-    window.dispatchEvent(new CustomEvent("exitlane:authenticationrequired"));
-  } else {
-    clearTemporaryMfaState(MFA_STATES.ENABLED);
-    const result = await api("/api/auth/mfa/recovery-codes", { method: "POST", body: JSON.stringify(payload) });
-    showRecoveryCodes(result.recovery_codes);
-    await loadAuthenticationSecurity();
+  clearAlert(select("#settings-mfa-message"));
+  try {
+    if (action === "disable") {
+      await api("/api/auth/mfa/disable", { method: "POST", body: JSON.stringify(payload) });
+      clearTemporaryMfaState(MFA_STATES.DISABLED);
+      showMessage(
+        t("settings.authentication.mfa.disabled_success", {}, "MFA disabled."),
+        ALERT_TYPES.SUCCESS,
+      );
+      window.dispatchEvent(new CustomEvent("exitlane:authenticationrequired"));
+    } else {
+      clearTemporaryMfaState(MFA_STATES.ENABLED);
+      const result = await api("/api/auth/mfa/recovery-codes", { method: "POST", body: JSON.stringify(payload) });
+      showRecoveryCodes(result.recovery_codes);
+      showMessage(
+        t(
+          "settings.authentication.mfa.recovery_regenerated_success",
+          {},
+          "Recovery codes regenerated.",
+        ),
+        ALERT_TYPES.SUCCESS,
+      );
+      await loadAuthenticationSecurity();
+    }
+  } catch (error) {
+    showMfaError(error);
+  } finally {
+    clearSecretFields("#settings-mfa-manage-password", "#settings-mfa-manage-code");
   }
-  clearSecretFields("#settings-mfa-manage-password", "#settings-mfa-manage-code");
 }
 
 function networkSecurityPayload(confirmAccessLoss = false) {
@@ -345,7 +414,8 @@ function networkSecurityPayload(confirmAccessLoss = false) {
 async function submitNetworkSecurity({ confirmAccessLoss = false } = {}) {
   const button = select("#settings-network-save");
   const errorTarget = select("#settings-network-error");
-  errorTarget.hidden = true;
+  clearAlert(errorTarget);
+  clearAlert(select("#settings-network-status"));
   setBusy(button, true, t("settings.network.saving", {}, "Saving…"));
   try {
     await api("/api/deployment/security", {
@@ -354,9 +424,10 @@ async function submitNetworkSecurity({ confirmAccessLoss = false } = {}) {
     });
     clearSecretFields("#settings-network-password", "#settings-network-totp");
     await loadAuthenticationSecurity();
-    const status = select("#settings-network-status");
-    status.textContent = t("settings.network.saved", {}, "Network configuration saved.");
-    status.hidden = false;
+    showMessage(
+      t("settings.network.saved", {}, "Network configuration saved."),
+      ALERT_TYPES.SUCCESS,
+    );
   } catch (error) {
     const detail = error.payload?.detail;
     const code = typeof detail === "object" ? detail.code : detail;
@@ -366,12 +437,15 @@ async function submitNetworkSecurity({ confirmAccessLoss = false } = {}) {
       select("#settings-network-confirm").showModal();
       return;
     }
-    errorTarget.textContent = t(
-      `settings.network.errors.${code || "save_failed"}`,
-      {},
-      "The network configuration could not be saved.",
+    renderAlert(
+      errorTarget,
+      t(
+        `settings.network.errors.${code || "save_failed"}`,
+        {},
+        "The network configuration could not be saved.",
+      ),
+      ALERT_TYPES.ERROR,
     );
-    errorTarget.hidden = false;
   } finally {
     setBusy(button, false);
   }
@@ -386,7 +460,7 @@ export async function saveGeneralSettings(event) {
   event.preventDefault();
   if (!generalChanged()) return;
   const button = select("#settings-general-save");
-  clearInlineError("#settings-general-error");
+  clearAlert(select("#settings-general-error"));
   setBusy(button, true, t("settings.messages.saving", {}, "Saving…"));
   try {
     const updated = await api("/api/settings", {
@@ -404,12 +478,16 @@ export async function saveGeneralSettings(event) {
       detail: { providerRefreshIntervalSeconds:
         data.general.provider_refresh_interval_seconds },
     }));
-    showMessage(t("settings.messages.saved", {}, "Settings saved."));
+    showMessage(
+      t("settings.messages.saved", {}, "Settings saved."),
+      ALERT_TYPES.SUCCESS,
+    );
   } catch (error) {
     renderSettings(savedSettings);
-    showInlineError(
+    renderAlert(
+      select("#settings-general-error"),
       t("settings.errors.save", { message: error.message }, `Could not save: ${error.message}`),
-      "#settings-general-error",
+      ALERT_TYPES.ERROR,
     );
   } finally {
     setBusy(button, false);
@@ -422,8 +500,7 @@ function clearSecretFields(...selectors) {
 }
 
 function clearPasswordFeedback() {
-  select("#settings-password-status").hidden = true;
-  select("#settings-password-status").textContent = "";
+  clearAlert(select("#settings-password-status"));
   for (const selector of [
     "#settings-current-password-error",
     "#settings-new-password-error",
@@ -485,8 +562,11 @@ function showPasswordError(code) {
     select(target).hidden = false;
     return;
   }
-  select("#settings-password-status").textContent = message;
-  select("#settings-password-status").hidden = false;
+  renderAlert(
+    select("#settings-password-status"),
+    message,
+    ALERT_TYPES.ERROR,
+  );
 }
 
 export async function changePassword(event) {
@@ -515,6 +595,14 @@ export async function changePassword(event) {
         confirmation,
       }),
     });
+    showMessage(
+      t(
+        "settings.authentication.password_changed",
+        {},
+        "Password changed. Sign in again.",
+      ),
+      ALERT_TYPES.SUCCESS,
+    );
     resetAuthenticatedState();
     window.dispatchEvent(new CustomEvent("exitlane:authenticationrequired"));
   } catch (error) {
@@ -549,10 +637,11 @@ export function initialiseSettings() {
   select("#settings-mfa-copy-key").addEventListener("click", async () => {
     if (mfaState.setupKey) await navigator.clipboard.writeText(mfaState.setupKey);
     const status = select("#settings-mfa-enrollment-status");
-    status.textContent = t(
-      "settings.authentication.mfa.copied", {}, "Copied.",
+    renderAlert(
+      status,
+      t("settings.authentication.mfa.copied", {}, "Copied."),
+      ALERT_TYPES.SUCCESS,
     );
-    status.hidden = false;
   });
   select("#settings-recovery-copy").addEventListener("click", async () => {
     if (mfaState.recoveryCodes.length) {

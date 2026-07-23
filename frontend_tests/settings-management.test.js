@@ -54,7 +54,7 @@ test("password status is a stable full-width region outside the field grid", asy
   const gridEnd = markup.indexOf("</div>", gridStart);
   assert.ok(status > -1 && status < gridStart);
   assert.ok(status < gridStart || status > gridEnd);
-  assert.match(markup, /class="authentication-status"[^>]+hidden[^>]+role="status"/);
+  assert.match(markup, /class="alert"[^>]+hidden[^>]+id="settings-password-status"/);
   assert.match(markup, /class="form-grid authentication-fields"/);
   assert.match(markup, /class="authentication-form-footer"/);
 });
