@@ -35,9 +35,7 @@ def client(tmp_path, monkeypatch):
 
 
 def login(client):
-    return client.post(
-        "/api/auth/login", json={"username": "admin", "password": PASSWORD}
-    )
+    return client.post("/api/auth/login", json={"username": "admin", "password": PASSWORD})
 
 
 def test_password_change_replaces_hash_revokes_sessions_and_records_event(client):
@@ -81,14 +79,20 @@ def test_password_change_validation_and_authentication(client):
         response = client.post("/api/auth/password", json=payload | patch)
         assert response.status_code == status
         assert response.json()["detail"] == detail
-    assert client.post(
-        "/api/auth/password",
-        json=payload | {"new_password": "short", "confirmation": "short"},
-    ).status_code == 422
+    assert (
+        client.post(
+            "/api/auth/password",
+            json=payload | {"new_password": "short", "confirmation": "short"},
+        ).status_code
+        == 422
+    )
     with sqlite3.connect(main.DB) as connection:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM events WHERE code='auth.password_changed'"
-        ).fetchone()[0] == 0
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM events WHERE code='auth.password_changed'"
+            ).fetchone()[0]
+            == 0
+        )
 
 
 def test_password_change_rate_limit(client):
@@ -103,14 +107,10 @@ def test_password_change_rate_limit(client):
     assert client.post("/api/auth/password", json=payload).status_code == 429
 
 
-def test_cli_reset_password_is_interactive_revokes_sessions_and_has_safe_output(
-    client, capsys
-):
+def test_cli_reset_password_is_interactive_revokes_sessions_and_has_safe_output(client, capsys):
     assert login(client).status_code == 200
     answers = iter([NEW_PASSWORD, NEW_PASSWORD])
-    result = cli.reset_password(
-        password_reader=lambda _prompt: next(answers), effective_user_id=0
-    )
+    result = cli.reset_password(password_reader=lambda _prompt: next(answers), effective_user_id=0)
     captured = capsys.readouterr()
     assert result == 0
     assert NEW_PASSWORD not in captured.out + captured.err
@@ -132,9 +132,12 @@ def test_cli_reset_rejects_mismatch_policy_and_insufficient_privilege(client, ca
         ((NEW_PASSWORD, NEW_PASSWORD), 1000, 77),
     ):
         values = iter(answers)
-        assert cli.reset_password(
-            password_reader=lambda _prompt: next(values), effective_user_id=user_id
-        ) == expected
+        assert (
+            cli.reset_password(
+                password_reader=lambda _prompt: next(values), effective_user_id=user_id
+            )
+            == expected
+        )
         captured = capsys.readouterr()
         assert NEW_PASSWORD not in captured.out + captured.err
 
@@ -178,9 +181,12 @@ def test_invalid_token_is_not_audited_or_reflected(client, monkeypatch):
     assert response.status_code == 422
     assert token not in response.text
     with sqlite3.connect(main.DB) as connection:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM events WHERE code='provider.session_started'"
-        ).fetchone()[0] == 0
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM events WHERE code='provider.session_started'"
+            ).fetchone()[0]
+            == 0
+        )
 
 
 def test_uncontrolled_provider_error_is_not_reflected(client, monkeypatch):
@@ -229,9 +235,7 @@ def test_nordvpn_token_timeout_is_safely_classified(monkeypatch):
         return 124, "", "timeout"
 
     monkeypatch.setattr(nordvpn, "command", timed_out)
-    result = asyncio.run(
-        nordvpn.provider.login_token("dummy-timeout-token-123456789")
-    )
+    result = asyncio.run(nordvpn.provider.login_token("dummy-timeout-token-123456789"))
     assert result["ok"] is False
     assert result["error"] == "timeout"
 
@@ -247,9 +251,7 @@ def test_nordvpn_token_timeout_is_safely_classified(monkeypatch):
         (1, "Unrecognized provider failure.", "provider_error"),
     ],
 )
-def test_token_failure_classification_is_specific_and_sanitized(
-    return_code, output, expected
-):
+def test_token_failure_classification_is_specific_and_sanitized(return_code, output, expected):
     assert nordvpn.classify_token_login_failure(return_code, output, "") == expected
 
 
@@ -333,9 +335,7 @@ def test_sign_out_endpoint_requires_authentication_and_csrf(client):
     assert response.status_code == 403
 
 
-def test_sign_out_endpoint_refreshes_connected_status_and_records_safe_event(
-    client, monkeypatch
-):
+def test_sign_out_endpoint_refreshes_connected_status_and_records_safe_event(client, monkeypatch):
     snapshots = iter(
         [
             {"installed": True, "authenticated": True, "connected": True},
@@ -391,9 +391,7 @@ def test_sign_out_endpoint_is_idempotent_without_cli_call(client, monkeypatch):
         ("provider_error", 503),
     ],
 )
-def test_sign_out_endpoint_returns_only_safe_errors(
-    client, monkeypatch, error, status_code
-):
+def test_sign_out_endpoint_returns_only_safe_errors(client, monkeypatch, error, status_code):
     async def signed_in_status():
         return {"installed": True, "authenticated": True, "connected": True}
 

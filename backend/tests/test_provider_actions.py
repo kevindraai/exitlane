@@ -59,13 +59,17 @@ def test_status_matches_connected_cli_output(monkeypatch):
         if args == ("systemctl", "is-active", "nordvpnd"):
             return 0, "active", ""
         if args == ("nordvpn", "status"):
-            return 0, """Status: Connected
+            return (
+                0,
+                """Status: Connected
 Server: Belgium #255
 Hostname: be255.nordvpn.com
 IP: 164.5.253.223
 Country: Belgium
 City: Brussels
-Current technology: NORDLYNX""", ""
+Current technology: NORDLYNX""",
+                "",
+            )
         return 0, "Subscription: Active", ""
 
     monkeypatch.setattr(nordvpn, "command", command)
@@ -155,13 +159,17 @@ def test_provider_defaults_enable_reboot_reconnect_and_keep_provider_killswitch_
     async def command(*args, **_kwargs):
         commands.append(args)
         if args == ("nordvpn", "settings"):
-            return 0, """Technology: NORDLYNX
+            return (
+                0,
+                """Technology: NORDLYNX
 Routing: enabled
 LAN Discovery: enabled
 Auto-connect: enabled
 Firewall: enabled
 Kill Switch: disabled
-User Consent: disabled""", ""
+User Consent: disabled""",
+                "",
+            )
         return 0, "setting applied", ""
 
     monkeypatch.setattr(nordvpn, "command", command)
@@ -218,9 +226,7 @@ def test_provider_status_preserves_timeout_error(
     management = asyncio.run(nordvpn.NordVPN().status())["management"]
     assert management["authentication"]["state"] == expected_authentication
     assert management["error_code"] == "timeout"
-    assert management["capabilities"]["can_sign_out"] is (
-        expected_authentication == "signed_in"
-    )
+    assert management["capabilities"]["can_sign_out"] is (expected_authentication == "signed_in")
 
 
 def test_actions_fail_safely_when_cli_is_outside_runtime(monkeypatch):

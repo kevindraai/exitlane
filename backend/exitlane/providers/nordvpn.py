@@ -56,7 +56,10 @@ def classify_token_login_failure(return_code: int, output: str, error: str) -> s
     if return_code == 127:
         return "command_unavailable"
     message = f"{output}\n{error}".casefold()
-    if any(marker in message for marker in ("already logged in", "already logged-in", "already signed in")):
+    if any(
+        marker in message
+        for marker in ("already logged in", "already logged-in", "already signed in")
+    ):
         return "already_logged_in"
     if any(
         marker in message
@@ -714,8 +717,13 @@ echo "Installatie afgerond"
         data = await self._api_json("/v1/servers/countries")
         countries = sorted(
             (
-                {"id": item["id"], "country_code": item["code"].upper(), "provider_name": item["name"]}
-                for item in data if item.get("id") is not None and item.get("code")
+                {
+                    "id": item["id"],
+                    "country_code": item["code"].upper(),
+                    "provider_name": item["name"],
+                }
+                for item in data
+                if item.get("id") is not None and item.get("code")
             ),
             key=lambda item: item["provider_name"],
         )
@@ -733,7 +741,8 @@ echo "Installatie afgerond"
                 "station": item.get("station"),
                 "load": item.get("load"),
             }
-            for item in data if item.get("hostname")
+            for item in data
+            if item.get("hostname")
         ][:limit]
 
     async def _api_json(self, path: str) -> list[dict]:
@@ -795,7 +804,11 @@ echo "Installatie afgerond"
             "target": target,
             "exit_code": rc,
             "error_code": (
-                None if rc == 0 else "vpn_connect_timeout" if timed_out else "provider_connect_failed"
+                None
+                if rc == 0
+                else "vpn_connect_timeout"
+                if timed_out
+                else "provider_connect_failed"
             ),
         }
 
@@ -834,7 +847,11 @@ echo "Installatie afgerond"
             "state": "disconnecting" if rc == 0 else "error",
             "target": None,
             "error_code": (
-                None if rc == 0 else "vpn_disconnect_timeout" if rc == 124 else "provider_disconnect_failed"
+                None
+                if rc == 0
+                else "vpn_disconnect_timeout"
+                if rc == 124
+                else "provider_disconnect_failed"
             ),
         }
 
@@ -852,7 +869,8 @@ echo "Installatie afgerond"
             return {"ok": False, "error_code": "provider_recovery_failed"}
         status = await self.status(timeout=6)
         responsive = status.get("available") is True and status.get("state") in {
-            "connected", "disconnected"
+            "connected",
+            "disconnected",
         }
         return {
             "ok": responsive,

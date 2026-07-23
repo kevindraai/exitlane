@@ -105,7 +105,9 @@ def test_logout_invalidates_session(client):
 
 
 def test_auth_events_are_protected_and_do_not_enumerate_username(client):
-    client.post("/api/auth/login", json={"username": "does-not-exist", "password": "wrong password"})
+    client.post(
+        "/api/auth/login", json={"username": "does-not-exist", "password": "wrong password"}
+    )
     complete_setup()
     assert client.get("/api/events").status_code == 401
     assert login(client).status_code == 200
@@ -260,9 +262,7 @@ def test_login_request_phase_tracing_distinguishes_security_and_credentials(
 
     monkeypatch.setattr(main, "verify_password", traced_verify)
     monkeypatch.setattr(main.auth_security, "create_session", traced_session)
-    monkeypatch.setattr(
-        main, "observe_auth_phase", lambda _request, phase: phases.append(phase)
-    )
+    monkeypatch.setattr(main, "observe_auth_phase", lambda _request, phase: phases.append(phase))
     payload = {"username": "admin", "password": "wrong password"}
 
     rejected = client.post(
@@ -280,9 +280,12 @@ def test_login_request_phase_tracing_distinguishes_security_and_credentials(
     assert sessions == []
     assert phases == []
     with sqlite3.connect(main.DB) as connection:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM events WHERE code='auth.login_failed'"
-        ).fetchone()[0] == 0
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM events WHERE code='auth.login_failed'"
+            ).fetchone()[0]
+            == 0
+        )
     assert "reason=invalid_origin" in caplog.text
     assert "exitlane.example.internal" not in caplog.text
     assert "X-Forwarded" not in caplog.text
@@ -294,9 +297,12 @@ def test_login_request_phase_tracing_distinguishes_security_and_credentials(
     assert sessions == []
     assert phases == ["login_handler", "credential_validation"]
     with sqlite3.connect(main.DB) as connection:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM events WHERE code='auth.login_failed'"
-        ).fetchone()[0] == 1
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM events WHERE code='auth.login_failed'"
+            ).fetchone()[0]
+            == 1
+        )
 
     success = client.post(
         "/api/auth/login",
@@ -305,16 +311,12 @@ def test_login_request_phase_tracing_distinguishes_security_and_credentials(
     assert success.status_code == 200
     assert len(verified) == 2
     assert len(sessions) == 1
-    assert phases[-3:] == [
-        "login_handler", "credential_validation", "session_creation"
-    ]
+    assert phases[-3:] == ["login_handler", "credential_validation", "session_creation"]
 
 
 def test_body_model_and_rate_limit_phases_are_explicit(client, monkeypatch):
     phases = []
-    monkeypatch.setattr(
-        main, "observe_auth_phase", lambda _request, phase: phases.append(phase)
-    )
+    monkeypatch.setattr(main, "observe_auth_phase", lambda _request, phase: phases.append(phase))
     monkeypatch.setattr(main, "MAX_REQUEST_BODY_BYTES", 1024)
     oversized = client.post(
         "/api/auth/login",
@@ -346,9 +348,7 @@ def test_body_model_and_rate_limit_phases_are_explicit(client, monkeypatch):
 def test_trusted_https_proxy_login_uses_public_origin_secure_cookie_and_session(
     client, monkeypatch
 ):
-    monkeypatch.setattr(
-        proxy, "TRUSTED_PROXIES", (ipaddress.ip_network("0.0.0.0/32"),)
-    )
+    monkeypatch.setattr(proxy, "TRUSTED_PROXIES", (ipaddress.ip_network("0.0.0.0/32"),))
     monkeypatch.setattr(proxy, "PUBLIC_URL", "https://ExitLane.Example.Internal/")
     headers = {
         "Origin": "https://exitlane.example.internal:443/",
@@ -371,12 +371,8 @@ def test_trusted_https_proxy_login_uses_public_origin_secure_cookie_and_session(
     assert protected.status_code == 200
 
 
-def test_trusted_proxy_wrong_password_reaches_credentials_and_records_failure(
-    client, monkeypatch
-):
-    monkeypatch.setattr(
-        proxy, "TRUSTED_PROXIES", (ipaddress.ip_network("0.0.0.0/32"),)
-    )
+def test_trusted_proxy_wrong_password_reaches_credentials_and_records_failure(client, monkeypatch):
+    monkeypatch.setattr(proxy, "TRUSTED_PROXIES", (ipaddress.ip_network("0.0.0.0/32"),))
     monkeypatch.setattr(proxy, "PUBLIC_URL", "https://exitlane.example.internal")
     calls = []
     original_verify = main.verify_password
@@ -400,23 +396,22 @@ def test_trusted_proxy_wrong_password_reaches_credentials_and_records_failure(
     assert response.json() == {"detail": "invalid_credentials"}
     assert calls == [True]
     with sqlite3.connect(main.DB) as connection:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM events WHERE code='auth.login_failed'"
-        ).fetchone()[0] == 1
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM events WHERE code='auth.login_failed'"
+            ).fetchone()[0]
+            == 1
+        )
 
 
-def test_trusted_https_proxy_mfa_challenge_and_session_cookies_are_secure(
-    client, monkeypatch
-):
+def test_trusted_https_proxy_mfa_challenge_and_session_cookies_are_secure(client, monkeypatch):
     secret = pyotp.random_base32()
     with sqlite3.connect(main.DB) as connection:
         connection.execute(
             "UPDATE users SET mfa_enabled=1, encrypted_totp_secret=? WHERE username='admin'",
             (auth_security.encrypt_secret(secret),),
         )
-    monkeypatch.setattr(
-        proxy, "TRUSTED_PROXIES", (ipaddress.ip_network("0.0.0.0/32"),)
-    )
+    monkeypatch.setattr(proxy, "TRUSTED_PROXIES", (ipaddress.ip_network("0.0.0.0/32"),))
     monkeypatch.setattr(proxy, "PUBLIC_URL", "https://exitlane.example.internal")
     headers = {
         "Origin": "https://exitlane.example.internal",
@@ -448,9 +443,7 @@ def test_trusted_https_proxy_mfa_challenge_and_session_cookies_are_secure(
 def test_invalid_or_conflicting_proxy_origin_stops_before_model_and_credentials(
     client, monkeypatch
 ):
-    monkeypatch.setattr(
-        proxy, "TRUSTED_PROXIES", (ipaddress.ip_network("0.0.0.0/32"),)
-    )
+    monkeypatch.setattr(proxy, "TRUSTED_PROXIES", (ipaddress.ip_network("0.0.0.0/32"),))
     monkeypatch.setattr(proxy, "PUBLIC_URL", "https://exitlane.example.internal")
 
     def must_not_verify(*_args):
@@ -481,21 +474,18 @@ def test_invalid_or_conflicting_proxy_origin_stops_before_model_and_credentials(
         assert response.status_code == 403
         assert response.json() == {"detail": detail}
     with sqlite3.connect(main.DB) as connection:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM events WHERE code='auth.login_failed'"
-        ).fetchone()[0] == 0
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM events WHERE code='auth.login_failed'"
+            ).fetchone()[0]
+            == 0
+        )
 
 
 def test_origin_normalization_is_exact_and_normalizes_only_default_ports():
-    assert proxy.normalized_origin("https://EXAMPLE.test/") == (
-        "https", "example.test", 443
-    )
-    assert proxy.normalized_origin("https://example.test:443") == (
-        "https", "example.test", 443
-    )
-    assert proxy.normalized_origin("http://example.test:80/") == (
-        "http", "example.test", 80
-    )
+    assert proxy.normalized_origin("https://EXAMPLE.test/") == ("https", "example.test", 443)
+    assert proxy.normalized_origin("https://example.test:443") == ("https", "example.test", 443)
+    assert proxy.normalized_origin("http://example.test:80/") == ("http", "example.test", 80)
     assert proxy.normalized_origin("https://example.test:444") != proxy.normalized_origin(
         "https://example.test"
     )
@@ -526,7 +516,12 @@ def test_malformed_or_cross_site_sources_are_rejected(client, headers):
 
 def test_valid_referer_and_non_browser_client_follow_documented_policy(client):
     payload = {"username": "admin", "password": "correct horse battery staple"}
-    assert client.post("/api/auth/login", headers={"Referer": "http://testserver/"}, json=payload).status_code == 200
+    assert (
+        client.post(
+            "/api/auth/login", headers={"Referer": "http://testserver/"}, json=payload
+        ).status_code
+        == 200
+    )
     client.cookies.clear()
     assert client.post("/api/auth/login", json=payload).status_code == 200
 

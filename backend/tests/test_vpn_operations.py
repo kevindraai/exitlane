@@ -49,17 +49,13 @@ def test_conflicting_actions_are_rejected_with_current_operation(monkeypatch):
         ),
         (
             "location",
-            lambda: main.connect_vpn_country(
-                main.CountryConnect(country_code="NL"), request()
-            ),
+            lambda: main.connect_vpn_country(main.CountryConnect(country_code="NL"), request()),
         ),
         ("disconnect", lambda: main.disconnect_vpn(request())),
         ("latency", lambda: main.measure_vpn_country("NL")),
     ],
 )
-def test_all_vpn_mutations_claim_before_provider_preconditions(
-    monkeypatch, name, action
-):
+def test_all_vpn_mutations_claim_before_provider_preconditions(monkeypatch, name, action):
     calls = []
 
     async def unexpected_provider_call(*_args, **_kwargs):
@@ -272,7 +268,9 @@ def test_non_timeout_failure_never_restarts_daemon(monkeypatch):
     monkeypatch.setattr(main, "country_summary", lambda *_args, **_kwargs: {"name": "Nederland"})
     monkeypatch.setattr(main, "record_event", lambda *_args, **_kwargs: None)
 
-    result = asyncio.run(main.connect_vpn_country(main.CountryConnect(country_code="NL"), request()))
+    result = asyncio.run(
+        main.connect_vpn_country(main.CountryConnect(country_code="NL"), request())
+    )
 
     assert result["success"] is False
     assert result["vpn"]["connected"] is False
@@ -343,7 +341,9 @@ def test_timeout_recovers_and_retries_exactly_once(monkeypatch):
     )
     monkeypatch.setattr(main, "remember_country", lambda *_args: None)
 
-    result = asyncio.run(main.connect_vpn_country(main.CountryConnect(country_code="NL"), request()))
+    result = asyncio.run(
+        main.connect_vpn_country(main.CountryConnect(country_code="NL"), request())
+    )
 
     assert connects == [("NL", 40), ("NL", 40)]
     assert recoveries == [True]

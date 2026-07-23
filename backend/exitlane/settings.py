@@ -66,9 +66,7 @@ class GeneralSettingsUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     timezone: str | None = Field(default=None, min_length=1, max_length=128)
-    provider_refresh_interval_seconds: int | None = Field(
-        default=None, ge=2, le=300, strict=True
-    )
+    provider_refresh_interval_seconds: int | None = Field(default=None, ge=2, le=300, strict=True)
 
     @field_validator("timezone")
     @classmethod

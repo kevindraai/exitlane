@@ -60,9 +60,7 @@ def _configuration() -> NetworkSecurityConfig:
         if SESSION_COOKIE_POLICY != _INITIAL_COOKIE_POLICY
         else configured.secure_cookie_policy
     )
-    return NetworkSecurityConfig(
-        public_url, tuple(proxies), cookie_policy, configured.overrides
-    )
+    return NetworkSecurityConfig(public_url, tuple(proxies), cookie_policy, configured.overrides)
 
 
 def _trusted(
@@ -187,9 +185,7 @@ def deployment_status(request: Request) -> dict:
         "reverse_proxy": state.reverse_proxy,
         "direct_peer_trusted": state.direct_peer_trusted,
         "secure_cookie": state.secure_cookie,
-        "direct_peer": (
-            request.client.host if request.client else str(ipaddress.IPv4Address(0))
-        ),
+        "direct_peer": (request.client.host if request.client else str(ipaddress.IPv4Address(0))),
         "public_url": configuration.public_url or None,
         "trusted_proxies": list(str(network) for network in configuration.trusted_proxies),
         "secure_cookie_policy": configuration.secure_cookie_policy,

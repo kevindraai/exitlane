@@ -18,9 +18,15 @@ SETTING_INGRESS = "network.exitlane_killswitch.routed_ingress_interfaces"
 SETTING_LOCAL_ALLOWLIST = "network.exitlane_killswitch.local_allowlist"
 INTERFACE_RE = re.compile(r"^[A-Za-z0-9_.-]{1,15}$")
 SAFE_REASONS = {
-    "disabled", "tunnel_available", "tunnel_unavailable", "tunnel_interface_unknown",
-    "provider_unavailable", "firewall_unavailable", "firewall_apply_failed",
-    "firewall_rules_missing", "invalid_configuration",
+    "disabled",
+    "tunnel_available",
+    "tunnel_unavailable",
+    "tunnel_interface_unknown",
+    "provider_unavailable",
+    "firewall_unavailable",
+    "firewall_apply_failed",
+    "firewall_rules_missing",
+    "invalid_configuration",
 }
 
 
@@ -109,29 +115,55 @@ def generate_ruleset(
         f"  set protected_ingress {{ type ifname; elements = {{ {sources} }} }}",
     ]
     if v4_local:
-        lines.append(f"  set local_v4 {{ type ipv4_addr; flags interval; elements = {{ {v4_local} }} }}")
+        lines.append(
+            f"  set local_v4 {{ type ipv4_addr; flags interval; elements = {{ {v4_local} }} }}"
+        )
     if v6_local:
-        lines.append(f"  set local_v6 {{ type ipv6_addr; flags interval; elements = {{ {v6_local} }} }}")
-    lines.extend(["  chain forward {", "    type filter hook forward priority -150; policy accept;",
-                  '    ct state established,related accept comment "ExitLane return traffic"'])
+        lines.append(
+            f"  set local_v6 {{ type ipv6_addr; flags interval; elements = {{ {v6_local} }} }}"
+        )
+    lines.extend(
+        [
+            "  chain forward {",
+            "    type filter hook forward priority -150; policy accept;",
+            '    ct state established,related accept comment "ExitLane return traffic"',
+        ]
+    )
     if v4_local:
-        lines.append('    iifname @protected_ingress ip daddr @local_v4 accept comment "ExitLane local IPv4"')
+        lines.append(
+            '    iifname @protected_ingress ip daddr @local_v4 accept comment "ExitLane local IPv4"'
+        )
     if v6_local:
-        lines.append('    iifname @protected_ingress ip6 daddr @local_v6 accept comment "ExitLane local IPv6"')
+        lines.append(
+            '    iifname @protected_ingress ip6 daddr @local_v6 accept comment "ExitLane local IPv6"'
+        )
     if facts.available and facts.protected_egress and facts.interface:
         interface = _interface(facts.interface)
         if facts.supports_ipv4:
-            lines.append(f'    iifname @protected_ingress meta nfproto ipv4 oifname "{interface}" accept comment "ExitLane protected IPv4"')
+            lines.append(
+                f'    iifname @protected_ingress meta nfproto ipv4 oifname "{interface}" accept comment "ExitLane protected IPv4"'
+            )
         if facts.supports_ipv6:
-            lines.append(f'    iifname @protected_ingress meta nfproto ipv6 oifname "{interface}" accept comment "ExitLane protected IPv6"')
-    lines.extend([
-        '    iifname @protected_ingress udp dport 53 drop comment "ExitLane DNS leak guard"',
-        '    iifname @protected_ingress tcp dport 53 drop comment "ExitLane DNS leak guard"',
-        '    iifname @protected_ingress drop comment "ExitLane fail closed"', "  }",
-    ])
+            lines.append(
+                f'    iifname @protected_ingress meta nfproto ipv6 oifname "{interface}" accept comment "ExitLane protected IPv6"'
+            )
+    lines.extend(
+        [
+            '    iifname @protected_ingress udp dport 53 drop comment "ExitLane DNS leak guard"',
+            '    iifname @protected_ingress tcp dport 53 drop comment "ExitLane DNS leak guard"',
+            '    iifname @protected_ingress drop comment "ExitLane fail closed"',
+            "  }",
+        ]
+    )
     if facts.available and facts.protected_egress and facts.interface and facts.supports_ipv4:
-        lines.extend(["  chain postrouting {", "    type nat hook postrouting priority srcnat; policy accept;",
-                      f'    iifname @protected_ingress oifname "{_interface(facts.interface)}" masquerade comment "ExitLane client NAT"', "  }"])
+        lines.extend(
+            [
+                "  chain postrouting {",
+                "    type nat hook postrouting priority srcnat; policy accept;",
+                f'    iifname @protected_ingress oifname "{_interface(facts.interface)}" masquerade comment "ExitLane client NAT"',
+                "  }",
+            ]
+        )
     lines.append("}")
     return "\n".join(lines) + "\n"
 
@@ -145,13 +177,16 @@ class NftBackend:
         return rc == 0
 
     async def snapshot(self) -> str | None:
-        rc, output, _ = await self.runner("nft", "list", "table", TABLE_FAMILY, TABLE_NAME, timeout=10)
+        rc, output, _ = await self.runner(
+            "nft", "list", "table", TABLE_FAMILY, TABLE_NAME, timeout=10
+        )
         return output + "\n" if rc == 0 else None
 
     async def _load(self, ruleset: str, *, check: bool) -> None:
         core.DATA.mkdir(parents=True, exist_ok=True, mode=0o700)
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", prefix=".killswitch-",
-                                         dir=core.DATA, delete=False) as handle:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", prefix=".killswitch-", dir=core.DATA, delete=False
+        ) as handle:
             os.fchmod(handle.fileno(), 0o600)
             handle.write(ruleset)
             path = Path(handle.name)
@@ -194,8 +229,14 @@ async def status(facts: TunnelFacts, backend: NftBackend | None = None) -> Kills
     configured = bool(core.setting(SETTING_CONFIGURED, False))
     ingress, local = configuration()
     installed = await (backend or NftBackend()).installed()
-    protected = bool(configured and installed and facts.available and facts.protected_egress
-                     and facts.interface and facts.supports_ipv4)
+    protected = bool(
+        configured
+        and installed
+        and facts.available
+        and facts.protected_egress
+        and facts.interface
+        and facts.supports_ipv4
+    )
     if not configured:
         state, reason, effective = "disabled", "disabled", False
     elif not installed:
@@ -206,10 +247,20 @@ async def status(facts: TunnelFacts, backend: NftBackend | None = None) -> Kills
         state, reason, effective = "enabled_degraded", "tunnel_interface_unknown", True
     else:
         state, reason, effective = "enabled_waiting_for_tunnel", facts.reason, True
-    return KillswitchStatus(configured, effective, state,
-                            reason if reason in SAFE_REASONS else "tunnel_unavailable",
-                            facts.available, facts.interface is not None, installed, protected,
-                            bool(protected and facts.supports_ipv6), ingress, local, _transition())
+    return KillswitchStatus(
+        configured,
+        effective,
+        state,
+        reason if reason in SAFE_REASONS else "tunnel_unavailable",
+        facts.available,
+        facts.interface is not None,
+        installed,
+        protected,
+        bool(protected and facts.supports_ipv6),
+        ingress,
+        local,
+        _transition(),
+    )
 
 
 async def enable(facts: TunnelFacts, backend: NftBackend | None = None) -> KillswitchStatus:

@@ -78,16 +78,17 @@ def test_mfa_enrollment_recovery_login_and_digest_only_storage(client):
     first_factor = login(client)
     assert first_factor.json() == {"authenticated": False, "mfa_required": True}
     assert client.get("/api/settings").status_code == 401
-    recovered = client.post(
-        "/api/auth/mfa", json={"code": recovery_codes[0], "mode": "recovery"}
-    )
+    recovered = client.post("/api/auth/mfa", json={"code": recovery_codes[0], "mode": "recovery"})
     assert recovered.status_code == 200
     assert recovered.json()["recovery_code_used"] is True
     client.post("/api/auth/logout")
     login(client)
-    assert client.post(
-        "/api/auth/mfa", json={"code": recovery_codes[0], "mode": "recovery"}
-    ).status_code == 401
+    assert (
+        client.post(
+            "/api/auth/mfa", json={"code": recovery_codes[0], "mode": "recovery"}
+        ).status_code
+        == 401
+    )
 
 
 def test_pending_enrollment_cancel_and_disable_remove_all_mfa_material(client):

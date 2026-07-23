@@ -45,9 +45,7 @@ class NetworkSecurityConfig:
             "public_url": self.public_url,
             "trusted_proxies": [str(network) for network in self.trusted_proxies],
             "secure_cookie_policy": self.secure_cookie_policy,
-            "environment_overrides": {
-                field: field in self.overrides for field in ENVIRONMENT_KEYS
-            },
+            "environment_overrides": {field: field in self.overrides for field in ENVIRONMENT_KEYS},
         }
 
 
@@ -199,7 +197,9 @@ def update_config(
             "trusted_proxies": TRUSTED_PROXIES_KEY,
             "secure_cookie_policy": COOKIE_POLICY_KEY,
         }.items()
-        if core.setting(key, "" if field == "public_url" else [] if field == "trusted_proxies" else "auto")
+        if core.setting(
+            key, "" if field == "public_url" else [] if field == "trusted_proxies" else "auto"
+        )
         != values[key]
         and field not in current.overrides
     ]

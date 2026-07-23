@@ -75,16 +75,16 @@ def test_rules_cover_ipv4_ipv6_dns_management_and_provider_control():
 def test_unknown_tunnel_is_fail_closed_and_effective():
     runner = FakeNft()
     result = asyncio.run(
-            killswitch.enable(
-                facts(
-                    available=False,
-                    interface=None,
-                    supports_ipv4=False,
-                    protected_egress=False,
-                    reason="tunnel_interface_unknown",
-                ),
-                killswitch.NftBackend(runner),
-            )
+        killswitch.enable(
+            facts(
+                available=False,
+                interface=None,
+                supports_ipv4=False,
+                protected_egress=False,
+                reason="tunnel_interface_unknown",
+            ),
+            killswitch.NftBackend(runner),
+        )
     )
     assert result.configured and result.effective
     assert result.state == "enabled_degraded"

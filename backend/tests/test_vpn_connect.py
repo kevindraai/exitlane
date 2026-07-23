@@ -65,7 +65,9 @@ def test_success_requires_status_and_reports_actual_server(monkeypatch):
         },
     )
 
-    result = asyncio.run(main.connect_vpn_country(main.CountryConnect(country_code="NL"), request()))
+    result = asyncio.run(
+        main.connect_vpn_country(main.CountryConnect(country_code="NL"), request())
+    )
 
     assert calls == ["NL", "remember:NL"]
     assert result["success"] is True
@@ -89,7 +91,9 @@ def test_exit_zero_without_connected_status_is_failure(monkeypatch):
         },
     )
 
-    result = asyncio.run(main.connect_vpn_country(main.CountryConnect(country_code="NL"), request()))
+    result = asyncio.run(
+        main.connect_vpn_country(main.CountryConnect(country_code="NL"), request())
+    )
 
     assert calls == ["NL"]
     assert result["success"] is False

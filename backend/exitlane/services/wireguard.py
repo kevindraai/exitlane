@@ -74,9 +74,7 @@ def _value(configuration: str, key: str, *, section: str) -> str | None:
 
 
 async def _public_key(private_key: str) -> str:
-    rc, public_key, _error = await command(
-        "wg", "pubkey", input_text=private_key + "\n", timeout=5
-    )
+    rc, public_key, _error = await command("wg", "pubkey", input_text=private_key + "\n", timeout=5)
     if rc != 0 or not public_key.strip():
         raise WireGuardConfigurationError("wireguard_configuration_invalid")
     return public_key.strip()
@@ -125,7 +123,9 @@ async def parameters_from_current(interface: str, client: str) -> dict:
     dns = _value(client_config, "DNS", section="Interface")
     allowed_ips = _value(client_config, "AllowedIPs", section="Peer")
     keepalive = _value(client_config, "PersistentKeepalive", section="Peer")
-    vpn_match = re.search(r"^PostUp\s*=.*\s-o\s+([A-Za-z0-9_.-]{1,15})\s", server_config, re.MULTILINE)
+    vpn_match = re.search(
+        r"^PostUp\s*=.*\s-o\s+([A-Za-z0-9_.-]{1,15})\s", server_config, re.MULTILINE
+    )
     try:
         subnet = str(ipaddress.ip_interface(server_address or "").network)
         port = int(port_value)

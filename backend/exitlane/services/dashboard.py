@@ -88,7 +88,9 @@ def determine_health(
     now = now or utc_now()
     warnings: list[str] = []
     errors: list[str] = []
-    unavailable_sources = int(not vpn.available) + int(not wireguard.available) + int(not system.available)
+    unavailable_sources = (
+        int(not vpn.available) + int(not wireguard.available) + int(not system.available)
+    )
 
     if unavailable_sources >= 2:
         errors.append("multiple_status_sources_unavailable")
@@ -132,7 +134,9 @@ def determine_health(
 
 def _read_cpu_ticks() -> tuple[int, int] | None:
     try:
-        values = [int(value) for value in Path("/proc/stat").read_text().splitlines()[0].split()[1:]]
+        values = [
+            int(value) for value in Path("/proc/stat").read_text().splitlines()[0].split()[1:]
+        ]
     except (OSError, ValueError, IndexError):
         return None
     idle = values[3] + (values[4] if len(values) > 4 else 0)

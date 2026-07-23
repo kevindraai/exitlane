@@ -34,7 +34,10 @@ def reset_password(
         actor = reset_administrator_password(first)
     except CredentialError as error:
         if error.code == "password_policy":
-            print("The supplied value does not meet the configured credential policy.", file=sys.stderr)
+            print(
+                "The supplied value does not meet the configured credential policy.",
+                file=sys.stderr,
+            )
         elif error.code == "administrator_unavailable":
             print("Exactly one local administrator is required.", file=sys.stderr)
         else:
@@ -179,9 +182,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="reset database network security settings and revoke every session",
     )
     subcommands.add_parser("killswitch-status", help="show the ExitLane killswitch status")
-    subcommands.add_parser(
-        "disable-killswitch", help="remove only the ExitLane killswitch rules"
-    )
+    subcommands.add_parser("disable-killswitch", help="remove only the ExitLane killswitch rules")
     subcommands.add_parser("restore-killswitch", help=argparse.SUPPRESS)
     arguments = parser.parse_args(argv)
     if arguments.command == "reset-password":
