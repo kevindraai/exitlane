@@ -107,6 +107,13 @@ export function showView(
 
 export const setActiveView = showView;
 
+export function navigationTarget(button) {
+  return {
+    view: button.dataset.view,
+    section: button.dataset.settingsSection || null,
+  };
+}
+
 export function showProviderView(providerId, options = {}) {
   const state = transitionApplication(
     { activeView: "vpn-provider", providerId },
@@ -155,10 +162,7 @@ export function initialiseNavigation() {
     return;
   }
   initialised = true;
-  renderSettingsNavigation(
-    document.querySelector("#settings-navigation-items"),
-    (section) => showView("settings", { section }),
-  );
+  renderSettingsNavigation(document.querySelector("#settings-navigation-items"));
   const settingsToggle = document.querySelector("#settings-navigation-toggle");
   settingsToggle.addEventListener("click", () => {
     settingsGroupManuallyExpanded = settingsToggle.getAttribute("aria-expanded") !== "true";
@@ -166,7 +170,10 @@ export function initialiseNavigation() {
   });
   document.querySelectorAll("[data-view]").forEach((button) => {
     button.disabled = false;
-    button.addEventListener("click", () => showView(button.dataset.view));
+    button.addEventListener("click", () => {
+      const target = navigationTarget(button);
+      showView(target.view, { section: target.section });
+    });
   });
   document.querySelectorAll("[data-open-view]").forEach((button) => {
     button.addEventListener("click", () => showView(button.dataset.openView, {

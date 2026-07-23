@@ -18,7 +18,7 @@ export function validSettingsSection(id) {
   return availableSettingsSections().some((section) => section.id === id);
 }
 
-export function renderSettingsNavigation(container, onSelect) {
+export function renderSettingsNavigation(container) {
   container.replaceChildren(...availableSettingsSections().map((section) => {
     const button = document.createElement("button");
     button.type = "button";
@@ -33,7 +33,6 @@ export function renderSettingsNavigation(container, onSelect) {
     label.dataset.i18n = section.labelKey;
     label.textContent = t(section.labelKey, {}, section.id);
     button.append(icon, label);
-    button.addEventListener("click", () => onSelect(section.id));
     return button;
   }));
 }

@@ -6,6 +6,7 @@ import {
   availableSettingsSections,
   validSettingsSection,
 } from "../backend/exitlane/static/js/settings-navigation.js";
+import { navigationTarget } from "../backend/exitlane/static/js/navigation.js";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
@@ -25,6 +26,19 @@ test("Settings registry is ordered, allowlisted, and hides unfinished sections",
     && Number.isInteger(item.order)));
 });
 
+test("every Settings submenu entry retains its registered route target", () => {
+  for (const { id } of availableSettingsSections()) {
+    assert.deepEqual(
+      navigationTarget({ dataset: { view: "settings", settingsSection: id } }),
+      { view: "settings", section: id },
+    );
+  }
+  assert.deepEqual(
+    navigationTarget({ dataset: { view: "dashboard" } }),
+    { view: "dashboard", section: null },
+  );
+});
+
 test("Settings is an accessible independent sidebar group without standalone Security", async () => {
   const sidebar = await read("../backend/exitlane/static/partials/sidebar.html");
   assert.match(sidebar, /aria-controls="settings-navigation-items"/);
@@ -35,7 +49,10 @@ test("Settings is an accessible independent sidebar group without standalone Sec
 });
 
 test("Settings routes default, deep-link, preserve history, and redirect legacy Security", async () => {
-  const source = await read("../backend/exitlane/static/js/navigation.js");
+  const [source, styles] = await Promise.all([
+    read("../backend/exitlane/static/js/navigation.js"),
+    read("../backend/exitlane/static/style.css"),
+  ]);
   assert.match(source, /const DEFAULT_SETTINGS_SECTION = "general"/);
   assert.match(source, /parts\[0\] === "security"/);
   assert.match(source, /section: "security"/);
@@ -43,6 +60,17 @@ test("Settings routes default, deep-link, preserve history, and redirect legacy 
   assert.match(source, /`#settings\/\$\{state\.settingsSection\}`/);
   assert.match(source, /window\.addEventListener\("popstate"/);
   assert.match(source, /settingsActive \|\| settingsGroupManuallyExpanded/);
+  assert.match(source, /showView\(target\.view, \{ section: target\.section \}\)/);
+  assert.match(source, /button\.setAttribute\("aria-current", "page"\)/);
+  assert.match(source, /button\.removeAttribute\("aria-current"\)/);
+  assert.match(styles, /@media \(max-width: 900px\)[\s\S]+\.sidebar[\s\S]+flex-direction: column/);
+});
+
+test("submenu controls retain native button keyboard semantics", async () => {
+  const source = await read("../backend/exitlane/static/js/settings-navigation.js");
+  assert.match(source, /document\.createElement\("button"\)/);
+  assert.match(source, /button\.type = "button"/);
+  assert.doesNotMatch(source, /tabindex|keydown|preventDefault/);
 });
 
 test("Settings pages contain the existing functionality exactly once", async () => {
