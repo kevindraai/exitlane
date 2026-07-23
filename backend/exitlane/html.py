@@ -15,6 +15,7 @@ PARTIALS = {
     "wizard/wireguard": "partials/wizard/wireguard.html",
     "wizard/finish": "partials/wizard/finish.html",
     "views/dashboard": "partials/views/dashboard.html",
+    "views/vpn-overview": "partials/views/vpn-overview.html",
     "views/vpn": "partials/views/vpn.html",
     "views/wireguard": "partials/views/wireguard.html",
     "views/activity": "partials/views/activity.html",

@@ -58,6 +58,7 @@ import { createApplicationLifecycle } from "./lifecycle.js";
 import { runColdStart } from "./startup.js";
 import { getSlice, subscribe } from "./state.js";
 import { initialiseActivity } from "./activity.js";
+import { initialiseProviders, loadProviders } from "./providers.js";
 
 let apiState = "checking";
 const dashboardIsActive = () =>
@@ -142,6 +143,7 @@ async function refreshApplication() {
     },
     startDashboard: async () => {
       await loadPublicConfig();
+      await loadProviders();
       if (!select("#view-settings").hidden) await loadSettings({ force: true });
       try {
         await refreshProvider();
@@ -174,6 +176,7 @@ async function initialise() {
     initialiseDashboard();
     initialiseActivity();
     initialiseNavigation();
+    initialiseProviders();
     initialiseProviderControls();
     initialiseProviderState();
     initialiseWireGuardControls();

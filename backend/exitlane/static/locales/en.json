@@ -186,6 +186,7 @@
     "not_ready": "Not ready"
   },
   "common": {
+    "cancel": "Cancel",
     "next": "Next",
     "back": "Back",
     "copy": "Copy",
@@ -226,6 +227,14 @@
     "description": "NordVPN is the first provider implementation. Exitlane keeps the underlying architecture provider-independent."
   },
   "provider": {
+    "management": {
+      "authentication_eyebrow": "AUTHENTICATION", "authentication_title": "Provider authentication",
+      "token": "Access token", "token_hidden": "The token is only used for local provider sign-in and is never displayed.",
+      "sign_in": "Sign in with token", "signed_in_limitation": "This provider is signed in. End the current session before supplying another token.",
+      "sign_out_warning": "Ending the provider session also ends its active VPN tunnel.", "end_session": "End current session",
+      "confirm_title": "End provider session?", "confirm_description": "The provider session and active VPN connection will end.",
+      "confirm_end_session": "End session"
+    },
     "not_checked": "Linux client has not been checked yet.",
     "install": "Install",
     "installing_title": "Install NordVPN",
@@ -433,11 +442,13 @@
   "nav": {
     "dashboard": "Dashboard",
     "vpn": "VPN",
+    "vpn_overview": "Overview",
     "wireguard": "WireGuard",
     "activity": "Activity",
     "security": "Security",
     "settings": "Settings"
   },
+  "vpn": { "overview": { "eyebrow": "VPN", "title": "VPN overview", "description": "View the active VPN provider and its current state." } },
   "activity": {
     "eyebrow": "ACTIVITY", "title": "Activity", "description": "Important events recorded by Exitlane.",
     "filters": { "category": "Category", "level": "Level", "all": "All" },

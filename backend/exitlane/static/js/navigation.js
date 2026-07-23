@@ -14,7 +14,8 @@ export function normaliseApplicationState(application, root = document) {
   const activeView = validView(application.activeView, root)
     ? application.activeView
     : DEFAULT_VIEW;
-  return { ...application, mode, activeView };
+  const providerId = typeof application.providerId === "string" ? application.providerId : null;
+  return { ...application, mode, activeView, providerId };
 }
 
 export function renderApplicationState(application, root = document, auth = getSlice("auth")) {
@@ -35,7 +36,8 @@ export function renderApplicationState(application, root = document, auth = getS
     panel.hidden = !dashboardMode || panel.dataset.viewPanel !== state.activeView;
   });
   root.querySelectorAll("[data-view]").forEach((button) => {
-    const active = button.dataset.view === state.activeView;
+    const active = button.dataset.view === state.activeView
+      && (!button.dataset.providerId || button.dataset.providerId === state.providerId);
     button.classList.toggle("active", active);
     if (active) button.setAttribute("aria-current", "page");
     else button.removeAttribute("aria-current");
@@ -57,15 +59,6 @@ export function setApplicationMode(mode) {
   window.dispatchEvent(new CustomEvent("exitlane:modechange", { detail: { mode: state.mode } }));
 }
 
-function focusViewSection(name, section, root = document) {
-  if (name !== "settings" || section !== "vpn") return;
-  const heading = root.querySelector("#settings-vpn h2");
-  if (!heading) return;
-  heading.setAttribute("tabindex", "-1");
-  heading.focus({ preventScroll: true });
-  root.querySelector("#settings-vpn").scrollIntoView({ block: "start" });
-}
-
 export function showView(
   name,
   { persist = true, section = null, historyMode = "push" } = {},
@@ -76,11 +69,38 @@ export function showView(
   if (window.location.hash !== route && historyMode !== "none") {
     window.history[historyMode === "replace" ? "replaceState" : "pushState"](null, "", route);
   }
-  if (section) focusViewSection(state.activeView, section);
   return state;
 }
 
 export const setActiveView = showView;
+
+export function showProviderView(providerId, options = {}) {
+  const state = transitionApplication(
+    { activeView: "vpn-provider", providerId },
+    { persistView: options.persist !== false },
+  );
+  window.dispatchEvent(new CustomEvent("exitlane:viewchange", {
+    detail: { view: state.activeView, providerId },
+  }));
+  const route = `#vpn/provider/${encodeURIComponent(providerId)}`;
+  if (window.location.hash !== route && options.historyMode !== "none") {
+    window.history[options.historyMode === "replace" ? "replaceState" : "pushState"](
+      null, "", route,
+    );
+  }
+  return state;
+}
+
+function applyRoute({ historyMode = "none", persist = false } = {}) {
+  const parts = window.location.hash.replace(/^#/, "").split("/");
+  if (parts[0] === "vpn" && parts[1] === "provider" && parts[2]) {
+    return showProviderView(decodeURIComponent(parts[2]), { historyMode, persist });
+  }
+  const view = validView(parts[0], document)
+    ? parts[0]
+    : localStorage.getItem(STORAGE_KEY) || getSlice("application").activeView;
+  return showView(view, { persist, historyMode });
+}
 
 export function initialiseNavigation() {
   if (initialised) {
@@ -97,14 +117,6 @@ export function initialiseNavigation() {
       section: button.dataset.openSection || null,
     }));
   });
-  window.addEventListener("popstate", () => {
-    const [view, section] = window.location.hash.replace(/^#/, "").split("/");
-    showView(view, { section: section || null, historyMode: "none" });
-  });
-  const [routeView, routeSection] = window.location.hash.replace(/^#/, "").split("/");
-  showView(validView(routeView, document) ? routeView : localStorage.getItem(STORAGE_KEY) || getSlice("application").activeView, {
-    persist: false,
-    section: routeSection || null,
-    historyMode: "replace",
-  });
+  window.addEventListener("popstate", () => applyRoute());
+  applyRoute({ historyMode: "replace" });
 }

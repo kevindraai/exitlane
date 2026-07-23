@@ -9,29 +9,33 @@ import { providerManagementView } from "../backend/exitlane/static/js/provider-m
 
 const sourceUrl = new URL("../backend/exitlane/static/js/settings.js", import.meta.url);
 const markupUrl = new URL("../backend/exitlane/static/partials/views/settings.html", import.meta.url);
+const providerSourceUrl = new URL("../backend/exitlane/static/js/providers.js", import.meta.url);
+const providerMarkupUrl = new URL("../backend/exitlane/static/partials/views/vpn.html", import.meta.url);
 const englishUrl = new URL("../backend/exitlane/static/locales/en.json", import.meta.url);
 const dutchUrl = new URL("../backend/exitlane/static/locales/nl.json", import.meta.url);
 
 test("credential forms use protected APIs and always clear secret fields", async () => {
   const source = await readFile(sourceUrl, "utf8");
+  const providerSource = await readFile(providerSourceUrl, "utf8");
   assert.match(source, /api\("\/api\/auth\/password"/);
-  assert.match(source, /api\("\/api\/providers\/nordvpn\/token"/);
+  assert.match(providerSource, /\/api\/vpn\/providers\/\$\{encodeURIComponent\(providerId\)\}\/authenticate/);
   assert.match(source, /finally \{\s*clearSecretFields\(\.\.\.fields\)/);
-  assert.match(source, /finally \{\s*field\.value = ""/);
+  assert.match(providerSource, /finally \{\s*field\.value = ""/);
   assert.match(source, /setBusy\(button, true/);
   assert.match(source, /setBusy\(button, false/);
 });
 
-test("settings exposes functional sections without duplicating WireGuard controls", async () => {
+test("settings contains application settings but no provider or WireGuard management cards", async () => {
   const markup = await readFile(markupUrl, "utf8");
-  for (const section of ["settings-authentication", "settings-vpn", "settings-wireguard", "settings-network"]) {
+  for (const section of ["settings-authentication", "settings-network"]) {
     assert.match(markup, new RegExp(`id="${section}"`));
   }
-  assert.match(markup, /data-open-view="wireguard"/);
+  assert.doesNotMatch(markup, /id="settings-vpn"/);
+  assert.doesNotMatch(markup, /id="settings-wireguard"/);
   assert.doesNotMatch(markup, /\/api\/ingress\/wireguard\/config\/regenerate/);
   assert.match(markup, /autocomplete="current-password"/);
   assert.match(markup, /autocomplete="new-password"/);
-  assert.match(markup, /id="settings-nordvpn-token"[^>]+type="password"/);
+  assert.doesNotMatch(markup, /NordVPN|provider-token/i);
 });
 
 test("password status is a stable full-width region outside the field grid", async () => {
@@ -178,38 +182,36 @@ test("provider management keeps authentication and tunnel state distinct", () =>
   assert.equal(olderUnknown.canManageKillswitch, false);
 });
 
-test("NordVPN card has state regions and no killswitch control", async () => {
-  const markup = await readFile(markupUrl, "utf8");
-  const source = await readFile(sourceUrl, "utf8");
-  assert.match(markup, /<div hidden="" id="settings-provider-signed-in"/);
-  assert.match(markup, /id="settings-token-form"/);
-  assert.match(markup, /<div hidden="" id="settings-provider-unavailable"/);
-  assert.match(markup, /id="settings-provider-end-session"/);
+test("provider page has state regions and no killswitch control", async () => {
+  const markup = await readFile(providerMarkupUrl, "utf8");
+  const source = await readFile(providerSourceUrl, "utf8");
+  assert.match(markup, /<div hidden="" id="provider-signed-in"/);
+  assert.match(markup, /id="provider-token-form"/);
+  assert.match(markup, /<div hidden="" id="provider-unavailable"/);
+  assert.match(markup, /id="provider-end-session"/);
   assert.doesNotMatch(markup, /killswitch/i);
   const statusRegion = markup.indexOf('class="provider-management-status-region"');
-  const signedInRegion = markup.indexOf('id="settings-provider-signed-in"');
-  const tokenForm = markup.indexOf('id="settings-token-form"');
+  const signedInRegion = markup.indexOf('id="provider-signed-in"');
+  const tokenForm = markup.indexOf('id="provider-token-form"');
   assert.ok(statusRegion > -1 && statusRegion < signedInRegion && signedInRegion < tokenForm);
-  assert.match(source, /settings-provider-signed-in"\)\.hidden = !signedIn/);
-  assert.match(source, /settings-token-form"\)\.hidden = !\(signedOut && view\.canSignIn\)/);
-  assert.match(source, /settings-provider-unavailable"\)\.hidden = !unavailable/);
-  assert.match(source, /settings-provider-end-session"\)\.hidden = !view\.canSignOut/);
+  assert.match(source, /provider-signed-in"\)\.hidden = !signedIn/);
+  assert.match(source, /provider-token-form"\)\.hidden = !\(signedOut && view\.canSignIn\)/);
+  assert.match(source, /provider-end-session"\)\.hidden = !view\.canSignOut/);
 });
 
 test("session ending uses an accessible confirmed single-flight mutation", async () => {
-  const markup = await readFile(markupUrl, "utf8");
-  const source = await readFile(sourceUrl, "utf8");
-  assert.match(markup, /<dialog[^>]+aria-describedby="settings-provider-sign-out-description"[^>]+aria-labelledby="settings-provider-sign-out-title"/);
-  assert.match(markup, /class="button button-danger"[^>]+id="settings-provider-sign-out-confirm"/);
-  assert.equal(source.match(/api\("\/api\/providers\/nordvpn\/session\/end"/g)?.length, 1);
+  const markup = await readFile(providerMarkupUrl, "utf8");
+  const source = await readFile(providerSourceUrl, "utf8");
+  assert.match(markup, /<dialog[^>]+aria-describedby="provider-sign-out-description"[^>]+aria-labelledby="provider-sign-out-title"/);
+  assert.match(markup, /class="button button-danger"[^>]+id="provider-sign-out-confirm"/);
+  assert.match(source, /\/api\/vpn\/providers\/\$\{encodeURIComponent\(id\)\}\/sign-out/);
   assert.match(source, /if \(signingOut\) return/);
-  assert.match(source, /if \(!signingOut\) select\("#settings-provider-sign-out-dialog"\)\.close\(\)/);
-  assert.match(source, /authenticationState !== "signed_out"/);
+  assert.match(source, /if \(!signingOut\) select\("#provider-sign-out-dialog"\)\.close\(\)/);
   assert.match(source, /finally \{\s*signingOut = false;\s*setBusy\(button, false\)/);
 });
 
 test("token sign-in refreshes provider state and always clears the token", async () => {
-  const source = await readFile(sourceUrl, "utf8");
-  assert.match(source, /api\("\/api\/providers\/nordvpn\/token"[\s\S]+await refreshProviderState/);
+  const source = await readFile(providerSourceUrl, "utf8");
+  assert.match(source, /\/authenticate`[\s\S]+refreshProviderState/);
   assert.match(source, /finally \{\s*field\.value = ""/);
 });

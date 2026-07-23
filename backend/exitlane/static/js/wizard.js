@@ -93,6 +93,7 @@ function updateApplicationMode(setup) {
 export function renderSetupState(setup) {
   appState.setup = setup;
   updateApplicationMode(setup);
+  renderWizardProviders(setup);
 
   selectAll("#wizard-steps button").forEach((button) => {
     const number = Number(button.dataset.step);
@@ -118,6 +119,25 @@ export function renderSetupState(setup) {
     : Number(setup.current_step || 1);
 
   showStep(requestedStep, { force: true });
+}
+
+function renderWizardProviders(setup) {
+  const providers = setup.providers || [];
+  const selectedId = setup.selected_provider_id || providers[0]?.id;
+  const container = select("#wizard-provider-choices");
+  container.replaceChildren();
+  for (const provider of providers) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "provider-choice";
+    item.dataset.providerId = provider.id;
+    item.setAttribute("aria-pressed", String(provider.id === selectedId));
+    item.disabled = provider.id !== selectedId;
+    item.textContent = provider.display_name;
+    container.append(item);
+  }
+  const selected = providers.find((provider) => provider.id === selectedId);
+  if (selected) select("#wizard-provider-name").textContent = selected.display_name;
 }
 
 function renderCompletionChecks(setup) {

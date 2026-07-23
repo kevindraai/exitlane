@@ -64,7 +64,14 @@ async function refreshSlice(name, path, selectData = (value) => value, options =
   }
 }
 
-export const refreshProviderState = (options) => refreshSlice("provider", "/api/vpn/status", undefined, options);
+export const refreshProviderState = (options) => {
+  const providerId = getSlice("application").providerId
+    || getSlice("providers").data?.activeProviderId;
+  const path = providerId
+    ? `/api/vpn/providers/${encodeURIComponent(providerId)}/status`
+    : "/api/vpn/status";
+  return refreshSlice("provider", path, (response) => response.status || response, options);
+};
 export const refreshWireGuardState = (options) => refreshSlice("wireguard", "/api/ingress/wireguard/status", undefined, options);
 export async function refreshDashboardState(options) {
   const data = await refreshSlice("dashboard", "/api/dashboard", undefined, options);
@@ -76,13 +83,13 @@ export async function refreshDashboardState(options) {
 
 export function createApplicationLifecycle({ intervalSeconds, application = () => getSlice("application") } = {}) {
   const active = (...views) => application().mode === "dashboard" && views.includes(application().activeView);
-  const provider = createDomainPoller({ refresh: refreshProviderState, isActive: () => active("vpn"), intervalSeconds });
+  const provider = createDomainPoller({ refresh: refreshProviderState, isActive: () => active("vpn-provider"), intervalSeconds });
   const wireguard = createDomainPoller({ refresh: refreshWireGuardState, isActive: () => active("wireguard"), intervalSeconds });
   const dashboard = createDomainPoller({ refresh: refreshDashboardState, isActive: () => active("dashboard"), intervalSeconds });
   const activity = createDomainPoller({ refresh: refreshActivity, isActive: () => active("activity"), intervalSeconds: Math.max(intervalSeconds || 15, 15) });
   const sync = () => {
     for (const poller of [provider, wireguard, dashboard, activity]) poller.start({ immediate: true });
-    if (!active("vpn")) provider.stop();
+    if (!active("vpn-provider")) provider.stop();
     if (!active("wireguard")) wireguard.stop();
     if (!active("dashboard")) dashboard.stop();
     if (!active("activity")) activity.stop();

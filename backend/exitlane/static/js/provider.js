@@ -1,7 +1,6 @@
 import { api, postJson } from "./api.js";
 import { appState, getSlice, subscribe, succeedRefresh, updateSlice } from "./state.js";
 import { refreshProviderState } from "./lifecycle.js";
-import { showView } from "./navigation.js";
 import { vpnProviderAccess } from "./provider-management.js";
 import {
   clearInlineError,
@@ -58,6 +57,13 @@ export function renderProviderStatus(status) {
   )) {
     void activateAuthenticatedProviderData();
   }
+}
+
+function providerApiPath(suffix = "") {
+  const providerId = getSlice("application").providerId
+    || getSlice("providers").data?.activeProviderId
+    || "nordvpn";
+  return `/api/vpn/providers/${encodeURIComponent(providerId)}${suffix}`;
 }
 
 function renderVpnProviderAccess(status) {
@@ -147,7 +153,7 @@ let countriesLoaded = false;
 
 export function shouldLoadAuthenticatedProviderData(application, auth, providerSlice) {
   return application.mode === "dashboard"
-    && application.activeView === "vpn"
+    && application.activeView === "vpn-provider"
     && auth.data?.authenticated === true
     && vpnProviderAccess(providerSlice?.data || {}).state === "signed_in"
     && vpnProviderAccess(providerSlice?.data || {}).canSelectLocation;
@@ -232,7 +238,7 @@ function renderCountries() {
 }
 
 async function refreshCountries({ signal } = {}) {
-  const result = await api("/api/vpn/countries", { deduplicate: false, signal });
+  const result = await api(providerApiPath("/locations"), { deduplicate: false, signal });
   vpnCountries = result.countries || [];
   quickCountryCodes = result.quick_country_codes || [];
   if (result.vpn) succeedRefresh("provider", result.vpn);
@@ -376,7 +382,7 @@ async function connectCountry(countryCode, button) {
   updateSlice("providerAction", { state: "connecting", target: countryCode, error: null });
   startActionPolling();
   try {
-    const result = await postJson("/api/vpn/connect", { country_code: countryCode }, { timeoutMilliseconds: 130000 });
+    const result = await postJson(providerApiPath("/location"), { country_code: countryCode }, { timeoutMilliseconds: 130000 });
     applyVpnSnapshot(result.vpn);
     if (!result.success) {
       const error = new Error(result.error || "connect_failed");
@@ -405,7 +411,7 @@ async function remeasureCountries() {
   const button = select("#remeasure-countries");
   setBusy(button, true, t("provider.country_selection.measuring", {}, "Measuring…"));
   try {
-    await Promise.all(quickCountryCodes.map((code) => postJson(`/api/vpn/countries/${code}/measure`)));
+    await Promise.all(quickCountryCodes.map((code) => postJson(providerApiPath(`/locations/${code}/measure`))));
     await refreshCountries();
   } catch {
     showMessage(t("provider.country_selection.measure_failed", {}, "Not all latency values could be measured."), "error");
@@ -422,7 +428,7 @@ async function measureMissingCountries({ signal } = {}) {
   if (!missing.length) return;
   await Promise.allSettled(
     missing.map((code) => postJson(
-      `/api/vpn/countries/${code}/measure`,
+      providerApiPath(`/locations/${code}/measure`),
       undefined,
       { signal },
     )),
@@ -812,7 +818,7 @@ async function loginWithToken(event) {
 
   try {
     const result = await postJson(
-      "/api/providers/nordvpn/login/token",
+      providerApiPath("/authenticate"),
       { token: input.value },
     );
 
@@ -873,7 +879,7 @@ async function disconnectProvider() {
   setBusy(button, true, t("provider.action.disconnecting", {}, "Disconnecting…"));
   const progress = showMessage(t("provider.notifications.disconnecting", {}, "Disconnecting…"), "info", { id: "provider-action", duration: null });
   try {
-    const result = await postJson("/api/vpn/disconnect", undefined, { timeoutMilliseconds: 30000 });
+    const result = await postJson(providerApiPath("/disconnect"), undefined, { timeoutMilliseconds: 30000 });
     applyVpnSnapshot(result.vpn);
     if (!result.success || result.vpn?.connected) throw new Error("disconnect_failed");
     updateSlice("providerAction", { state: "idle", error: null });
@@ -923,7 +929,8 @@ export function initialiseProviderControls() {
   select("#reconnect-button").addEventListener("click", reconnectCountry);
   select("#remeasure-countries").addEventListener("click", remeasureCountries);
   select("#vpn-provider-open-settings").addEventListener("click", () => {
-    showView("settings", { section: "vpn" });
+    select("#provider-authentication-card").scrollIntoView({ block: "start" });
+    select("#provider-token")?.focus();
   });
   select("#vpn-provider-retry").addEventListener("click", () => {
     refreshProviderState({ deduplicate: false }).catch(() => {});

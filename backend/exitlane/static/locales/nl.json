@@ -186,6 +186,7 @@
     "minimum_length": "Minimaal {length} tekens."
   },
   "common": {
+    "cancel": "Annuleren",
     "next": "Volgende",
     "back": "Terug",
     "copy": "Kopiëren",
@@ -226,6 +227,14 @@
     "description": "NordVPN is de eerste providerimplementatie. Exitlane houdt de onderliggende architectuur provideronafhankelijk."
   },
   "provider": {
+    "management": {
+      "authentication_eyebrow": "AUTHENTICATIE", "authentication_title": "Providerauthenticatie",
+      "token": "Toegangstoken", "token_hidden": "Het token wordt alleen voor lokale provideraanmelding gebruikt en nooit getoond.",
+      "sign_in": "Aanmelden met token", "signed_in_limitation": "Deze provider is aangemeld. Beëindig de huidige sessie voordat je een ander token opgeeft.",
+      "sign_out_warning": "Het beëindigen van de providersessie verbreekt ook de actieve VPN-tunnel.", "end_session": "Huidige sessie beëindigen",
+      "confirm_title": "Providersessie beëindigen?", "confirm_description": "De providersessie en actieve VPN-verbinding worden beëindigd.",
+      "confirm_end_session": "Sessie beëindigen"
+    },
     "not_checked": "Linux-client nog niet gecontroleerd.",
     "install": "Installeren",
     "installing_title": "NordVPN installeren",
@@ -433,11 +442,13 @@
   "nav": {
     "dashboard": "Dashboard",
     "vpn": "VPN",
+    "vpn_overview": "Overzicht",
     "wireguard": "WireGuard",
     "activity": "Activiteit",
     "security": "Beveiliging",
     "settings": "Instellingen"
   },
+  "vpn": { "overview": { "eyebrow": "VPN", "title": "VPN-overzicht", "description": "Bekijk de actieve VPN-provider en de huidige status." } },
   "activity": {
     "eyebrow": "ACTIVITEIT", "title": "Activiteit", "description": "Belangrijke gebeurtenissen die Exitlane heeft vastgelegd.",
     "filters": { "category": "Categorie", "level": "Niveau", "all": "Alle" },

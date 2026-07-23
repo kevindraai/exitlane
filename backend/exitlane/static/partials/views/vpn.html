@@ -1,18 +1,54 @@
-      <section class="app-view" data-view-panel="vpn" hidden="" id="view-vpn">
+      <section class="app-view" data-view-panel="vpn-provider" hidden="" id="view-vpn">
        <div class="panel-heading compact">
         <div>
          <p class="eyebrow" data-i18n="dashboard.provider_status">
           PROVIDER STATUS
          </p>
-         <h2>
-          NordVPN
-         </h2>
+         <h1 id="vpn-provider-title"></h1>
+         <p class="lead" id="vpn-provider-description"></p>
         </div>
         <span class="status-pill status-neutral" data-i18n="common.loading_status" id="connection-state">
          Status ophalen&hellip;
         </span>
        </div>
        <p class="inline-error" hidden="" id="vpn-runtime-error"></p>
+       <section class="provider-authentication-card" id="provider-authentication-card">
+        <div class="panel-heading compact">
+         <div>
+          <p class="eyebrow" data-i18n="provider.management.authentication_eyebrow">AUTHENTICATION</p>
+          <h2 data-i18n="provider.management.authentication_title">Provider authentication</h2>
+         </div>
+        </div>
+        <div class="provider-management-status-region">
+         <span class="status-pill status-neutral" id="provider-authentication-state">Unknown</span>
+         <p id="provider-status-message"></p>
+        </div>
+        <p class="inline-error" hidden="" id="provider-management-error" role="alert"></p>
+        <div hidden="" id="provider-signed-in">
+         <p data-i18n="provider.management.signed_in_limitation">This provider is signed in. End the current session before supplying another token.</p>
+         <p class="sensitive-warning" data-i18n="provider.management.sign_out_warning">Ending the provider session also ends its active VPN tunnel.</p>
+         <button class="button button-danger" data-i18n="provider.management.end_session" id="provider-end-session" type="button">End current session</button>
+        </div>
+        <form class="form-grid" id="provider-token-form" method="post">
+         <p class="inline-error" hidden="" id="provider-token-error" role="alert"></p>
+         <label><span data-i18n="provider.management.token">Access token</span><input autocomplete="off" id="provider-token" minlength="20" required="" type="password"/><small data-i18n="provider.management.token_hidden">The token is used only for the local provider sign-in and is never displayed.</small></label>
+         <div class="form-submit"><button class="button button-primary" data-i18n="provider.management.sign_in" id="provider-token-save" type="submit">Sign in with token</button></div>
+        </form>
+        <div hidden="" id="provider-unavailable">
+         <button class="button button-secondary" data-i18n="provider.access.retry" id="provider-management-retry" type="button">Retry</button>
+        </div>
+        <dialog aria-describedby="provider-sign-out-description" aria-labelledby="provider-sign-out-title" id="provider-sign-out-dialog">
+         <form id="provider-sign-out-form" method="post">
+          <h2 data-i18n="provider.management.confirm_title" id="provider-sign-out-title">End provider session?</h2>
+          <p data-i18n="provider.management.confirm_description" id="provider-sign-out-description">The provider session and active VPN connection will end.</p>
+          <p class="inline-error" hidden="" id="provider-sign-out-error" role="alert"></p>
+          <div class="view-actions">
+           <button class="button button-secondary" data-i18n="common.cancel" id="provider-sign-out-cancel" type="button">Cancel</button>
+           <button class="button button-danger" data-i18n="provider.management.confirm_end_session" id="provider-sign-out-confirm" type="button">End session</button>
+          </div>
+         </form>
+        </dialog>
+       </section>
        <div class="vpn-management-stage" id="vpn-management-stage">
         <section aria-live="polite" class="vpn-provider-blocker" hidden="" id="vpn-provider-blocker" role="status">
          <div>

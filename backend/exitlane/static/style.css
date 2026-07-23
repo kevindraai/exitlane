@@ -1065,6 +1065,44 @@ pre {
   }
 }
 
+.sidebar-group,
+.sidebar-group-toggle,
+.sidebar-subnav,
+.sidebar-subnav > div {
+  width: 100%;
+}
+
+.sidebar-group-chevron {
+  margin-left: auto;
+}
+
+.sidebar-subitem {
+  padding-left: 2.6rem;
+}
+
+.provider-overview-list,
+.provider-choice-list {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.provider-overview-card,
+.provider-choice {
+  display: grid;
+  gap: 0.4rem;
+  color: inherit;
+  text-align: left;
+}
+
+.provider-authentication-card {
+  margin-bottom: 1.25rem;
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--panel);
+}
+
 .sensitive-warning {
   border-left: 3px solid var(--warning, #c98900);
   background: color-mix(in srgb, var(--warning, #c98900) 10%, transparent);

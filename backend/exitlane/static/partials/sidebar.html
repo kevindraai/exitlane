@@ -7,14 +7,19 @@
        Dashboard
       </span>
      </button>
-     <button class="sidebar-item" data-view="vpn" type="button">
-      <span aria-hidden="true">
-       🌍
-      </span>
-      <span data-i18n="nav.vpn">
-       VPN
-      </span>
-     </button>
+     <div class="sidebar-group" id="vpn-navigation-group">
+      <button aria-controls="vpn-navigation-items" aria-expanded="false" class="sidebar-item sidebar-group-toggle" id="vpn-navigation-toggle" type="button">
+       <span aria-hidden="true">🌍</span>
+       <span data-i18n="nav.vpn">VPN</span>
+       <span aria-hidden="true" class="sidebar-group-chevron">⌄</span>
+      </button>
+      <div class="sidebar-subnav" hidden="" id="vpn-navigation-items">
+       <button class="sidebar-item sidebar-subitem" data-view="vpn" type="button">
+        <span data-i18n="nav.vpn_overview">Overview</span>
+       </button>
+       <div id="vpn-provider-navigation"></div>
+      </div>
+     </div>
      <button class="sidebar-item" data-view="wireguard" type="button">
       <span aria-hidden="true">
        🔑
