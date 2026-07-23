@@ -112,6 +112,60 @@ def test_download_matches_displayed_configuration(client, monkeypatch):
     assert "no-store" in response.headers["cache-control"]
 
 
+def test_qr_is_authenticated_segno_svg_and_not_cached(client, monkeypatch, caplog):
+    assert client.get("/api/ingress/wireguard/config/qr").status_code == 401
+    assert login(client).status_code == 200
+    marker = "synthetic-private-qr-marker"
+
+    async def existing():
+        return {
+            "client_name": "router",
+            "filename": "exitlane-wireguard.conf",
+            "client_config": f"[Interface]\nPrivateKey = {marker}\n",
+        }
+
+    monkeypatch.setattr(main, "_current_wireguard_configuration", existing)
+    response = client.get("/api/ingress/wireguard/config/qr")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/svg+xml")
+    assert "no-store" in response.headers["cache-control"]
+    assert b'<svg xmlns="http://www.w3.org/2000/svg"' in response.content
+    assert b'class="wireguard-qr-svg"' in response.content
+    assert b'class="wireguard-qr-modules"' in response.content
+    assert marker not in response.text
+    assert marker not in caplog.text
+
+
+def test_missing_qr_uses_existing_safe_error(client, monkeypatch):
+    assert login(client).status_code == 200
+
+    async def missing():
+        return None
+
+    monkeypatch.setattr(main, "_current_wireguard_configuration", missing)
+    response = client.get("/api/ingress/wireguard/config/qr")
+    assert response.status_code == 404
+    assert response.json() == {"error": "wireguard_configuration_missing"}
+
+
+def test_qr_is_rebuilt_from_replaced_current_configuration(client, monkeypatch):
+    assert login(client).status_code == 200
+    current = {"value": "[Interface]\nPrivateKey = first-synthetic-key\n"}
+
+    async def existing():
+        return {
+            "client_name": "router",
+            "filename": "exitlane-wireguard.conf",
+            "client_config": current["value"],
+        }
+
+    monkeypatch.setattr(main, "_current_wireguard_configuration", existing)
+    first = client.get("/api/ingress/wireguard/config/qr").content
+    current["value"] = "[Interface]\nPrivateKey = second-synthetic-key\n"
+    second = client.get("/api/ingress/wireguard/config/qr").content
+    assert first != second
+
+
 def test_missing_download_and_invalid_configuration_use_safe_errors(client, monkeypatch):
     assert login(client).status_code == 200
 

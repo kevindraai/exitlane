@@ -975,7 +975,8 @@ pre {
 .button.disabled,
 .button[aria-disabled="true"] { opacity: 0.55; pointer-events: none; }
 
-#wireguard-regenerate-dialog {
+#wireguard-regenerate-dialog,
+#wireguard-qr-dialog {
   width: min(32rem, calc(100vw - 2rem));
   border: 1px solid var(--border);
   border-radius: 1rem;
@@ -984,7 +985,17 @@ pre {
   color: inherit;
 }
 
-#wireguard-regenerate-dialog::backdrop { background: rgb(15 23 42 / 55%); }
+#wireguard-regenerate-dialog::backdrop,
+#wireguard-qr-dialog::backdrop { background: rgb(15 23 42 / 55%); }
+
+#wireguard-qr-image {
+  display: block;
+  width: min(100%, 28rem);
+  margin: 1rem auto;
+  padding: 0.75rem;
+  background: #fff;
+  border-radius: 0.75rem;
+}
 .helper-text {
   display: block;
   margin-top: 6px;

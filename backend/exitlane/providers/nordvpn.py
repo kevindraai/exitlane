@@ -8,6 +8,7 @@ import json
 import logging
 import time
 import urllib.parse
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,13 @@ from .base import Provider
 logger = logging.getLogger(__name__)
 SERVER_HOSTNAME_PATTERN = re.compile(r"^([a-z]{2}[0-9]+)\.nordvpn\.com$")
 CONNECT_FAILURE_TIMEOUT_SECONDS = 25
+TOKEN_LOGIN_TIMEOUT_SECONDS = 15
+
+
+def _token_login_environment() -> dict[str, str]:
+    """Return the minimal non-secret environment needed by the installed CLI."""
+    allowed = ("HOME", "LANG", "LC_ALL", "PATH", "XDG_RUNTIME_DIR")
+    return {name: os.environ[name] for name in allowed if name in os.environ}
 
 
 def _connect_timed_out(return_code: int, output: str, error: str, elapsed: float) -> bool:
@@ -293,17 +301,18 @@ echo "Installatie afgerond"
                 "message": "invalid token format",
             }
 
-        rc, out, err = await command(
+        rc, _out, _err = await command(
             "nordvpn",
             "login",
             "--token",
             token,
+            timeout=TOKEN_LOGIN_TIMEOUT_SECONDS,
+            environment=_token_login_environment(),
         )
 
         return {
             "ok": rc == 0,
-            "stdout": out,
-            "stderr": err,
+            "error": None if rc == 0 else ("timeout" if rc == 124 else "invalid_token"),
         }
 
     async def login_callback(self, url):

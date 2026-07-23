@@ -7,7 +7,10 @@ name="exitlane"
 version="0.2.0a1"
 description="Smart egress for every network"
 requires-python=">=3.11"
-dependencies=["fastapi>=0.139,<1","uvicorn[standard]>=0.34,<1","pydantic>=2.10,<3","python-multipart>=0.0.20,<1"]
+dependencies=["fastapi>=0.139,<1","uvicorn[standard]>=0.34,<1","pydantic>=2.10,<3","python-multipart>=0.0.20,<1","segno==1.6.6"]
+
+[project.scripts]
+exitlane-cli = "exitlane.cli:main"
 
 [project.optional-dependencies]
 dev=["bandit[toml]>=1.8,<2","build>=1.2,<2","httpx>=0.28,<1","pip-audit>=2.9,<3","pytest>=9.0.3,<10","ruff>=0.11,<1"]

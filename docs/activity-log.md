@@ -23,3 +23,7 @@ same transaction after an event write. There is deliberately no clear or delete 
 Future event producers must add a stable definition and explicit safe metadata keys in
 `exitlane.events`, add translations in both locales, and test that sensitive source data cannot
 reach storage or the API.
+
+Self-service administration records successful password changes, local password resets,
+NordVPN-token updates, and WireGuard regeneration. These events contain no password, token,
+hash, private key, configuration, or submitted value.

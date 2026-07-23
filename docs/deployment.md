@@ -1,5 +1,18 @@
 # Deployment
 
+## Local administrator recovery
+
+The Debian installer installs `/usr/local/sbin/exitlane-cli` with root-owned executable
+permissions and preserves Exitlane's database during upgrades. If the administrator password is
+forgotten, open a terminal on the Exitlane host and run:
+
+```bash
+sudo exitlane-cli reset-password
+```
+
+Input is interactive and is not echoed. A successful reset revokes every browser session. Sign in
+again with the new password and confirm the password-reset event in Activity.
+
 Exitlane is currently designed as a single service on a dedicated Debian 12 or 13 host or LXC.
 The supported installer creates an isolated Python environment, installs the systemd unit, and
 prepares configuration, data, and log locations.

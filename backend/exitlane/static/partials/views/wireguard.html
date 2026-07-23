@@ -96,6 +96,7 @@
           <div class="view-actions wireguard-config-actions">
            <button aria-controls="management-wireguard-config" aria-expanded="false" class="button button-secondary" data-i18n="wireguard_management.show" id="wireguard-config-toggle" type="button">Bekijken</button>
            <button class="button button-secondary" data-i18n="wireguard_management.copy" id="wireguard-config-copy" type="button">Kopiëren</button>
+           <button class="button button-secondary" data-i18n="wireguard_management.qr" id="wireguard-config-qr" type="button">QR-code</button>
            <a class="button button-secondary" data-i18n="wireguard_management.download" download="exitlane-wireguard.conf" href="/api/ingress/wireguard/config/download" id="wireguard-config-download">Downloaden</a>
            <button class="button button-danger" data-i18n="wireguard_management.regenerate" id="wireguard-config-regenerate" type="button">Opnieuw genereren</button>
           </div>
@@ -112,6 +113,16 @@
          <button class="button button-secondary" data-i18n="wireguard_management.cancel" id="wireguard-regenerate-cancel" type="button">Annuleren</button>
          <button class="button button-danger" data-i18n="wireguard_management.confirm" id="wireguard-regenerate-confirm" type="button">Vervangen</button>
         </div>
+       </form>
+      </dialog>
+      <dialog aria-describedby="wireguard-qr-description" aria-labelledby="wireguard-qr-title" id="wireguard-qr-dialog">
+       <form id="wireguard-qr-form" method="post">
+        <h2 data-i18n="wireguard_management.qr_title" id="wireguard-qr-title">WireGuard QR-code</h2>
+        <p data-i18n="wireguard_management.qr_description" id="wireguard-qr-description">Scan this code only with the device that will use this tunnel.</p>
+        <p data-i18n="wireguard_management.qr_loading" id="wireguard-qr-loading">Generating QR code…</p>
+        <p class="inline-error" data-i18n="wireguard_management.errors.qr_failed" hidden="" id="wireguard-qr-error" role="alert">The QR code could not be generated.</p>
+        <img alt="" hidden="" id="wireguard-qr-image"/>
+        <div class="view-actions"><button class="button button-secondary" data-i18n="wireguard_management.close" id="wireguard-qr-close" type="button">Close</button></div>
        </form>
       </dialog>
      </section>

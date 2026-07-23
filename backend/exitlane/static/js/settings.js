@@ -13,7 +13,7 @@ import {
   showInlineError,
   showMessage,
 } from "./ui.js";
-import { getSlice } from "./state.js";
+import { getSlice, resetAuthenticatedState } from "./state.js";
 
 let savedGeneral = null;
 let savedSettings = null;
@@ -138,11 +138,81 @@ export async function saveGeneralSettings(event) {
   }
 }
 
+function clearSecretFields(...selectors) {
+  for (const selector of selectors) select(selector).value = "";
+}
+
+export async function changePassword(event) {
+  event.preventDefault();
+  const button = select("#settings-password-save");
+  const fields = [
+    "#settings-current-password",
+    "#settings-new-password",
+    "#settings-confirm-password",
+  ];
+  clearInlineError("#settings-password-error");
+  setBusy(button, true, t("settings.messages.saving", {}, "Saving…"));
+  try {
+    const newPassword = select(fields[1]).value;
+    const confirmation = select(fields[2]).value;
+    if (newPassword !== confirmation) {
+      showInlineError(
+        t("settings.authentication.errors.mismatch", {}, "The new passwords do not match."),
+        "#settings-password-error",
+      );
+      return;
+    }
+    await api("/api/auth/password", {
+      method: "POST",
+      body: JSON.stringify({
+        current_password: select(fields[0]).value,
+        new_password: newPassword,
+        confirmation,
+      }),
+    });
+    resetAuthenticatedState();
+    window.dispatchEvent(new CustomEvent("exitlane:authenticationrequired"));
+  } catch (error) {
+    showInlineError(
+      t(`settings.authentication.errors.${error.payload?.detail || "failed"}`, {}, t("settings.authentication.errors.failed")),
+      "#settings-password-error",
+    );
+  } finally {
+    clearSecretFields(...fields);
+    setBusy(button, false);
+  }
+}
+
+export async function updateNordvpnToken(event) {
+  event.preventDefault();
+  const button = select("#settings-token-save");
+  const field = select("#settings-nordvpn-token");
+  clearInlineError("#settings-token-error");
+  setBusy(button, true, t("settings.vpn.updating", {}, "Validating…"));
+  try {
+    await api("/api/providers/nordvpn/token", {
+      method: "POST",
+      body: JSON.stringify({ token: field.value }),
+    });
+    showMessage(t("settings.vpn.updated", {}, "NordVPN token updated."));
+  } catch (error) {
+    showInlineError(
+      t(`settings.vpn.errors.${error.payload?.detail || "invalid_token"}`, {}, t("settings.vpn.errors.invalid_token")),
+      "#settings-token-error",
+    );
+  } finally {
+    field.value = "";
+    setBusy(button, false);
+  }
+}
+
 export function initialiseSettings() {
   const form = select("#settings-general-form");
   form.addEventListener("submit", saveGeneralSettings);
   form.addEventListener("input", updateSaveState);
   form.addEventListener("change", updateSaveState);
+  select("#settings-password-form").addEventListener("submit", changePassword);
+  select("#settings-token-form").addEventListener("submit", updateNordvpnToken);
   window.addEventListener("exitlane:viewchange", (event) => {
     const dashboardActive = getSlice("application").mode === "dashboard";
     if (dashboardActive && event.detail.view === "settings") loadSettings();

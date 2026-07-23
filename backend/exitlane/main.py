@@ -8,6 +8,8 @@ import re
 import secrets
 import time
 import uuid
+from io import BytesIO
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
@@ -19,6 +21,7 @@ from fastapi.responses import FileResponse
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+import segno
 
 from exitlane import __version__
 from exitlane.core import (
@@ -53,6 +56,7 @@ from exitlane.services.vpn_selection import (
     server_latency,
 )
 from exitlane.services import vpn_operations
+from exitlane.services.credentials import CredentialError, change_password
 from exitlane.config import (
     DEFAULT_WIREGUARD_CLIENT,
     DEFAULT_WIREGUARD_INTERFACE,
@@ -82,6 +86,9 @@ _system_started_databases: set[Path] = set()
 _wireguard_observed_state: tuple[bool, bool] | None = None
 _pending_provider_connection: dict | None = None
 _wireguard_generation_lock: asyncio.Lock | None = None
+_password_change_failures: dict[tuple[Path, int], deque[float]] = defaultdict(deque)
+PASSWORD_CHANGE_ATTEMPTS = 5
+PASSWORD_CHANGE_WINDOW_SECONDS = 300
 NORDVPN_HOST_COUNTRY_CODES = {"UK": "GB"}
 
 
@@ -100,6 +107,14 @@ class Admin(BaseModel):
 class Login(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+    new_password: str = Field(
+        min_length=MIN_PASSWORD_LENGTH, max_length=MAX_PASSWORD_LENGTH
+    )
+    confirmation: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
 
 
 class Token(BaseModel):
@@ -468,6 +483,40 @@ async def logout(request: Request, response: Response) -> dict:
     return {"ok": True}
 
 
+@app.post("/api/auth/password")
+async def update_password(req: PasswordChange, request: Request, response: Response) -> dict:
+    failure_key = (DB.resolve(), request.state.user["id"])
+    now = time.monotonic()
+    failures = _password_change_failures[failure_key]
+    while failures and failures[0] <= now - PASSWORD_CHANGE_WINDOW_SECONDS:
+        failures.popleft()
+    if len(failures) >= PASSWORD_CHANGE_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="too_many_attempts")
+    if req.new_password != req.confirmation:
+        raise HTTPException(status_code=422, detail="password_mismatch")
+    try:
+        change_password(
+            request.state.user["id"],
+            current_password=req.current_password,
+            new_password=req.new_password,
+        )
+    except CredentialError as error:
+        if error.code == "invalid_credentials":
+            failures.append(now)
+        status_code = 401 if error.code == "invalid_credentials" else 422
+        raise HTTPException(status_code=status_code, detail=error.code) from None
+    _password_change_failures.pop(failure_key, None)
+    record_event("auth.password_changed", actor=request.state.user)
+    response.delete_cookie(
+        SESSION_COOKIE,
+        httponly=True,
+        secure=SESSION_COOKIE_SECURE,
+        samesite="lax",
+        path="/",
+    )
+    return {"ok": True, "reauthentication_required": True}
+
+
 @app.get("/api/events", response_model=EventPage)
 async def get_events(
     limit: int = Query(50, ge=1, le=200),
@@ -673,6 +722,17 @@ async def login_token(req: Token) -> dict:
         set_setting("setup_current_step", 4)
 
     return result
+
+
+@app.post("/api/providers/nordvpn/token")
+async def update_nordvpn_token(req: Token, request: Request) -> dict:
+    result = await provider.login_token(req.token)
+    if not result.get("ok"):
+        error = result.get("error", "invalid_token")
+        status_code = 504 if error == "timeout" else 422
+        raise HTTPException(status_code=status_code, detail=error)
+    record_event("provider.token_updated", actor=request_actor(request))
+    return {"ok": True, "reconnect_required": bool(result.get("reconnect_required", False))}
 
 
 @app.post("/api/providers/nordvpn/login/callback")
@@ -1292,6 +1352,30 @@ async def download_wireguard_configuration() -> Response:
     response.headers["Cache-Control"] = "no-store, private"
     response.headers["Pragma"] = "no-cache"
     return response
+
+
+@app.get("/api/ingress/wireguard/config/qr")
+async def wireguard_configuration_qr() -> Response:
+    try:
+        configuration = await _current_wireguard_configuration()
+    except wireguard_service.WireGuardConfigurationError as error:
+        return _private_response({"error": error.code}, status_code=409)
+    if configuration is None:
+        return _private_response({"error": "wireguard_configuration_missing"}, status_code=404)
+    output = BytesIO()
+    segno.make_qr(configuration["client_config"], error="m").save(
+        output,
+        kind="svg",
+        scale=5,
+        xmldecl=False,
+        svgclass="wireguard-qr-svg",
+        lineclass="wireguard-qr-modules",
+    )
+    return Response(
+        content=output.getvalue(),
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "no-store, private", "Pragma": "no-cache"},
+    )
 
 
 @app.post("/api/ingress/wireguard/config/regenerate")

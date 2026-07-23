@@ -38,6 +38,22 @@ let configurationVisible = false;
 let regenerating = false;
 let configurationLoaded = false;
 
+function clearConfigurationQr() {
+  const image = select("#wireguard-qr-image");
+  image.removeAttribute("src");
+  image.hidden = true;
+  select("#wireguard-qr-loading").hidden = false;
+  select("#wireguard-qr-error").hidden = true;
+}
+
+export function openConfigurationQr() {
+  if (!currentConfiguration) return false;
+  clearConfigurationQr();
+  select("#wireguard-qr-image").src = "/api/ingress/wireguard/config/qr";
+  select("#wireguard-qr-dialog").showModal();
+  return true;
+}
+
 function configurationError(code) {
   return t(
     `wireguard_management.errors.${code || "load_failed"}`,
@@ -128,7 +144,7 @@ export async function copyManagedConfiguration() {
 }
 
 function setConfigurationBusy(busy) {
-  for (const selector of ["#wireguard-config-toggle", "#wireguard-config-copy", "#wireguard-config-regenerate"]) {
+  for (const selector of ["#wireguard-config-toggle", "#wireguard-config-copy", "#wireguard-config-qr", "#wireguard-config-regenerate"]) {
     select(selector).disabled = busy;
   }
   const download = select("#wireguard-config-download");
@@ -144,6 +160,7 @@ function setConfigurationBusy(busy) {
 export async function confirmRegeneration() {
   if (regenerating) return;
   regenerating = true;
+  clearConfigurationQr();
   setConfigurationBusy(true);
   select("#wireguard-regenerate-dialog").close();
   try {
@@ -180,6 +197,7 @@ export function initialiseWireGuardManagement() {
   refreshButton.addEventListener("click", refreshManagedWireGuard);
   select("#wireguard-config-toggle").addEventListener("click", toggleManagedConfiguration);
   select("#wireguard-config-copy").addEventListener("click", copyManagedConfiguration);
+  select("#wireguard-config-qr").addEventListener("click", openConfigurationQr);
   select("#wireguard-config-regenerate").addEventListener("click", () => {
     if (!regenerating) select("#wireguard-regenerate-dialog").showModal();
   });
@@ -188,6 +206,19 @@ export function initialiseWireGuardManagement() {
   });
   select("#wireguard-regenerate-confirm").addEventListener("click", confirmRegeneration);
   select("#wireguard-regenerate-form").addEventListener("submit", (event) => event.preventDefault());
+  const qrDialog = select("#wireguard-qr-dialog");
+  const qrImage = select("#wireguard-qr-image");
+  qrImage.addEventListener("load", () => {
+    select("#wireguard-qr-loading").hidden = true;
+    qrImage.hidden = false;
+  });
+  qrImage.addEventListener("error", () => {
+    qrImage.hidden = true;
+    select("#wireguard-qr-loading").hidden = true;
+    select("#wireguard-qr-error").hidden = false;
+  });
+  qrDialog.addEventListener("close", clearConfigurationQr);
+  select("#wireguard-qr-close").addEventListener("click", () => qrDialog.close());
   select("#wireguard-config-download").addEventListener("click", (event) => {
     if (event.currentTarget.getAttribute("aria-disabled") === "true") event.preventDefault();
   });
@@ -202,6 +233,7 @@ export function initialiseWireGuardManagement() {
       configurationVisible = false;
       const pre = document.querySelector("#management-wireguard-config");
       if (pre) pre.textContent = "";
+      clearConfigurationQr();
     }
   }, { immediate: true });
   window.addEventListener("exitlane:authenticationrequired", () => {
@@ -209,6 +241,7 @@ export function initialiseWireGuardManagement() {
     configurationVisible = false;
     configurationLoaded = false;
     select("#management-wireguard-config").textContent = "";
+    clearConfigurationQr();
   });
   window.addEventListener("exitlane:languagechange", () => render(getSlice("wireguard")));
 }

@@ -15,6 +15,7 @@ readonly SOURCE_DIR
 # TARGET=/tmp/exitlane-test ./installer/install-debian.sh
 readonly TARGET="${TARGET:-/opt/exitlane}"
 readonly VENV_DIR="${TARGET}/venv"
+readonly CLI_TARGET="/usr/local/sbin/exitlane-cli"
 
 readonly CONFIG_DIR="${EXITLANE_CONFIG_DIR:-/etc/exitlane}"
 readonly DATA_DIR="${EXITLANE_DATA_DIR:-/var/lib/exitlane}"
@@ -265,6 +266,12 @@ create_virtual_environment() {
   success "Exitlane Python-package geïnstalleerd"
 }
 
+install_cli() {
+  log "Lokaal beheercommando installeren"
+  install -m 0755 "${VENV_DIR}/bin/exitlane-cli" "${CLI_TARGET}"
+  success "${CLI_TARGET} geïnstalleerd"
+}
+
 install_service_files() {
   log "systemd-configuratie installeren"
 
@@ -405,6 +412,7 @@ main() {
   stop_existing_service
   copy_application
   create_virtual_environment
+  install_cli
   install_service_files
   configure_ip_forwarding
   start_service

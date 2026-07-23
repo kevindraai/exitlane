@@ -40,6 +40,32 @@
       "session_duration_help": "Wordt beheerd via EXITLANE_SESSION_MAX_AGE en kan hier niet worden verzwakt.",
       "save": "Algemene instellingen opslaan"
     },
+    "authentication": {
+      "eyebrow": "AUTHENTICATIE", "title": "Authenticatie",
+      "description": "Wijzig het wachtwoord van de lokale beheerder.",
+      "current_password": "Huidig wachtwoord", "new_password": "Nieuw wachtwoord",
+      "confirm_password": "Herhaal nieuw wachtwoord",
+      "session_warning": "Na de wijziging eindigen alle sessies en moet je opnieuw inloggen.",
+      "change": "Wachtwoord wijzigen",
+      "errors": { "invalid_credentials": "Het huidige wachtwoord is onjuist.", "password_mismatch": "De nieuwe wachtwoorden komen niet overeen.", "mismatch": "De nieuwe wachtwoorden komen niet overeen.", "password_policy": "Het nieuwe wachtwoord voldoet niet aan het wachtwoordbeleid.", "password_unchanged": "Kies een ander wachtwoord dan het huidige wachtwoord.", "too_many_attempts": "Te veel pogingen. Probeer het later opnieuw.", "failed": "Het wachtwoord kon niet worden gewijzigd." }
+    },
+    "vpn": {
+      "eyebrow": "VPN", "title": "NordVPN-token",
+      "description": "Vervang en valideer het token van de lokale NordVPN-client.",
+      "new_token": "Nieuw token", "token_hidden": "Het huidige token wordt nooit getoond.",
+      "update": "Token valideren en vervangen", "updating": "Valideren…",
+      "updated": "NordVPN-token bijgewerkt.",
+      "errors": { "invalid_token": "NordVPN heeft dit token geweigerd. De bestaande aanmelding is behouden.", "timeout": "De NordVPN-tokenvalidatie duurde te lang. De bestaande aanmelding is behouden." }
+    },
+    "wireguard": {
+      "eyebrow": "WIREGUARD", "title": "WireGuard",
+      "description": "Bekijk, download of regenereer bewust de huidige clientconfiguratie op de WireGuard-pagina.",
+      "open": "WireGuard-beheer openen"
+    },
+    "network": {
+      "eyebrow": "NETWERK", "title": "Netwerk",
+      "description": "Geavanceerde netwerkinstellingen zijn nog niet beschikbaar in de webinterface."
+    },
     "appearance": {
       "eyebrow": "WEERGAVE",
       "title": "Weergave",
@@ -76,7 +102,7 @@
     "future": {
       "eyebrow": "TOEKOMSTIG",
       "title": "Onderhoud en beveiliging",
-      "description": "HTTPS, certificaten, updates, backups en resetfuncties worden in een toekomstige release toegevoegd."
+      "description": "HTTPS, certificaten, updates en backups worden in een toekomstige release toegevoegd."
     },
     "messages": {
       "saving": "Opslaan…",
@@ -237,6 +263,11 @@
     "hide": "Verbergen",
     "copy": "Kopiëren",
     "copied": "WireGuard-configuratie gekopieerd.",
+    "qr": "QR-code",
+    "qr_title": "WireGuard QR-code",
+    "qr_description": "Scan deze code alleen met het apparaat dat deze tunnel gaat gebruiken.",
+    "qr_loading": "QR-code genereren…",
+    "close": "Sluiten",
     "download": "Downloaden",
     "regenerate": "Opnieuw genereren",
     "regenerating": "Opnieuw genereren…",
@@ -248,6 +279,7 @@
     "errors": {
       "load_failed": "De WireGuard-configuratie kon niet worden geladen.",
       "copy_failed": "Kopiëren is niet gelukt. Toon en selecteer de configuratie handmatig.",
+      "qr_failed": "De QR-code kon niet worden gegenereerd.",
       "wireguard_configuration_invalid": "De bestaande WireGuard-configuratie is ongeldig of onvolledig.",
       "wireguard_configuration_missing": "Er bestaat nog geen WireGuard-clientconfiguratie.",
       "wireguard_reload_failed": "De nieuwe configuratie kon niet worden geactiveerd. De vorige configuratie is hersteld.",
@@ -376,9 +408,9 @@
   "events": {
     "system": { "started": "Exitlane gestart" },
     "setup": { "completed": "Setup afgerond" },
-    "auth": { "login_succeeded": "Beheerder aangemeld", "login_failed": "Aanmeldpoging mislukt", "logout": "Beheerder afgemeld", "session_expired": "Sessie verlopen", "session_revoked": "Sessie ingetrokken" },
+    "auth": { "login_succeeded": "Beheerder aangemeld", "login_failed": "Aanmeldpoging mislukt", "logout": "Beheerder afgemeld", "session_expired": "Sessie verlopen", "session_revoked": "Sessie ingetrokken", "password_changed": "Beheerderswachtwoord gewijzigd", "password_reset": "Beheerderswachtwoord lokaal hersteld" },
     "settings": { "updated": "Instellingen bijgewerkt: {fields}" },
-    "provider": { "connect_started": "Verbinden met {target}", "connected": "Verbonden met {country} {server}", "connect_failed": "Kon niet verbinden met {target}", "recovery_started": "NordVPN-herstel gestart", "recovered": "NordVPN hersteld", "recovery_failed": "NordVPN-herstel mislukt", "recovery_rate_limited": "NordVPN-herstel tijdelijk begrensd", "retry_started": "Verbinding opnieuw proberen", "disconnect_started": "VPN-verbinding verbreken", "disconnected": "VPN-verbinding verbroken", "disconnect_failed": "VPN-verbinding kon niet worden verbroken" },
+    "provider": { "connect_started": "Verbinden met {target}", "connected": "Verbonden met {country} {server}", "connect_failed": "Kon niet verbinden met {target}", "recovery_started": "NordVPN-herstel gestart", "recovered": "NordVPN hersteld", "recovery_failed": "NordVPN-herstel mislukt", "recovery_rate_limited": "NordVPN-herstel tijdelijk begrensd", "retry_started": "Verbinding opnieuw proberen", "disconnect_started": "VPN-verbinding verbreken", "disconnected": "VPN-verbinding verbroken", "disconnect_failed": "VPN-verbinding kon niet worden verbroken", "token_updated": "NordVPN-token bijgewerkt" },
     "wireguard": { "configuration_generated": "WireGuard-configuratie gegenereerd voor {client_name}", "configuration_regenerated": "WireGuard-configuratie vervangen voor {client_name}", "interface_active": "WireGuard-interface {interface} is actief geworden", "interface_inactive": "WireGuard-interface {interface} is inactief geworden", "handshake_received": "WireGuard-handshake ontvangen voor {client_name}" },
     "notifications": { "webhook_added": "Webhook {name} toegevoegd" }
   },
