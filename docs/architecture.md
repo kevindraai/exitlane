@@ -41,6 +41,13 @@ mature local client while presenting provider-neutral concepts where practical. 
 ingress boundary: routers and clients send selected traffic to Exitlane without requiring
 router-specific logic in the core.
 
+Provider status keeps installation, authentication, and tunnel connection as separate states and
+includes backend-determined capabilities. The capability model currently exposes sign-in,
+sign-out, connect, and disconnect decisions and reserves `can_manage_killswitch`, which remains
+`false`. Killswitch management is intentionally outside the current scope: enabling it later
+requires separate security, routing, DNS, failure-mode, and privilege design rather than only a UI
+toggle.
+
 WireGuard setup and management share one configuration service. It generates both key pairs,
 transactionally replaces mode-0600 server and client files, activates the interface, and restores the
 last working pair when activation fails. See [WireGuard client configuration](wireguard-configuration.md).

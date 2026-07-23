@@ -5,6 +5,7 @@ import {
   passwordErrorTarget,
   passwordRequirementState,
 } from "../backend/exitlane/static/js/password-validation.js";
+import { providerManagementView } from "../backend/exitlane/static/js/provider-management.js";
 
 const sourceUrl = new URL("../backend/exitlane/static/js/settings.js", import.meta.url);
 const markupUrl = new URL("../backend/exitlane/static/partials/views/settings.html", import.meta.url);
@@ -140,4 +141,75 @@ test("English and Dutch expose password rules and safe token diagnostics", async
     }
     assert.ok(locale.settings.vpn.signed_in_limitation);
   }
+});
+
+test("provider management keeps authentication and tunnel state distinct", () => {
+  const signedIn = providerManagementView({
+    management: {
+      provider: { id: "nordvpn", installation_state: "installed" },
+      authentication: { state: "signed_in" },
+      connection: { state: "connected" },
+      capabilities: {
+        can_sign_in: false,
+        can_sign_out: true,
+        can_manage_killswitch: false,
+      },
+    },
+  });
+  assert.equal(signedIn.authenticationState, "signed_in");
+  assert.equal(signedIn.connectionState, "connected");
+  assert.equal(signedIn.canSignOut, true);
+  assert.equal(signedIn.canSignIn, false);
+  assert.equal(signedIn.canManageKillswitch, false);
+
+  const signedOut = providerManagementView({
+    management: {
+      authentication: { state: "signed_out" },
+      connection: { state: "disconnected" },
+      capabilities: { can_sign_in: true, can_sign_out: false },
+    },
+  });
+  assert.equal(signedOut.canSignIn, true);
+  assert.equal(signedOut.canSignOut, false);
+
+  const olderUnknown = providerManagementView({});
+  assert.equal(olderUnknown.authenticationState, "unknown");
+  assert.equal(olderUnknown.canSignOut, false);
+  assert.equal(olderUnknown.canManageKillswitch, false);
+});
+
+test("NordVPN card has state regions and no killswitch control", async () => {
+  const markup = await readFile(markupUrl, "utf8");
+  const source = await readFile(sourceUrl, "utf8");
+  assert.match(markup, /<div hidden="" id="settings-provider-signed-in"/);
+  assert.match(markup, /id="settings-token-form"/);
+  assert.match(markup, /<div hidden="" id="settings-provider-unavailable"/);
+  assert.match(markup, /id="settings-provider-end-session"/);
+  assert.doesNotMatch(markup, /killswitch/i);
+  const statusRegion = markup.indexOf('class="provider-management-status-region"');
+  const signedInRegion = markup.indexOf('id="settings-provider-signed-in"');
+  const tokenForm = markup.indexOf('id="settings-token-form"');
+  assert.ok(statusRegion > -1 && statusRegion < signedInRegion && signedInRegion < tokenForm);
+  assert.match(source, /settings-provider-signed-in"\)\.hidden = !signedIn/);
+  assert.match(source, /settings-token-form"\)\.hidden = !\(signedOut && view\.canSignIn\)/);
+  assert.match(source, /settings-provider-unavailable"\)\.hidden = !unavailable/);
+  assert.match(source, /settings-provider-end-session"\)\.hidden = !view\.canSignOut/);
+});
+
+test("session ending uses an accessible confirmed single-flight mutation", async () => {
+  const markup = await readFile(markupUrl, "utf8");
+  const source = await readFile(sourceUrl, "utf8");
+  assert.match(markup, /<dialog[^>]+aria-describedby="settings-provider-sign-out-description"[^>]+aria-labelledby="settings-provider-sign-out-title"/);
+  assert.match(markup, /class="button button-danger"[^>]+id="settings-provider-sign-out-confirm"/);
+  assert.equal(source.match(/api\("\/api\/providers\/nordvpn\/session\/end"/g)?.length, 1);
+  assert.match(source, /if \(signingOut\) return/);
+  assert.match(source, /if \(!signingOut\) select\("#settings-provider-sign-out-dialog"\)\.close\(\)/);
+  assert.match(source, /authenticationState !== "signed_out"/);
+  assert.match(source, /finally \{\s*signingOut = false;\s*setBusy\(button, false\)/);
+});
+
+test("token sign-in refreshes provider state and always clears the token", async () => {
+  const source = await readFile(sourceUrl, "utf8");
+  assert.match(source, /api\("\/api\/providers\/nordvpn\/token"[\s\S]+await refreshProviderState/);
+  assert.match(source, /finally \{\s*field\.value = ""/);
 });

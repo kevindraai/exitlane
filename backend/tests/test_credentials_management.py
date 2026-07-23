@@ -158,8 +158,8 @@ def test_token_update_is_authenticated_sanitized_and_audited(client, monkeypatch
     assert token not in response.text
     with sqlite3.connect(main.DB) as connection:
         assert connection.execute(
-            "SELECT metadata_json FROM events WHERE code='provider.token_updated'"
-        ).fetchone() == ("{}",)
+            "SELECT metadata_json FROM events WHERE code='provider.session_started'"
+        ).fetchone() == ('{"provider": "nordvpn"}',)
 
 
 def test_invalid_token_is_not_audited_or_reflected(client, monkeypatch):
@@ -179,7 +179,7 @@ def test_invalid_token_is_not_audited_or_reflected(client, monkeypatch):
     assert token not in response.text
     with sqlite3.connect(main.DB) as connection:
         assert connection.execute(
-            "SELECT COUNT(*) FROM events WHERE code='provider.token_updated'"
+            "SELECT COUNT(*) FROM events WHERE code='provider.session_started'"
         ).fetchone()[0] == 0
 
 
@@ -291,6 +291,146 @@ def test_existing_wizard_token_login_still_works_while_signed_out(client, monkey
     assert response.status_code == 200
     assert response.json()["ok"] is True
     assert token not in response.text
+
+
+def test_nordvpn_sign_out_uses_bounded_explicit_command(monkeypatch, caplog):
+    captured = {}
+
+    async def safe_command(*arguments, **options):
+        captured["arguments"] = arguments
+        captured["options"] = options
+        return 0, "Sensitive provider output", ""
+
+    monkeypatch.setattr(nordvpn, "command", safe_command)
+    result = asyncio.run(nordvpn.provider.sign_out())
+    assert captured["arguments"] == ("nordvpn", "logout")
+    assert captured["options"]["timeout"] == nordvpn.SIGN_OUT_TIMEOUT_SECONDS
+    assert captured["options"]["environment"] == nordvpn._provider_cli_environment()
+    assert result == {"ok": True, "error": None, "already_signed_out": False}
+    assert "Sensitive provider output" not in str(result)
+    assert "Sensitive provider output" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("return_code", "output", "expected"),
+    [
+        (1, "You are not logged in.", "already_signed_out"),
+        (1, "Cannot reach daemon.", "daemon_unavailable"),
+        (124, "", "timeout"),
+        (127, "", "command_unavailable"),
+        (1, "Uncontrolled upstream failure.", "provider_error"),
+    ],
+)
+def test_sign_out_failure_classification_is_safe(return_code, output, expected):
+    assert nordvpn.classify_sign_out_failure(return_code, output, "") == expected
+
+
+def test_sign_out_endpoint_requires_authentication_and_csrf(client):
+    path = "/api/providers/nordvpn/session/end"
+    assert client.post(path).status_code == 401
+    assert login(client).status_code == 200
+    response = client.post(path, headers={"Origin": "https://attacker.example"})
+    assert response.status_code == 403
+
+
+def test_sign_out_endpoint_refreshes_connected_status_and_records_safe_event(
+    client, monkeypatch
+):
+    snapshots = iter(
+        [
+            {"installed": True, "authenticated": True, "connected": True},
+            {"installed": True, "authenticated": False, "connected": False},
+        ]
+    )
+    calls = 0
+
+    async def status():
+        nonlocal calls
+        calls += 1
+        return next(snapshots)
+
+    async def signed_out():
+        return {"ok": True, "error": None, "stdout": "must not escape"}
+
+    monkeypatch.setattr(main, "_fresh_vpn_status", status)
+    monkeypatch.setattr(main.provider, "sign_out", signed_out)
+    assert login(client).status_code == 200
+    response = client.post("/api/providers/nordvpn/session/end")
+    assert response.status_code == 200
+    assert response.json()["status"]["connected"] is False
+    assert "must not escape" not in response.text
+    assert calls == 2
+    with sqlite3.connect(main.DB) as connection:
+        event = connection.execute(
+            "SELECT metadata_json FROM events WHERE code='provider.session_ended'"
+        ).fetchone()
+    assert event == ('{"provider": "nordvpn"}',)
+
+
+def test_sign_out_endpoint_is_idempotent_without_cli_call(client, monkeypatch):
+    async def signed_out_status():
+        return {"installed": True, "authenticated": False, "connected": False}
+
+    async def must_not_run():
+        raise AssertionError("logout must not run for a confirmed signed-out state")
+
+    monkeypatch.setattr(main, "_fresh_vpn_status", signed_out_status)
+    monkeypatch.setattr(main.provider, "sign_out", must_not_run)
+    assert login(client).status_code == 200
+    response = client.post("/api/providers/nordvpn/session/end")
+    assert response.status_code == 200
+    assert response.json()["already_signed_out"] is True
+
+
+@pytest.mark.parametrize(
+    ("error", "status_code"),
+    [
+        ("daemon_unavailable", 503),
+        ("timeout", 504),
+        ("command_unavailable", 503),
+        ("provider_error", 503),
+    ],
+)
+def test_sign_out_endpoint_returns_only_safe_errors(
+    client, monkeypatch, error, status_code
+):
+    async def signed_in_status():
+        return {"installed": True, "authenticated": True, "connected": True}
+
+    async def failed():
+        return {"ok": False, "error": error, "stderr": "unfiltered-secret-output"}
+
+    monkeypatch.setattr(main, "_fresh_vpn_status", signed_in_status)
+    monkeypatch.setattr(main.provider, "sign_out", failed)
+    assert login(client).status_code == 200
+    response = client.post("/api/providers/nordvpn/session/end")
+    assert response.status_code == status_code
+    assert response.json() == {"detail": error}
+    assert "unfiltered-secret-output" not in response.text
+    with sqlite3.connect(main.DB) as connection:
+        metadata = connection.execute(
+            "SELECT metadata_json FROM events WHERE code='provider.session_end_failed'"
+        ).fetchone()[0]
+    assert "unfiltered-secret-output" not in metadata
+    assert error in metadata
+
+
+def test_sign_out_endpoint_rate_limits_repeated_failures(client, monkeypatch):
+    async def signed_in_status():
+        return {"installed": True, "authenticated": True, "connected": True}
+
+    async def failed():
+        return {"ok": False, "error": "provider_error"}
+
+    monkeypatch.setattr(main, "_fresh_vpn_status", signed_in_status)
+    monkeypatch.setattr(main.provider, "sign_out", failed)
+    assert login(client).status_code == 200
+    path = "/api/providers/nordvpn/session/end"
+    for _ in range(main.PROVIDER_SIGN_OUT_ATTEMPTS):
+        assert client.post(path).status_code == 503
+    response = client.post(path)
+    assert response.status_code == 429
+    assert response.json() == {"detail": "too_many_attempts"}
 
 
 def test_core_subprocess_uses_exec_argv_and_explicit_environment(monkeypatch):

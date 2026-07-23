@@ -59,7 +59,14 @@ token to Activity metadata. This is an upstream provider-interface limitation. F
 must not inherit this exception automatically.
 
 The CLI also offers no supported, non-destructive way to validate a replacement token while an
-account session is active. Exitlane therefore does not log out automatically or claim that it
-validated a replacement: Settings preserves the working session and explains the limitation.
-Token sign-in remains available when the local client is signed out. A future replacement flow
-would require an officially supported account-switch operation or a deliberate rollback design.
+account session is active. Exitlane therefore never logs out automatically or claims that it
+validated a replacement. An administrator can instead use this deliberate Settings flow:
+
+1. choose **End current session** and confirm the destructive action;
+2. enter the new token after the client reports `signed_out`;
+3. sign in again.
+
+NordVPN authentication sign-out and VPN disconnect are different operations. Disconnect ends only
+the tunnel, while sign-out runs the supported `nordvpn logout` action, ends the authentication
+session, and consequently ends any active tunnel. A valid token is required to sign in again.
+Activity events record only the provider identifier and a safe failure code.

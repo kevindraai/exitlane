@@ -676,6 +676,18 @@ input::placeholder {
   gap: 16px;
 }
 
+.provider-management-status-region {
+  min-height: 3.25rem;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.provider-management-status-region p {
+  margin: 0;
+}
+
 .password-rule,
 .field-error {
   display: block;
@@ -1024,6 +1036,7 @@ pre {
 .button.disabled,
 .button[aria-disabled="true"] { opacity: 0.55; pointer-events: none; }
 
+#settings-provider-sign-out-dialog,
 #wireguard-regenerate-dialog,
 #wireguard-qr-dialog {
   width: min(32rem, calc(100vw - 2rem));
@@ -1034,6 +1047,7 @@ pre {
   color: inherit;
 }
 
+#settings-provider-sign-out-dialog::backdrop,
 #wireguard-regenerate-dialog::backdrop,
 #wireguard-qr-dialog::backdrop { background: rgb(15 23 42 / 55%); }
 

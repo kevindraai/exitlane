@@ -43,7 +43,7 @@ from exitlane.settings import (
     settings_response,
     update_settings,
 )
-from exitlane.providers.nordvpn import TOKEN_ERROR_CODES, provider
+from exitlane.providers.nordvpn import SIGN_OUT_ERROR_CODES, TOKEN_ERROR_CODES, provider
 from exitlane.services.diagnostics import run as diagnostics
 from exitlane.services.dashboard import DashboardResponse, build_dashboard, system_status
 from exitlane.services import wireguard as wireguard_service
@@ -87,8 +87,11 @@ _wireguard_observed_state: tuple[bool, bool] | None = None
 _pending_provider_connection: dict | None = None
 _wireguard_generation_lock: asyncio.Lock | None = None
 _password_change_failures: dict[tuple[Path, int], deque[float]] = defaultdict(deque)
+_provider_sign_out_failures: dict[tuple[Path, int], deque[float]] = defaultdict(deque)
 PASSWORD_CHANGE_ATTEMPTS = 5
 PASSWORD_CHANGE_WINDOW_SECONDS = 300
+PROVIDER_SIGN_OUT_ATTEMPTS = 5
+PROVIDER_SIGN_OUT_WINDOW_SECONDS = 60
 NORDVPN_HOST_COUNTRY_CODES = {"UK": "GB"}
 
 
@@ -744,8 +747,89 @@ async def update_nordvpn_token(req: Token, request: Request) -> dict:
             else 422
         )
         raise HTTPException(status_code=status_code, detail=error)
-    record_event("provider.token_updated", actor=request_actor(request))
+    record_event(
+        "provider.session_started",
+        actor=request_actor(request),
+        metadata={"provider": provider.id},
+    )
     return {"ok": True, "reconnect_required": bool(result.get("reconnect_required", False))}
+
+
+def _provider_authentication_state(status: dict) -> str:
+    state = status.get("management", {}).get("authentication", {}).get("state")
+    if state:
+        return state
+    if status.get("authenticated") is True:
+        return "signed_in"
+    if status.get("installed") is True and status.get("authenticated") is False:
+        return "signed_out"
+    return "unknown"
+
+
+@app.post("/api/providers/nordvpn/session/end")
+async def end_nordvpn_session(request: Request) -> dict:
+    failure_key = (DB.resolve(), request.state.user["id"])
+    now = time.monotonic()
+    failures = _provider_sign_out_failures[failure_key]
+    while failures and failures[0] <= now - PROVIDER_SIGN_OUT_WINDOW_SECONDS:
+        failures.popleft()
+    if len(failures) >= PROVIDER_SIGN_OUT_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="too_many_attempts")
+
+    before = await _fresh_vpn_status()
+    if _provider_authentication_state(before) == "signed_out":
+        _provider_sign_out_failures.pop(failure_key, None)
+        return {"ok": True, "already_signed_out": True, "status": before}
+    if _provider_authentication_state(before) != "signed_in":
+        raise HTTPException(status_code=409, detail="provider_state_unknown")
+
+    try:
+        result = await provider.sign_out()
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        result = {"ok": False, "error": "provider_error"}
+    after = await _fresh_vpn_status()
+    signed_out = _provider_authentication_state(after) == "signed_out"
+    if result.get("ok") and signed_out:
+        _provider_sign_out_failures.pop(failure_key, None)
+        record_event(
+            "provider.session_ended",
+            actor=request_actor(request),
+            metadata={"provider": provider.id},
+        )
+        return {
+            "ok": True,
+            "already_signed_out": bool(result.get("already_signed_out")),
+            "status": after,
+        }
+
+    error = result.get("error")
+    if error not in SIGN_OUT_ERROR_CODES:
+        error = "provider_error"
+    if signed_out:
+        _provider_sign_out_failures.pop(failure_key, None)
+        record_event(
+            "provider.session_ended",
+            actor=request_actor(request),
+            metadata={"provider": provider.id},
+        )
+        return {"ok": True, "already_signed_out": False, "status": after}
+
+    failures.append(now)
+    record_event(
+        "provider.session_end_failed",
+        actor=request_actor(request),
+        metadata={"provider": provider.id, "reason": error},
+    )
+    status_code = (
+        504
+        if error == "timeout"
+        else 503
+        if error in {"daemon_unavailable", "command_unavailable", "provider_error"}
+        else 409
+    )
+    raise HTTPException(status_code=status_code, detail=error)
 
 
 @app.post("/api/providers/nordvpn/login/callback")

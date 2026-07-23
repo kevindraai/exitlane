@@ -25,5 +25,5 @@ Future event producers must add a stable definition and explicit safe metadata k
 reach storage or the API.
 
 Self-service administration records successful password changes, local password resets,
-NordVPN-token updates, and WireGuard regeneration. These events contain no password, token,
-hash, private key, configuration, or submitted value.
+NordVPN session starts and endings, and WireGuard regeneration. These events contain no password,
+token, CLI output, hash, private key, configuration, or submitted value.

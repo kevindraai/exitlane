@@ -61,14 +61,42 @@
       "sign_in": "Sign in with token", "updating": "Signing in…",
       "updated": "NordVPN signed in with the supplied token.",
       "signed_in_limitation": "NordVPN is currently signed in. The installed NordVPN client cannot validate a replacement token without ending the existing session.",
+      "sign_out_warning": "Ending the current session disconnects NordVPN and requires a valid token to sign in again.",
+      "end_session": "End current session",
+      "signing_out": "Ending session…",
+      "signed_out": "NordVPN session ended.",
+      "retry": "Retry",
+      "retrying": "Checking…",
+      "confirm_title": "End NordVPN session?",
+      "confirm_description": "The active NordVPN session and VPN connection will end. You need a valid token to sign in again.",
+      "cancel": "Cancel",
+      "confirm_end_session": "End session",
+      "authentication": {
+        "signed_in": "Signed in",
+        "signed_out": "Signed out",
+        "unknown": "Unknown",
+        "unavailable": "Unavailable"
+      },
+      "states": {
+        "signed_in": "The local NordVPN client is signed in.",
+        "signed_out": "The local NordVPN client is signed out.",
+        "unknown": "The NordVPN authentication state is unknown.",
+        "not_installed": "The NordVPN CLI is not installed."
+      },
       "errors": {
+        "already_signed_out": "The NordVPN session had already ended.",
         "already_logged_in": "NordVPN is already signed in. The existing session was preserved.",
         "invalid_token": "NordVPN rejected this token.",
         "timeout": "NordVPN token sign-in timed out.",
         "daemon_unavailable": "The NordVPN daemon is unavailable.",
         "command_unavailable": "The NordVPN command is unavailable.",
         "token_replacement_unsupported": "The installed NordVPN client cannot safely validate a replacement token while signed in.",
-        "provider_error": "NordVPN could not complete token sign-in."
+        "provider_error": "NordVPN could not complete the action.",
+        "provider_state_unknown": "The NordVPN authentication state could not be confirmed.",
+        "provider_status_unavailable": "The NordVPN status is temporarily unavailable.",
+        "provider_cli_unavailable": "The NordVPN command is unavailable.",
+        "unsupported_container_runtime": "This runtime cannot manage the host NordVPN client.",
+        "too_many_attempts": "Too many attempts. Try again later."
       }
     },
     "wireguard": {
@@ -417,14 +445,14 @@
     "last_refresh": "Last successful refresh", "details": "Details",
     "level": { "info": "Info", "warning": "Warning", "error": "Error" },
     "category": { "auth": "Authentication", "setup": "Setup", "provider": "Provider", "wireguard": "WireGuard", "settings": "Settings", "notifications": "Notifications", "system": "System" },
-    "metadata": { "target": "Target", "country": "Country", "city": "City", "server": "Server", "reason": "Reason", "fields": "Fields", "client_name": "Client", "interface": "Interface", "name": "Name" }
+    "metadata": { "target": "Target", "country": "Country", "city": "City", "server": "Server", "reason": "Reason", "provider": "Provider", "fields": "Fields", "client_name": "Client", "interface": "Interface", "name": "Name" }
   },
   "events": {
     "system": { "started": "Exitlane started" },
     "setup": { "completed": "Setup completed" },
     "auth": { "login_succeeded": "Administrator signed in", "login_failed": "Sign-in attempt failed", "logout": "Administrator signed out", "session_expired": "Session expired", "session_revoked": "Session revoked", "password_changed": "Administrator password changed", "password_reset": "Administrator password reset locally" },
     "settings": { "updated": "Settings updated: {fields}" },
-    "provider": { "connect_started": "Connecting to {target}", "connected": "Connected to {country} {server}", "connect_failed": "Could not connect to {target}", "recovery_started": "NordVPN recovery started", "recovered": "NordVPN recovered", "recovery_failed": "NordVPN recovery failed", "recovery_rate_limited": "NordVPN recovery temporarily rate-limited", "retry_started": "Retrying connection", "disconnect_started": "Disconnecting VPN", "disconnected": "VPN disconnected", "disconnect_failed": "Could not disconnect VPN", "token_updated": "NordVPN token updated" },
+    "provider": { "connect_started": "Connecting to {target}", "connected": "Connected to {country} {server}", "connect_failed": "Could not connect to {target}", "recovery_started": "NordVPN recovery started", "recovered": "NordVPN recovered", "recovery_failed": "NordVPN recovery failed", "recovery_rate_limited": "NordVPN recovery temporarily rate-limited", "retry_started": "Retrying connection", "disconnect_started": "Disconnecting VPN", "disconnected": "VPN disconnected", "disconnect_failed": "Could not disconnect VPN", "session_started": "NordVPN session started", "session_ended": "NordVPN session ended", "session_end_failed": "NordVPN session could not be ended" },
     "wireguard": { "configuration_generated": "WireGuard configuration generated for {client_name}", "configuration_regenerated": "WireGuard configuration replaced for {client_name}", "interface_active": "WireGuard interface {interface} became active", "interface_inactive": "WireGuard interface {interface} became inactive", "handshake_received": "WireGuard handshake received for {client_name}" },
     "notifications": { "webhook_added": "Webhook {name} added" }
   },

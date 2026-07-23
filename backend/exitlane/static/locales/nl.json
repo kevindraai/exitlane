@@ -61,14 +61,42 @@
       "sign_in": "Aanmelden met token", "updating": "Aanmelden…",
       "updated": "NordVPN is aangemeld met het opgegeven token.",
       "signed_in_limitation": "NordVPN is momenteel aangemeld. De geïnstalleerde NordVPN-client kan een vervangend token niet controleren zonder de bestaande sessie te beëindigen.",
+      "sign_out_warning": "Door de huidige sessie te beëindigen wordt NordVPN verbroken en is een geldig token nodig om opnieuw aan te melden.",
+      "end_session": "Huidige sessie beëindigen",
+      "signing_out": "Sessie beëindigen…",
+      "signed_out": "NordVPN-sessie beëindigd.",
+      "retry": "Opnieuw proberen",
+      "retrying": "Controleren…",
+      "confirm_title": "NordVPN-sessie beëindigen?",
+      "confirm_description": "De actieve NordVPN-sessie en VPN-verbinding worden beëindigd. Je hebt een geldig token nodig om opnieuw aan te melden.",
+      "cancel": "Annuleren",
+      "confirm_end_session": "Sessie beëindigen",
+      "authentication": {
+        "signed_in": "Aangemeld",
+        "signed_out": "Afgemeld",
+        "unknown": "Onbekend",
+        "unavailable": "Niet beschikbaar"
+      },
+      "states": {
+        "signed_in": "De lokale NordVPN-client is aangemeld.",
+        "signed_out": "De lokale NordVPN-client is afgemeld.",
+        "unknown": "De NordVPN-authenticatiestatus is onbekend.",
+        "not_installed": "De NordVPN-CLI is niet geïnstalleerd."
+      },
       "errors": {
+        "already_signed_out": "De NordVPN-sessie was al beëindigd.",
         "already_logged_in": "NordVPN is al aangemeld. De bestaande sessie is behouden.",
         "invalid_token": "NordVPN heeft dit token geweigerd.",
         "timeout": "De NordVPN-tokenaanmelding duurde te lang.",
         "daemon_unavailable": "De NordVPN-daemon is niet beschikbaar.",
         "command_unavailable": "Het NordVPN-commando is niet beschikbaar.",
         "token_replacement_unsupported": "De geïnstalleerde NordVPN-client kan tijdens een actieve aanmelding geen vervangend token veilig controleren.",
-        "provider_error": "NordVPN kon de tokenaanmelding niet voltooien."
+        "provider_error": "NordVPN kon de actie niet voltooien.",
+        "provider_state_unknown": "De NordVPN-authenticatiestatus kon niet worden bevestigd.",
+        "provider_status_unavailable": "De NordVPN-status is tijdelijk niet beschikbaar.",
+        "provider_cli_unavailable": "Het NordVPN-commando is niet beschikbaar.",
+        "unsupported_container_runtime": "Deze runtime kan de NordVPN-client op de host niet beheren.",
+        "too_many_attempts": "Te veel pogingen. Probeer het later opnieuw."
       }
     },
     "wireguard": {
@@ -417,14 +445,14 @@
     "last_refresh": "Laatst succesvol vernieuwd", "details": "Details",
     "level": { "info": "Info", "warning": "Waarschuwing", "error": "Fout" },
     "category": { "auth": "Authenticatie", "setup": "Setup", "provider": "Provider", "wireguard": "WireGuard", "settings": "Instellingen", "notifications": "Notificaties", "system": "Systeem" },
-    "metadata": { "target": "Doel", "country": "Land", "city": "Stad", "server": "Server", "reason": "Reden", "fields": "Velden", "client_name": "Client", "interface": "Interface", "name": "Naam" }
+    "metadata": { "target": "Doel", "country": "Land", "city": "Stad", "server": "Server", "reason": "Reden", "provider": "Provider", "fields": "Velden", "client_name": "Client", "interface": "Interface", "name": "Naam" }
   },
   "events": {
     "system": { "started": "Exitlane gestart" },
     "setup": { "completed": "Setup afgerond" },
     "auth": { "login_succeeded": "Beheerder aangemeld", "login_failed": "Aanmeldpoging mislukt", "logout": "Beheerder afgemeld", "session_expired": "Sessie verlopen", "session_revoked": "Sessie ingetrokken", "password_changed": "Beheerderswachtwoord gewijzigd", "password_reset": "Beheerderswachtwoord lokaal hersteld" },
     "settings": { "updated": "Instellingen bijgewerkt: {fields}" },
-    "provider": { "connect_started": "Verbinden met {target}", "connected": "Verbonden met {country} {server}", "connect_failed": "Kon niet verbinden met {target}", "recovery_started": "NordVPN-herstel gestart", "recovered": "NordVPN hersteld", "recovery_failed": "NordVPN-herstel mislukt", "recovery_rate_limited": "NordVPN-herstel tijdelijk begrensd", "retry_started": "Verbinding opnieuw proberen", "disconnect_started": "VPN-verbinding verbreken", "disconnected": "VPN-verbinding verbroken", "disconnect_failed": "VPN-verbinding kon niet worden verbroken", "token_updated": "NordVPN-token bijgewerkt" },
+    "provider": { "connect_started": "Verbinden met {target}", "connected": "Verbonden met {country} {server}", "connect_failed": "Kon niet verbinden met {target}", "recovery_started": "NordVPN-herstel gestart", "recovered": "NordVPN hersteld", "recovery_failed": "NordVPN-herstel mislukt", "recovery_rate_limited": "NordVPN-herstel tijdelijk begrensd", "retry_started": "Verbinding opnieuw proberen", "disconnect_started": "VPN-verbinding verbreken", "disconnected": "VPN-verbinding verbroken", "disconnect_failed": "VPN-verbinding kon niet worden verbroken", "session_started": "NordVPN-sessie gestart", "session_ended": "NordVPN-sessie beëindigd", "session_end_failed": "NordVPN-sessie kon niet worden beëindigd" },
     "wireguard": { "configuration_generated": "WireGuard-configuratie gegenereerd voor {client_name}", "configuration_regenerated": "WireGuard-configuratie vervangen voor {client_name}", "interface_active": "WireGuard-interface {interface} is actief geworden", "interface_inactive": "WireGuard-interface {interface} is inactief geworden", "handshake_received": "WireGuard-handshake ontvangen voor {client_name}" },
     "notifications": { "webhook_added": "Webhook {name} toegevoegd" }
   },
