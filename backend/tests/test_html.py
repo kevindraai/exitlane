@@ -7,9 +7,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-import exitlane.core as core
-import exitlane.main as main
-from exitlane.html import HtmlCompositionError, PARTIALS, STATIC_DIR, render_index
+from exitlane import core, main
+from exitlane.html import PARTIALS, STATIC_DIR, HtmlCompositionError, render_index
 
 FIXTURE = Path(__file__).parent / "fixtures" / "index_contract.json"
 CRITICAL_IDS = {

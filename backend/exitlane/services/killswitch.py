@@ -4,10 +4,10 @@ import ipaddress
 import os
 import re
 import tempfile
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Awaitable, Callable
 
 from exitlane import core
 

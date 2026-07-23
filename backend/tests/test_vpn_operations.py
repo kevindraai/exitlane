@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import exitlane.main as main
+from exitlane import main
 from exitlane.providers.nordvpn import NordVPN
 from exitlane.services import vpn_operations
 

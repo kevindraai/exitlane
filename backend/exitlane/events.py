@@ -127,7 +127,7 @@ class EventPage(BaseModel):
 
 def _safe_string(value: object) -> str:
     if not isinstance(value, str):
-        raise ValueError("Event metadata strings must be strings")
+        raise TypeError("Event metadata strings must be strings")
     return value.strip()[:MAX_STRING]
 
 

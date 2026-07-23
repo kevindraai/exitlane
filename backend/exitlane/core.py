@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import asyncio
 import hashlib
 import hmac
@@ -6,6 +7,7 @@ import json
 import os
 import sqlite3
 from pathlib import Path
+
 from exitlane.config import MIN_PASSWORD_LENGTH
 
 DATA = Path(os.getenv("EXITLANE_DATA_DIR", "/etc/exitlane"))

@@ -187,7 +187,7 @@ def deployment_status(request: Request) -> dict:
         "secure_cookie": state.secure_cookie,
         "direct_peer": (request.client.host if request.client else str(ipaddress.IPv4Address(0))),
         "public_url": configuration.public_url or None,
-        "trusted_proxies": list(str(network) for network in configuration.trusted_proxies),
+        "trusted_proxies": [str(network) for network in configuration.trusted_proxies],
         "secure_cookie_policy": configuration.secure_cookie_policy,
         "configuration": configuration.as_public_dict(),
         "warnings": warnings,

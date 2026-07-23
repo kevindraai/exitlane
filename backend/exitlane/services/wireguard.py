@@ -4,9 +4,9 @@ import ipaddress
 import os
 import re
 import tempfile
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from pathlib import Path
-from typing import Awaitable, Callable
 
 from exitlane.config import (
     DEFAULT_WIREGUARD_ALLOWED_IPS,

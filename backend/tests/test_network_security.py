@@ -4,9 +4,7 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
-import exitlane.core as core
-import exitlane.main as main
-from exitlane import cli
+from exitlane import cli, core, main
 from exitlane.services import network_security
 
 

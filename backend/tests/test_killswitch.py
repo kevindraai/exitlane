@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
 from exitlane import core
-from exitlane.services import killswitch
 from exitlane.providers import nordvpn
+from exitlane.services import killswitch
 
 
 class FakeNft:
@@ -24,7 +25,7 @@ class FakeNft:
             return (0, self.ruleset, "") if self.installed else (1, "", "not found")
         if "-f" in arguments:
             path = arguments[-1]
-            rules = open(path, encoding="utf-8").read()  # noqa: SIM115
+            rules = Path(path).read_text(encoding="utf-8")
             if "-c" in arguments:
                 return (1, "", "syntax") if self.fail_check else (0, "", "")
             if self.fail_apply:

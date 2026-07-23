@@ -4,10 +4,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-import exitlane.core as core
-import exitlane.main as main
+from exitlane import core, main, settings
 from exitlane.html import render_index
-import exitlane.settings as settings
 
 PASSWORD = "correct horse battery staple"
 STATIC_DIR = Path(__file__).parents[1] / "exitlane" / "static"

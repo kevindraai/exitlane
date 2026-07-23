@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from exitlane.services.dashboard import (
     DashboardResponse,
@@ -27,7 +27,7 @@ def system(memory=20.0, disk=20.0):
 
 
 def test_health_is_healthy_when_all_explicit_statuses_are_good():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     result = determine_health(
         VPNStatus(available=True, connected=True),
         WireGuardStatus(
@@ -45,7 +45,7 @@ def test_health_is_healthy_when_all_explicit_statuses_are_good():
 
 
 def test_health_warns_for_disconnected_vpn_stale_handshake_and_resources():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     result = determine_health(
         VPNStatus(available=True, connected=False),
         WireGuardStatus(available=True, configured=True, active=True),
@@ -73,7 +73,7 @@ def test_health_errors_for_inactive_configured_wireguard_and_critical_disk():
 
 def test_health_thresholds_are_exact():
     vpn = VPNStatus(available=True, connected=True)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     wireguard = WireGuardStatus(
         available=True,
         configured=True,

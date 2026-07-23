@@ -1,5 +1,5 @@
-import sqlite3
 import asyncio
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -7,7 +7,6 @@ from fastapi.testclient import TestClient
 
 from exitlane import cli, core, main
 from exitlane.providers import nordvpn
-
 
 PASSWORD = "correct horse battery staple"
 NEW_PASSWORD = "a new administrator password"
@@ -134,7 +133,8 @@ def test_cli_reset_rejects_mismatch_policy_and_insufficient_privilege(client, ca
         values = iter(answers)
         assert (
             cli.reset_password(
-                password_reader=lambda _prompt: next(values), effective_user_id=user_id
+                password_reader=lambda _prompt, values=values: next(values),
+                effective_user_id=user_id,
             )
             == expected
         )

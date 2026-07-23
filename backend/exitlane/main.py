@@ -1,38 +1,49 @@
 from __future__ import annotations
 
 import asyncio
-import logging
-import sqlite3
-import hashlib
 import base64
+import hashlib
 import ipaddress
+import logging
 import re
+import sqlite3
 import time
 import uuid
-from io import BytesIO
 from collections import defaultdict, deque
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
-from typing import AsyncIterator
 from urllib.parse import urlsplit
 
+import pyotp
+import segno
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
-from fastapi.responses import FileResponse
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-import segno
-import pyotp
 
 from exitlane import __version__
+from exitlane.config import (
+    DEFAULT_WIREGUARD_CLIENT,
+    DEFAULT_WIREGUARD_DNS,
+    DEFAULT_WIREGUARD_INTERFACE,
+    DEFAULT_WIREGUARD_PORT,
+    DEFAULT_WIREGUARD_SUBNET,
+    MAX_PASSWORD_LENGTH,
+    MAX_REQUEST_BODY_BYTES,
+    MIN_PASSWORD_LENGTH,
+    SESSION_COOKIE_POLICY,
+    SESSION_MAX_AGE_SECONDS,
+    validate_config,
+)
 from exitlane.core import (
-    DB,
     DATA,
-    SettingsStorageError,
+    DB,
     WG_DIR,
+    SettingsStorageError,
     command,
     hash_password,
     init,
@@ -40,44 +51,6 @@ from exitlane.core import (
     set_settings,
     setting,
     verify_password,
-)
-from exitlane.settings import (
-    SettingsUpdate,
-    current_general_settings,
-    settings_response,
-    update_settings,
-)
-from exitlane.providers.nordvpn import SIGN_OUT_ERROR_CODES, TOKEN_ERROR_CODES, provider
-from exitlane.providers.registry import ProviderNotFound, ProviderRegistry
-from exitlane.services.diagnostics import run as diagnostics
-from exitlane.services.dashboard import DashboardResponse, build_dashboard, system_status
-from exitlane.services import wireguard as wireguard_service
-from exitlane.services.vpn_selection import (
-    QUICK_COUNTRIES,
-    country_summary,
-    measure_servers,
-    remember_country,
-    select_server,
-    server_latency,
-)
-from exitlane.services import vpn_operations
-from exitlane.services.credentials import CredentialError, change_password
-from exitlane.services import auth_security
-from exitlane.services import network_security
-from exitlane.services import killswitch
-from exitlane.proxy import deployment_status, normalized_origin, request_security, trusted_origin
-from exitlane.config import (
-    DEFAULT_WIREGUARD_CLIENT,
-    DEFAULT_WIREGUARD_INTERFACE,
-    DEFAULT_WIREGUARD_DNS,
-    DEFAULT_WIREGUARD_PORT,
-    DEFAULT_WIREGUARD_SUBNET,
-    MAX_PASSWORD_LENGTH,
-    MIN_PASSWORD_LENGTH,
-    MAX_REQUEST_BODY_BYTES,
-    SESSION_COOKIE_POLICY,
-    SESSION_MAX_AGE_SECONDS,
-    validate_config,
 )
 from exitlane.events import (
     EVENT_DEFINITIONS,
@@ -88,6 +61,28 @@ from exitlane.events import (
     record_event,
 )
 from exitlane.html import render_index
+from exitlane.providers.nordvpn import SIGN_OUT_ERROR_CODES, TOKEN_ERROR_CODES, provider
+from exitlane.providers.registry import ProviderNotFound, ProviderRegistry
+from exitlane.proxy import deployment_status, normalized_origin, request_security, trusted_origin
+from exitlane.services import auth_security, killswitch, network_security, vpn_operations
+from exitlane.services import wireguard as wireguard_service
+from exitlane.services.credentials import CredentialError, change_password
+from exitlane.services.dashboard import DashboardResponse, build_dashboard, system_status
+from exitlane.services.diagnostics import run as diagnostics
+from exitlane.services.vpn_selection import (
+    QUICK_COUNTRIES,
+    country_summary,
+    measure_servers,
+    remember_country,
+    select_server,
+    server_latency,
+)
+from exitlane.settings import (
+    SettingsUpdate,
+    current_general_settings,
+    settings_response,
+    update_settings,
+)
 
 SYSTEM_WIREGUARD_DIR = Path("/etc/wireguard")
 _system_started_databases: set[Path] = set()
@@ -478,12 +473,15 @@ def observe_wireguard_state(
 async def require_authentication(request: Request, call_next):
     path = request.url.path
     route = (request.method, path)
-    if path.startswith("/api/") and request.method not in SAFE_METHODS:
-        # SameSite=Lax is the first CSRF boundary. Origin/Referer validation also
-        # protects deployments where an attacker controls another same-site origin.
-        if reason := request_origin_rejection(request):
-            log_security_rejection(reason)
-            return JSONResponse(status_code=403, content={"detail": reason})
+    # SameSite=Lax is the first CSRF boundary. Origin/Referer validation also
+    # protects deployments where an attacker controls another same-site origin.
+    if (
+        path.startswith("/api/")
+        and request.method not in SAFE_METHODS
+        and (reason := request_origin_rejection(request))
+    ):
+        log_security_rejection(reason)
+        return JSONResponse(status_code=403, content={"detail": reason})
     if path in PROTECTED_APPLICATION_ROUTES:
         user = session_user(request.cookies.get(SESSION_COOKIE))
         if user:
@@ -1338,7 +1336,7 @@ async def _end_provider_session(provider_instance, request: Request) -> dict:
         result = await provider_instance.sign_out()
     except asyncio.CancelledError:
         raise
-    except Exception:
+    except Exception:  # noqa: BLE001 - provider boundary normalizes unknown implementation failures.
         result = {"ok": False, "error": "provider_error"}
     after = await _fresh_status_for(provider_instance)
     signed_out = _provider_authentication_state(after) == "signed_out"
@@ -1548,7 +1546,9 @@ async def _fresh_vpn_status(provider_instance=provider) -> dict:
         return _vpn_snapshot(
             await provider_instance.status(timeout=vpn_operations.STATUS_TIMEOUT_SECONDS)
         )
-    except Exception:
+    except asyncio.CancelledError:
+        raise
+    except Exception:  # noqa: BLE001 - provider boundary returns a sanitized availability snapshot.
         return _vpn_snapshot(
             {
                 "available": False,
@@ -1754,7 +1754,7 @@ async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
             error_code=None if status.get("connected") else "provider_connect_cancelled",
         )
         raise
-    except Exception:
+    except Exception:  # noqa: BLE001 - provider boundary normalizes implementation-specific failures.
         result = {"ok": False, "exit_code": None, "error_code": "provider_connect_failed"}
         status = await _fresh_vpn_status()
 
@@ -1838,7 +1838,7 @@ async def disconnect_vpn(request: Request) -> dict:
             error_code="provider_disconnect_cancelled" if status.get("connected") else None,
         )
         raise
-    except Exception:
+    except Exception:  # noqa: BLE001 - provider boundary normalizes implementation-specific failures.
         result = {"ok": False, "error_code": "provider_disconnect_failed"}
     status = await _fresh_vpn_status()
     success = not status.get("connected")
@@ -1886,12 +1886,16 @@ async def connect_nordvpn(req: Connect, request: Request) -> dict:
     )
     try:
         result = await provider.connect(req.target, timeout=vpn_operations.CONNECT_TIMEOUT_SECONDS)
-    except Exception:
+    except asyncio.CancelledError:
+        raise
+    except Exception:  # noqa: BLE001 - provider boundary normalizes implementation-specific failures.
         result = {"ok": False, "error_code": "provider_connect_failed"}
     if result.get("ok"):
         try:
             status = await provider.status()
-        except Exception:  # Provider detail is intentionally not exposed to the event log.
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - provider detail must not reach the event log.
             status = None
         if status and status.get("connected"):
             record_event(

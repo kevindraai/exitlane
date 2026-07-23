@@ -3,13 +3,11 @@ import ipaddress
 import sqlite3
 import time
 
-import pytest
 import pyotp
+import pytest
 from fastapi.testclient import TestClient
 
-import exitlane.core as core
-import exitlane.main as main
-import exitlane.proxy as proxy
+from exitlane import core, main, proxy
 from exitlane.services import auth_security
 
 

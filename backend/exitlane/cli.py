@@ -10,11 +10,11 @@ from collections.abc import Callable, Sequence
 
 from exitlane import core
 from exitlane.events import record_event
-from exitlane.services.credentials import CredentialError, reset_administrator_password
-from exitlane.services.auth_security import disable_mfa as disable_administrator_mfa
-from exitlane.services.network_security import current_config, reset_database_config
-from exitlane.services import killswitch
 from exitlane.providers.nordvpn import provider
+from exitlane.services import killswitch
+from exitlane.services.auth_security import disable_mfa as disable_administrator_mfa
+from exitlane.services.credentials import CredentialError, reset_administrator_password
+from exitlane.services.network_security import current_config, reset_database_config
 
 
 def reset_password(

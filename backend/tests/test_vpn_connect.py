@@ -1,8 +1,9 @@
 import asyncio
 from types import SimpleNamespace
 
-import exitlane.main as main
 import pytest
+
+from exitlane import main
 
 
 @pytest.fixture(autouse=True)

@@ -2,9 +2,7 @@ import json
 import sqlite3
 from datetime import UTC, datetime, timedelta
 
-import exitlane.core as core
-import exitlane.events as events
-import exitlane.main as main
+from exitlane import core, events, main
 
 
 def database(tmp_path, monkeypatch):

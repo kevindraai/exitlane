@@ -7,9 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
-import exitlane.core as core
-import exitlane.main as main
-import exitlane.proxy as proxy
+from exitlane import core, main, proxy
 from exitlane.services import auth_security
 from exitlane.services.network_security import NetworkSecurityConfig
 

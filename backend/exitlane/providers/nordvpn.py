@@ -1,17 +1,18 @@
 from __future__ import annotations
 
-import re
-import shutil
 import asyncio
 import http.client
 import json
 import logging
+import os
+import re
+import shutil
 import time
 import urllib.parse
-import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
 from exitlane.core import command
 
 from .base import Provider, ProviderMetadata
@@ -166,7 +167,7 @@ _country_catalog_cache: list[dict] = []
 
 
 def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _reset_install_job() -> None:
@@ -509,8 +510,12 @@ echo "Installatie afgerond"
                 }
             )
 
-        except Exception as error:
-            _append_install_log(str(error))
+        except asyncio.CancelledError:
+            raise
+        # This background-job boundary must always publish a terminal state.
+        except Exception:
+            logger.exception("Unexpected NordVPN installation failure")
+            _append_install_log("Onverwachte fout tijdens de installatie.")
 
             _install_job.update(
                 {
@@ -685,7 +690,7 @@ echo "Installatie afgerond"
         return results
 
     async def start_browser_login(self):
-        rc, out, err = await command(
+        _rc, out, err = await command(
             "nordvpn",
             "login",
             timeout=30,
