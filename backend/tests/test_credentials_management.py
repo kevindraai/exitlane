@@ -464,3 +464,15 @@ def test_debian_installer_installs_root_owned_cli_entrypoint():
     assert 'CLI_TARGET="/usr/local/sbin/exitlane-cli"' in installer
     assert 'install -m 0755 "${VENV_DIR}/bin/exitlane-cli" "${CLI_TARGET}"' in installer
     assert installer.index("create_virtual_environment") < installer.index("install_cli")
+
+
+def test_debian_installer_does_not_modify_nordvpn_group_membership():
+    installer = (ROOT / "installer" / "install-debian.sh").read_text(encoding="utf-8")
+    service = (ROOT / "systemd" / "exitlane.service").read_text(encoding="utf-8")
+    provider = (ROOT / "backend" / "exitlane" / "providers" / "nordvpn.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "usermod" not in installer
+    assert "SupplementaryGroups=nordvpn" not in service
+    assert "usermod --append --groups nordvpn root" not in provider

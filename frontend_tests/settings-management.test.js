@@ -287,7 +287,6 @@ test("provider management keeps authentication and tunnel state distinct", () =>
       capabilities: {
         can_sign_in: false,
         can_sign_out: true,
-        can_manage_killswitch: false,
       },
     },
   });
@@ -295,7 +294,7 @@ test("provider management keeps authentication and tunnel state distinct", () =>
   assert.equal(signedIn.connectionState, "connected");
   assert.equal(signedIn.canSignOut, true);
   assert.equal(signedIn.canSignIn, false);
-  assert.equal(signedIn.canManageKillswitch, false);
+  assert.equal(signedIn.canManageProviderKillswitch, false);
 
   const signedOut = providerManagementView({
     management: {
@@ -310,7 +309,7 @@ test("provider management keeps authentication and tunnel state distinct", () =>
   const olderUnknown = providerManagementView({});
   assert.equal(olderUnknown.authenticationState, "unknown");
   assert.equal(olderUnknown.canSignOut, false);
-  assert.equal(olderUnknown.canManageKillswitch, false);
+  assert.equal(olderUnknown.canManageProviderKillswitch, false);
 });
 
 test("provider page has state regions and no killswitch control", async () => {

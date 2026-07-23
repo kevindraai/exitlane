@@ -29,11 +29,10 @@ test("only explicit signed-in capabilities enable provider controls", () => {
     can_connect: true,
     can_disconnect: false,
     can_select_location: true,
-    can_manage_killswitch: false,
   }));
   assert.equal(access.blocked, false);
   assert.equal(access.canSelectLocation, true);
-  assert.equal(access.canManageKillswitch, false);
+  assert.equal(access.canManageProviderKillswitch, false);
   assert.equal(vpnProviderAccess(status("signed_out")).blocked, true);
 });
 

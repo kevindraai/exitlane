@@ -96,11 +96,81 @@ Current technology: NORDLYNX""", ""
             "can_measure_latency": True,
             "can_select_location": True,
             "can_manage_provider_killswitch": False,
-            "can_manage_killswitch": False,
         },
         "error_code": None,
         "reconnect_required": False,
     }
+
+
+def test_connected_interface_does_not_imply_authentication(monkeypatch):
+    async def command(*args, **kwargs):
+        if args == ("systemctl", "is-active", "nordvpnd"):
+            return 0, "active", ""
+        if args == ("nordvpn", "status"):
+            return 0, "Status: Connected\nCurrent technology: NORDLYNX", ""
+        if args == ("nordvpn", "account"):
+            return 124, "", "timeout"
+        raise AssertionError(args)
+
+    monkeypatch.setattr(nordvpn, "command", command)
+    monkeypatch.setattr(nordvpn.shutil, "which", lambda _name: "/usr/bin/nordvpn")
+
+    status = asyncio.run(nordvpn.NordVPN().status())
+
+    assert status["connected"] is True
+    assert status["authenticated"] is False
+    assert status["management"]["authentication"] == {"state": "unknown"}
+    assert status["management"]["error_code"] == "timeout"
+
+
+def test_network_facts_require_official_connected_technology(monkeypatch):
+    statuses = iter(
+        [
+            {"connected": True, "technology": ""},
+            {"connected": True, "technology": "NORDLYNX"},
+        ]
+    )
+
+    async def status(*_args, **_kwargs):
+        return next(statuses)
+
+    provider = nordvpn.NordVPN()
+    monkeypatch.setattr(provider, "status", status)
+
+    unknown = asyncio.run(provider.network_facts())
+    nordlynx = asyncio.run(provider.network_facts())
+
+    assert unknown.available is False
+    assert unknown.interface is None
+    assert unknown.reason == "tunnel_interface_unknown"
+    assert nordlynx.available is True
+    assert nordlynx.interface == "nordlynx"
+
+
+def test_provider_defaults_enable_reboot_reconnect_and_keep_provider_killswitch_off(
+    monkeypatch,
+):
+    commands = []
+
+    async def command(*args, **_kwargs):
+        commands.append(args)
+        if args == ("nordvpn", "settings"):
+            return 0, """Technology: NORDLYNX
+Routing: enabled
+LAN Discovery: enabled
+Auto-connect: enabled
+Firewall: enabled
+Kill Switch: disabled
+User Consent: disabled""", ""
+        return 0, "setting applied", ""
+
+    monkeypatch.setattr(nordvpn, "command", command)
+
+    results = asyncio.run(nordvpn.NordVPN().defaults())
+
+    assert all(item["ok"] for item in results)
+    assert ("nordvpn", "set", "autoconnect", "on") in commands
+    assert ("nordvpn", "set", "killswitch", "off") in commands
 
 
 def test_signed_out_status_has_distinct_authentication_and_connection_states(monkeypatch):
@@ -121,7 +191,7 @@ def test_signed_out_status_has_distinct_authentication_and_connection_states(mon
     assert management["capabilities"]["can_sign_out"] is False
     assert management["capabilities"]["can_disconnect"] is False
     assert management["capabilities"]["can_select_location"] is False
-    assert management["capabilities"]["can_manage_killswitch"] is False
+    assert management["capabilities"]["can_manage_provider_killswitch"] is False
 
 
 @pytest.mark.parametrize(
@@ -163,7 +233,7 @@ def test_actions_fail_safely_when_cli_is_outside_runtime(monkeypatch):
     assert status["available"] is False
     assert status["state"] == "unavailable"
     assert status["management"]["authentication"]["state"] == "unavailable"
-    assert status["management"]["capabilities"]["can_manage_killswitch"] is False
+    assert status["management"]["capabilities"]["can_manage_provider_killswitch"] is False
     assert connect["error_code"] == "provider_cli_unavailable"
     assert disconnect["error_code"] == "provider_cli_unavailable"
 

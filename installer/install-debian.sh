@@ -25,6 +25,8 @@ readonly MASTER_KEY="${CONFIG_DIR}/secret.key"
 readonly SERVICE_NAME="exitlane.service"
 readonly SERVICE_SOURCE="${SOURCE_DIR}/systemd/${SERVICE_NAME}"
 readonly SERVICE_TARGET="/etc/systemd/system/${SERVICE_NAME}"
+readonly KILLSWITCH_SERVICE_SOURCE="${SOURCE_DIR}/systemd/exitlane-killswitch.service"
+readonly KILLSWITCH_SERVICE_TARGET="/etc/systemd/system/exitlane-killswitch.service"
 
 readonly DEFAULTS_SOURCE="${SOURCE_DIR}/installer/exitlane.default"
 readonly DEFAULTS_TARGET="/etc/default/exitlane"
@@ -295,6 +297,7 @@ install_service_files() {
     -m 0644 \
     "${SERVICE_SOURCE}" \
     "${SERVICE_TARGET}"
+  install -m 0644 "${KILLSWITCH_SERVICE_SOURCE}" "${KILLSWITCH_SERVICE_TARGET}"
 
   if [[ ! -f "${DEFAULTS_TARGET}" ]]; then
     install \
@@ -341,6 +344,7 @@ start_service() {
   log "Exitlane-service inschakelen en starten"
 
   systemctl enable "${SERVICE_NAME}"
+  systemctl enable exitlane-killswitch.service
   systemctl restart "${SERVICE_NAME}"
 
   sleep 2
@@ -420,7 +424,6 @@ main() {
   # installatie. Installeer daarom eerst de packages en voer daarna de overige
   # preflightchecks uit.
   install_system_packages
-
   check_connectivity
   check_network_administration
 

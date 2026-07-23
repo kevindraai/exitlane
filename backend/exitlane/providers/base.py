@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
 
+from exitlane.services.killswitch import TunnelFacts
+
 
 class ProviderActionUnsupported(RuntimeError):
     """Raised when a provider does not implement an optional explicit action."""
@@ -32,6 +34,10 @@ class Provider(ABC):
     @abstractmethod
     async def disconnect(self): ...
 
+    async def network_facts(self) -> TunnelFacts:
+        """Return conservative provider-independent egress facts."""
+        return TunnelFacts(False, reason="provider_unavailable")
+
     def capabilities(
         self,
         *,
@@ -51,7 +57,6 @@ class Provider(ABC):
             "can_measure_latency": False,
             "can_select_location": False,
             "can_manage_provider_killswitch": False,
-            "can_manage_killswitch": False,
         }
 
     async def authenticate(self, credential: str) -> dict:

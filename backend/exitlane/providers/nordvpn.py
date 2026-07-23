@@ -242,11 +242,30 @@ class NordVPN(Provider):
             ),
             # Deliberately reserved for a later security/networking design.
             "can_manage_provider_killswitch": False,
-            "can_manage_killswitch": False,
         }
 
     async def authenticate(self, credential: str) -> dict:
         return await self.login_token(credential)
+
+    async def network_facts(self):
+        from exitlane.services.killswitch import TunnelFacts
+
+        current = await self.status()
+        connected = bool(current.get("connected"))
+        technology = str(current.get("technology", "")).casefold()
+        # Provider-specific interface knowledge is translated here; the generic
+        # firewall service never hardcodes NordLynx.
+        interface = None
+        if connected and "nordlynx" in technology:
+            interface = "nordlynx"
+        return TunnelFacts(
+            available=connected and interface is not None,
+            interface=interface,
+            supports_ipv4=connected,
+            supports_ipv6=False,
+            protected_egress=connected and interface is not None,
+            reason="tunnel_unavailable" if not connected else "tunnel_interface_unknown",
+        )
 
     async def status(self, *, timeout: float = 8):
         if not shutil.which("nordvpn"):
@@ -283,7 +302,6 @@ class NordVPN(Provider):
             timeout=timeout,
         )
         values = parse(status_out or status_err)
-
         account_rc, account_out, account_err = await command(
             "nordvpn",
             "account",
@@ -293,6 +311,7 @@ class NordVPN(Provider):
         account_output = account_out or account_err
         daemon_active = daemon_rc == 0
         account_message = account_output.casefold()
+
         if daemon_rc == 124:
             authentication_state = "unknown"
             authentication_error = "timeout"
@@ -578,6 +597,12 @@ echo "Installatie afgerond"
                 "setting": "lan-discovery",
                 "value": "on",
                 "expected_key": "LAN Discovery",
+                "expected_value": "enabled",
+            },
+            {
+                "setting": "autoconnect",
+                "value": "on",
+                "expected_key": "Auto-connect",
                 "expected_value": "enabled",
             },
             {

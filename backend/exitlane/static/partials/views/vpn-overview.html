@@ -13,6 +13,44 @@
         <div hidden="" id="vpn-overview-location-item"><span data-i18n="vpn.overview.current_location">Current location</span><strong id="vpn-overview-current-location"></strong></div>
         <div><span data-i18n="vpn.overview.last_updated">Last status update</span><strong id="vpn-overview-last-updated">—</strong></div>
        </section>
+       <article class="provider-overview-card killswitch-card" id="killswitch-card" aria-labelledby="killswitch-title">
+        <div class="provider-overview-card__header">
+         <span class="provider-overview-card__icon" id="killswitch-icon" aria-hidden="true"></span>
+         <div>
+          <h2 id="killswitch-title" data-i18n="killswitch.title">ExitLane killswitch</h2>
+          <p data-i18n="killswitch.description">Blocks routed client traffic when no usable VPN tunnel is active.</p>
+         </div>
+         <span class="provider-overview-status" id="killswitch-badge"><span id="killswitch-badge-icon"></span><span id="killswitch-state">Unknown</span></span>
+        </div>
+        <dl class="provider-overview-status-grid">
+         <div><dt data-i18n="killswitch.configured">Configured</dt><dd id="killswitch-configured">—</dd></div>
+         <div><dt data-i18n="killswitch.effective">Effective</dt><dd id="killswitch-effective">—</dd></div>
+         <div><dt data-i18n="killswitch.tunnel">Tunnel available</dt><dd id="killswitch-tunnel">—</dd></div>
+         <div><dt data-i18n="killswitch.sources">Protected sources</dt><dd id="killswitch-sources">—</dd></div>
+         <div><dt data-i18n="killswitch.last_transition">Last change</dt><dd id="killswitch-transition">—</dd></div>
+        </dl>
+        <p class="supporting-copy" data-i18n="killswitch.ipv6_notice">IPv6 client traffic remains blocked when the provider offers no protected IPv6 tunnel.</p>
+        <p class="supporting-copy"><span data-i18n="killswitch.recovery">Recovery:</span> <code>sudo exitlane-cli disable-killswitch</code></p>
+        <p class="inline-error" id="killswitch-error" role="alert" hidden></p>
+        <div class="provider-overview-card__footer">
+         <button class="button button-primary" id="killswitch-change" type="button" data-i18n="killswitch.enable">Enable</button>
+         <button class="button button-secondary" id="killswitch-refresh" type="button" data-i18n="killswitch.refresh">Refresh status</button>
+        </div>
+       </article>
+       <dialog id="killswitch-dialog" aria-labelledby="killswitch-dialog-title">
+        <form id="killswitch-form" method="post">
+         <h2 id="killswitch-dialog-title" data-i18n="killswitch.confirm_title">Confirm killswitch change</h2>
+         <p data-i18n="killswitch.warning">An incorrect network configuration can interrupt client connectivity. Local management remains allowed.</p>
+         <label><span data-i18n="killswitch.password">Current password</span><input id="killswitch-password" type="password" autocomplete="current-password" required maxlength="256"></label>
+         <label id="killswitch-totp-field" hidden><span data-i18n="killswitch.totp">Authenticator code</span><input id="killswitch-totp" inputmode="numeric" autocomplete="one-time-code" minlength="6" maxlength="64"></label>
+         <label class="checkbox-row"><input id="killswitch-confirm-loss" type="checkbox" required><span data-i18n="killswitch.confirm_loss">I understand client connectivity may be interrupted.</span></label>
+         <p class="inline-error" id="killswitch-dialog-error" role="alert" hidden></p>
+         <div class="dialog-actions">
+          <button class="button button-secondary" id="killswitch-cancel" type="button" data-i18n="common.cancel">Cancel</button>
+          <button class="button button-danger" id="killswitch-confirm" type="submit" data-i18n="common.confirm">Confirm</button>
+         </div>
+        </form>
+       </dialog>
        <div class="provider-overview-list" id="vpn-overview-providers"></div>
        <p class="inline-error" hidden="" id="vpn-overview-error" role="alert"></p>
       </section>

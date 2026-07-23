@@ -39,6 +39,12 @@ EVENT_DEFINITIONS = {
         {"fields", "public_scheme", "trusted_proxy_count"},
     ),
     "network.security_settings_reset_locally": ("settings", "warning", set()),
+    "network.killswitch_enabled": ("network", "warning", set()),
+    "network.killswitch_disabled": ("network", "warning", set()),
+    "network.killswitch_engaged": ("network", "warning", {"reason"}),
+    "network.killswitch_released": ("network", "info", set()),
+    "network.killswitch_error": ("network", "error", {"reason"}),
+    "network.killswitch_disabled_locally": ("network", "warning", set()),
     "provider.connect_started": ("provider", "info", {"target", "country_code", "cli_action"}),
     "provider.connected": ("provider", "info", {"country", "city", "server", "country_code", "cli_action", "exit_code"}),
     "provider.connect_failed": ("provider", "error", {"target", "reason", "country_code", "cli_action", "exit_code"}),
@@ -62,7 +68,7 @@ EVENT_DEFINITIONS = {
 }
 FILTER_CATEGORIES = frozenset(value[0] for value in EVENT_DEFINITIONS.values())
 FILTER_LEVELS = frozenset({"info", "warning", "error"})
-SAFE_REASONS = frozenset({"invalid_credentials", "timeout", "healthcheck_failed", "provider_unavailable", "provider_status_unavailable", "connection_failed", "not_connected", "wrong_country", "invalid_target", "unknown", "already_signed_out", "daemon_unavailable", "command_unavailable", "provider_error"})
+SAFE_REASONS = frozenset({"invalid_credentials", "timeout", "healthcheck_failed", "provider_unavailable", "provider_status_unavailable", "connection_failed", "not_connected", "wrong_country", "invalid_target", "unknown", "already_signed_out", "daemon_unavailable", "command_unavailable", "provider_error", "tunnel_unavailable", "tunnel_interface_unknown", "firewall_unavailable", "firewall_apply_failed", "firewall_rules_missing", "invalid_configuration"})
 MAX_STRING = 160
 MAX_METADATA_BYTES = 2048
 

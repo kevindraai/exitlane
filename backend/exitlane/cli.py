@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import getpass
 import os
 import sqlite3
@@ -12,6 +13,8 @@ from exitlane.events import record_event
 from exitlane.services.credentials import CredentialError, reset_administrator_password
 from exitlane.services.auth_security import disable_mfa as disable_administrator_mfa
 from exitlane.services.network_security import current_config, reset_database_config
+from exitlane.services import killswitch
+from exitlane.providers.nordvpn import provider
 
 
 def reset_password(
@@ -104,6 +107,65 @@ def reset_network_security(
     return 0
 
 
+def killswitch_status(*, effective_user_id: int | None = None) -> int:
+    if (os.geteuid() if effective_user_id is None else effective_user_id) != 0:
+        print("This command must be run as root or with sudo.", file=sys.stderr)
+        return 77
+    try:
+        facts = asyncio.run(provider.network_facts())
+        current = asyncio.run(killswitch.status(facts))
+    except killswitch.KillswitchError as error:
+        print(f"Killswitch status unavailable: {error.code}", file=sys.stderr)
+        return 1
+    print(f"State: {current.state}")
+    print(f"Configured: {'yes' if current.configured else 'no'}")
+    print(f"Effective: {'yes' if current.effective else 'no'}")
+    print(f"Tunnel available: {'yes' if current.tunnel_available else 'no'}")
+    print(f"Firewall rules installed: {'yes' if current.firewall_rules_installed else 'no'}")
+    print(f"Reason: {current.reason}")
+    return 0 if current.effective or not current.configured else 1
+
+
+def disable_killswitch(
+    *,
+    input_reader: Callable[[str], str] = input,
+    effective_user_id: int | None = None,
+) -> int:
+    if (os.geteuid() if effective_user_id is None else effective_user_id) != 0:
+        print("This command must be run as root or with sudo.", file=sys.stderr)
+        return 77
+    phrase = "DISABLE EXITLANE KILLSWITCH"
+    if input_reader(f"Type {phrase} to continue: ") != phrase:
+        print("Killswitch recovery cancelled.", file=sys.stderr)
+        return 2
+    try:
+        asyncio.run(killswitch.disable())
+    except killswitch.KillswitchError as error:
+        print(f"Killswitch could not be disabled: {error.code}", file=sys.stderr)
+        return 1
+    with sqlite3.connect(core.DB) as connection:
+        connection.execute("DELETE FROM sessions")
+    record_event("network.killswitch_disabled_locally")
+    print("ExitLane killswitch disabled. All sessions were revoked.")
+    return 0
+
+
+def restore_killswitch(*, effective_user_id: int | None = None) -> int:
+    """Boot-only idempotent restore; configured gateways are closed before networking."""
+    if (os.geteuid() if effective_user_id is None else effective_user_id) != 0:
+        return 77
+    if not core.setting(killswitch.SETTING_CONFIGURED, False):
+        return 0
+    try:
+        # Deliberately start closed. The backend reconciles with live provider facts
+        # after startup; provider control traffic is host output and remains allowed.
+        asyncio.run(killswitch.reconcile(killswitch.TunnelFacts(False)))
+    except killswitch.KillswitchError:
+        record_event("network.killswitch_error", metadata={"reason": "firewall_apply_failed"})
+        return 1
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="exitlane-cli")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -116,6 +178,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         "reset-network-security",
         help="reset database network security settings and revoke every session",
     )
+    subcommands.add_parser("killswitch-status", help="show the ExitLane killswitch status")
+    subcommands.add_parser(
+        "disable-killswitch", help="remove only the ExitLane killswitch rules"
+    )
+    subcommands.add_parser("restore-killswitch", help=argparse.SUPPRESS)
     arguments = parser.parse_args(argv)
     if arguments.command == "reset-password":
         core.init()
@@ -129,6 +196,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.command == "reset-network-security":
         core.init()
         return reset_network_security()
+    if arguments.command == "killswitch-status":
+        core.init()
+        return killswitch_status()
+    if arguments.command == "disable-killswitch":
+        core.init()
+        return disable_killswitch()
+    if arguments.command == "restore-killswitch":
+        core.init()
+        return restore_killswitch()
     return 2
 
 

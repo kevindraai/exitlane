@@ -11,7 +11,7 @@ import time
 import uuid
 from io import BytesIO
 from collections import defaultdict, deque
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import AsyncIterator
@@ -64,6 +64,7 @@ from exitlane.services import vpn_operations
 from exitlane.services.credentials import CredentialError, change_password
 from exitlane.services import auth_security
 from exitlane.services import network_security
+from exitlane.services import killswitch
 from exitlane.proxy import deployment_status, normalized_origin, request_security, trusted_origin
 from exitlane.config import (
     DEFAULT_WIREGUARD_CLIENT,
@@ -98,6 +99,7 @@ _provider_sign_out_failures: dict[tuple[Path, int], deque[float]] = defaultdict(
 _login_failures: dict[tuple[Path, str, str], deque[float]] = defaultdict(deque)
 _security_rejection_logs: dict[str, deque[float]] = defaultdict(deque)
 _network_reauth_failures: dict[tuple[Path, int], deque[float]] = defaultdict(deque)
+_killswitch_reauth_failures: dict[tuple[Path, int], deque[float]] = defaultdict(deque)
 logger = logging.getLogger("exitlane.security")
 PASSWORD_CHANGE_ATTEMPTS = 5
 PASSWORD_CHANGE_WINDOW_SECONDS = 300
@@ -137,6 +139,36 @@ class Login(BaseModel):
 class MfaVerify(BaseModel):
     code: str = Field(min_length=6, max_length=64)
     mode: str = Field(default="totp", pattern=r"^(totp|recovery)$")
+
+
+class KillswitchChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+    code: str | None = Field(default=None, min_length=6, max_length=64)
+    confirm_access_loss: bool = False
+
+
+def _reauthenticate_killswitch(req: KillswitchChange, request: Request) -> None:
+    user = request.state.user
+    failure_key = (DB.resolve(), user["id"])
+    now = time.monotonic()
+    failures = _killswitch_reauth_failures[failure_key]
+    while failures and failures[0] <= now - NETWORK_REAUTH_WINDOW_SECONDS:
+        failures.popleft()
+    if len(failures) >= NETWORK_REAUTH_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="too_many_attempts")
+    with sqlite3.connect(DB) as connection:
+        row = connection.execute(
+            "SELECT password_hash,salt,mfa_enabled FROM users WHERE id=?", (user["id"],)
+        ).fetchone()
+    if not row or not verify_password(req.current_password, row[0], row[1]):
+        failures.append(now)
+        raise HTTPException(status_code=401, detail="invalid_credentials")
+    if row[2] and (not req.code or not auth_security.verify_totp(user["id"], req.code)):
+        failures.append(now)
+        raise HTTPException(status_code=401, detail="invalid_mfa_code")
+    if not req.confirm_access_loss:
+        raise HTTPException(status_code=409, detail="access_loss_confirmation_required")
+    _killswitch_reauth_failures.pop(failure_key, None)
 
 
 class MfaEnrollmentStart(BaseModel):
@@ -246,7 +278,44 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     if database not in _system_started_databases:
         record_event("system.started")
         _system_started_databases.add(database)
-    yield
+    monitor = asyncio.create_task(_monitor_killswitch())
+    try:
+        yield
+    finally:
+        monitor.cancel()
+        with suppress(asyncio.CancelledError):
+            await monitor
+
+
+async def _monitor_killswitch() -> None:
+    previous: str | None = None
+    previous_facts: killswitch.TunnelFacts | None = None
+    while True:
+        await asyncio.sleep(5)
+        if not setting(killswitch.SETTING_CONFIGURED, False):
+            previous = None
+            previous_facts = None
+            continue
+        try:
+            selected = provider_registry.get(setting("vpn.provider_id", provider_registry.default_id))
+            facts = await selected.network_facts()
+            current = (
+                await killswitch.reconcile(facts)
+                if facts != previous_facts
+                else await killswitch.status(facts)
+            )
+            previous_facts = facts
+        except (killswitch.KillswitchError, ProviderNotFound):
+            if previous != "error":
+                record_event("network.killswitch_error", metadata={"reason": "firewall_apply_failed"})
+            previous = "error"
+            continue
+        if current.state != previous:
+            if current.state == "enabled_protected" and previous is not None:
+                record_event("network.killswitch_released")
+            elif current.state in {"enabled_waiting_for_tunnel", "enabled_degraded"}:
+                record_event("network.killswitch_engaged", metadata={"reason": current.reason})
+            previous = current.state
 
 
 app = FastAPI(
@@ -815,6 +884,43 @@ async def get_deployment_security(request: Request) -> dict:
     status = deployment_status(request)
     status["mfa_required"] = auth_security.mfa_status(request.state.user["id"])["enabled"]
     return status
+
+
+@app.get("/api/vpn/killswitch")
+async def get_killswitch_status(request: Request) -> dict:
+    selected = provider_registry.get(setting("vpn.provider_id", provider_registry.default_id))
+    facts = await selected.network_facts()
+    result = (await killswitch.status(facts)).as_dict()
+    result["mfa_required"] = auth_security.mfa_status(request.state.user["id"])["enabled"]
+    return result
+
+
+@app.post("/api/vpn/killswitch/enable")
+async def enable_killswitch(req: KillswitchChange, request: Request) -> dict:
+    _reauthenticate_killswitch(req, request)
+    selected = provider_registry.get(setting("vpn.provider_id", provider_registry.default_id))
+    facts = await selected.network_facts()
+    try:
+        result = await killswitch.enable(facts)
+    except killswitch.KillswitchError as error:
+        record_event("network.killswitch_error", actor=request.state.user, metadata={"reason": error.code})
+        raise HTTPException(status_code=503, detail=error.code) from None
+    record_event("network.killswitch_enabled", actor=request.state.user)
+    if not result.tunnel_available:
+        record_event("network.killswitch_engaged", metadata={"reason": result.reason})
+    return result.as_dict()
+
+
+@app.post("/api/vpn/killswitch/disable")
+async def disable_killswitch(req: KillswitchChange, request: Request) -> dict:
+    _reauthenticate_killswitch(req, request)
+    try:
+        result = await killswitch.disable()
+    except killswitch.KillswitchError as error:
+        record_event("network.killswitch_error", actor=request.state.user, metadata={"reason": error.code})
+        raise HTTPException(status_code=503, detail=error.code) from None
+    record_event("network.killswitch_disabled", actor=request.state.user)
+    return result.as_dict()
 
 
 @app.put("/api/deployment/security")

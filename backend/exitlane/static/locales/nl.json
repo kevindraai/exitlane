@@ -245,6 +245,7 @@
   },
   "common": {
     "cancel": "Annuleren",
+    "confirm": "Bevestigen",
     "next": "Volgende",
     "back": "Terug",
     "copy": "Kopiëren",
@@ -588,6 +589,46 @@
     "disconnecting": "Verbreken…",
     "generating": "Genereren…",
     "adding": "Toevoegen…"
+},
+"killswitch": {
+  "title": "ExitLane-killswitch",
+  "description": "Blokkeert doorgestuurd clientverkeer wanneer geen bruikbare VPN-tunnel actief is.",
+  "configured": "Geconfigureerd",
+  "effective": "Effectief",
+  "tunnel": "Tunnel beschikbaar",
+  "sources": "Beveiligde bronnen",
+  "last_transition": "Laatste wijziging",
+  "ipv6_notice": "IPv6-clientverkeer blijft geblokkeerd wanneer de provider geen beveiligde IPv6-tunnel biedt.",
+  "recovery": "Herstel:",
+  "enable": "Inschakelen",
+  "disable": "Uitschakelen",
+  "refresh": "Status vernieuwen",
+  "confirm_title": "Killswitch-wijziging bevestigen",
+  "warning": "Dit kan clientconnectiviteit onderbreken. Lokaal beheer blijft toegestaan.",
+  "password": "Huidig wachtwoord",
+  "totp": "Authenticatorcode",
+  "confirm_loss": "Ik begrijp dat clientconnectiviteit kan worden onderbroken.",
+  "changing": "Toepassen…",
+  "enabled": "Killswitch ingeschakeld.",
+  "disabled": "Killswitch uitgeschakeld.",
+  "states": {
+    "disabled": "Uitgeschakeld",
+    "enabling": "Inschakelen",
+    "enabled_protected": "Ingeschakeld en beveiligd",
+    "enabled_waiting_for_tunnel": "Wacht op tunnel",
+    "enabled_degraded": "Ingeschakeld, beperkt",
+    "error": "Fout",
+    "unknown": "Onbekend"
+  },
+  "errors": {
+    "status": "Killswitch-status is niet beschikbaar.",
+    "invalid_credentials": "Het huidige wachtwoord is onjuist.",
+    "invalid_mfa_code": "De authenticatorcode is ongeldig.",
+    "too_many_attempts": "Te veel pogingen. Probeer het later opnieuw.",
+    "access_loss_confirmation_required": "Bevestig de verbindingswaarschuwing.",
+    "firewall_apply_failed": "De firewallwijziging mislukte en is teruggedraaid.",
+    "invalid_configuration": "De beveiligde netwerkconfiguratie is ongeldig."
+  }
 },
 "messages": {
   "system_checks_passed": "Alle systeemcontroles zijn geslaagd.",
