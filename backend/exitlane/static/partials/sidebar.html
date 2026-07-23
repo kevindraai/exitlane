@@ -29,16 +29,12 @@
       <span aria-hidden="true" class="sidebar-icon" data-lucide-icon="history"></span>
       <span data-i18n="nav.activity">Activity</span>
      </button>
-     <button class="sidebar-item" data-view="security" type="button">
-      <span aria-hidden="true" class="sidebar-icon" data-lucide-icon="shield-check"></span>
-      <span data-i18n="nav.security">
-       Security
-      </span>
-     </button>
-     <button class="sidebar-item" data-view="settings" type="button">
-      <span aria-hidden="true" class="sidebar-icon" data-lucide-icon="settings"></span>
-      <span data-i18n="nav.settings">
-       Settings
-      </span>
-     </button>
+     <div class="sidebar-group" id="settings-navigation-group">
+      <button aria-controls="settings-navigation-items" aria-expanded="false" class="sidebar-item sidebar-group-toggle" id="settings-navigation-toggle" type="button">
+       <span aria-hidden="true" class="sidebar-icon" data-lucide-icon="settings"></span>
+       <span data-i18n="nav.settings">Settings</span>
+       <span aria-hidden="true" class="sidebar-group-chevron" data-lucide-icon="chevron-right"></span>
+      </button>
+      <div class="sidebar-subnav" hidden="" id="settings-navigation-items"></div>
+     </div>
     </aside>

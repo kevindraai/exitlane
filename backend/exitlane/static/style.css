@@ -2118,13 +2118,16 @@ pre {
 
   .sidebar {
     position: static;
-    flex-direction: row;
-    overflow-x: auto;
+    flex-direction: column;
+    overflow: visible;
   }
 
   .sidebar-item {
-    width: auto;
-    flex: 0 0 auto;
+    width: 100%;
+  }
+
+  .sidebar-subnav:not([hidden]) {
+    display: grid;
   }
 }
 /* ---------- Application views ---------- */

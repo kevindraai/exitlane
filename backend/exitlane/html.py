@@ -19,7 +19,6 @@ PARTIALS = {
     "views/vpn": "partials/views/vpn.html",
     "views/wireguard": "partials/views/wireguard.html",
     "views/activity": "partials/views/activity.html",
-    "views/security": "partials/views/security.html",
     "views/settings": "partials/views/settings.html",
 }
 

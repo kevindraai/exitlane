@@ -28,6 +28,11 @@
     "eyebrow": "INSTELLINGEN",
     "title": "Instellingen",
     "description": "Beheer deze Exitlane-installatie.",
+    "security": {
+      "eyebrow": "INSTELLINGEN · BEVEILIGING",
+      "title": "Beveiliging",
+      "description": "Beheer wachtwoorden, MFA, herstelcodes en actieve sessies."
+    },
     "general": {
       "eyebrow": "ALGEMEEN",
       "title": "Algemeen",
@@ -38,6 +43,8 @@
       "polling_interval_help": "Wordt direct toegepast in deze browser.",
       "session_duration": "Sessieduur (seconden)",
       "session_duration_help": "Wordt beheerd via EXITLANE_SESSION_MAX_AGE en kan hier niet worden verzwakt.",
+      "host_information": "Hostinformatie",
+      "host_information_description": "Basisidentiteit en tijdzone-informatie van deze installatie.",
       "save": "Algemene instellingen opslaan"
     },
     "authentication": {
@@ -166,7 +173,7 @@
     },
     "notifications": {
       "eyebrow": "NOTIFICATIES",
-      "title": "Webhook",
+      "title": "Notificaties",
       "description": "Stuur notificaties naar een HTTP-endpoint.",
       "name": "Naam",
       "url": "URL",
@@ -176,6 +183,8 @@
     "about": {
       "eyebrow": "OVER",
       "title": "Over Exitlane",
+      "description": "Versie- en projectinformatie van deze ExitLane-installatie.",
+      "release_channel": "Releasekanaal",
       "product": "Product",
       "hostname": "Linux-hostname",
       "system_timezone": "Systeemtijdzone",
@@ -495,8 +504,14 @@
     "vpn_overview": "Overzicht",
     "wireguard": "WireGuard",
     "activity": "Activiteit",
-    "security": "Beveiliging",
-    "settings": "Instellingen"
+    "settings": "Instellingen",
+    "settings_general": "Algemeen",
+    "settings_security": "Beveiliging",
+    "settings_network": "Netwerk",
+    "settings_notifications": "Notificaties",
+    "settings_backup": "Backup & Restore",
+    "settings_updates": "Updates",
+    "settings_about": "Over"
   },
   "vpn": {
     "overview": {

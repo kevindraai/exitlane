@@ -259,9 +259,7 @@ function fillTimezones(timezones, selected) {
 export function renderAbout(about) {
   select("#settings-product").textContent = about.product;
   select("#settings-version").textContent = about.version;
-  select("#settings-runtime").textContent = about.runtime_environment;
-  select("#settings-python").textContent = about.python_version;
-  select("#settings-platform").textContent = about.platform;
+  select("#settings-release-channel").textContent = about.release_channel;
   select("#settings-setup-status").textContent = about.setup_complete
     ? t("settings.about.setup_complete", {}, "Complete")
     : t("settings.about.setup_incomplete", {}, "Incomplete");
@@ -277,7 +275,7 @@ export function renderSettings(data) {
     data.general.provider_refresh_interval_seconds;
   select("#settings-hostname").textContent = data.system.hostname;
   select("#settings-system-timezone").textContent = data.system.system_timezone;
-  select("#settings-session-duration").value =
+  select("#settings-session-duration-display").textContent =
     data.system.session_duration_seconds;
   select("#settings-language").value = getCurrentLanguage();
   select("#settings-color-scheme").value = getColorSchemePreference();

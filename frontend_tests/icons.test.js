@@ -27,7 +27,6 @@ test("sidebar uses the expected Lucide mapping without legacy emoji or inline SV
     "chart-no-axes-column",
     "key-round",
     "history",
-    "shield-check",
     "settings",
   ];
   for (const icon of expected) {
@@ -35,6 +34,22 @@ test("sidebar uses the expected Lucide mapping without legacy emoji or inline SV
   }
   assert.doesNotMatch(sidebar, /🏠|🌍|🔑|🔒|⚙|⌄/u);
   assert.doesNotMatch(sidebar, /<svg/i);
+});
+
+test("Settings registry uses only allowlisted local Lucide icons", async () => {
+  const source = await read("../backend/exitlane/static/js/settings-navigation.js");
+  for (const icon of [
+    "sliders-horizontal",
+    "shield-check",
+    "network",
+    "bell",
+    "archive-restore",
+    "refresh-cw",
+    "info",
+  ]) {
+    assert.ok(LUCIDE_ICON_NAMES.includes(icon));
+    assert.match(source, new RegExp(`icon: "${icon}"`));
+  }
 });
 
 test("SVG helper uses currentColor, decorative accessibility, and no HTML injection", async () => {
