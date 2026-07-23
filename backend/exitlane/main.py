@@ -5,6 +5,7 @@ import logging
 import sqlite3
 import hashlib
 import base64
+import ipaddress
 import re
 import time
 import uuid
@@ -14,6 +15,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import AsyncIterator
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -61,6 +63,7 @@ from exitlane.services.vpn_selection import (
 from exitlane.services import vpn_operations
 from exitlane.services.credentials import CredentialError, change_password
 from exitlane.services import auth_security
+from exitlane.services import network_security
 from exitlane.proxy import deployment_status, normalized_origin, request_security, trusted_origin
 from exitlane.config import (
     DEFAULT_WIREGUARD_CLIENT,
@@ -94,6 +97,7 @@ _password_change_failures: dict[tuple[Path, int], deque[float]] = defaultdict(de
 _provider_sign_out_failures: dict[tuple[Path, int], deque[float]] = defaultdict(deque)
 _login_failures: dict[tuple[Path, str, str], deque[float]] = defaultdict(deque)
 _security_rejection_logs: dict[str, deque[float]] = defaultdict(deque)
+_network_reauth_failures: dict[tuple[Path, int], deque[float]] = defaultdict(deque)
 logger = logging.getLogger("exitlane.security")
 PASSWORD_CHANGE_ATTEMPTS = 5
 PASSWORD_CHANGE_WINDOW_SECONDS = 300
@@ -103,6 +107,8 @@ LOGIN_ATTEMPTS = 5
 LOGIN_WINDOW_SECONDS = 300
 SECURITY_REJECTION_LOG_ATTEMPTS = 5
 SECURITY_REJECTION_LOG_WINDOW_SECONDS = 60
+NETWORK_REAUTH_ATTEMPTS = 5
+NETWORK_REAUTH_WINDOW_SECONDS = 300
 NORDVPN_HOST_COUNTRY_CODES = {"UK": "GB"}
 provider_registry = ProviderRegistry([provider], default_id=provider.id)
 
@@ -153,6 +159,16 @@ class PasswordChange(BaseModel):
         min_length=MIN_PASSWORD_LENGTH, max_length=MAX_PASSWORD_LENGTH
     )
     confirmation: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+
+
+class NetworkSecurityUpdate(BaseModel):
+    public_url: str = Field(default="", max_length=network_security.MAX_PUBLIC_URL_LENGTH)
+    trusted_proxies: list[str] = Field(default_factory=list, max_length=64)
+    secure_cookie_policy: str = Field(pattern=r"^(auto|always|never)$")
+    current_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+    code: str | None = Field(default=None, min_length=6, max_length=8)
+    confirm_broad_trust: bool = False
+    confirm_access_loss: bool = False
 
 
 class Token(BaseModel):
@@ -796,7 +812,88 @@ async def revoke_other_auth_sessions(request: Request) -> dict:
 
 @app.get("/api/deployment/security")
 async def get_deployment_security(request: Request) -> dict:
-    return deployment_status(request)
+    status = deployment_status(request)
+    status["mfa_required"] = auth_security.mfa_status(request.state.user["id"])["enabled"]
+    return status
+
+
+@app.put("/api/deployment/security")
+async def update_deployment_security(
+    req: NetworkSecurityUpdate, request: Request
+) -> dict:
+    user = request.state.user
+    failure_key = (DB.resolve(), user["id"])
+    now = time.monotonic()
+    failures = _network_reauth_failures[failure_key]
+    while failures and failures[0] <= now - NETWORK_REAUTH_WINDOW_SECONDS:
+        failures.popleft()
+    if len(failures) >= NETWORK_REAUTH_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="too_many_attempts")
+    with sqlite3.connect(DB) as connection:
+        row = connection.execute(
+            "SELECT password_hash,salt,mfa_enabled FROM users WHERE id=?", (user["id"],)
+        ).fetchone()
+    password_valid = bool(row) and verify_password(req.current_password, row[0], row[1])
+    if not password_valid:
+        failures.append(now)
+        raise HTTPException(status_code=401, detail="invalid_credentials")
+    if row[2] and (not req.code or not auth_security.verify_totp(user["id"], req.code)):
+        failures.append(now)
+        raise HTTPException(status_code=401, detail="invalid_mfa_code")
+    try:
+        public_url, proxies, _policy = network_security.validate_configuration(
+            req.public_url,
+            req.trusted_proxies,
+            req.secure_cookie_policy,
+            confirm_broad_trust=req.confirm_broad_trust,
+        )
+    except network_security.NetworkSecurityError as error:
+        raise HTTPException(
+            status_code=409 if "confirmation_required" in error.code else 422,
+            detail={"code": error.code, "field": error.field},
+        ) from None
+    current_origin = request.headers.get("origin") or request.headers.get("referer") or ""
+    origin_risk = bool(public_url and normalized_origin(current_origin) != normalized_origin(public_url))
+    peer = request.client.host if request.client else str(ipaddress.IPv4Address(0))
+    try:
+        peer_address = ipaddress.ip_address(peer)
+    except ValueError:
+        peer_address = ipaddress.IPv4Address(0)
+    proxy_risk = request_security(request).direct_peer_trusted and not any(
+        peer_address in network for network in proxies
+    )
+    if (origin_risk or proxy_risk) and not req.confirm_access_loss:
+        raise HTTPException(status_code=409, detail="access_loss_confirmation_required")
+    try:
+        configuration, changed = network_security.update_config(
+            public_url=req.public_url,
+            trusted_proxies=req.trusted_proxies,
+            secure_cookie_policy=req.secure_cookie_policy,
+            confirm_broad_trust=req.confirm_broad_trust,
+        )
+    except network_security.NetworkSecurityError as error:
+        raise HTTPException(
+            status_code=409 if error.code == "environment_override" else 422,
+            detail={"code": error.code, "field": error.field},
+        ) from None
+    _network_reauth_failures.pop(failure_key, None)
+    if changed:
+        record_event(
+            "network.security_settings_updated",
+            actor=user,
+            metadata={
+                "fields": changed,
+                "public_scheme": urlsplit(configuration.public_url).scheme
+                if configuration.public_url
+                else "none",
+                "trusted_proxy_count": len(configuration.trusted_proxies),
+            },
+        )
+    return {
+        **deployment_status(request),
+        "configuration": configuration.as_public_dict(),
+        "mfa_required": bool(row[2]),
+    }
 
 
 @app.get("/api/setup/state")

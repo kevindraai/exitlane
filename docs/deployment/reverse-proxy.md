@@ -1,8 +1,10 @@
 # HTTPS reverse proxy
 
 ExitLane does not terminate TLS. It trusts `X-Forwarded-For` and `X-Forwarded-Proto` only when the
-direct TCP peer is in `EXITLANE_TRUSTED_PROXIES`. Values are comma-separated IPv4/IPv6 addresses
-or CIDRs; hostnames and wildcards are unsupported. Without this setting forwarding headers are
+direct TCP peer is explicitly trusted. Configure it after signing in under
+**Settings → Network → Reverse-proxy configuration**, or use `EXITLANE_TRUSTED_PROXIES`.
+Environment values are comma-separated IPv4/IPv6 addresses or CIDRs; hostnames and wildcards are
+unsupported. Without a trusted peer forwarding headers are
 ignored. `X-Forwarded-*` is primary; RFC `Forwarded` is not combined with it.
 
 Addresses are processed right-to-left, removing trusted proxy hops and stopping at the first
@@ -15,10 +17,26 @@ EXITLANE_PUBLIC_URL=https://exitlane.example.internal
 EXITLANE_SECURE_COOKIES=auto
 ```
 
-Restart ExitLane after changing environment. Serve it at `/`, not a subpath. Verify status under
+Restart ExitLane after changing environment. Values saved in Settings apply on the next request
+without a restart. Serve ExitLane at `/`, not a subpath. Verify status under
 **Settings → Network**. Direct HTTP remains available for trusted local networks and warns.
 `always` forces Secure cookies; `never` is only for explicit local development. HSTS is emitted
 only when HTTPS is reliably detected.
+
+## Configuration precedence and safety
+
+The effective runtime configuration has one defined precedence:
+
+1. `EXITLANE_PUBLIC_URL`, `EXITLANE_TRUSTED_PROXIES`, and
+   `EXITLANE_SECURE_COOKIES` when the relevant variable is present;
+2. the corresponding value saved under Settings → Network;
+3. direct-access defaults: no public URL, no trusted proxy, and automatic cookies.
+
+An environment-controlled field is read-only in the web interface and is marked as managed
+through environment configuration. Saving requires the current administrator password and,
+when MFA is enabled, a fresh TOTP code. Universal proxy ranges are rejected. Broad private ranges
+and changes that may invalidate the current browser origin or trusted peer require an explicit
+extra confirmation.
 
 ## Caddy
 
@@ -99,8 +117,27 @@ EXITLANE_SECURE_COOKIES=auto
 Restart ExitLane after editing its environment. Then use **Settings → Network** to verify HTTPS,
 reverse proxy detection, trusted direct peer, Secure cookies, and the public URL.
 
+When using the Settings flow, the **Direct peer** value is the address that should normally be
+trusted for NPM. After saving, sign out and verify a new login through NPM. The status card should
+then show HTTPS, reverse proxy, direct peer trusted, and secure cookie as active. ExitLane never
+shows the raw forwarding-header chain.
+
 Origin and other deployment-security rejections happen before credentials are evaluated. They
 do not create the misleading `auth.login_failed` Activity event. ExitLane emits only a bounded,
 reason-code-only warning in the service security log (`invalid_origin` or
 `deployment_origin_mismatch`); it never logs raw origins, proxy headers, usernames, request
 bodies, or credentials for these rejections.
+
+## Local recovery
+
+If a saved value blocks browser access, use the local appliance console:
+
+```console
+sudo exitlane-cli network-status
+sudo exitlane-cli reset-network-security
+```
+
+The reset command requires typing `RESET NETWORK SECURITY`, restores the database values to
+direct-access defaults, revokes every session, and records a safe Activity event. Environment
+overrides remain active; change those in the service or container configuration and restart
+ExitLane when an override caused the lockout.

@@ -33,6 +33,12 @@ EVENT_DEFINITIONS = {
     "auth.recovery_code_used": ("auth", "warning", set()),
     "auth.other_sessions_revoked": ("auth", "warning", set()),
     "settings.updated": ("settings", "info", {"fields"}),
+    "network.security_settings_updated": (
+        "settings",
+        "warning",
+        {"fields", "public_scheme", "trusted_proxy_count"},
+    ),
+    "network.security_settings_reset_locally": ("settings", "warning", set()),
     "provider.connect_started": ("provider", "info", {"target", "country_code", "cli_action"}),
     "provider.connected": ("provider", "info", {"country", "city", "server", "country_code", "cli_action", "exit_code"}),
     "provider.connect_failed": ("provider", "error", {"target", "reason", "country_code", "cli_action", "exit_code"}),

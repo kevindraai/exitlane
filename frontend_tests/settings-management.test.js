@@ -204,8 +204,38 @@ test("MFA markup and lifecycle enforce exclusive controls and secret cleanup", a
   assert.match(source, /exitlane:authenticationrequired"[\s\S]+clearTemporaryMfaState/);
   assert.match(source, /pagehide"[\s\S]+clearTemporaryMfaState/);
   assert.match(source, /settings-recovery-code-list"\)\.textContent = ""/);
-  assert.match(css, /\.mfa-qr-frame[\s\S]+min-width: 220px[\s\S]+background: #fff/);
-  assert.match(css, /\.mfa-qr-frame svg[\s\S]+background: #fff/);
+  assert.match(css, /\.mfa-enrollment-grid[\s\S]+0\.45fr[\s\S]+0\.55fr/);
+  assert.match(css, /\.mfa-qr-zone[\s\S]+place-items: center/);
+  assert.match(css, /\.mfa-qr-frame[\s\S]+aspect-ratio: 1[\s\S]+background: #fff/);
+  assert.match(css, /\.mfa-qr-frame > svg\.mfa-qr-svg[\s\S]+background: #fff/);
+  assert.match(css, /#settings-mfa-setup-key[\s\S]+overflow-wrap: anywhere/);
+  assert.doesNotMatch(css, /#settings-mfa-setup-key[\s\S]{0,160}overflow-x: auto/);
+  assert.match(markup, /class="mfa-setup-key-control"[\s\S]+data-lucide-icon="copy"/);
+  assert.match(markup, /id="settings-mfa-confirm-code" inputmode="numeric" maxlength="6"/);
+  assert.match(markup, /autocomplete="one-time-code"[^>]+id="settings-mfa-confirm-code"/);
+  assert.match(source, /settings\.authentication\.mfa\.setting_up/);
+  assert.match(css, /@media \(max-width: 820px\)[\s\S]+\.mfa-enrollment-grid/);
+});
+
+test("network deployment status and editable security configuration stay separate", async () => {
+  const [markup, source] = await Promise.all([
+    readFile(markupUrl, "utf8"),
+    readFile(sourceUrl, "utf8"),
+  ]);
+  assert.match(markup, /id="settings-network-status-title"[\s\S]+id="settings-deployment-status"/);
+  assert.match(markup, /id="settings-network-configuration-title"[\s\S]+id="settings-network-form"/);
+  assert.match(markup, /id="settings-network-public-url"/);
+  assert.match(markup, /id="settings-network-proxies" rows="5"/);
+  assert.match(markup, /id="settings-network-cookie-policy"/);
+  assert.match(markup, /id="settings-network-password" required="" type="password"/);
+  assert.match(markup, /id="settings-network-totp-field"/);
+  assert.match(markup, /id="settings-network-confirm"/);
+  assert.match(source, /configuration\.environment_overrides\[field\]/);
+  assert.match(source, /controlSelector\)\.disabled = locked/);
+  assert.match(source, /method: "PUT"/);
+  assert.match(source, /access_loss_confirmation_required/);
+  assert.match(source, /broad_proxy_confirmation_required/);
+  assert.match(source, /direct_peer: deployment\.direct_peer/);
 });
 
 test("MFA copy actions retain unformatted state and are explicit user actions", async () => {
@@ -240,7 +270,8 @@ test("English and Dutch expose password rules and safe token diagnostics", async
     for (const key of [
       "setup_key", "copy_setup_key", "copied", "recovery_title", "copy_codes",
       "codes_saved", "close_codes", "scan", "manual", "enrollment_title",
-      "qr_description", "enabled", "disabled", "remaining",
+      "qr_description", "enabled", "disabled", "remaining", "scan_or_manual",
+      "or", "manual_label", "setup_key_safety", "verify_six_digits", "setting_up",
     ]) {
       assert.ok(locale.settings.authentication.mfa[key]);
     }

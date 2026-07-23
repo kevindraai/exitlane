@@ -34,6 +34,8 @@ let savedSettings = null;
 let settingsLoaded = false;
 let loadingSettings = false;
 const mfaState = createMfaState();
+let networkMfaRequired = false;
+let networkBroadTrustConfirmation = false;
 
 function removeRenderedMfaSecrets() {
   select("#settings-mfa-setup-key").textContent = "";
@@ -54,6 +56,11 @@ function renderMfaState() {
   select("#settings-mfa-enable-form").hidden = !visibility.disabled;
   select("#settings-mfa-enrollment").hidden = !visibility.enrollment;
   select("#settings-mfa-manage-form").hidden = !visibility.enabled;
+  if (visibility.enrollment) {
+    select("#settings-mfa-status").textContent = t(
+      "settings.authentication.mfa.setting_up", {}, "Setting up",
+    );
+  }
   if (visibility.enrollment) {
     select("#settings-mfa-setup-key").textContent = mfaState.setupKey
       ?.match(/.{1,4}/g)?.join(" ") || "";
@@ -101,9 +108,11 @@ async function loadAuthenticationSecurity() {
   ]);
   reconcileMfaState(mfaState, security.mfa);
   renderMfaState();
-  select("#settings-mfa-status").textContent = security.mfa.enabled
-    ? t("settings.authentication.mfa.enabled", {}, "Enabled")
-    : t("settings.authentication.mfa.disabled", {}, "Disabled");
+  if (mfaState.mode !== MFA_STATES.ENROLLMENT_PENDING) {
+    select("#settings-mfa-status").textContent = security.mfa.enabled
+      ? t("settings.authentication.mfa.enabled", {}, "Enabled")
+      : t("settings.authentication.mfa.disabled", {}, "Disabled");
+  }
   select("#settings-mfa-recovery-count").textContent = security.mfa.enabled
     ? t(
       "settings.authentication.mfa.remaining",
@@ -137,6 +146,7 @@ async function loadAuthenticationSecurity() {
     https: deployment.https,
     reverse_proxy: deployment.reverse_proxy,
     trusted_proxy: deployment.direct_peer_trusted,
+    direct_peer: deployment.direct_peer,
     secure_cookie: deployment.secure_cookie,
     public_url: deployment.public_url || "—",
     warnings: deployment.warnings.join(", ") || "—",
@@ -149,6 +159,23 @@ async function loadAuthenticationSecurity() {
     row.append(term, detail);
     status.appendChild(row);
   }
+  const configuration = deployment.configuration;
+  select("#settings-network-public-url").value = configuration.public_url || "";
+  select("#settings-network-proxies").value = configuration.trusted_proxies.join("\n");
+  select("#settings-network-cookie-policy").value = configuration.secure_cookie_policy;
+  const fields = {
+    public_url: ["#settings-network-public-url", "#settings-network-public-url-override"],
+    trusted_proxies: ["#settings-network-proxies", "#settings-network-proxies-override"],
+    secure_cookie_policy: ["#settings-network-cookie-policy", "#settings-network-cookie-override"],
+  };
+  for (const [field, [controlSelector, helpSelector]] of Object.entries(fields)) {
+    const locked = Boolean(configuration.environment_overrides[field]);
+    select(controlSelector).disabled = locked;
+    select(helpSelector).hidden = !locked;
+  }
+  networkMfaRequired = Boolean(deployment.mfa_required);
+  select("#settings-network-totp-field").hidden = !networkMfaRequired;
+  select("#settings-network-totp").required = networkMfaRequired;
 }
 
 function generalFormValue() {
@@ -250,15 +277,29 @@ async function beginMfa(event) {
 
 async function confirmMfa(event) {
   event.preventDefault();
-  const result = await api("/api/auth/mfa/enrollment/confirm", {
-    method: "POST",
-    body: JSON.stringify({
-      enrollment: mfaState.pendingEnrollment,
-      code: select("#settings-mfa-confirm-code").value,
-    }),
-  });
-  showRecoveryCodes(result.recovery_codes);
-  await loadAuthenticationSecurity();
+  const button = select("#settings-mfa-confirm");
+  const error = select("#settings-mfa-confirm-error");
+  error.hidden = true;
+  setBusy(button, true, t("settings.authentication.mfa.confirming", {}, "Confirming…"));
+  try {
+    const result = await api("/api/auth/mfa/enrollment/confirm", {
+      method: "POST",
+      body: JSON.stringify({
+        enrollment: mfaState.pendingEnrollment,
+        code: select("#settings-mfa-confirm-code").value,
+      }),
+    });
+    showRecoveryCodes(result.recovery_codes);
+    await loadAuthenticationSecurity();
+  } catch {
+    error.textContent = t(
+      "settings.authentication.mfa.invalid_code", {}, "Enter a valid six-digit code.",
+    );
+    error.hidden = false;
+    select("#settings-mfa-confirm-code").focus();
+  } finally {
+    setBusy(button, false);
+  }
 }
 
 async function cancelMfa() {
@@ -286,6 +327,59 @@ async function manageMfa(event) {
     await loadAuthenticationSecurity();
   }
   clearSecretFields("#settings-mfa-manage-password", "#settings-mfa-manage-code");
+}
+
+function networkSecurityPayload(confirmAccessLoss = false) {
+  return {
+    public_url: select("#settings-network-public-url").value.trim(),
+    trusted_proxies: select("#settings-network-proxies").value
+      .split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean),
+    secure_cookie_policy: select("#settings-network-cookie-policy").value,
+    current_password: select("#settings-network-password").value,
+    code: networkMfaRequired ? select("#settings-network-totp").value : null,
+    confirm_broad_trust: networkBroadTrustConfirmation,
+    confirm_access_loss: confirmAccessLoss,
+  };
+}
+
+async function submitNetworkSecurity({ confirmAccessLoss = false } = {}) {
+  const button = select("#settings-network-save");
+  const errorTarget = select("#settings-network-error");
+  errorTarget.hidden = true;
+  setBusy(button, true, t("settings.network.saving", {}, "Saving…"));
+  try {
+    await api("/api/deployment/security", {
+      method: "PUT",
+      body: JSON.stringify(networkSecurityPayload(confirmAccessLoss)),
+    });
+    clearSecretFields("#settings-network-password", "#settings-network-totp");
+    await loadAuthenticationSecurity();
+    const status = select("#settings-network-status");
+    status.textContent = t("settings.network.saved", {}, "Network configuration saved.");
+    status.hidden = false;
+  } catch (error) {
+    const detail = error.payload?.detail;
+    const code = typeof detail === "object" ? detail.code : detail;
+    if (code === "access_loss_confirmation_required" ||
+        code === "broad_proxy_confirmation_required") {
+      networkBroadTrustConfirmation = code === "broad_proxy_confirmation_required";
+      select("#settings-network-confirm").showModal();
+      return;
+    }
+    errorTarget.textContent = t(
+      `settings.network.errors.${code || "save_failed"}`,
+      {},
+      "The network configuration could not be saved.",
+    );
+    errorTarget.hidden = false;
+  } finally {
+    setBusy(button, false);
+  }
+}
+
+async function saveNetworkSecurity(event) {
+  event.preventDefault();
+  await submitNetworkSecurity();
 }
 
 export async function saveGeneralSettings(event) {
@@ -438,15 +532,27 @@ export function initialiseSettings() {
   form.addEventListener("input", updateSaveState);
   form.addEventListener("change", updateSaveState);
   select("#settings-password-form").addEventListener("submit", changePassword);
+  select("#settings-network-form").addEventListener("submit", saveNetworkSecurity);
+  select("#settings-network-confirm-cancel").addEventListener("click", () => {
+    select("#settings-network-confirm").close();
+    networkBroadTrustConfirmation = false;
+  });
+  select("#settings-network-confirm-save").addEventListener("click", async () => {
+    select("#settings-network-confirm").close();
+    await submitNetworkSecurity({ confirmAccessLoss: true });
+    networkBroadTrustConfirmation = false;
+  });
   select("#settings-mfa-enable-form").addEventListener("submit", beginMfa);
   select("#settings-mfa-confirm-form").addEventListener("submit", confirmMfa);
   select("#settings-mfa-cancel").addEventListener("click", cancelMfa);
   select("#settings-mfa-manage-form").addEventListener("submit", manageMfa);
   select("#settings-mfa-copy-key").addEventListener("click", async () => {
     if (mfaState.setupKey) await navigator.clipboard.writeText(mfaState.setupKey);
-    select("#settings-mfa-message").textContent = t(
+    const status = select("#settings-mfa-enrollment-status");
+    status.textContent = t(
       "settings.authentication.mfa.copied", {}, "Copied.",
     );
+    status.hidden = false;
   });
   select("#settings-recovery-copy").addEventListener("click", async () => {
     if (mfaState.recoveryCodes.length) {

@@ -741,23 +741,58 @@ input::placeholder {
   max-width: 38rem;
 }
 
-.mfa-enrollment-grid,
+.mfa-enrollment {
+  width: 100%;
+  max-width: 64rem;
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-soft);
+}
+
+.mfa-enrollment-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.45fr) minmax(0, 0.55fr);
+  gap: clamp(24px, 4vw, 40px);
+  align-items: start;
+}
+
 .mfa-manage-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
 }
 
+.mfa-enrollment-method,
+.mfa-verification-column,
+.mfa-setup-key-block {
+  min-width: 0;
+}
+
+.mfa-enrollment-method,
+.mfa-verification-column {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.mfa-qr-zone {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+}
+
 .mfa-qr-frame {
-  width: min(100%, 260px);
-  min-width: 220px;
+  width: clamp(240px, 90%, 280px);
+  max-width: 100%;
+  aspect-ratio: 1;
   padding: 16px;
   overflow: hidden;
   border-radius: 12px;
   background: #fff;
 }
 
-.mfa-qr-frame svg {
+.mfa-qr-frame > svg.mfa-qr-svg {
   display: block;
   width: 100%;
   height: auto;
@@ -765,23 +800,83 @@ input::placeholder {
   background: #fff;
 }
 
-.mfa-setup-key-row {
+.mfa-method-separator {
   display: flex;
   align-items: center;
-  gap: 10px;
-  max-width: 38rem;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.mfa-method-separator span {
+  height: 1px;
+  flex: 1;
+  background: var(--border);
+}
+
+.mfa-setup-key-block {
+  display: grid;
+  gap: 8px;
+}
+
+.mfa-setup-key-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.mfa-setup-key-control .icon-button {
+  width: 44px;
+  min-height: 44px;
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0 9px 9px 0;
+  background: transparent;
+  color: var(--text);
 }
 
 #settings-mfa-setup-key {
   min-width: 0;
   padding: 10px 12px;
-  overflow-x: auto;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--panel-soft);
+  overflow-wrap: anywhere;
   color: var(--text);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  white-space: nowrap;
+  letter-spacing: 0.04em;
+  white-space: normal;
+}
+
+.mfa-setup-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.mfa-setup-info [data-lucide-icon] {
+  flex: 0 0 auto;
+}
+
+.mfa-verification-column {
+  max-width: 24rem;
+}
+
+#settings-mfa-confirm-code {
+  width: 100%;
+  max-width: 20rem;
+  letter-spacing: 0.12em;
+}
+
+#settings-mfa-confirm-error {
+  min-height: 1.25em;
+}
+
+#settings-mfa-confirm-error[hidden] {
+  display: block;
+  visibility: hidden;
 }
 
 .mfa-actions {
@@ -793,6 +888,18 @@ input::placeholder {
 
 .mfa-disable {
   margin-left: auto;
+}
+
+.network-security-form textarea {
+  min-height: 8rem;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.network-security-form > .inline-error,
+.network-security-form > .authentication-status,
+.network-security-form > .form-submit {
+  grid-column: 1 / -1;
 }
 
 .session-list {
@@ -1233,18 +1340,15 @@ pre {
     flex-direction: column;
   }
 
-  .mfa-enrollment-grid,
   .mfa-manage-fields {
     grid-template-columns: 1fr;
   }
 
   .mfa-qr-frame {
-    width: min(100%, 240px);
-    min-width: 0;
+    width: clamp(220px, 75vw, 260px);
     margin-inline: auto;
   }
 
-  .mfa-setup-key-row,
   .session-row {
     align-items: stretch;
     flex-direction: column;
@@ -1264,6 +1368,17 @@ pre {
 
   .result-actions .button {
     flex: 1;
+  }
+}
+
+@media (max-width: 820px) {
+  .mfa-enrollment-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mfa-verification-column {
+    width: 100%;
+    max-width: none;
   }
 }
 

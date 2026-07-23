@@ -7,6 +7,11 @@ from urllib.parse import urlsplit
 from fastapi import Request
 
 from exitlane.config import PUBLIC_URL, SESSION_COOKIE_POLICY, TRUSTED_PROXIES
+from exitlane.services.network_security import NetworkSecurityConfig, current_config
+
+_INITIAL_PUBLIC_URL = PUBLIC_URL
+_INITIAL_TRUSTED_PROXIES = TRUSTED_PROXIES
+_INITIAL_COOKIE_POLICY = SESSION_COOKIE_POLICY
 
 MAX_FORWARD_HEADER_LENGTH = 4096
 MAX_PROXY_HOPS = 16
@@ -20,11 +25,12 @@ class RequestSecurity:
     reverse_proxy: bool
     forwarded_ignored: bool
     forwarded_rejected: bool = False
+    cookie_policy: str = "auto"
 
     @property
     def secure_cookie(self) -> bool:
-        return SESSION_COOKIE_POLICY == "always" or (
-            SESSION_COOKIE_POLICY == "auto" and self.scheme == "https"
+        return self.cookie_policy == "always" or (
+            self.cookie_policy == "auto" and self.scheme == "https"
         )
 
 
@@ -40,23 +46,53 @@ def _address(value: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
     return ipaddress.ip_address(value)
 
 
-def _trusted(address: ipaddress._BaseAddress) -> bool:
-    return any(address in network for network in TRUSTED_PROXIES)
+def _configuration() -> NetworkSecurityConfig:
+    configured = current_config()
+    # Preserve the documented test/integration seams exported by this module.
+    public_url = PUBLIC_URL if PUBLIC_URL != _INITIAL_PUBLIC_URL else configured.public_url
+    proxies = (
+        TRUSTED_PROXIES
+        if TRUSTED_PROXIES != _INITIAL_TRUSTED_PROXIES
+        else configured.trusted_proxies
+    )
+    cookie_policy = (
+        SESSION_COOKIE_POLICY
+        if SESSION_COOKIE_POLICY != _INITIAL_COOKIE_POLICY
+        else configured.secure_cookie_policy
+    )
+    return NetworkSecurityConfig(
+        public_url, tuple(proxies), cookie_policy, configured.overrides
+    )
+
+
+def _trusted(
+    address: ipaddress._BaseAddress,
+    networks: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...],
+) -> bool:
+    return any(address in network for network in networks)
 
 
 def request_security(request: Request) -> RequestSecurity:
+    configuration = _configuration()
     peer_text = request.client.host if request.client else str(ipaddress.IPv4Address(0))
     try:
         peer = _address(peer_text)
     except ValueError:
         peer = ipaddress.IPv4Address(0)
-    trusted_peer = _trusted(peer)
+    trusted_peer = _trusted(peer, configuration.trusted_proxies)
     forwarding_present = any(
         name in request.headers
         for name in ("forwarded", "x-forwarded-for", "x-forwarded-proto", "x-forwarded-host")
     )
     if not trusted_peer:
-        return RequestSecurity(str(peer), request.url.scheme, False, False, forwarding_present)
+        return RequestSecurity(
+            str(peer),
+            request.url.scheme,
+            False,
+            False,
+            forwarding_present,
+            cookie_policy=configuration.secure_cookie_policy,
+        )
 
     # ExitLane's explicit contract uses X-Forwarded-* and ignores RFC Forwarded when both exist.
     raw_for = request.headers.get("x-forwarded-for", "")
@@ -75,7 +111,7 @@ def request_security(request: Request) -> RequestSecurity:
                 reverse_proxy = True
                 for candidate in reversed(chain):
                     client = candidate
-                    if not _trusted(candidate):
+                    if not _trusted(candidate, configuration.trusted_proxies):
                         break
             else:
                 forwarded_rejected = True
@@ -98,6 +134,7 @@ def request_security(request: Request) -> RequestSecurity:
         reverse_proxy,
         forwarded_rejected,
         forwarded_rejected,
+        configuration.secure_cookie_policy,
     )
 
 
@@ -123,8 +160,9 @@ def normalized_origin(value: str) -> tuple[str, str, int] | None:
 
 
 def trusted_origin(request: Request, security: RequestSecurity) -> str:
-    if PUBLIC_URL:
-        parsed = urlsplit(PUBLIC_URL)
+    public_url = _configuration().public_url
+    if public_url:
+        parsed = urlsplit(public_url)
         return f"{parsed.scheme}://{parsed.netloc}".casefold()
     host = request.headers.get("host", "")
     if not host or any(character in host for character in "\r\n/\\"):
@@ -133,22 +171,28 @@ def trusted_origin(request: Request, security: RequestSecurity) -> str:
 
 
 def deployment_status(request: Request) -> dict:
+    configuration = _configuration()
     state = request_security(request)
     warnings = []
     if state.scheme != "https":
         warnings.append("direct_http")
     if state.forwarded_ignored:
         warnings.append("forwarded_headers_ignored")
-    if PUBLIC_URL and urlsplit(PUBLIC_URL).scheme != state.scheme:
+    if configuration.public_url and urlsplit(configuration.public_url).scheme != state.scheme:
         warnings.append("public_url_mismatch")
-    if SESSION_COOKIE_POLICY == "never" and state.scheme == "https":
+    if configuration.secure_cookie_policy == "never" and state.scheme == "https":
         warnings.append("secure_cookie_disabled")
     return {
         "https": state.scheme == "https",
         "reverse_proxy": state.reverse_proxy,
         "direct_peer_trusted": state.direct_peer_trusted,
         "secure_cookie": state.secure_cookie,
-        "public_url": PUBLIC_URL or None,
-        "trusted_proxies": list(str(network) for network in TRUSTED_PROXIES),
+        "direct_peer": (
+            request.client.host if request.client else str(ipaddress.IPv4Address(0))
+        ),
+        "public_url": configuration.public_url or None,
+        "trusted_proxies": list(str(network) for network in configuration.trusted_proxies),
+        "secure_cookie_policy": configuration.secure_cookie_policy,
+        "configuration": configuration.as_public_dict(),
         "warnings": warnings,
     }
