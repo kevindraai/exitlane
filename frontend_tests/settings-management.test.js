@@ -6,6 +6,15 @@ import {
   passwordRequirementState,
 } from "../backend/exitlane/static/js/password-validation.js";
 import { providerManagementView } from "../backend/exitlane/static/js/provider-management.js";
+import {
+  MFA_STATES,
+  beginEnrollmentState,
+  clearMfaSecrets,
+  createMfaState,
+  mfaVisibility,
+  reconcileMfaState,
+  revealRecoveryCodes,
+} from "../backend/exitlane/static/js/mfa-state.js";
 
 const sourceUrl = new URL("../backend/exitlane/static/js/settings.js", import.meta.url);
 const markupUrl = new URL("../backend/exitlane/static/partials/views/settings.html", import.meta.url);
@@ -124,6 +133,80 @@ test("password feedback is accessible and not identifiable by color alone", asyn
   assert.match(source, /frontendConfig\.password\.minimumLength/);
 });
 
+test("MFA main states are exclusive and clear secrets atomically", () => {
+  const state = createMfaState();
+  assert.deepEqual(mfaVisibility(state.mode), {
+    disabled: true, enrollment: false, enabled: false, recovery: false,
+  });
+  beginEnrollmentState(state, {
+    enrollment: "dummy-enrollment",
+    setup_key: "DUMMYSETUPKEY",
+    qr_svg: "<svg>dummy</svg>",
+  });
+  assert.deepEqual(mfaVisibility(state.mode), {
+    disabled: false, enrollment: true, enabled: false, recovery: false,
+  });
+  assert.equal(state.pendingEnrollment, "dummy-enrollment");
+  revealRecoveryCodes(state, ["dummy-one", "dummy-two"]);
+  assert.deepEqual(mfaVisibility(state.mode), {
+    disabled: false, enrollment: false, enabled: true, recovery: true,
+  });
+  assert.equal(state.pendingEnrollment, null);
+  clearMfaSecrets(state, MFA_STATES.ENABLED);
+  assert.deepEqual(state.recoveryCodes, []);
+  assert.equal(state.qrSvg, null);
+  assert.equal(state.setupKey, null);
+});
+
+test("backend disabled status always overrides client MFA secret state", () => {
+  const state = createMfaState();
+  beginEnrollmentState(state, {
+    enrollment: "dummy-enrollment",
+    setup_key: "DUMMYSETUPKEY",
+    qr_svg: "<svg>dummy</svg>",
+  });
+  revealRecoveryCodes(state, ["dummy-recovery"]);
+  reconcileMfaState(state, { enabled: false });
+  assert.equal(state.mode, MFA_STATES.DISABLED);
+  assert.equal(state.pendingEnrollment, null);
+  assert.equal(state.setupKey, null);
+  assert.equal(state.qrSvg, null);
+  assert.deepEqual(state.recoveryCodes, []);
+});
+
+test("MFA markup and lifecycle enforce exclusive controls and secret cleanup", async () => {
+  const [markup, source, css] = await Promise.all([
+    readFile(markupUrl, "utf8"),
+    readFile(sourceUrl, "utf8"),
+    readFile(new URL("../backend/exitlane/static/style.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(markup, /<form[^>]+hidden[^>]+id="settings-mfa-enable-form"/);
+  assert.match(markup, /id="settings-mfa-enrollment"/);
+  assert.match(markup, /<form[^>]+hidden[^>]+id="settings-mfa-manage-form"/);
+  assert.match(markup, /<dialog[^>]+aria-describedby="settings-recovery-description"[^>]+aria-labelledby="settings-recovery-title"/);
+  assert.match(markup, /id="settings-recovery-saved"/);
+  assert.match(source, /mfaVisibility\(mfaState\.mode\)/);
+  assert.match(source, /settings-mfa-enable-form"\)\.hidden = !visibility\.disabled/);
+  assert.match(source, /settings-mfa-enrollment"\)\.hidden = !visibility\.enrollment/);
+  assert.match(source, /settings-mfa-manage-form"\)\.hidden = !visibility\.enabled/);
+  assert.match(source, /clearTemporaryMfaState\(MFA_STATES\.DISABLED\)/);
+  assert.match(source, /event\.detail\.view !== "settings"[\s\S]+clearTemporaryMfaState/);
+  assert.match(source, /exitlane:authenticationrequired"[\s\S]+clearTemporaryMfaState/);
+  assert.match(source, /pagehide"[\s\S]+clearTemporaryMfaState/);
+  assert.match(source, /settings-recovery-code-list"\)\.textContent = ""/);
+  assert.match(css, /\.mfa-qr-frame[\s\S]+min-width: 220px[\s\S]+background: #fff/);
+  assert.match(css, /\.mfa-qr-frame svg[\s\S]+background: #fff/);
+});
+
+test("MFA copy actions retain unformatted state and are explicit user actions", async () => {
+  const source = await readFile(sourceUrl, "utf8");
+  assert.match(source, /settings-mfa-copy-key"\)\.addEventListener\("click"/);
+  assert.match(source, /navigator\.clipboard\.writeText\(mfaState\.setupKey\)/);
+  assert.match(source, /settings-recovery-copy"\)\.addEventListener\("click"/);
+  assert.match(source, /navigator\.clipboard\.writeText\(mfaState\.recoveryCodes\.join\("\\n"\)\)/);
+  assert.doesNotMatch(source, /localStorage[\s\S]{0,80}(setupKey|recoveryCodes)/);
+});
+
 test("English and Dutch expose password rules and safe token diagnostics", async () => {
   const [english, dutch] = await Promise.all(
     [englishUrl, dutchUrl].map(async (url) => JSON.parse(await readFile(url, "utf8"))),
@@ -144,6 +227,13 @@ test("English and Dutch expose password rules and safe token diagnostics", async
       assert.ok(locale.settings.vpn.errors[code]);
     }
     assert.ok(locale.settings.vpn.signed_in_limitation);
+    for (const key of [
+      "setup_key", "copy_setup_key", "copied", "recovery_title", "copy_codes",
+      "codes_saved", "close_codes", "scan", "manual", "enrollment_title",
+      "qr_description", "enabled", "disabled", "remaining",
+    ]) {
+      assert.ok(locale.settings.authentication.mfa[key]);
+    }
   }
 });
 

@@ -19,24 +19,79 @@ import {
   passwordErrorTarget,
   passwordRequirementState,
 } from "./password-validation.js";
+import {
+  MFA_STATES,
+  beginEnrollmentState,
+  clearMfaSecrets,
+  createMfaState,
+  mfaVisibility,
+  reconcileMfaState,
+  revealRecoveryCodes,
+} from "./mfa-state.js";
 
 let savedGeneral = null;
 let savedSettings = null;
 let settingsLoaded = false;
 let loadingSettings = false;
-let pendingEnrollment = null;
+const mfaState = createMfaState();
 
-function clearEnrollmentSecrets() {
-  pendingEnrollment = null;
+function removeRenderedMfaSecrets() {
   select("#settings-mfa-setup-key").textContent = "";
   select("#settings-mfa-qr").replaceChildren();
   select("#settings-mfa-confirm-code").value = "";
-  select("#settings-mfa-enrollment").hidden = true;
+  select("#settings-recovery-code-list").textContent = "";
+}
+
+function closeRecoveryCodes() {
+  const dialog = select("#settings-recovery-codes");
+  if (dialog.open) dialog.close();
+  select("#settings-recovery-saved").checked = false;
+  select("#settings-recovery-close").disabled = true;
+}
+
+function renderMfaState() {
+  const visibility = mfaVisibility(mfaState.mode);
+  select("#settings-mfa-enable-form").hidden = !visibility.disabled;
+  select("#settings-mfa-enrollment").hidden = !visibility.enrollment;
+  select("#settings-mfa-manage-form").hidden = !visibility.enabled;
+  if (visibility.enrollment) {
+    select("#settings-mfa-setup-key").textContent = mfaState.setupKey
+      ?.match(/.{1,4}/g)?.join(" ") || "";
+    const documentNode = new DOMParser().parseFromString(mfaState.qrSvg, "image/svg+xml");
+    select("#settings-mfa-qr").replaceChildren(
+      document.importNode(documentNode.documentElement, true),
+    );
+  }
+  if (visibility.recovery) {
+    const codeList = select("#settings-recovery-code-list");
+    codeList.replaceChildren(...mfaState.recoveryCodes.map((code) => {
+      const item = document.createElement("code");
+      item.textContent = code;
+      return item;
+    }));
+    const dialog = select("#settings-recovery-codes");
+    if (!dialog.open) dialog.showModal();
+    select("#settings-recovery-title").focus();
+  } else {
+    closeRecoveryCodes();
+  }
+}
+
+function clearTemporaryMfaState(mode = MFA_STATES.DISABLED) {
+  clearMfaSecrets(mfaState, mode);
+  removeRenderedMfaSecrets();
+  clearSecretFields(
+    "#settings-mfa-password",
+    "#settings-mfa-manage-password",
+    "#settings-mfa-manage-code",
+  );
+  renderMfaState();
 }
 
 function showRecoveryCodes(codes) {
-  select("#settings-recovery-code-list").textContent = codes.join("\n");
-  select("#settings-recovery-codes").hidden = false;
+  revealRecoveryCodes(mfaState, codes);
+  removeRenderedMfaSecrets();
+  renderMfaState();
 }
 
 async function loadAuthenticationSecurity() {
@@ -44,16 +99,18 @@ async function loadAuthenticationSecurity() {
     api("/api/auth/security"),
     api("/api/deployment/security"),
   ]);
+  reconcileMfaState(mfaState, security.mfa);
+  renderMfaState();
   select("#settings-mfa-status").textContent = security.mfa.enabled
     ? t("settings.authentication.mfa.enabled", {}, "Enabled")
     : t("settings.authentication.mfa.disabled", {}, "Disabled");
-  select("#settings-mfa-recovery-count").textContent = t(
-    "settings.authentication.mfa.remaining",
-    { count: security.mfa.recovery_codes_remaining },
-    `${security.mfa.recovery_codes_remaining} recovery codes remaining`,
-  );
-  select("#settings-mfa-enable-form").hidden = security.mfa.enabled;
-  select("#settings-mfa-manage-form").hidden = !security.mfa.enabled;
+  select("#settings-mfa-recovery-count").textContent = security.mfa.enabled
+    ? t(
+      "settings.authentication.mfa.remaining",
+      { count: security.mfa.recovery_codes_remaining },
+      `${security.mfa.recovery_codes_remaining} recovery codes remaining`,
+    )
+    : "";
   const list = select("#settings-session-list");
   list.replaceChildren();
   for (const session of security.sessions) {
@@ -185,11 +242,9 @@ async function beginMfa(event) {
     body: JSON.stringify({ current_password: select("#settings-mfa-password").value }),
   });
   select("#settings-mfa-password").value = "";
-  pendingEnrollment = result.enrollment;
-  select("#settings-mfa-setup-key").textContent = result.setup_key;
-  const documentNode = new DOMParser().parseFromString(result.qr_svg, "image/svg+xml");
-  select("#settings-mfa-qr").replaceChildren(document.importNode(documentNode.documentElement, true));
-  select("#settings-mfa-enrollment").hidden = false;
+  beginEnrollmentState(mfaState, result);
+  removeRenderedMfaSecrets();
+  renderMfaState();
   select("#settings-mfa-confirm-code").focus();
 }
 
@@ -197,16 +252,20 @@ async function confirmMfa(event) {
   event.preventDefault();
   const result = await api("/api/auth/mfa/enrollment/confirm", {
     method: "POST",
-    body: JSON.stringify({ enrollment: pendingEnrollment, code: select("#settings-mfa-confirm-code").value }),
+    body: JSON.stringify({
+      enrollment: mfaState.pendingEnrollment,
+      code: select("#settings-mfa-confirm-code").value,
+    }),
   });
-  clearEnrollmentSecrets();
   showRecoveryCodes(result.recovery_codes);
   await loadAuthenticationSecurity();
 }
 
 async function cancelMfa() {
   await api("/api/auth/mfa/enrollment", { method: "DELETE" });
-  clearEnrollmentSecrets();
+  clearTemporaryMfaState(MFA_STATES.DISABLED);
+  await loadAuthenticationSecurity();
+  select("#settings-mfa-password").focus();
 }
 
 async function manageMfa(event) {
@@ -218,8 +277,10 @@ async function manageMfa(event) {
   };
   if (action === "disable") {
     await api("/api/auth/mfa/disable", { method: "POST", body: JSON.stringify(payload) });
+    clearTemporaryMfaState(MFA_STATES.DISABLED);
     window.dispatchEvent(new CustomEvent("exitlane:authenticationrequired"));
   } else {
+    clearTemporaryMfaState(MFA_STATES.ENABLED);
     const result = await api("/api/auth/mfa/recovery-codes", { method: "POST", body: JSON.stringify(payload) });
     showRecoveryCodes(result.recovery_codes);
     await loadAuthenticationSecurity();
@@ -381,9 +442,27 @@ export function initialiseSettings() {
   select("#settings-mfa-confirm-form").addEventListener("submit", confirmMfa);
   select("#settings-mfa-cancel").addEventListener("click", cancelMfa);
   select("#settings-mfa-manage-form").addEventListener("submit", manageMfa);
+  select("#settings-mfa-copy-key").addEventListener("click", async () => {
+    if (mfaState.setupKey) await navigator.clipboard.writeText(mfaState.setupKey);
+    select("#settings-mfa-message").textContent = t(
+      "settings.authentication.mfa.copied", {}, "Copied.",
+    );
+  });
+  select("#settings-recovery-copy").addEventListener("click", async () => {
+    if (mfaState.recoveryCodes.length) {
+      await navigator.clipboard.writeText(mfaState.recoveryCodes.join("\n"));
+    }
+  });
+  select("#settings-recovery-saved").addEventListener("change", (event) => {
+    select("#settings-recovery-close").disabled = !event.currentTarget.checked;
+  });
   select("#settings-recovery-close").addEventListener("click", () => {
-    select("#settings-recovery-code-list").textContent = "";
-    select("#settings-recovery-codes").hidden = true;
+    clearTemporaryMfaState(MFA_STATES.ENABLED);
+    select("#settings-mfa-manage-password").focus();
+  });
+  select("#settings-recovery-codes").addEventListener("cancel", (event) => {
+    event.preventDefault();
+    select("#settings-recovery-saved").focus();
   });
   select("#settings-revoke-sessions").addEventListener("click", async () => {
     await api("/api/auth/sessions/revoke-others", { method: "POST" });
@@ -396,13 +475,22 @@ export function initialiseSettings() {
   updatePasswordValidation();
   window.addEventListener("exitlane:viewchange", (event) => {
     const dashboardActive = getSlice("application").mode === "dashboard";
-    if (dashboardActive && event.detail.view === "settings") loadSettings();
+    if (event.detail.view !== "settings") {
+      clearTemporaryMfaState(MFA_STATES.DISABLED);
+    } else if (dashboardActive) {
+      loadSettings({ force: true });
+    }
   });
   window.addEventListener("exitlane:languagechange", () => {
     const dashboardActive = getSlice("application").mode === "dashboard";
     if (dashboardActive && settingsLoaded) renderAbout(savedSettings.about);
     updatePasswordValidation();
   });
-  window.addEventListener("exitlane:authenticationrequired", clearEnrollmentSecrets);
+  window.addEventListener("exitlane:authenticationrequired", () => {
+    clearTemporaryMfaState(MFA_STATES.DISABLED);
+  });
+  window.addEventListener("pagehide", () => {
+    clearTemporaryMfaState(MFA_STATES.DISABLED);
+  });
   window.addEventListener("exitlane:configchange", updatePasswordValidation);
 }

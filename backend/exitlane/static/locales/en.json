@@ -49,9 +49,15 @@
       "change": "Change password",
       "mfa": {
         "title": "Multifactor authentication", "description": "Protect administrator sign-in with an authenticator app.",
-        "enable": "Enable MFA", "enabled": "Enabled", "disabled": "Disabled", "scan": "Scan this QR code and store the setup key securely.",
+        "enable": "Enable MFA", "enabled": "Enabled", "disabled": "Disabled", "disabled_help": "Add an authenticator app as a second sign-in step.",
+        "enrollment_title": "Set up your authenticator", "scan": "Scan the QR code with your authenticator app.",
+        "manual": "Or enter this setup key manually:", "setup_key": "Setup key", "copy_setup_key": "Copy setup key", "copied": "Copied.",
+        "qr_description": "Authenticator setup QR code", "verify_help": "Enter the six-digit code shown by your app.",
         "verify": "Verification code", "confirm": "Confirm", "regenerate": "Regenerate recovery codes", "disable": "Disable MFA",
-        "remaining": "{count} recovery codes remaining", "recovery_once": "Save these recovery codes now. They will not be shown again."
+        "remaining": "{count} recovery codes remaining", "recovery_title": "Save your recovery codes",
+        "recovery_once": "Save these recovery codes now. They will not be shown again.",
+        "copy_codes": "Copy all codes", "codes_saved": "I have stored these recovery codes safely",
+        "close_codes": "Close recovery codes"
       },
       "sessions": {
         "title": "Active sessions", "current": "Current session", "revoke": "Revoke", "revoke_others": "Revoke all other sessions"

@@ -673,7 +673,17 @@ async def begin_mfa_enrollment(req: MfaEnrollmentStart, request: Request) -> Res
     label = f"{user['username']}@ExitLane"
     uri = pyotp.TOTP(secret).provisioning_uri(name=label, issuer_name="ExitLane")
     buffer = BytesIO()
-    segno.make(uri, micro=False).save(buffer, kind="svg", scale=4)
+    segno.make(uri, micro=False).save(
+        buffer,
+        kind="svg",
+        scale=6,
+        border=4,
+        dark="#000000",
+        light="#ffffff",
+        xmldecl=False,
+        svgclass="mfa-qr-svg",
+        lineclass="mfa-qr-modules",
+    )
     record_event("auth.mfa_enrollment_started", actor=user)
     return JSONResponse(
         {"enrollment": enrollment, "setup_key": secret, "issuer": "ExitLane",

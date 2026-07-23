@@ -43,46 +43,71 @@
          <button class="button button-primary" data-i18n="settings.authentication.change" disabled="" id="settings-password-save" type="submit">Change password</button>
         </div>
        </form>
-       <hr/>
-       <div class="panel-heading compact">
-        <div>
-         <h3 data-i18n="settings.authentication.mfa.title">Multifactor authentication</h3>
-         <p data-i18n="settings.authentication.mfa.description">Protect administrator sign-in with an authenticator app.</p>
+       <section class="authentication-card mfa-card" id="settings-mfa-card">
+        <div class="panel-heading compact">
+         <div>
+          <h3 data-i18n="settings.authentication.mfa.title">Multifactor authentication</h3>
+          <p data-i18n="settings.authentication.mfa.description">Protect administrator sign-in with an authenticator app.</p>
+         </div>
+         <strong class="status-badge" id="settings-mfa-status">—</strong>
         </div>
-        <strong id="settings-mfa-status">—</strong>
-       </div>
-       <div class="form-grid">
-        <p id="settings-mfa-recovery-count"></p>
-        <form id="settings-mfa-enable-form" method="post">
-         <label><span data-i18n="settings.authentication.current_password">Current password</span><input autocomplete="current-password" id="settings-mfa-password" type="password"/></label>
-         <button class="button button-primary" data-i18n="settings.authentication.mfa.enable" type="submit">Enable MFA</button>
+        <p aria-live="polite" class="authentication-status" id="settings-mfa-message"></p>
+        <form class="mfa-state-panel" hidden="" id="settings-mfa-enable-form" method="post">
+         <p data-i18n="settings.authentication.mfa.disabled_help">Add an authenticator app as a second sign-in step.</p>
+         <label><span data-i18n="settings.authentication.current_password">Current password</span><input autocomplete="current-password" id="settings-mfa-password" required="" type="password"/></label>
+         <button class="button button-primary" data-i18n="settings.authentication.mfa.enable" id="settings-mfa-enable" type="submit">Enable MFA</button>
         </form>
-        <div hidden="" id="settings-mfa-enrollment">
-         <p data-i18n="settings.authentication.mfa.scan">Scan this QR code and store the setup key securely.</p>
-         <div id="settings-mfa-qr"></div>
-         <code id="settings-mfa-setup-key"></code>
-         <form id="settings-mfa-confirm-form" method="post">
-          <label><span data-i18n="settings.authentication.mfa.verify">Verification code</span><input autocomplete="one-time-code" id="settings-mfa-confirm-code" inputmode="numeric"/></label>
-          <button class="button button-primary" data-i18n="settings.authentication.mfa.confirm" type="submit">Confirm</button>
-          <button class="button button-secondary" data-i18n="common.cancel" id="settings-mfa-cancel" type="button">Cancel</button>
-         </form>
-        </div>
-        <form hidden="" id="settings-mfa-manage-form" method="post">
-         <label><span data-i18n="settings.authentication.current_password">Current password</span><input autocomplete="current-password" id="settings-mfa-manage-password" type="password"/></label>
-         <label><span data-i18n="settings.authentication.mfa.verify">Verification code</span><input autocomplete="one-time-code" id="settings-mfa-manage-code" inputmode="numeric"/></label>
-         <button class="button button-secondary" data-action="regenerate" data-i18n="settings.authentication.mfa.regenerate" type="submit">Regenerate recovery codes</button>
-         <button class="button button-danger" data-action="disable" data-i18n="settings.authentication.mfa.disable" type="submit">Disable MFA</button>
+        <section class="mfa-state-panel mfa-enrollment" hidden="" id="settings-mfa-enrollment">
+         <div class="mfa-enrollment-heading" tabindex="-1">
+          <h4 data-i18n="settings.authentication.mfa.enrollment_title">Set up your authenticator</h4>
+          <p data-i18n="settings.authentication.mfa.scan">Scan the QR code with your authenticator app.</p>
+         </div>
+         <div class="mfa-enrollment-grid">
+          <div>
+           <div aria-label="Authenticator setup QR code" class="mfa-qr-frame" data-i18n-aria-label="settings.authentication.mfa.qr_description" id="settings-mfa-qr" role="img"></div>
+           <p data-i18n="settings.authentication.mfa.manual">Or enter this setup key manually:</p>
+           <div class="mfa-setup-key-row">
+            <code aria-label="Setup key" data-i18n-aria-label="settings.authentication.mfa.setup_key" id="settings-mfa-setup-key"></code>
+            <button aria-label="Copy setup key" class="button button-secondary" data-i18n-aria-label="settings.authentication.mfa.copy_setup_key" id="settings-mfa-copy-key" type="button"><span aria-hidden="true" data-lucide-icon="copy"></span><span data-i18n="settings.authentication.mfa.copy_setup_key">Copy setup key</span></button>
+           </div>
+          </div>
+          <form id="settings-mfa-confirm-form" method="post">
+           <p data-i18n="settings.authentication.mfa.verify_help">Enter the six-digit code shown by your app.</p>
+           <label><span data-i18n="settings.authentication.mfa.verify">Verification code</span><input autocomplete="one-time-code" id="settings-mfa-confirm-code" inputmode="numeric" required=""/></label>
+           <div class="mfa-actions">
+            <button class="button button-primary" data-i18n="settings.authentication.mfa.confirm" type="submit">Confirm</button>
+            <button class="button button-secondary" data-i18n="common.cancel" id="settings-mfa-cancel" type="button">Cancel</button>
+           </div>
+          </form>
+         </div>
+        </section>
+        <form class="mfa-state-panel" hidden="" id="settings-mfa-manage-form" method="post">
+         <p id="settings-mfa-recovery-count"></p>
+         <div class="mfa-manage-fields">
+          <label><span data-i18n="settings.authentication.current_password">Current password</span><input autocomplete="current-password" id="settings-mfa-manage-password" required="" type="password"/></label>
+          <label><span data-i18n="settings.authentication.mfa.verify">Verification code</span><input autocomplete="one-time-code" id="settings-mfa-manage-code" inputmode="numeric" required=""/></label>
+         </div>
+         <div class="mfa-actions">
+          <button class="button button-secondary" data-action="regenerate" data-i18n="settings.authentication.mfa.regenerate" type="submit">Regenerate recovery codes</button>
+          <button class="button button-danger mfa-disable" data-action="disable" data-i18n="settings.authentication.mfa.disable" type="submit">Disable MFA</button>
+         </div>
         </form>
-        <div hidden="" id="settings-recovery-codes">
-         <p data-i18n="settings.authentication.mfa.recovery_once">Save these recovery codes now. They will not be shown again.</p>
-         <pre id="settings-recovery-code-list"></pre>
-         <button class="button button-secondary" data-i18n="common.close" id="settings-recovery-close" type="button">Close</button>
+       </section>
+       <section class="authentication-card">
+        <h3 data-i18n="settings.authentication.sessions.title">Active sessions</h3>
+        <div class="session-list" id="settings-session-list"></div>
+        <button class="button button-secondary" data-i18n="settings.authentication.sessions.revoke_others" id="settings-revoke-sessions" type="button">Revoke all other sessions</button>
+       </section>
+       <dialog aria-describedby="settings-recovery-description" aria-labelledby="settings-recovery-title" id="settings-recovery-codes">
+        <div class="recovery-dialog-content">
+         <h3 data-i18n="settings.authentication.mfa.recovery_title" id="settings-recovery-title" tabindex="-1">Save your recovery codes</h3>
+         <p data-i18n="settings.authentication.mfa.recovery_once" id="settings-recovery-description">Save these recovery codes now. They will not be shown again.</p>
+         <pre aria-label="Recovery codes" data-i18n-aria-label="settings.authentication.mfa.recovery_title" id="settings-recovery-code-list"></pre>
+         <button class="button button-secondary" id="settings-recovery-copy" type="button"><span aria-hidden="true" data-lucide-icon="copy"></span><span data-i18n="settings.authentication.mfa.copy_codes">Copy all codes</span></button>
+         <label class="recovery-confirmation"><input id="settings-recovery-saved" type="checkbox"/> <span data-i18n="settings.authentication.mfa.codes_saved">I have stored these recovery codes safely</span></label>
+         <button class="button button-primary" data-i18n="settings.authentication.mfa.close_codes" disabled="" id="settings-recovery-close" type="button">Close recovery codes</button>
         </div>
-       </div>
-       <hr/>
-       <h3 data-i18n="settings.authentication.sessions.title">Active sessions</h3>
-       <div id="settings-session-list"></div>
-       <button class="button button-secondary" data-i18n="settings.authentication.sessions.revoke_others" id="settings-revoke-sessions" type="button">Revoke all other sessions</button>
+       </dialog>
       </section>
       <section class="panel" id="settings-network">
        <div class="panel-heading compact">

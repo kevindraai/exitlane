@@ -49,9 +49,15 @@
       "change": "Wachtwoord wijzigen",
       "mfa": {
         "title": "Multifactorauthenticatie", "description": "Beveilig de beheerdersaanmelding met een authenticator-app.",
-        "enable": "MFA inschakelen", "enabled": "Ingeschakeld", "disabled": "Uitgeschakeld", "scan": "Scan deze QR-code en bewaar de instelsleutel veilig.",
+        "enable": "MFA inschakelen", "enabled": "Ingeschakeld", "disabled": "Uitgeschakeld", "disabled_help": "Voeg een authenticator-app toe als tweede aanmeldstap.",
+        "enrollment_title": "Authenticator instellen", "scan": "Scan de QR-code met je authenticator-app.",
+        "manual": "Of voer deze setup key handmatig in:", "setup_key": "Setup key", "copy_setup_key": "Setup key kopiëren", "copied": "Gekopieerd.",
+        "qr_description": "QR-code voor het instellen van de authenticator", "verify_help": "Voer de zescijferige code uit je app in.",
         "verify": "Verificatiecode", "confirm": "Bevestigen", "regenerate": "Herstelcodes opnieuw genereren", "disable": "MFA uitschakelen",
-        "remaining": "{count} herstelcodes resterend", "recovery_once": "Bewaar deze herstelcodes nu. Ze worden niet opnieuw getoond."
+        "remaining": "{count} herstelcodes resterend", "recovery_title": "Bewaar je herstelcodes",
+        "recovery_once": "Bewaar deze herstelcodes nu. Ze worden niet opnieuw getoond.",
+        "copy_codes": "Alle codes kopiëren", "codes_saved": "Ik heb deze herstelcodes veilig opgeslagen",
+        "close_codes": "Herstelcodes sluiten"
       },
       "sessions": {
         "title": "Actieve sessies", "current": "Huidige sessie", "revoke": "Sessie intrekken", "revoke_others": "Alle andere sessies intrekken"

@@ -696,6 +696,161 @@ input::placeholder {
   gap: 16px;
 }
 
+.authentication-card {
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-translucent);
+}
+
+.authentication-status:empty {
+  display: none;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 5px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--panel-soft);
+  white-space: nowrap;
+}
+
+.mfa-state-panel {
+  margin-top: 18px;
+  display: grid;
+  gap: 16px;
+}
+
+.mfa-state-panel[hidden] {
+  display: none;
+}
+
+.mfa-state-panel > label,
+.mfa-state-panel > p,
+.mfa-state-panel > button {
+  max-width: 38rem;
+}
+
+.mfa-enrollment-grid,
+.mfa-manage-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.mfa-qr-frame {
+  width: min(100%, 260px);
+  min-width: 220px;
+  padding: 16px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.mfa-qr-frame svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  color: #000;
+  background: #fff;
+}
+
+.mfa-setup-key-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 38rem;
+}
+
+#settings-mfa-setup-key {
+  min-width: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: nowrap;
+}
+
+.mfa-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.mfa-disable {
+  margin-left: auto;
+}
+
+.session-list {
+  margin: 16px 0;
+  display: grid;
+  gap: 10px;
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+#settings-recovery-codes {
+  width: min(38rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--surface);
+  color: var(--text);
+}
+
+#settings-recovery-codes::backdrop {
+  background: rgb(15 23 42 / 70%);
+}
+
+.recovery-dialog-content {
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+}
+
+#settings-recovery-code-list {
+  margin: 0;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 18px;
+  overflow-x: auto;
+  border-radius: 10px;
+  background: #111827;
+  color: #f8fafc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.recovery-confirmation {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.recovery-confirmation input {
+  width: auto;
+  min-height: auto;
+}
+
 .provider-management-status-region {
   min-height: 3.25rem;
   margin-bottom: 14px;
@@ -1070,6 +1225,27 @@ pre {
   .authentication-form-footer {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .mfa-enrollment-grid,
+  .mfa-manage-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .mfa-qr-frame {
+    width: min(100%, 240px);
+    min-width: 0;
+    margin-inline: auto;
+  }
+
+  .mfa-setup-key-row,
+  .session-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .mfa-disable {
+    margin-left: 0;
   }
 
   .metric-grid {

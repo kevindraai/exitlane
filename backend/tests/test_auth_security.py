@@ -48,6 +48,11 @@ def test_mfa_enrollment_recovery_login_and_digest_only_storage(client):
     assert start.status_code == 200
     assert start.headers["cache-control"].startswith("no-store")
     enrollment = start.json()
+    assert 'class="mfa-qr-svg"' in enrollment["qr_svg"]
+    assert 'class="mfa-qr-modules"' in enrollment["qr_svg"]
+    assert 'stroke="#000"' in enrollment["qr_svg"]
+    assert 'fill="#fff"' in enrollment["qr_svg"]
+    assert enrollment["qr_svg"].startswith("<svg")
     with sqlite3.connect(main.DB) as connection:
         stored = connection.execute("SELECT encrypted_secret FROM mfa_enrollments").fetchone()[0]
     assert enrollment["setup_key"].encode() not in stored
@@ -82,6 +87,55 @@ def test_mfa_enrollment_recovery_login_and_digest_only_storage(client):
     assert client.post(
         "/api/auth/mfa", json={"code": recovery_codes[0], "mode": "recovery"}
     ).status_code == 401
+
+
+def test_pending_enrollment_cancel_and_disable_remove_all_mfa_material(client):
+    assert login(client).status_code == 200
+    pending = client.post(
+        "/api/auth/mfa/enrollment",
+        json={"current_password": "correct horse battery staple"},
+    ).json()
+    assert client.delete("/api/auth/mfa/enrollment").json() == {"ok": True}
+    with sqlite3.connect(main.DB) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM mfa_enrollments").fetchone()[0] == 0
+
+    pending = client.post(
+        "/api/auth/mfa/enrollment",
+        json={"current_password": "correct horse battery staple"},
+    ).json()
+    confirmed = client.post(
+        "/api/auth/mfa/enrollment/confirm",
+        json={
+            "enrollment": pending["enrollment"],
+            "code": pyotp.TOTP(pending["setup_key"]).now(),
+        },
+    )
+    assert confirmed.status_code == 200
+    status = client.get("/api/auth/security").json()["mfa"]
+    assert set(status) == {"enabled", "updated_at", "recovery_codes_remaining"}
+    assert "recovery_codes" not in status
+
+    client.post(
+        "/api/auth/mfa/enrollment",
+        json={"current_password": "correct horse battery staple"},
+    )
+    with sqlite3.connect(main.DB) as connection:
+        connection.execute("UPDATE users SET last_totp_counter=NULL")
+    disabled = client.post(
+        "/api/auth/mfa/disable",
+        json={
+            "current_password": "correct horse battery staple",
+            "code": pyotp.TOTP(pending["setup_key"]).now(),
+        },
+    )
+    assert disabled.json() == {"ok": True, "reauthentication_required": True}
+    assert "recovery_codes" not in disabled.json()
+    with sqlite3.connect(main.DB) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM mfa_enrollments").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM recovery_codes").fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT mfa_enabled,encrypted_totp_secret FROM users"
+        ).fetchone() == (0, None)
 
 
 def test_totp_counter_replay_is_rejected(tmp_path, monkeypatch):
