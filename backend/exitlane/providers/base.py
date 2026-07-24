@@ -26,10 +26,11 @@ class ProviderMetadata:
     short_name: str
     description: str
     icon: str
+    logo: str | None = None
     provider_type: str = "commercial_vpn"
     authentication_method: str = "token"
 
-    def as_dict(self) -> dict[str, str]:
+    def as_dict(self) -> dict[str, str | None]:
         return asdict(self)
 
 

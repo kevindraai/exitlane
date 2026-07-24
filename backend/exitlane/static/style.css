@@ -1197,9 +1197,45 @@ input::placeholder {
   gap: 16px;
 }
 
+.provider-logo {
+  width: 42px;
+  height: 42px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 42px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.provider-logo--compact {
+  width: 30px;
+  height: 30px;
+  flex-basis: 30px;
+  border-radius: 9px;
+}
+
+.provider-logo__image {
+  width: 76%;
+  height: 76%;
+  display: block;
+  object-fit: contain;
+}
+
+.provider-logo__fallback {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
 .provider-header p,
 .result-heading p {
   margin: 5px 0 0;
+}
+
+.provider-header > div {
+  flex: 1;
 }
 
 .provider-actions {
@@ -1929,6 +1965,16 @@ pre {
   margin-top: 18px;
 }
 
+.login-method-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.login-method-heading > div {
+  flex: 1;
+}
+
 .login-method-heading p {
   margin: 5px 0 0;
   color: var(--muted);
@@ -2250,7 +2296,6 @@ pre {
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--panel);
-  box-shadow: var(--shadow);
 }
 
 .sidebar[hidden] {

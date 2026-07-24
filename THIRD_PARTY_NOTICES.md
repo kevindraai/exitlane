@@ -1,5 +1,18 @@
 # Third-party notices
 
+## Self-Hosted Dashboard Icons — NordVPN logo
+
+ExitLane includes the NordVPN SVG artwork, without visual modifications, from the
+[Self-Hosted Dashboard Icons collection](https://github.com/selfhst/icons), maintained by
+selfh.st. The local file was obtained from
+`https://cdn.jsdelivr.net/gh/selfhst/icons@main/svg/nordvpn.svg`; ExitLane makes no runtime
+request to that CDN.
+
+The collection is distributed under the
+[Creative Commons Attribution 4.0 International License](https://creativecommons.org/licenses/by/4.0/).
+The NordVPN name and logo may also be subject to Nord Security's trademark rights; inclusion
+does not imply endorsement by or affiliation with Nord Security.
+
 ## PyOTP 2.10.0
 
 ExitLane uses PyOTP for RFC 6238 TOTP generation and validation. PyOTP is distributed under the

@@ -77,6 +77,7 @@
     "finish-copy",
     "finish-download",
     "finish-view",
+    "install-provider-logo",
     "killswitch-badge",
     "killswitch-badge-icon",
     "killswitch-cancel",
@@ -146,6 +147,7 @@
     "provider-install-start",
     "provider-install-steps",
     "provider-install-summary",
+    "provider-login-logo",
     "provider-login-methods",
     "provider-management-error",
     "provider-management-retry",
@@ -354,6 +356,7 @@
     "wizard-panel",
     "wizard-progress",
     "wizard-provider-choices",
+    "wizard-provider-logo",
     "wizard-provider-name",
     "wizard-steps"
   ],
