@@ -306,7 +306,16 @@
     "install": "Install",
     "installing_title": "Install NordVPN",
     "preparing": "Preparing installation...",
-    "show_log": "Show installation log",
+    "installation": {
+      "confirm": "Install NordVPN from its official repository on this Debian 13 system?",
+      "success": "NordVPN is installed and its daemon is running.",
+      "status": { "starting": "Starting", "installing": "Installing", "available": "Available", "daemon_inactive": "Daemon inactive", "unsupported": "Unsupported", "failed": "Installation failed" },
+      "phase": { "starting": "Starting the protected installer…", "installing_client": "Installing the NordVPN client…", "starting_daemon": "Starting the NordVPN daemon…", "validating": "Validating the installation…", "not_installed": "NordVPN is not installed.", "failed": "Installation failed.", "unsupported": "Managed installation is unavailable on this platform." },
+      "errors": { "installation_in_progress": "A provider installation is already running.", "unsupported_platform": "Managed installation is supported on Debian 13 only.", "helper_timeout": "The protected installer timed out.", "repository_failed": "The official NordVPN repository could not be configured.", "client_install_failed": "The NordVPN client could not be installed.", "daemon_start_failed": "The NordVPN daemon could not be started.", "daemon_inactive": "The NordVPN daemon is not running.", "validation_failed": "The NordVPN installation could not be validated.", "insufficient_privileges": "The protected installer lacks the required privileges.", "installation_start_failed": "The protected installer could not be started.", "installation_failed": "The NordVPN installation failed." }
+    },
+    "authentication": {
+      "errors": { "invalid_token_format": "Enter a non-empty NordVPN access token in the expected format.", "invalid_token": "NordVPN rejected this access token.", "daemon_unavailable": "The NordVPN daemon is unavailable.", "command_unavailable": "The NordVPN client is unavailable.", "timeout": "NordVPN token sign-in timed out.", "already_logged_in": "NordVPN is already signed in.", "token_replacement_unsupported": "End the current NordVPN session before using another token.", "provider_error": "NordVPN could not complete sign-in." }
+    },
     "apply_gateway_settings": "Apply gateway settings",
     "gateway_settings": "Gateway settings",
     "not_applied": "Not applied yet",

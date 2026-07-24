@@ -9,13 +9,11 @@ import re
 import shutil
 import time
 import urllib.parse
-from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from exitlane.core import command
 
-from .base import Provider, ProviderMetadata
+from .base import InstallationState, Provider, ProviderMetadata
 
 logger = logging.getLogger(__name__)
 SERVER_HOSTNAME_PATTERN = re.compile(r"^([a-z]{2}[0-9]+)\.nordvpn\.com$")
@@ -25,6 +23,7 @@ SIGN_OUT_TIMEOUT_SECONDS = 15
 TOKEN_ERROR_CODES = frozenset(
     {
         "already_logged_in",
+        "invalid_token_format",
         "invalid_token",
         "timeout",
         "daemon_unavailable",
@@ -154,41 +153,39 @@ def parse(output: str) -> dict[str, str]:
     return result
 
 
-_install_job: dict[str, Any] = {
-    "running": False,
-    "finished": False,
-    "ok": None,
-    "message": "",
-    "logs": [],
-    "started_at": None,
-    "finished_at": None,
-}
+def _parse_systemd_properties(output: str) -> dict[str, str]:
+    return dict(line.split("=", 1) for line in output.splitlines() if "=" in line)
+
+
+def _installation_error_code(unit: dict[str, str]) -> str:
+    if unit.get("Result") == "timeout":
+        return "helper_timeout"
+    return {
+        "64": "unsupported_platform",
+        "65": "repository_failed",
+        "66": "client_install_failed",
+        "67": "daemon_start_failed",
+        "68": "validation_failed",
+        "77": "insufficient_privileges",
+    }.get(unit.get("ExecMainStatus", ""), "installation_failed")
+
+
 _country_catalog_cache: list[dict] = []
+INSTALL_UNIT = "exitlane-provider-install-nordvpn.service"
+INSTALL_START_TIMEOUT_SECONDS = 10
+_installation_starting = False
 
 
-def _utc_now() -> str:
-    return datetime.now(UTC).isoformat()
-
-
-def _reset_install_job() -> None:
-    _install_job.update(
-        {
-            "running": True,
-            "finished": False,
-            "ok": None,
-            "message": "NordVPN-installatie gestart",
-            "logs": [],
-            "started_at": _utc_now(),
-            "finished_at": None,
-        }
-    )
-
-
-def _append_install_log(message: str) -> None:
-    if message:
-        _install_job["logs"].append(message)
-
-    _install_job["logs"] = _install_job["logs"][-100:]
+def _supports_managed_installation() -> bool:
+    try:
+        values = {}
+        for line in Path("/etc/os-release").read_text(encoding="utf-8").splitlines():
+            if "=" in line:
+                key, value = line.split("=", 1)
+                values[key] = value.strip().strip('"')
+        return values.get("ID") == "debian" and values.get("VERSION_ID") == "13"
+    except OSError:
+        return False
 
 
 class NordVPN(Provider):
@@ -209,7 +206,7 @@ class NordVPN(Provider):
         authentication_state: str,
         connection_state: str,
     ) -> dict[str, bool]:
-        available = installation_state == "installed"
+        available = installation_state == InstallationState.AVAILABLE
         return {
             "can_sign_in": available and authentication_state == "signed_out",
             "can_sign_out": available and authentication_state == "signed_in",
@@ -246,7 +243,105 @@ class NordVPN(Provider):
             ),
             # Deliberately reserved for a later security/networking design.
             "can_manage_provider_killswitch": False,
+            "can_install": installation_state
+            in {
+                InstallationState.NOT_INSTALLED,
+                InstallationState.DAEMON_INACTIVE,
+                InstallationState.FAILED,
+            },
         }
+
+    async def installation_status(self) -> dict:
+        if not _supports_managed_installation():
+            return {
+                "state": InstallationState.UNSUPPORTED,
+                "phase": "unsupported",
+                "error_code": "unsupported_platform",
+            }
+
+        unit_rc, unit_out, _ = await command(
+            "systemctl",
+            "show",
+            INSTALL_UNIT,
+            "--property=ActiveState",
+            "--property=Result",
+            "--property=ExecMainStatus",
+            timeout=5,
+        )
+        unit = _parse_systemd_properties(unit_out) if unit_rc == 0 else {}
+        active_state = unit.get("ActiveState", "")
+        if _installation_starting or active_state in {"activating", "active"}:
+            return {
+                "state": InstallationState.INSTALLING,
+                "phase": "installing_client",
+                "error_code": None,
+            }
+
+        installed = shutil.which("nordvpn") is not None
+        if installed:
+            daemon_rc, _, _ = await command(
+                "systemctl", "is-active", "nordvpnd", timeout=5
+            )
+            if daemon_rc == 0:
+                return {
+                    "state": InstallationState.AVAILABLE,
+                    "phase": "validating",
+                    "error_code": None,
+                }
+            if active_state == "failed":
+                return {
+                    "state": InstallationState.FAILED,
+                    "phase": "failed",
+                    "error_code": _installation_error_code(unit),
+                }
+            return {
+                "state": InstallationState.DAEMON_INACTIVE,
+                "phase": "starting_daemon",
+                "error_code": "daemon_inactive",
+            }
+
+        if active_state == "failed":
+            return {
+                "state": InstallationState.FAILED,
+                "phase": "failed",
+                "error_code": _installation_error_code(unit),
+            }
+        return {
+            "state": InstallationState.NOT_INSTALLED,
+            "phase": "not_installed",
+            "error_code": None,
+        }
+
+    async def start_installation(self) -> dict:
+        global _installation_starting
+        status = await self.installation_status()
+        if status["state"] == InstallationState.UNSUPPORTED:
+            return {"ok": False, "error_code": "unsupported_platform"}
+        if status["state"] == InstallationState.INSTALLING or _installation_starting:
+            return {"ok": False, "error_code": "installation_in_progress"}
+
+        _installation_starting = True
+        try:
+            await command(
+                "systemctl",
+                "reset-failed",
+                INSTALL_UNIT,
+                timeout=INSTALL_START_TIMEOUT_SECONDS,
+            )
+            return_code, _, _ = await command(
+                "systemctl",
+                "start",
+                "--no-block",
+                INSTALL_UNIT,
+                timeout=INSTALL_START_TIMEOUT_SECONDS,
+            )
+        finally:
+            _installation_starting = False
+        if return_code == 124:
+            return {"ok": False, "error_code": "helper_timeout"}
+        if return_code != 0:
+            return {"ok": False, "error_code": "installation_start_failed"}
+        return {"ok": True, "state": InstallationState.INSTALLING}
 
     async def authenticate(self, credential: str) -> dict:
         return await self.login_token(credential)
@@ -286,7 +381,7 @@ class NordVPN(Provider):
                 "state": "unavailable",
                 "error_code": error_code,
                 "management": self.management_status(
-                    installation_state="not_installed",
+                    installation_state=(await self.installation_status())["state"],
                     authentication_state="unavailable",
                     connection_state="unknown",
                     error_code=error_code,
@@ -384,148 +479,16 @@ class NordVPN(Provider):
                 "",
             ),
             "management": self.management_status(
-                installation_state="installed",
+                installation_state=(
+                    InstallationState.AVAILABLE
+                    if daemon_active
+                    else InstallationState.DAEMON_INACTIVE
+                ),
                 authentication_state=authentication_state,
                 connection_state=connection_state,
                 error_code=status_error,
             ),
         }
-
-    def install_status(self) -> dict:
-        return dict(_install_job)
-
-    async def start_install(self) -> dict:
-        if _install_job["running"]:
-            return {
-                "ok": False,
-                "message": "NordVPN-installatie draait al",
-            }
-
-        _reset_install_job()
-        asyncio.create_task(self._run_install_job())
-
-        return {
-            "ok": True,
-            "message": "NordVPN-installatie gestart",
-        }
-
-    async def _run_install_job(self) -> None:
-        try:
-            if shutil.which("nordvpn"):
-                status = await self.status()
-
-                _install_job.update(
-                    {
-                        "running": False,
-                        "finished": True,
-                        "ok": True,
-                        "message": "NordVPN is al geïnstalleerd",
-                        "finished_at": _utc_now(),
-                    }
-                )
-                _append_install_log("NordVPN-client is al aanwezig.")
-                _append_install_log(f"Daemon actief: {status.get('daemon_active', False)}")
-                return
-
-            _append_install_log("NordVPN-releasepakket downloaden…")
-
-            script = r"""
-set -Eeuo pipefail
-
-tmp_dir="$(mktemp -d)"
-trap 'rm -rf "$tmp_dir"' EXIT
-
-release_deb="$tmp_dir/nordvpn-release.deb"
-
-echo "Releasepakket downloaden"
-curl -fsSL \
-  https://repo.nordvpn.com/deb/nordvpn/debian/pool/main/n/nordvpn-release/nordvpn-release_1.0.0_all.deb \
-  -o "$release_deb"
-
-echo "Repositorypakket installeren"
-dpkg -i "$release_deb"
-
-echo "APT-bestanden leesbaar maken"
-find /etc/apt/trusted.gpg.d \
-  -maxdepth 1 \
-  -type f \
-  -iname '*nord*' \
-  -exec chmod 0644 {} \;
-
-find /etc/apt/sources.list.d \
-  -maxdepth 1 \
-  -type f \
-  -iname '*nord*' \
-  -exec chmod 0644 {} \;
-
-echo "Pakketlijsten vernieuwen"
-apt-get update
-
-echo "NordVPN installeren"
-DEBIAN_FRONTEND=noninteractive apt-get install -y nordvpn
-
-echo "NordVPN-daemon starten"
-systemctl enable --now nordvpnd
-
-echo "Installatie afgerond"
-"""
-
-            rc, out, err = await command(
-                "bash",
-                "-c",
-                script,
-                timeout=300,
-            )
-
-            for line in out.splitlines():
-                _append_install_log(line)
-
-            for line in err.splitlines():
-                _append_install_log(line)
-
-            installed = shutil.which("nordvpn") is not None
-            daemon_rc, daemon_out, daemon_err = await command(
-                "systemctl",
-                "is-active",
-                "nordvpnd",
-            )
-
-            ok = rc == 0 and installed and daemon_rc == 0
-
-            if daemon_out:
-                _append_install_log(f"NordVPN-daemon: {daemon_out.strip()}")
-
-            if daemon_err:
-                _append_install_log(daemon_err)
-
-            _install_job.update(
-                {
-                    "running": False,
-                    "finished": True,
-                    "ok": ok,
-                    "message": (
-                        "NordVPN succesvol geïnstalleerd" if ok else "NordVPN-installatie mislukt"
-                    ),
-                    "finished_at": _utc_now(),
-                }
-            )
-
-        except asyncio.CancelledError:
-            raise
-        # This background-job boundary must always publish a terminal state.
-        except Exception:
-            logger.exception("Unexpected NordVPN installation failure")
-            _append_install_log("Onverwachte fout tijdens de installatie.")
-
-            _install_job.update(
-                {
-                    "running": False,
-                    "finished": True,
-                    "ok": False,
-                    "message": "NordVPN-installatie mislukt",
-                    "finished_at": _utc_now(),
-                }
-            )
 
     async def login_token(self, token):
         if not re.fullmatch(
@@ -534,7 +497,7 @@ echo "Installatie afgerond"
         ):
             return {
                 "ok": False,
-                "message": "invalid token format",
+                "error": "invalid_token_format",
             }
 
         rc, out, err = await command(
@@ -545,10 +508,12 @@ echo "Installatie afgerond"
             timeout=TOKEN_LOGIN_TIMEOUT_SECONDS,
             environment=_provider_cli_environment(),
         )
+        classified = classify_token_login_failure(rc, out, err)
+        error = None if rc == 0 and classified == "provider_error" else classified
 
         return {
-            "ok": rc == 0,
-            "error": None if rc == 0 else classify_token_login_failure(rc, out, err),
+            "ok": error is None,
+            "error": error,
         }
 
     async def sign_out(self) -> dict:

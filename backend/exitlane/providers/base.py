@@ -1,11 +1,21 @@
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
+from enum import StrEnum
 
 from exitlane.services.killswitch import TunnelFacts
 
 
 class ProviderActionUnsupported(RuntimeError):
     """Raised when a provider does not implement an optional explicit action."""
+
+
+class InstallationState(StrEnum):
+    NOT_INSTALLED = "not_installed"
+    DAEMON_INACTIVE = "daemon_inactive"
+    AVAILABLE = "available"
+    UNSUPPORTED = "unsupported"
+    INSTALLING = "installing"
+    FAILED = "failed"
 
 
 @dataclass(frozen=True)
@@ -38,6 +48,16 @@ class Provider(ABC):
         """Return conservative provider-independent egress facts."""
         return TunnelFacts(False, reason="provider_unavailable")
 
+    async def installation_status(self) -> dict:
+        return {
+            "state": InstallationState.UNSUPPORTED,
+            "phase": "unsupported",
+            "error_code": "managed_installation_unsupported",
+        }
+
+    async def start_installation(self) -> dict:
+        raise ProviderActionUnsupported("managed_installation_unsupported")
+
     def capabilities(
         self,
         *,
@@ -57,6 +77,7 @@ class Provider(ABC):
             "can_measure_latency": False,
             "can_select_location": False,
             "can_manage_provider_killswitch": False,
+            "can_install": False,
         }
 
     async def authenticate(self, credential: str) -> dict:
