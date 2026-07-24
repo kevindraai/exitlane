@@ -306,7 +306,16 @@
     "install": "Installeren",
     "installing_title": "NordVPN installeren",
     "preparing": "Installatie voorbereiden...",
-    "show_log": "Installatielog tonen",
+    "installation": {
+      "confirm": "NordVPN vanuit de officiële repository op dit Debian 13-systeem installeren?",
+      "success": "NordVPN is geïnstalleerd en de daemon draait.",
+      "status": { "starting": "Starten", "installing": "Installeren", "available": "Beschikbaar", "daemon_inactive": "Daemon inactief", "unsupported": "Niet ondersteund", "failed": "Installatie mislukt" },
+      "phase": { "starting": "Beveiligde installer starten…", "installing_client": "NordVPN-client installeren…", "starting_daemon": "NordVPN-daemon starten…", "validating": "Installatie valideren…", "not_installed": "NordVPN is niet geïnstalleerd.", "failed": "Installatie mislukt.", "unsupported": "Beheerde installatie is niet beschikbaar op dit platform." },
+      "errors": { "installation_in_progress": "Er draait al een providerinstallatie.", "unsupported_platform": "Beheerde installatie wordt alleen op Debian 13 ondersteund.", "helper_timeout": "De beveiligde installer duurde te lang.", "repository_failed": "De officiële NordVPN-repository kon niet worden ingesteld.", "client_install_failed": "De NordVPN-client kon niet worden geïnstalleerd.", "daemon_start_failed": "De NordVPN-daemon kon niet worden gestart.", "daemon_inactive": "De NordVPN-daemon draait niet.", "validation_failed": "De NordVPN-installatie kon niet worden gevalideerd.", "insufficient_privileges": "De beveiligde installer heeft onvoldoende rechten.", "installation_start_failed": "De beveiligde installer kon niet worden gestart.", "installation_failed": "De NordVPN-installatie is mislukt." }
+    },
+    "authentication": {
+      "errors": { "invalid_token_format": "Vul een niet-leeg NordVPN-access token met een geldig formaat in.", "invalid_token": "NordVPN heeft dit access token afgewezen.", "daemon_unavailable": "De NordVPN-daemon is niet beschikbaar.", "command_unavailable": "De NordVPN-client is niet beschikbaar.", "timeout": "De NordVPN-tokenaanmelding duurde te lang.", "already_logged_in": "NordVPN is al aangemeld.", "token_replacement_unsupported": "Beëindig de huidige NordVPN-sessie voordat je een ander token gebruikt.", "provider_error": "NordVPN kon de aanmelding niet voltooien." }
+    },
     "apply_gateway_settings": "Gatewayinstellingen toepassen",
     "gateway_settings": "Gatewayinstellingen",
     "not_applied": "Nog niet toegepast",

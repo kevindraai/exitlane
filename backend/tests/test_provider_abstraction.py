@@ -74,7 +74,7 @@ def test_provider_catalog_exposes_safe_metadata_and_capabilities(client, monkeyp
             "authenticated": True,
             "connected": False,
             "management": main.provider.management_status(
-                installation_state="installed",
+                installation_state="available",
                 authentication_state="signed_in",
                 connection_state="disconnected",
             ),

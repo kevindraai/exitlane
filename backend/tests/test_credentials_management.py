@@ -245,6 +245,7 @@ def test_nordvpn_token_timeout_is_safely_classified(monkeypatch):
     [
         (1, "You are already logged in.", "already_logged_in"),
         (1, "The token is invalid.", "invalid_token"),
+        (0, "The token is invalid.", "invalid_token"),
         (1, "Cannot reach daemon.", "daemon_unavailable"),
         (127, "", "command_unavailable"),
         (1, "Please log out first.", "token_replacement_unsupported"),

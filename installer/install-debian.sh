@@ -16,6 +16,8 @@ readonly SOURCE_DIR
 readonly TARGET="${TARGET:-/opt/exitlane}"
 readonly VENV_DIR="${TARGET}/venv"
 readonly CLI_TARGET="/usr/local/sbin/exitlane-cli"
+readonly NORDVPN_HELPER_SOURCE="${SOURCE_DIR}/installer/install-nordvpn.sh"
+readonly NORDVPN_HELPER_TARGET="/usr/local/libexec/exitlane-install-nordvpn"
 
 readonly CONFIG_DIR="${EXITLANE_CONFIG_DIR:-/etc/exitlane}"
 readonly DATA_DIR="${EXITLANE_DATA_DIR:-/var/lib/exitlane}"
@@ -27,6 +29,8 @@ readonly SERVICE_SOURCE="${SOURCE_DIR}/systemd/${SERVICE_NAME}"
 readonly SERVICE_TARGET="/etc/systemd/system/${SERVICE_NAME}"
 readonly KILLSWITCH_SERVICE_SOURCE="${SOURCE_DIR}/systemd/exitlane-killswitch.service"
 readonly KILLSWITCH_SERVICE_TARGET="/etc/systemd/system/exitlane-killswitch.service"
+readonly PROVIDER_INSTALL_SERVICE_SOURCE="${SOURCE_DIR}/systemd/exitlane-provider-install-nordvpn.service"
+readonly PROVIDER_INSTALL_SERVICE_TARGET="/etc/systemd/system/exitlane-provider-install-nordvpn.service"
 
 readonly DEFAULTS_SOURCE="${SOURCE_DIR}/installer/exitlane.default"
 readonly DEFAULTS_TARGET="/etc/default/exitlane"
@@ -113,6 +117,10 @@ check_source_layout() {
 
   [[ -f "${DEFAULTS_SOURCE}" ]] ||
     fail "${DEFAULTS_SOURCE} ontbreekt."
+  [[ -f "${NORDVPN_HELPER_SOURCE}" ]] ||
+    fail "${NORDVPN_HELPER_SOURCE} ontbreekt."
+  [[ -f "${PROVIDER_INSTALL_SERVICE_SOURCE}" ]] ||
+    fail "${PROVIDER_INSTALL_SERVICE_SOURCE} ontbreekt."
 
   if [[ "$(realpath -m "${SOURCE_DIR}")" == "$(realpath -m "${TARGET}")" ]]; then
     fail "De Git-repository en installatiemap mogen niet dezelfde map zijn.
@@ -290,6 +298,13 @@ install_cli() {
   success "${CLI_TARGET} geïnstalleerd"
 }
 
+install_provider_helper() {
+  log "Vaste providerinstallatiehelper installeren"
+  install -d -m 0755 /usr/local/libexec
+  install -o root -g root -m 0755 "${NORDVPN_HELPER_SOURCE}" "${NORDVPN_HELPER_TARGET}"
+  success "${NORDVPN_HELPER_TARGET} geïnstalleerd"
+}
+
 install_defaults_file() {
   local source_path="$1"
   local target_path="$2"
@@ -311,6 +326,9 @@ install_service_files() {
     "${SERVICE_SOURCE}" \
     "${SERVICE_TARGET}"
   install -m 0644 "${KILLSWITCH_SERVICE_SOURCE}" "${KILLSWITCH_SERVICE_TARGET}"
+  install -o root -g root -m 0644 \
+    "${PROVIDER_INSTALL_SERVICE_SOURCE}" \
+    "${PROVIDER_INSTALL_SERVICE_TARGET}"
 
   install_defaults_file "${DEFAULTS_SOURCE}" "${DEFAULTS_TARGET}"
 
@@ -437,6 +455,7 @@ main() {
   copy_application
   create_virtual_environment
   install_cli
+  install_provider_helper
   install_service_files
   configure_ip_forwarding
   start_service

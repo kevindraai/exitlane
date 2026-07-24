@@ -60,6 +60,7 @@ from exitlane.events import (
     record_event,
 )
 from exitlane.html import render_index
+from exitlane.providers.base import ProviderActionUnsupported
 from exitlane.providers.nordvpn import SIGN_OUT_ERROR_CODES, TOKEN_ERROR_CODES, provider
 from exitlane.providers.registry import ProviderNotFound, ProviderRegistry
 from exitlane.proxy import deployment_status, normalized_origin, request_security, trusted_origin
@@ -88,6 +89,7 @@ _system_started_databases: set[Path] = set()
 _wireguard_observed_state: tuple[bool, bool] | None = None
 _pending_provider_connection: dict | None = None
 _wireguard_generation_lock: asyncio.Lock | None = None
+_provider_installation_lock = asyncio.Lock()
 _password_change_failures: dict[tuple[Path, int], deque[float]] = defaultdict(deque)
 _provider_sign_out_failures: dict[tuple[Path, int], deque[float]] = defaultdict(deque)
 _login_failures: dict[tuple[Path, str, str], deque[float]] = defaultdict(deque)
@@ -197,7 +199,7 @@ class NetworkSecurityUpdate(BaseModel):
 
 class Token(BaseModel):
     token: str = Field(
-        min_length=20,
+        min_length=0,
         max_length=512,
     )
 
@@ -347,9 +349,6 @@ SETUP_API_ROUTES = {
     ("POST", "/api/setup/complete"),
     ("GET", "/api/system/network"),
     ("GET", "/api/diagnostics"),
-    ("POST", "/api/providers/nordvpn/install"),
-    ("GET", "/api/providers/nordvpn/install/status"),
-    ("POST", "/api/providers/nordvpn/login/token"),
     ("POST", "/api/providers/nordvpn/login/callback"),
     ("POST", "/api/providers/nordvpn/login/browser/start"),
     ("POST", "/api/providers/nordvpn/configure-defaults"),
@@ -433,19 +432,6 @@ def is_setup_client_download(method: str, path: str) -> bool:
     )
 
 
-def is_setup_provider_route(method: str, path: str) -> bool:
-    if method != "POST":
-        return False
-    match = re.fullmatch(r"/api/vpn/providers/([a-z0-9_-]+)/authenticate", path)
-    if not match:
-        return False
-    try:
-        provider_registry.get(match.group(1))
-    except ProviderNotFound:
-        return False
-    return True
-
-
 def request_actor(request: Request) -> dict | None:
     return getattr(request.state, "user", None)
 
@@ -494,10 +480,9 @@ async def require_authentication(request: Request, call_next):
     request.state.user = user
     setup_complete = bool(setting("setup_complete", False))
     setup_client_download = is_setup_client_download(request.method, path)
-    setup_provider_route = is_setup_provider_route(request.method, path)
     if user or (
         not setup_complete
-        and (route in SETUP_API_ROUTES or setup_client_download or setup_provider_route)
+        and (route in SETUP_API_ROUTES or setup_client_download)
     ):
         return await call_next(request)
     return JSONResponse(status_code=401, content={"detail": "Authentication required"})
@@ -1120,7 +1105,7 @@ async def setup_state() -> dict:
 
 
 @app.post("/api/setup/admin")
-async def create_admin(req: Admin) -> dict:
+async def create_admin(req: Admin, request: Request, response: Response) -> dict:
     digest, salt = hash_password(req.password)
 
     with sqlite3.connect(DB) as connection:
@@ -1132,7 +1117,7 @@ async def create_admin(req: Admin) -> dict:
                 detail="An administrator already exists",
             )
 
-        connection.execute(
+        cursor = connection.execute(
             """
             INSERT INTO users (
                 username,
@@ -1147,12 +1132,28 @@ async def create_admin(req: Admin) -> dict:
                 salt,
             ),
         )
+        user_id = int(cursor.lastrowid)
 
     set_setting("setup_current_step", 3)
+    token = auth_security.create_session(
+        user_id,
+        request_security(request).client_ip,
+        request.headers.get("user-agent", ""),
+    )
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        max_age=SESSION_MAX_AGE_SECONDS,
+        httponly=True,
+        secure=_cookie_secure(request),
+        samesite="lax",
+        path="/",
+    )
 
     return {
         "ok": True,
         "message": "Administrator created",
+        "authenticated": True,
     }
 
 
@@ -1237,26 +1238,9 @@ async def diagnostic_checks() -> dict:
     }
 
 
-@app.post("/api/providers/nordvpn/install")
-async def install_nordvpn() -> dict:
-    return await provider.start_install()
-
-
-@app.get("/api/providers/nordvpn/install/status")
-async def nordvpn_install_status() -> dict:
-    return provider.install_status()
-
-
 @app.post("/api/providers/nordvpn/login/token")
-async def login_token(req: Token) -> dict:
-    result = await provider.authenticate(req.token)
-
-    if result.get("ok"):
-        set_setting("vpn.provider_id", provider.id)
-        set_setting("setup_provider_complete", True)
-        set_setting("setup_current_step", 4)
-
-    return result
+async def login_token(req: Token, request: Request) -> dict:
+    return await _authenticate_provider(provider, req, request)
 
 
 @app.post("/api/providers/nordvpn/token")
@@ -1479,6 +1463,40 @@ async def vpn_provider_status(provider_id: str) -> dict:
         "provider": _provider_metadata(provider_instance),
         "status": await _fresh_status_for(provider_instance),
     }
+
+
+@app.get("/api/vpn/providers/{provider_id}/installation")
+async def vpn_provider_installation_status(provider_id: str, request: Request) -> dict:
+    provider_instance = _provider_or_404(provider_id)
+    return {
+        "provider_id": provider_instance.id,
+        **await provider_instance.installation_status(),
+    }
+
+
+@app.post("/api/vpn/providers/{provider_id}/installation", status_code=202)
+async def install_vpn_provider(provider_id: str, request: Request) -> dict:
+    provider_instance = _provider_or_404(provider_id)
+    async with _provider_installation_lock:
+        for registered_provider in provider_registry.all():
+            status = await registered_provider.installation_status()
+            if status.get("state") == "installing":
+                raise HTTPException(status_code=409, detail="installation_in_progress")
+        try:
+            result = await provider_instance.start_installation()
+        except ProviderActionUnsupported:
+            raise HTTPException(
+                status_code=422, detail="managed_installation_unsupported"
+            ) from None
+    if result.get("ok"):
+        return {
+            "provider_id": provider_instance.id,
+            "state": "installing",
+            "phase": "starting",
+        }
+    error_code = result.get("error_code", "installation_start_failed")
+    status_code = 409 if error_code == "installation_in_progress" else 422
+    raise HTTPException(status_code=status_code, detail=error_code)
 
 
 @app.post("/api/vpn/providers/{provider_id}/authenticate")

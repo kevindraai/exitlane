@@ -17,7 +17,10 @@ import { t } from "./i18n.js";
 export function renderProviderStatus(status) {
   appState.provider = status;
 
-  const installed = Boolean(status.installed);
+  const installation = status.management?.provider?.installation_state
+    || (status.installed ? status.daemon_active === false ? "daemon_inactive" : "available" : "not_installed");
+  const installed = ["available", "daemon_inactive"].includes(installation);
+  const available = installation === "available";
   const authenticated = Boolean(status.authenticated);
   const connected = Boolean(status.connected);
 
@@ -25,6 +28,14 @@ export function renderProviderStatus(status) {
     setStatusPill(select("#provider-state"), t("provider.status.connected", {}, "Connected"), "success");
   } else if (authenticated) {
     setStatusPill(select("#provider-state"), t("provider.status.authenticated", {}, "Signed in"), "success");
+  } else if (installation === "installing") {
+    setStatusPill(select("#provider-state"), t("provider.installation.status.installing", {}, "Installing"), "neutral");
+  } else if (installation === "unsupported") {
+    setStatusPill(select("#provider-state"), t("provider.installation.status.unsupported", {}, "Unsupported"), "danger");
+  } else if (installation === "failed") {
+    setStatusPill(select("#provider-state"), t("provider.installation.status.failed", {}, "Installation failed"), "danger");
+  } else if (installation === "daemon_inactive") {
+    setStatusPill(select("#provider-state"), t("provider.installation.status.daemon_inactive", {}, "Daemon inactive"), "danger");
   } else if (installed) {
     setStatusPill(select("#provider-state"), t("provider.status.signed_out", {}, "Signed out"), "neutral");
   } else {
@@ -37,9 +48,11 @@ export function renderProviderStatus(status) {
       : t("provider.description.signed_out", {}, "The NordVPN Linux client is installed but signed out.")
     : t("provider.description.not_installed", {}, "The NordVPN Linux client is not installed yet.");
 
-  select("#provider-install").disabled = installed;
-  select("#provider-defaults").disabled = !installed;
+  select("#provider-install").disabled = !status.management?.capabilities?.can_install;
+  select("#provider-install").hidden = installation === "unsupported" || available;
+  select("#provider-defaults").disabled = !available;
   select("#provider-next").disabled = !authenticated;
+  select("#provider-login-methods").hidden = !available;
 
   renderVpnView(status);
   renderVpnProviderAccess(status);
@@ -448,29 +461,6 @@ async function reconnectCountry() {
   if (current) await connectCountry(current.country_code, select("#reconnect-button"));
 }
 
-function setProviderInstallLogExpanded(expanded) {
-  const log = select("#provider-install-log");
-  const button = select("#provider-install-log-toggle");
-
-  log.hidden = !expanded;
-  button.hidden = false;
-
-  button.setAttribute(
-    "aria-expanded",
-    String(expanded),
-  );
-
-  button.textContent = expanded
-    ? "Installatielog verbergen"
-    : "Installatielog tonen";
-}
-
-function toggleProviderInstallLog() {
-  const log = select("#provider-install-log");
-
-  setProviderInstallLogExpanded(log.hidden);
-}
-
 export async function refreshProvider() {
   return refreshProviderState();
 }
@@ -489,6 +479,14 @@ let controlsInitialised = false;
 
 async function installProvider() {
   const button = select("#provider-install");
+  const providerId = getSlice("application").providerId
+    || appState.setup?.selected_provider_id;
+  if (!providerId) return;
+  if (!window.confirm(t(
+    "provider.installation.confirm",
+    {},
+    "Install this VPN provider on this Debian 13 system?",
+  ))) return;
 
   setBusy(
   button,
@@ -498,19 +496,18 @@ async function installProvider() {
   clearInlineError();
 
   select("#provider-install-progress").hidden = false;
-  select("#provider-install-log").textContent = "";
   select("#provider-install-message").textContent =
-    "NordVPN-installatie wordt gestart.";
+    t("provider.installation.phase.starting", {}, "Starting installation…");
 
   setStatusPill(
     select("#provider-install-state"),
-    "Starten",
+    t("provider.installation.status.starting", {}, "Starting"),
     "neutral",
   );
 
   try {
     const result = await postJson(
-      "/api/providers/nordvpn/install",
+      `/api/vpn/providers/${encodeURIComponent(providerId)}/installation`,
     );
 
     if (!result.ok) {
@@ -519,46 +516,50 @@ async function installProvider() {
       );
     }
 
-    await pollInstallStatus();
+    await pollInstallStatus(providerId);
   } catch (error) {
-    showInlineError(error.message);
+    showInlineError(installationErrorMessage(error));
     setBusy(button, false);
 
     setStatusPill(
       select("#provider-install-state"),
-      "Mislukt",
+      t("provider.installation.status.failed", {}, "Installation failed"),
       "danger",
     );
   }
 }
 
-async function pollInstallStatus() {
+function installationErrorMessage(error) {
+  const code = error.payload?.detail || error.code || "installation_failed";
+  return t(
+    `provider.installation.errors.${code}`,
+    {},
+    t("provider.installation.errors.installation_failed", {}, "The provider installation failed."),
+  );
+}
+
+async function pollInstallStatus(providerId) {
   window.clearTimeout(installPollTimer);
 
   try {
     const status = await api(
-      "/api/providers/nordvpn/install/status",
+      `/api/vpn/providers/${encodeURIComponent(providerId)}/installation`,
+      { deduplicate: false },
     );
 
     select("#provider-install-progress").hidden = false;
     select("#provider-install-message").textContent =
-      status.message || "Installatie wordt uitgevoerd.";
+      t(`provider.installation.phase.${status.phase}`, {}, t("provider.installation.phase.installing_client", {}, "Installing provider client…"));
 
-    select("#provider-install-log").textContent =
-      (status.logs || []).join("\n");
-
-    const logElement = select("#provider-install-log");
-    logElement.scrollTop = logElement.scrollHeight;
-
-    if (status.running) {
+    if (status.state === "installing") {
       setStatusPill(
         select("#provider-install-state"),
-        "Bezig",
+        t("provider.installation.status.installing", {}, "Installing"),
         "neutral",
       );
 
       installPollTimer = window.setTimeout(
-        pollInstallStatus,
+        () => pollInstallStatus(providerId),
         1000,
       );
       return;
@@ -566,15 +567,15 @@ async function pollInstallStatus() {
 
     setBusy(select("#provider-install"), false);
 
-    if (status.finished && status.ok) {
+    if (status.state === "available") {
       setStatusPill(
         select("#provider-install-state"),
-        "Geslaagd",
+        t("provider.installation.status.available", {}, "Available"),
         "success",
       );
 
       showMessage(
-        status.message || "NordVPN is geïnstalleerd.",
+        t("provider.installation.success", {}, "The VPN provider is installed and available."),
       );
 
       await Promise.all([
@@ -584,15 +585,15 @@ async function pollInstallStatus() {
       return;
     }
 
-    if (status.finished) {
+    if (["failed", "unsupported", "daemon_inactive"].includes(status.state)) {
       setStatusPill(
         select("#provider-install-state"),
-        "Mislukt",
+        t("provider.installation.status.failed", {}, "Installation failed"),
         "danger",
       );
 
       showInlineError(
-        status.message || "NordVPN-installatie mislukt.",
+        installationErrorMessage({ payload: { detail: status.error_code } }),
       );
     }
   } catch (error) {
@@ -609,14 +610,18 @@ async function pollInstallStatus() {
 }
 
 export async function restoreInstallStatus() {
+  const providerId = appState.setup?.selected_provider_id;
+  if (!providerId) return;
   try {
     const status = await api(
-      "/api/providers/nordvpn/install/status",
+      `/api/vpn/providers/${encodeURIComponent(providerId)}/installation`,
+      { deduplicate: false },
     );
 
-    if (status.running || status.finished) {
+    if (status.state === "installing") {
       select("#provider-install-progress").hidden = false;
-      await pollInstallStatus();
+      setBusy(select("#provider-install"), true, t("busy.installing", {}, "Installing…"));
+      await pollInstallStatus(providerId);
     }
   } catch {
     // Er is nog geen installatiejob of de status is niet beschikbaar.
@@ -837,7 +842,12 @@ async function loginWithToken(event) {
     showMessage(result.stdout || "NordVPN-aanmelding geslaagd.");
     await Promise.all([refreshProvider(), refreshSetup()]);
   } catch (error) {
-    showInlineError(error.message);
+    const code = error.payload?.detail || error.code || "provider_error";
+    showInlineError(t(
+      `provider.authentication.errors.${code}`,
+      {},
+      t("provider.authentication.errors.provider_error", {}, "The provider could not complete sign-in."),
+    ));
   } finally {
     setBusy(button, false);
   }
@@ -973,8 +983,4 @@ export function initialiseProviderControls() {
     copyBrowserLoginUrl,
   );
 
-select("#provider-install-log-toggle").addEventListener(
-  "click",
-  toggleProviderInstallLog,
-);
 }
