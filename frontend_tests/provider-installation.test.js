@@ -33,6 +33,14 @@ test("installation is a resumable server-side checklist in phase order", () => {
   assert.match(markup, /Dit kan op een schone installatie enkele minuten duren/);
 });
 
+test("initial installation state is compact and expands only after starting", () => {
+  assert.match(markup, /id="provider-install-start"[\s\S]+id="provider-install"/);
+  assert.match(markup, /<details aria-expanded="false" class="long-task" hidden="" id="provider-install-disclosure">/);
+  assert.match(source, /disclosure\.hidden = !started/);
+  assert.match(source, /startPanel\.hidden = started/);
+  assert.match(source, /renderInstallationStatus\(result\)/);
+});
+
 test("active, pending, completed and failed steps use the required icon states", () => {
   assert.match(component, /"pending", "active", "completed", "failed"/);
   assert.match(component, /icon\.dataset\.status = status/);
@@ -50,7 +58,7 @@ test("gateway settings are part of the same flow and the loose wizard button is 
 });
 
 test("success collapses to an accessible expandable summary and activates sign-in", () => {
-  assert.match(markup, /<details aria-expanded="true" class="long-task"/);
+  assert.match(markup, /<details aria-expanded="false" class="long-task"/);
   assert.match(source, /completed_summary/);
   assert.match(component, /details\.open = false/);
   assert.match(component, /details\.setAttribute\("aria-expanded"/);
@@ -63,6 +71,9 @@ test("failure marks one step, preserves completed steps and offers retry", () =>
   assert.match(component, /long-task-step-error/);
   assert.match(source, /provider-install-retry/);
   assert.match(source, /installProvider\(\{ confirm: false \}\)/);
+  assert.match(source, /reapply_gateway_settings/);
+  assert.match(source, /retry_gateway/);
+  assert.match(source, /recheck_provider/);
   assert.match(source, /journalctl -u exitlane-provider-install-nordvpn\.service -n 100 --no-pager/);
   assert.doesNotMatch(markup, /provider-install-log/);
   assert.doesNotMatch(source, /status\.logs|apt.*output|journal.*output/);

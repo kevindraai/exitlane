@@ -25,10 +25,18 @@
           </strong>
           <p data-i18n="provider.not_checked" id="provider-description">
            Linux-client nog niet gecontroleerd.
-          </p>
+         </p>
          </div>
         </div>
-        <details aria-expanded="true" class="long-task" id="provider-install-disclosure" open="">
+        <div class="provider-install-start" id="provider-install-start">
+         <p data-i18n="provider.installation.intro">
+          ExitLane installeert de officiële NordVPN Linux-client en past de veilige gatewayinstellingen toe.
+         </p>
+         <button class="button button-primary" data-i18n="provider.installation.start" id="provider-install" type="button">
+          NordVPN installeren
+         </button>
+        </div>
+        <details aria-expanded="false" class="long-task" hidden="" id="provider-install-disclosure">
          <summary>
           <span aria-hidden="true" class="long-task-icon" data-status="active"></span>
           <strong data-i18n="provider.installation.title" id="provider-install-summary">NordVPN installeren</strong>
@@ -42,9 +50,6 @@
           <p class="long-task-context" hidden="" id="provider-install-context"></p>
           <div aria-atomic="true" aria-live="polite" class="sr-only" id="provider-install-live"></div>
           <div class="long-task-actions">
-           <button class="button button-primary" data-i18n="provider.installation.start" id="provider-install" type="button">
-            NordVPN installeren
-           </button>
            <button class="button button-primary" data-i18n="provider.installation.retry" hidden="" id="provider-install-retry" type="button">
             Opnieuw proberen
            </button>
