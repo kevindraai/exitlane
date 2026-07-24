@@ -11,7 +11,7 @@ from collections.abc import Callable, Sequence
 from exitlane import core
 from exitlane.events import record_event
 from exitlane.providers.nordvpn import provider
-from exitlane.services import killswitch
+from exitlane.services import killswitch, network_security
 from exitlane.services.auth_security import disable_mfa as disable_administrator_mfa
 from exitlane.services.credentials import CredentialError, reset_administrator_password
 from exitlane.services.network_security import (
@@ -187,17 +187,7 @@ def set_proxy_config(
     if changed:
         record_event(
             "network.security_settings_updated",
-            metadata={
-                "fields": changed,
-                "public_scheme": (
-                    "https"
-                    if updated.public_url.startswith("https://")
-                    else "http"
-                    if updated.public_url
-                    else "none"
-                ),
-                "trusted_proxy_count": len(updated.trusted_proxies),
-            },
+            metadata=network_security.settings_updated_event_metadata(updated, changed),
         )
     if supplied == ignored:
         print("No database settings changed; environment overrides remain effective.")

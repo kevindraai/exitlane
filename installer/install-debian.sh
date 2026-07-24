@@ -290,6 +290,19 @@ install_cli() {
   success "${CLI_TARGET} geïnstalleerd"
 }
 
+install_defaults_file() {
+  local source_path="$1"
+  local target_path="$2"
+
+  if [[ -f "${target_path}" ]]; then
+    warning "${target_path} bestaat al en is behouden"
+    return
+  fi
+
+  install -m 0600 "${source_path}" "${target_path}"
+  success "${target_path} aangemaakt"
+}
+
 install_service_files() {
   log "systemd-configuratie installeren"
 
@@ -299,16 +312,7 @@ install_service_files() {
     "${SERVICE_TARGET}"
   install -m 0644 "${KILLSWITCH_SERVICE_SOURCE}" "${KILLSWITCH_SERVICE_TARGET}"
 
-  if [[ ! -f "${DEFAULTS_TARGET}" ]]; then
-    install \
-      -m 0600 \
-      "${DEFAULTS_SOURCE}" \
-      "${DEFAULTS_TARGET}"
-
-    success "${DEFAULTS_TARGET} aangemaakt"
-  else
-    warning "${DEFAULTS_TARGET} bestaat al en is behouden"
-  fi
+  install_defaults_file "${DEFAULTS_SOURCE}" "${DEFAULTS_TARGET}"
 
   systemctl daemon-reload
   success "systemd-configuratie geladen"
@@ -439,4 +443,6 @@ main() {
   show_summary
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

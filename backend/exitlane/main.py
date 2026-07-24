@@ -15,7 +15,6 @@ from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import pyotp
 import segno
@@ -1069,13 +1068,7 @@ async def update_deployment_security(req: NetworkSecurityUpdate, request: Reques
         record_event(
             "network.security_settings_updated",
             actor=user,
-            metadata={
-                "fields": changed,
-                "public_scheme": urlsplit(configuration.public_url).scheme
-                if configuration.public_url
-                else "none",
-                "trusted_proxy_count": len(configuration.trusted_proxies),
-            },
+            metadata=network_security.settings_updated_event_metadata(configuration, changed),
         )
     return {
         **deployment_status(request),
