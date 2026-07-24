@@ -37,17 +37,14 @@
          <button class="button button-secondary" id="killswitch-refresh" type="button" data-i18n="killswitch.refresh">Refresh status</button>
         </div>
        </article>
-       <dialog id="killswitch-dialog" aria-labelledby="killswitch-dialog-title">
+       <dialog class="compact-dialog" id="killswitch-dialog" aria-describedby="killswitch-dialog-description" aria-labelledby="killswitch-dialog-title">
         <form id="killswitch-form" method="post">
-         <h2 id="killswitch-dialog-title" data-i18n="killswitch.confirm_title">Confirm killswitch change</h2>
-         <p data-i18n="killswitch.warning">An incorrect network configuration can interrupt client connectivity. Local management remains allowed.</p>
-         <label><span data-i18n="killswitch.password">Current password</span><input id="killswitch-password" type="password" autocomplete="current-password" required maxlength="256"></label>
-         <label id="killswitch-totp-field" hidden><span data-i18n="killswitch.totp">Authenticator code</span><input id="killswitch-totp" inputmode="numeric" autocomplete="one-time-code" minlength="6" maxlength="64"></label>
-         <label class="checkbox-row"><input id="killswitch-confirm-loss" type="checkbox" required><span data-i18n="killswitch.confirm_loss">I understand client connectivity may be interrupted.</span></label>
+         <h2 id="killswitch-dialog-title">Enable killswitch?</h2>
+         <p id="killswitch-dialog-description">If the VPN connection is lost, internet traffic is blocked. Local management remains available.</p>
          <p class="inline-error" id="killswitch-dialog-error" role="alert" hidden></p>
          <div class="dialog-actions">
           <button class="button button-secondary" id="killswitch-cancel" type="button" data-i18n="common.cancel">Cancel</button>
-          <button class="button button-danger" id="killswitch-confirm" type="submit" data-i18n="common.confirm">Confirm</button>
+          <button class="button button-primary" id="killswitch-confirm" type="submit">Enable</button>
          </div>
         </form>
        </dialog>

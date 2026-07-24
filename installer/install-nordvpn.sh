@@ -6,8 +6,8 @@ IFS=$'\n\t'
 readonly RELEASE_URL="https://repo.nordvpn.com/deb/nordvpn/debian/pool/main/n/nordvpn-release/nordvpn-release_1.0.0_all.deb"
 readonly RELEASE_SHA256="16a05919b7259e679e4483aa39f61ef9bc9c07cbe040276e04884b5f9d7f933d"
 readonly PHASE_FILE="/run/exitlane-provider-install/nordvpn.phase"
-readonly PROVIDER_READY_ATTEMPTS=45
-readonly PROVIDER_READY_DELAY=2
+readonly PROVIDER_READY_TIMEOUT_SECONDS=45
+readonly PROVIDER_CLI_TIMEOUT_SECONDS=2
 
 work_dir=""
 current_phase="checking_system"
@@ -57,12 +57,17 @@ require_debian_13() {
 }
 
 provider_ready() {
-  local provider_status
+  local provider_status status_code
   command -v nordvpn >/dev/null 2>&1 || return 1
   [[ "$(systemctl show nordvpnd --property=LoadState --value 2>/dev/null)" == "loaded" ]] ||
     return 1
   systemctl is-active --quiet nordvpnd || return 1
-  if ! provider_status="$(nordvpn status 2>&1)"; then
+  status_code=0
+  provider_status="$(
+    timeout --signal=TERM "${PROVIDER_CLI_TIMEOUT_SECONDS}" \
+      nordvpn status 2>&1
+  )" || status_code=$?
+  if ((status_code != 0)); then
     provider_status="${provider_status,,}"
     [[ "${provider_status}" == *"not logged in"* ||
       "${provider_status}" == *"not signed in"* ]] || return 1
@@ -70,12 +75,29 @@ provider_ready() {
 }
 
 wait_for_provider() {
-  local attempt
+  local attempt=0 delay_seconds deadline started_at
   set_phase "waiting_for_provider"
-  for ((attempt = 1; attempt <= PROVIDER_READY_ATTEMPTS; attempt++)); do
-    provider_ready && return 0
-    sleep "${PROVIDER_READY_DELAY}"
+  started_at="${SECONDS}"
+  deadline=$((SECONDS + PROVIDER_READY_TIMEOUT_SECONDS))
+  printf '%s\n' "nordvpn readiness: daemon active" >&2
+  while ((SECONDS < deadline)); do
+    attempt=$((attempt + 1))
+    if provider_ready; then
+      printf '%s\n' \
+        "nordvpn readiness: CLI ready attempts=${attempt} duration_seconds=$((SECONDS - started_at))" \
+        >&2
+      return 0
+    fi
+    case "${attempt}" in
+      1) delay_seconds="0.25" ;;
+      2) delay_seconds="0.5" ;;
+      *) delay_seconds="1" ;;
+    esac
+    sleep "${delay_seconds}"
   done
+  printf '%s\n' \
+    "nordvpn readiness: timeout category=provider_cli_unavailable attempts=${attempt} duration_seconds=$((SECONDS - started_at))" \
+    >&2
   die 69 "provider_readiness_timeout"
 }
 

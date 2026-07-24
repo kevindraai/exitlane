@@ -1,5 +1,8 @@
 import asyncio
+import os
 import sqlite3
+import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -225,7 +228,8 @@ def test_helper_performs_explicit_final_availability_validation():
     assert "systemctl is-active --quiet nordvpnd" in validation
     assert "nordvpn status" in validation
     assert "provider_readiness_timeout" in validation
-    assert "PROVIDER_READY_ATTEMPTS" in validation
+    assert "PROVIDER_READY_TIMEOUT_SECONDS" in validation
+    assert "PROVIDER_CLI_TIMEOUT_SECONDS" in validation
 
 
 def test_failed_helper_start_reconciles_to_available(client, monkeypatch):
@@ -571,5 +575,86 @@ def test_helper_reports_every_installation_phase_and_retries_readiness():
     assert "systemctl enable --now nordvpnd" in helper
     assert "systemctl is-active --quiet nordvpnd" in helper
     assert "nordvpn status" in helper
-    assert 'sleep "${PROVIDER_READY_DELAY}"' in helper
+    assert "PROVIDER_CLI_TIMEOUT_SECONDS=2" in helper
+    assert "PROVIDER_READY_TIMEOUT_SECONDS=45" in helper
+    assert '1) delay_seconds="0.25"' in helper
+    assert '2) delay_seconds="0.5"' in helper
+    assert "sleep 2" not in helper
+    assert "nordvpn readiness: CLI ready" in helper
+    assert "provider_status" not in "\n".join(
+        line for line in helper.splitlines() if "nordvpn readiness:" in line
+    )
     assert "nordvpn.service" not in helper
+
+
+def _readiness_shell(helper_path: Path, body: str, *, environment=None):
+    helper_without_main = "\n".join(
+        line for line in helper_path.read_text(encoding="utf-8").splitlines() if line != 'main "$@"'
+    )
+    sourced = helper_path.parent / "readiness-functions.sh"
+    sourced.write_text(helper_without_main, encoding="utf-8")
+    return subprocess.run(
+        ["bash", "-c", f'source "$1"\n{body}', "bash", str(sourced)],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=environment,
+        timeout=5,
+    )
+
+
+def test_readiness_retries_quickly_and_stops_at_first_valid_status(tmp_path):
+    helper = tmp_path / "install-nordvpn.sh"
+    helper.write_text(
+        (ROOT / "installer/install-nordvpn.sh").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    started = time.monotonic()
+    result = _readiness_shell(
+        helper,
+        """
+set_phase() { :; }
+attempts=0
+provider_ready() {
+  attempts=$((attempts + 1))
+  ((attempts >= 3))
+}
+wait_for_provider
+printf '%s\\n' "${attempts}"
+""",
+    )
+    elapsed = time.monotonic() - started
+    assert result.returncode == 0
+    assert result.stdout.strip() == "3"
+    assert "CLI ready attempts=3" in result.stderr
+    assert elapsed < 2
+
+
+def test_signed_out_cli_is_immediately_accepted_as_ready(tmp_path):
+    helper = tmp_path / "install-nordvpn.sh"
+    helper.write_text(
+        (ROOT / "installer/install-nordvpn.sh").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "systemctl").write_text(
+        """#!/usr/bin/env bash
+if [[ "$1" == "show" ]]; then printf 'loaded\\n'; else exit 0; fi
+""",
+        encoding="utf-8",
+    )
+    (bin_dir / "nordvpn").write_text(
+        """#!/usr/bin/env bash
+printf 'You are not logged in.\\n' >&2
+exit 1
+""",
+        encoding="utf-8",
+    )
+    (bin_dir / "systemctl").chmod(0o755)
+    (bin_dir / "nordvpn").chmod(0o755)
+    environment = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    result = _readiness_shell(helper, "provider_ready", environment=environment)
+    assert result.returncode == 0
+    assert result.stdout == ""
+    assert result.stderr == ""

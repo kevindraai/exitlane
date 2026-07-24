@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   renderApplicationState,
@@ -51,6 +52,29 @@ function fixture() {
 
 const authenticated = { data: { authenticated: true } };
 const anonymous = { data: { authenticated: false } };
+
+test("all expandable sidebar groups share a restrained visual hierarchy", async () => {
+  const [markup, styles] = await Promise.all([
+    readFile(
+      new URL("../backend/exitlane/static/partials/sidebar.html", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../backend/exitlane/static/style.css", import.meta.url),
+      "utf8",
+    ),
+  ]);
+  for (const group of ["vpn", "settings"]) {
+    assert.match(markup, new RegExp(`id="${group}-navigation-toggle"`));
+    assert.match(markup, new RegExp(`class="sidebar-subnav"[^>]+id="${group}-navigation-items"`));
+  }
+  assert.match(styles, /\.sidebar-subnav[\s\S]+border-left: 1px solid var\(--border\)/);
+  assert.match(styles, /\.sidebar-subnav[\s\S]+margin-left: 1\.15rem/);
+  assert.match(styles, /\.sidebar-group-toggle,[\s\S]+font-weight: 600/);
+  assert.match(styles, /\.sidebar-subitem[\s\S]+font-weight: 400/);
+  assert.match(styles, /\.sidebar-subitem\.active[\s\S]+background: var\(--accent-soft\)|\.sidebar-item\.active[\s\S]+background: var\(--accent-soft\)/);
+  assert.match(styles, /@media \(max-width: 900px\)[\s\S]+\.sidebar-subnav:not\(\[hidden\]\)/);
+});
 
 test("authenticated dashboard mode renders one complete consistent shell", () => {
   const { root, elements: e } = fixture();

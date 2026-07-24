@@ -462,6 +462,13 @@ h2 {
   background: var(--danger-soft);
 }
 
+.button-warning {
+  border-color: var(--warning-border);
+  color: var(--warning-text);
+  background: var(--warning-soft);
+  font-weight: 700;
+}
+
 .status-pill {
   padding: 7px 11px;
   display: inline-flex;
@@ -1580,7 +1587,31 @@ pre {
 }
 
 .sidebar-subitem {
-  padding-left: 2.6rem;
+  min-height: 40px;
+  padding-left: 0.65rem;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.sidebar-subnav {
+  width: calc(100% - 1.15rem);
+  margin-left: 1.15rem;
+  padding-left: 0.55rem;
+  border-left: 1px solid var(--border);
+}
+
+.sidebar-group-toggle,
+.sidebar-item:not(.sidebar-subitem) {
+  font-weight: 600;
+}
+
+.sidebar-group-toggle[aria-expanded="true"] {
+  background: var(--panel-soft);
+}
+
+.sidebar-subitem.active {
+  color: var(--text);
+  font-weight: 500;
 }
 
 .provider-overview-list,
@@ -1799,7 +1830,8 @@ pre {
 
 #settings-provider-sign-out-dialog,
 #wireguard-regenerate-dialog,
-#wireguard-qr-dialog {
+#wireguard-qr-dialog,
+#killswitch-dialog {
   width: min(32rem, calc(100vw - 2rem));
   border: 1px solid var(--border);
   border-radius: 1rem;
@@ -1810,7 +1842,22 @@ pre {
 
 #settings-provider-sign-out-dialog::backdrop,
 #wireguard-regenerate-dialog::backdrop,
-#wireguard-qr-dialog::backdrop { background: rgb(15 23 42 / 55%); }
+#wireguard-qr-dialog::backdrop,
+#killswitch-dialog::backdrop { background: rgb(15 23 42 / 55%); }
+
+#killswitch-dialog {
+  padding: 1.25rem;
+}
+
+#killswitch-dialog form {
+  display: grid;
+  gap: 0.85rem;
+}
+
+#killswitch-dialog h2,
+#killswitch-dialog p {
+  margin: 0;
+}
 
 #wireguard-qr-image {
   display: block;

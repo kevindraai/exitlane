@@ -70,10 +70,17 @@ class SystemStatus(BaseModel):
     error: str | None = None
 
 
+class DashboardKillswitchStatus(BaseModel):
+    available: bool
+    configured: bool | None = None
+    state: str = "unknown"
+
+
 class DashboardResponse(BaseModel):
     health: HealthStatus
     vpn: VPNStatus
     wireguard: WireGuardStatus
+    killswitch: DashboardKillswitchStatus
     system: SystemStatus
     version: str
     generated_at: datetime
@@ -212,11 +219,17 @@ async def build_dashboard(
     wireguard_status: Callable[[], Awaitable[dict]],
     version: str,
     system_status_call: Callable[[], Awaitable[SystemStatus]] | None = None,
+    killswitch_status_call: Callable[[], Awaitable[dict]] | None = None,
 ) -> DashboardResponse:
     generated_at = utc_now()
     system_status_call = system_status_call or system_status
-    provider_result, wireguard_result, system = await asyncio.gather(
-        provider_status(), wireguard_status(), system_status_call(), return_exceptions=True
+    killswitch_status_call = killswitch_status_call or _unavailable_killswitch_status
+    provider_result, wireguard_result, system, killswitch_result = await asyncio.gather(
+        provider_status(),
+        wireguard_status(),
+        system_status_call(),
+        killswitch_status_call(),
+        return_exceptions=True,
     )
 
     if isinstance(provider_result, BaseException) or not isinstance(provider_result, dict):
@@ -274,11 +287,31 @@ async def build_dashboard(
             error="system_status_unavailable",
         )
     health = determine_health(vpn, wireguard, system, generated_at)
+    if isinstance(killswitch_result, BaseException) or not isinstance(killswitch_result, dict):
+        dashboard_killswitch = DashboardKillswitchStatus(available=False)
+    else:
+        state = str(killswitch_result.get("state") or "unknown")
+        dashboard_killswitch = DashboardKillswitchStatus(
+            available=state
+            in {
+                "disabled",
+                "enabled_protected",
+                "enabled_waiting_for_tunnel",
+                "enabled_degraded",
+            },
+            configured=bool(killswitch_result.get("configured")),
+            state=state,
+        )
     return DashboardResponse(
         health=health,
         vpn=vpn,
         wireguard=wireguard,
+        killswitch=dashboard_killswitch,
         system=system,
         version=version,
         generated_at=generated_at,
     )
+
+
+async def _unavailable_killswitch_status() -> dict:
+    return {"state": "unknown", "configured": None}
