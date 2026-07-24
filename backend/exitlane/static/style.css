@@ -2296,7 +2296,6 @@ pre {
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--panel);
-  box-shadow: var(--shadow);
 }
 
 .sidebar[hidden] {
