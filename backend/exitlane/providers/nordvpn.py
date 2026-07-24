@@ -215,6 +215,15 @@ INSTALL_HELPER_ERROR_MAP = {
     "unsupported_platform": "unsupported_platform",
     "insufficient_privileges": "insufficient_privileges",
 }
+GATEWAY_SETTINGS = (
+    ("technology", "NordLynx", "Technology", "nordlynx"),
+    ("routing", "on", "Routing", "enabled"),
+    ("lan-discovery", "on", "LAN Discovery", "enabled"),
+    ("firewall", "on", "Firewall", "enabled"),
+    ("killswitch", "off", "Kill Switch", "disabled"),
+    ("analytics", "off", "User Consent", "disabled"),
+    ("autoconnect", "off", "Auto-connect", "disabled"),
+)
 _installation_starting = False
 _installation_started_at: str | None = None
 _gateway_defaults_task: asyncio.Task | None = None
@@ -287,6 +296,23 @@ def _installation_response(
                 "error_code": safe_error if status == "failed" else None,
             }
         )
+    operation_state = {
+        "applying_gateway_settings": "configuring_gateway",
+        "validating_installation": "validating",
+        "completed": "completed",
+        "failed": "failed",
+    }.get(safe_phase, "installing")
+    retry_action = None
+    if safe_phase == "failed":
+        retry_action = (
+            "reapply_gateway_settings"
+            if active_phase == "applying_gateway_settings"
+            else "recheck_provider"
+            if active_phase in {"starting_daemon", "waiting_for_provider"}
+            else "revalidate_installation"
+            if active_phase == "validating_installation"
+            else "restart_installation"
+        )
     return {
         "state": (
             InstallationState.AVAILABLE
@@ -301,6 +327,8 @@ def _installation_response(
         "error_code": safe_error,
         "installation_in_progress": safe_phase not in {"completed", "failed"},
         "provider_available": provider_available,
+        "operation_state": operation_state,
+        "retry_action": retry_action,
     }
 
 
@@ -458,15 +486,26 @@ class NordVPN(Provider):
                 provider_available=provider_available,
             )
 
-        if phase == "failed" and failed_phase == "applying_gateway_settings":
-            return _installation_response(
-                phase="failed",
-                failed_phase=failed_phase,
-                error_code=phase_error or "gateway_settings_failed",
-                provider_available=provider_available,
-            )
-
         if provider_available:
+            if phase == "failed" and failed_phase == "applying_gateway_settings":
+                gateway_results = await self.gateway_settings_status()
+                if not gateway_results or not all(
+                    result.get("ok", False) for result in gateway_results
+                ):
+                    return _installation_response(
+                        phase="failed",
+                        failed_phase=failed_phase,
+                        error_code=phase_error or "gateway_settings_failed",
+                        provider_available=True,
+                    )
+                try:
+                    INSTALL_PHASE_FILE.write_text("validating_installation\n", encoding="utf-8")
+                except OSError:
+                    logger.warning("Could not persist reconciled installation phase")
+                return _installation_response(
+                    phase="validating_installation",
+                    provider_available=True,
+                )
             if phase == "completed":
                 return _installation_response(
                     phase="completed",
@@ -556,11 +595,13 @@ class NordVPN(Provider):
             **response,
             "state": health["state"],
             "installation_in_progress": False,
+            "operation_state": "not_started",
             "error_code": health["error_code"],
         }
 
     async def start_installation(self) -> dict:
-        global _installation_monitor_task, _installation_started_at, _installation_starting
+        global _gateway_defaults_task, _installation_monitor_task
+        global _installation_started_at, _installation_starting
         status = await self.installation_status()
         if status["state"] == InstallationState.UNSUPPORTED:
             return {"ok": False, "error_code": "unsupported_platform"}
@@ -570,23 +611,41 @@ class NordVPN(Provider):
         _installation_starting = True
         _installation_started_at = datetime.now(UTC).isoformat()
         try:
-            try:
-                INSTALL_PHASE_FILE.unlink(missing_ok=True)
-            except OSError:
-                logger.warning("Could not reset the provider installation phase")
-            await command(
-                "systemctl",
-                "reset-failed",
-                INSTALL_UNIT,
-                timeout=INSTALL_START_TIMEOUT_SECONDS,
-            )
-            return_code, _, _ = await command(
-                "systemctl",
-                "start",
-                "--no-block",
-                INSTALL_UNIT,
-                timeout=INSTALL_START_TIMEOUT_SECONDS,
-            )
+            retry_action = status.get("retry_action")
+            if retry_action == "reapply_gateway_settings" and status.get("provider_available"):
+                INSTALL_PHASE_FILE.write_text("applying_gateway_settings\n", encoding="utf-8")
+                _gateway_defaults_task = asyncio.create_task(self.defaults())
+                return_code = 0
+            elif retry_action == "revalidate_installation" and status.get("provider_available"):
+                INSTALL_PHASE_FILE.write_text("validating_installation\n", encoding="utf-8")
+                return_code = 0
+            elif retry_action == "recheck_provider" and shutil.which("nordvpn"):
+                INSTALL_PHASE_FILE.write_text("waiting_for_provider\n", encoding="utf-8")
+                return_code, _, _ = await command(
+                    "systemctl",
+                    "enable",
+                    "--now",
+                    "nordvpnd",
+                    timeout=INSTALL_START_TIMEOUT_SECONDS,
+                )
+            else:
+                try:
+                    INSTALL_PHASE_FILE.unlink(missing_ok=True)
+                except OSError:
+                    logger.warning("Could not reset the provider installation phase")
+                await command(
+                    "systemctl",
+                    "reset-failed",
+                    INSTALL_UNIT,
+                    timeout=INSTALL_START_TIMEOUT_SECONDS,
+                )
+                return_code, _, _ = await command(
+                    "systemctl",
+                    "start",
+                    "--no-block",
+                    INSTALL_UNIT,
+                    timeout=INSTALL_START_TIMEOUT_SECONDS,
+                )
         finally:
             _installation_starting = False
         if return_code == 124:
@@ -595,7 +654,21 @@ class NordVPN(Provider):
             return {"ok": False, "error_code": "installation_start_failed"}
         if _installation_monitor_task is None or _installation_monitor_task.done():
             _installation_monitor_task = asyncio.create_task(self._monitor_installation())
-        return {"ok": True, "state": InstallationState.INSTALLING}
+        return {
+            "ok": True,
+            **_installation_response(
+                phase=(
+                    "applying_gateway_settings"
+                    if retry_action == "reapply_gateway_settings"
+                    else "validating_installation"
+                    if retry_action == "revalidate_installation"
+                    else "waiting_for_provider"
+                    if retry_action == "recheck_provider"
+                    else "checking_system"
+                ),
+                provider_available=bool(status.get("provider_available")),
+            ),
+        }
 
     async def _monitor_installation(self) -> None:
         for _ in range(360):
@@ -818,107 +891,43 @@ class NordVPN(Provider):
             "stderr": err,
         }
 
-    async def defaults(self):
-        requested_settings = [
-            {
-                "setting": "technology",
-                "value": "NordLynx",
-                "expected_key": "Technology",
-                "expected_value": "NORDLYNX",
-            },
-            {
-                "setting": "routing",
-                "value": "on",
-                "expected_key": "Routing",
-                "expected_value": "enabled",
-            },
-            {
-                "setting": "lan-discovery",
-                "value": "on",
-                "expected_key": "LAN Discovery",
-                "expected_value": "enabled",
-            },
-            {
-                "setting": "autoconnect",
-                "value": "on",
-                "expected_key": "Auto-connect",
-                "expected_value": "enabled",
-            },
-            {
-                "setting": "firewall",
-                "value": "on",
-                "expected_key": "Firewall",
-                "expected_value": "enabled",
-            },
-            {
-                "setting": "killswitch",
-                "value": "off",
-                "expected_key": "Kill Switch",
-                "expected_value": "disabled",
-            },
-            {
-                "setting": "analytics",
-                "value": "off",
-                "expected_key": "User Consent",
-                "expected_value": "disabled",
-            },
-        ]
+    @staticmethod
+    def _normalise_gateway_value(value: str) -> str:
+        normalised = value.strip().casefold()
+        return {
+            "on": "enabled",
+            "true": "enabled",
+            "off": "disabled",
+            "false": "disabled",
+        }.get(normalised, normalised)
 
-        command_results = {}
-
-        for item in requested_settings:
-            rc, out, err = await command(
-                "nordvpn",
-                "set",
-                item["setting"],
-                item["value"],
-            )
-
-            command_results[item["setting"]] = {
-                "return_code": rc,
-                "output": (out or err).strip(),
+    async def gateway_settings_status(self) -> list[dict]:
+        settings_rc, settings_out, _ = await command("nordvpn", "settings")
+        actual_settings = parse(settings_out) if settings_rc == 0 else {}
+        results = [
+            {
+                "setting": setting,
+                "ok": settings_rc == 0
+                and self._normalise_gateway_value(actual_settings.get(key, "")) == expected,
             }
-
-        settings_rc, settings_out, settings_err = await command(
-            "nordvpn",
-            "settings",
-        )
-
-        if settings_rc != 0:
-            return [
-                {
-                    "setting": item["setting"],
-                    "ok": False,
-                    "output": (settings_err or settings_out or "Could not read NordVPN settings"),
-                }
-                for item in requested_settings
-            ]
-
-        actual_settings = parse(settings_out)
-        results = []
-
-        for item in requested_settings:
-            actual_value = actual_settings.get(
-                item["expected_key"],
-                "",
+            for setting, _value, key, expected in GATEWAY_SETTINGS
+        ]
+        mismatches = [result["setting"] for result in results if not result["ok"]]
+        if mismatches:
+            logger.warning(
+                "Managed NordVPN gateway settings differ: %s",
+                ", ".join(mismatches),
             )
-
-            verified = actual_value.casefold() == item["expected_value"].casefold()
-
-            command_result = command_results[item["setting"]]
-
-            results.append(
-                {
-                    "setting": item["setting"],
-                    "ok": verified,
-                    "requested": item["value"],
-                    "actual": actual_value,
-                    "output": command_result["output"],
-                    "return_code": command_result["return_code"],
-                }
-            )
-
         return results
+
+    async def defaults(self) -> list[dict]:
+        current = {
+            result["setting"]: result["ok"] for result in await self.gateway_settings_status()
+        }
+        for setting, value, _key, _expected in GATEWAY_SETTINGS:
+            if not current.get(setting, False):
+                await command("nordvpn", "set", setting, value)
+        return await self.gateway_settings_status()
 
     async def start_browser_login(self):
         _rc, out, err = await command(

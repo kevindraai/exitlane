@@ -503,6 +503,16 @@ function renderInstallationStatus(status, { focusSignIn = false } = {}) {
   const completed = status.phase === "completed";
   const failed = status.phase === "failed";
   const inProgress = status.installation_in_progress === true;
+  const started = inProgress || completed || failed;
+  const disclosure = select("#provider-install-disclosure");
+  const startPanel = select("#provider-install-start");
+  disclosure.hidden = !started;
+  startPanel.hidden = started;
+  if (!started) {
+    wizardInstallationCompleted = false;
+    select("#provider-login-methods").hidden = true;
+    return;
+  }
   const summary = completed
     ? t("provider.installation.completed_summary", {}, "NordVPN installed")
     : t("provider.installation.title", {}, "Install NordVPN");
@@ -512,7 +522,7 @@ function renderInstallationStatus(status, { focusSignIn = false } = {}) {
   wizardInstallationCompleted = completed;
 
   renderLongTask({
-    details: select("#provider-install-disclosure"),
+    details: disclosure,
     list: select("#provider-install-steps"),
     liveRegion: select("#provider-install-live"),
     steps: (status.steps || []).map((step) => ({
@@ -538,7 +548,17 @@ function renderInstallationStatus(status, { focusSignIn = false } = {}) {
     : "";
 
   select("#provider-install").hidden = inProgress || completed || failed;
-  select("#provider-install-retry").hidden = !failed;
+  const retryButton = select("#provider-install-retry");
+  retryButton.hidden = !failed;
+  const retryTranslations = {
+    restart_installation: ["provider.installation.retry_installation", "Retry installation"],
+    recheck_provider: ["provider.installation.retry_provider", "Check NordVPN again"],
+    reapply_gateway_settings: ["provider.installation.retry_gateway", "Reapply gateway settings"],
+    revalidate_installation: ["provider.installation.retry_validation", "Check installation again"],
+  };
+  const [retryKey, retryFallback] = retryTranslations[status.retry_action]
+    || ["provider.installation.retry", "Try again"];
+  retryButton.textContent = t(retryKey, {}, retryFallback);
   setBusy(select("#provider-install"), inProgress, t("busy.installing", {}, "Installing…"));
 
   if (completed) {
@@ -551,7 +571,9 @@ function renderInstallationStatus(status, { focusSignIn = false } = {}) {
 }
 
 async function installProvider({ confirm = true } = {}) {
-  const button = select("#provider-install");
+  const button = confirm
+    ? select("#provider-install")
+    : select("#provider-install-retry");
   const providerId = getSlice("application").providerId
     || appState.setup?.selected_provider_id;
   if (!providerId) return;
@@ -575,9 +597,14 @@ async function installProvider({ confirm = true } = {}) {
       );
     }
 
+    renderInstallationStatus(result);
     await pollInstallStatus(providerId);
   } catch (error) {
     setBusy(button, false);
+    if (error.payload?.detail === "installation_in_progress") {
+      await pollInstallStatus(providerId);
+      return;
+    }
     showInlineError(installationErrorMessage(error));
   }
 }
@@ -617,8 +644,12 @@ async function pollInstallStatus(providerId) {
 
     if (status.phase === "failed") renderInstallationStatus(status);
   } catch (error) {
-    setBusy(select("#provider-install"), false);
-    showInlineError(installationErrorMessage(error));
+    // A transient request failure is not a terminal installation failure.
+    // Keep following the authoritative server-side operation.
+    installPollTimer = window.setTimeout(
+      () => pollInstallStatus(providerId),
+      INSTALL_POLL_INTERVAL_MS,
+    );
   }
 }
 

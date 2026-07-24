@@ -152,20 +152,24 @@ def test_network_facts_require_official_connected_technology(monkeypatch):
     assert nordlynx.interface == "nordlynx"
 
 
-def test_provider_defaults_enable_reboot_reconnect_and_keep_provider_killswitch_off(
+def test_provider_defaults_disable_autoconnect_and_keep_provider_killswitch_off(
     monkeypatch,
 ):
     commands = []
+    autoconnect = "enabled"
 
     async def command(*args, **_kwargs):
+        nonlocal autoconnect
         commands.append(args)
+        if args == ("nordvpn", "set", "autoconnect", "off"):
+            autoconnect = "disabled"
         if args == ("nordvpn", "settings"):
             return (
                 0,
-                """Technology: NORDLYNX
+                f"""Technology: NORDLYNX
 Routing: enabled
 LAN Discovery: enabled
-Auto-connect: enabled
+Auto-connect: {autoconnect}
 Firewall: enabled
 Kill Switch: disabled
 User Consent: disabled""",
@@ -178,8 +182,37 @@ User Consent: disabled""",
     results = asyncio.run(nordvpn.NordVPN().defaults())
 
     assert all(item["ok"] for item in results)
-    assert ("nordvpn", "set", "autoconnect", "on") in commands
-    assert ("nordvpn", "set", "killswitch", "off") in commands
+    assert ("nordvpn", "set", "autoconnect", "off") in commands
+    assert ("nordvpn", "set", "autoconnect", "on") not in commands
+    assert ("nordvpn", "set", "killswitch", "off") not in commands
+
+
+def test_provider_defaults_accept_equivalent_values_and_ignore_unmanaged_settings(
+    monkeypatch,
+):
+    commands = []
+
+    async def command(*args, **_kwargs):
+        commands.append(args)
+        return (
+            0,
+            """Technology: NordLynx
+Routing: true
+LAN Discovery: on
+Auto-connect: false
+Firewall: enabled
+Kill Switch: off
+User Consent: disabled
+Meshnet: enabled
+Tray: enabled""",
+            "",
+        )
+
+    monkeypatch.setattr(nordvpn, "command", command)
+    results = asyncio.run(nordvpn.NordVPN().defaults())
+
+    assert all(item["ok"] for item in results)
+    assert commands == [("nordvpn", "settings"), ("nordvpn", "settings")]
 
 
 def test_signed_out_status_has_distinct_authentication_and_connection_states(monkeypatch):

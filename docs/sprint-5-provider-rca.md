@@ -62,12 +62,11 @@ SSH. NordVPN then installed its own `table inet nordvpn`, including private
 IPv4 LAN ranges in `allowlist_subnets`. This table is provider-owned and
 separate from `table inet exitlane_killswitch`.
 
-The same defaults enable NordVPN auto-connect. With ExitLane configured, the
-early boot service first installs the fail-closed client-forwarding table.
-NordVPN can then reconnect using host traffic, after which the backend monitor
-atomically releases protected IPv4 forwarding. NordVPN's provider Kill Switch
-remains explicitly disabled; auto-connect and the ExitLane system killswitch
-are separate concepts.
+The same defaults explicitly disable NordVPN auto-connect. ExitLane owns the
+connection target and timing, so the provider client must not independently
+connect after installation or restart. NordVPN's provider Kill Switch also
+remains explicitly disabled; ExitLane's separate system killswitch protects
+forwarded client traffic while the managed connection is unavailable.
 
 The ExitLane table protects forwarded client traffic only. It does not add a
 general host-output drop, so provider DNS, authentication, and tunnel setup do

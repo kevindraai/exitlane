@@ -1501,7 +1501,10 @@ async def install_vpn_provider(provider_id: str, request: Request) -> dict:
         return {
             "provider_id": provider_instance.id,
             "state": "installing",
-            "phase": "starting",
+            "phase": "checking_system",
+            "installation_in_progress": True,
+            "operation_state": "installing",
+            **result,
         }
     reconciled = await provider_instance.installation_status()
     if reconciled.get("state") == "available":

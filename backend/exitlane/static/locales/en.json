@@ -309,7 +309,12 @@
     "installation": {
       "title": "Install NordVPN",
       "start": "Install NordVPN",
+      "intro": "ExitLane installs the official NordVPN Linux client and applies the safe gateway settings.",
       "retry": "Try again",
+      "retry_installation": "Retry installation",
+      "retry_provider": "Check NordVPN again",
+      "retry_gateway": "Reapply gateway settings",
+      "retry_validation": "Check installation again",
       "completed_summary": "NordVPN installed",
       "show_details": "Show details",
       "hide_details": "Hide details",

@@ -100,6 +100,8 @@ def test_installation_states(monkeypatch, supported, installed, unit_output, dae
     monkeypatch.setattr(nordvpn, "command", fake_command)
     result = asyncio.run(nordvpn.provider.installation_status())
     assert result["state"] == expected
+    if expected in {InstallationState.NOT_INSTALLED, InstallationState.DAEMON_INACTIVE}:
+        assert result["operation_state"] == "not_started"
     if unit_output.startswith("ActiveState=failed\nResult=timeout"):
         assert result["error_code"] == "helper_timeout"
 
@@ -164,7 +166,10 @@ def test_successful_start_creates_server_side_monitor(monkeypatch):
         return result
 
     result = asyncio.run(run())
-    assert result == {"ok": True, "state": InstallationState.INSTALLING}
+    assert result["ok"] is True
+    assert result["state"] == InstallationState.INSTALLING
+    assert result["phase"] == "checking_system"
+    assert result["installation_in_progress"] is True
 
 
 def test_installer_places_fixed_helper_and_unit_without_installing_nordvpn():
@@ -259,6 +264,8 @@ def test_stale_failed_unit_is_ignored_when_provider_is_available(monkeypatch):
             return 0, "active\n", ""
         if arguments[:2] == ("nordvpn", "status"):
             return 0, "Status: Disconnected\n", ""
+        if arguments == ("nordvpn", "settings"):
+            return 0, "Routing: disabled\n", ""
         raise AssertionError(arguments)
 
     monkeypatch.setattr(nordvpn, "command", fake_command)
@@ -334,6 +341,8 @@ def test_installation_phase_order_and_step_transitions_are_allowlisted():
             "error_code",
             "installation_in_progress",
             "provider_available",
+            "operation_state",
+            "retry_action",
         }
         assert "output" not in repr(response).casefold()
         assert "token" not in repr(response).casefold()
@@ -350,6 +359,26 @@ def test_definitive_failure_marks_only_current_step():
     assert statuses[:3] == ["completed", "completed", "completed"]
     assert statuses[3] == "failed"
     assert set(statuses[4:]) == {"pending"}
+    assert response["operation_state"] == "failed"
+    assert response["retry_action"] == "restart_installation"
+
+
+@pytest.mark.parametrize(
+    ("phase", "retry_action"),
+    [
+        ("refreshing_packages", "restart_installation"),
+        ("waiting_for_provider", "recheck_provider"),
+        ("applying_gateway_settings", "reapply_gateway_settings"),
+        ("validating_installation", "revalidate_installation"),
+    ],
+)
+def test_retry_action_is_phase_aware(phase, retry_action):
+    response = nordvpn._installation_response(
+        phase="failed",
+        failed_phase=phase,
+        error_code="installation_failed",
+    )
+    assert response["retry_action"] == retry_action
 
 
 def test_active_systemd_operation_uses_persisted_phase(monkeypatch):
@@ -421,6 +450,8 @@ def test_gateway_failure_is_distinct_and_persisted(monkeypatch):
             return 0, "active\n", ""
         if arguments[:2] == ("nordvpn", "status"):
             return 0, "Status: Disconnected\n", ""
+        if arguments == ("nordvpn", "settings"):
+            return 0, "Routing: disabled\n", ""
         raise AssertionError(arguments)
 
     async def defaults():
@@ -441,6 +472,96 @@ def test_gateway_failure_is_distinct_and_persisted(monkeypatch):
         assert status["phase"] == "failed"
         assert status["error_code"] == "gateway_settings_failed"
         assert [step["status"] for step in status["steps"]].count("failed") == 1
+
+
+def test_stale_gateway_failure_reconciles_when_managed_settings_are_valid(monkeypatch):
+    nordvpn.INSTALL_PHASE_FILE.write_text(
+        "failed|applying_gateway_settings|gateway_settings_failed\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(nordvpn, "_supports_managed_installation", lambda: True)
+    monkeypatch.setattr(nordvpn.shutil, "which", lambda _name: "/usr/bin/nordvpn")
+
+    async def fake_command(*arguments, **_options):
+        if arguments[:3] == ("systemctl", "show", nordvpn.INSTALL_UNIT):
+            return 0, "ActiveState=inactive\nResult=failed\nExecMainStatus=1\n", ""
+        if arguments[:3] == ("systemctl", "show", "nordvpnd"):
+            return 0, "loaded\n", ""
+        if arguments[:2] == ("systemctl", "is-active"):
+            return 0, "active\n", ""
+        if arguments[:2] == ("nordvpn", "status"):
+            return 1, "", "You are not logged in."
+        if arguments == ("nordvpn", "settings"):
+            return (
+                0,
+                """Technology: NORDLYNX
+Routing: enabled
+LAN Discovery: enabled
+Firewall: true
+Kill Switch: off
+User Consent: disabled
+Auto-connect: false""",
+                "",
+            )
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(nordvpn, "command", fake_command)
+    status = asyncio.run(nordvpn.provider.installation_status())
+    assert status["phase"] == "validating_installation"
+    assert status["provider_available"] is True
+    assert status["error_code"] is None
+
+
+def test_gateway_retry_does_not_restart_package_installer(monkeypatch):
+    nordvpn.INSTALL_PHASE_FILE.write_text(
+        "failed|applying_gateway_settings|gateway_settings_failed\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(nordvpn, "_supports_managed_installation", lambda: True)
+    monkeypatch.setattr(nordvpn.shutil, "which", lambda _name: "/usr/bin/nordvpn")
+    commands = []
+    configured = False
+
+    async def fake_command(*arguments, **_options):
+        nonlocal configured
+        commands.append(arguments)
+        if arguments[:3] == ("systemctl", "show", nordvpn.INSTALL_UNIT):
+            return 0, "ActiveState=inactive\nResult=failed\nExecMainStatus=1\n", ""
+        if arguments[:3] == ("systemctl", "show", "nordvpnd"):
+            return 0, "loaded\n", ""
+        if arguments[:2] == ("systemctl", "is-active"):
+            return 0, "active\n", ""
+        if arguments[:2] == ("nordvpn", "status"):
+            return 0, "Status: Disconnected\n", ""
+        if arguments == ("nordvpn", "settings"):
+            state = "disabled" if configured else "enabled"
+            return (
+                0,
+                f"""Technology: NORDLYNX
+Routing: enabled
+LAN Discovery: enabled
+Firewall: enabled
+Kill Switch: disabled
+User Consent: disabled
+Auto-connect: {state}""",
+                "",
+            )
+        if arguments == ("nordvpn", "set", "autoconnect", "off"):
+            configured = True
+            return 0, "", ""
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(nordvpn, "command", fake_command)
+
+    async def run():
+        result = await nordvpn.provider.start_installation()
+        await asyncio.sleep(0)
+        return result
+
+    result = asyncio.run(run())
+    assert result["phase"] == "applying_gateway_settings"
+    assert ("nordvpn", "set", "autoconnect", "off") in commands
+    assert not any(arguments[:3] == ("systemctl", "start", "--no-block") for arguments in commands)
 
 
 def test_helper_reports_every_installation_phase_and_retries_readiness():
