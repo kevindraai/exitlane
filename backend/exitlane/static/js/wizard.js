@@ -2,6 +2,7 @@ import { api, postJson } from "./api.js";
 import { showLogin } from "./auth.js";
 import { t } from "./i18n.js";
 import { setApplicationMode } from "./navigation.js";
+import { renderProviderLogo } from "./provider-logo.js";
 import { appState, getSlice, stepNames, updateSlice } from "./state.js";
 import {
   clearInlineError,
@@ -137,7 +138,12 @@ function renderWizardProviders(setup) {
     container.append(item);
   }
   const selected = providers.find((provider) => provider.id === selectedId);
-  if (selected) select("#wizard-provider-name").textContent = selected.display_name;
+  if (selected) {
+    select("#wizard-provider-name").textContent = selected.display_name;
+    selectAll("[data-provider-logo]").forEach((container) => {
+      renderProviderLogo(container, selected);
+    });
+  }
 }
 
 function renderCompletionChecks(setup) {

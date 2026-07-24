@@ -353,6 +353,7 @@ class NordVPN(Provider):
         short_name="NordVPN",
         description="NordVPN Linux client",
         icon="shield-check",
+        logo="/assets/providers/nordvpn.svg",
     )
 
     def capabilities(
