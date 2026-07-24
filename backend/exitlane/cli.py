@@ -84,11 +84,21 @@ def network_status(*, effective_user_id: int | None = None) -> int:
     configuration = current_config()
     public_url = configuration.public_url or "(direct access)"
     proxies = ", ".join(str(proxy) for proxy in configuration.trusted_proxies) or "(none)"
-    print(f"Public URL: {public_url} [source: {configuration.sources['public_url']}]")
-    print(f"Trusted proxies: {proxies} [source: {configuration.sources['trusted_proxies']}]")
-    print(
-        f"Secure-cookie policy: {configuration.secure_cookie_policy} "
-        f"[source: {configuration.sources['secure_cookie_policy']}]"
+    sys.stdout.write(
+        "\n".join(
+            [
+                f"Public URL: {public_url} [source: {configuration.sources['public_url']}]",
+                (
+                    f"Trusted proxies: {proxies} "
+                    f"[source: {configuration.sources['trusted_proxies']}]"
+                ),
+                (
+                    f"Secure-cookie policy: {configuration.secure_cookie_policy} "
+                    f"[source: {configuration.sources['secure_cookie_policy']}]"
+                ),
+            ]
+        )
+        + "\n"
     )
     return 0
 
