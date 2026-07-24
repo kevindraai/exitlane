@@ -6,42 +6,71 @@ const source = fs.readFileSync(
   new URL("../backend/exitlane/static/js/provider.js", import.meta.url),
   "utf8",
 );
+const component = fs.readFileSync(
+  new URL("../backend/exitlane/static/js/long-task.js", import.meta.url),
+  "utf8",
+);
 const markup = fs.readFileSync(
   new URL("../backend/exitlane/static/partials/wizard/provider.html", import.meta.url),
   "utf8",
 );
+const css = fs.readFileSync(
+  new URL("../backend/exitlane/static/style.css", import.meta.url),
+  "utf8",
+);
+const english = fs.readFileSync(
+  new URL("../backend/exitlane/static/locales/en.json", import.meta.url),
+  "utf8",
+);
 
-test("wizard uses provider-neutral managed-installation API and confirmation", () => {
+test("installation is a resumable server-side checklist in phase order", () => {
   assert.match(source, /api\/vpn\/providers\/\$\{encodeURIComponent\(providerId\)\}\/installation/);
-  assert.match(source, /window\.confirm/);
-  assert.doesNotMatch(source, /api\/providers\/nordvpn\/install/);
+  assert.match(source, /status\.installation_in_progress/);
+  assert.match(source, /INSTALL_POLL_INTERVAL_MS = 1500/);
+  assert.match(source, /restoreInstallStatus[\s\S]+renderInstallationStatus\(status\)/);
+  assert.doesNotMatch(source, /INSTALLATION_TIMEOUT|installTimeout/);
+  assert.match(markup, /class="long-task-list"/);
+  assert.match(markup, /Dit kan op een schone installatie enkele minuten duren/);
 });
 
-test("wizard always ends busy state and supports success, error, polling and retry", () => {
-  assert.match(source, /status\.state === "installing"/);
-  assert.match(source, /status\.state === "available"/);
-  assert.match(source, /\["failed", "unsupported", "daemon_missing", "daemon_inactive"\]/);
-  assert.match(source, /setBusy\(select\("#provider-install"\), false\)/);
-  assert.match(source, /window\.setTimeout/);
-  assert.match(source, /capabilities\?\.can_install/);
-  assert.match(source, /\["not_installed", "daemon_missing", "daemon_inactive"\]/);
-  assert.match(source, /select\("#provider-install"\)\.hidden = !installable/);
-  assert.match(source, /select\("#provider-login-methods"\)\.hidden = !available/);
-  assert.match(source, /if \(available\) \{[\s\S]+clearInlineError\(\)/);
-  assert.match(source, /restoreInstallStatus[\s\S]+refreshProviderState\(\{ deduplicate: false \}\)/);
+test("active, pending, completed and failed steps use the required icon states", () => {
+  assert.match(component, /"pending", "active", "completed", "failed"/);
+  assert.match(component, /icon\.dataset\.status = status/);
+  assert.match(css, /\.long-task-icon\[data-status="active"\][\s\S]+background: var\(--text\)/);
+  assert.match(css, /\.long-task-icon\[data-status="completed"\][\s\S]+var\(--success\)/);
+  assert.match(css, /\.long-task-icon\[data-status="failed"\][\s\S]+var\(--danger\)/);
+  assert.match(css, /\.long-task-icon[\s\S]+border: 2px solid var\(--text\)/);
+  assert.match(component, /const status = ALLOWED_STATUSES\.has\(step\.status\)/);
 });
 
-test("wizard never exposes provider installation logs", () => {
-  assert.doesNotMatch(markup, /provider-install-log/);
-  assert.doesNotMatch(source, /status\.logs/);
-  assert.doesNotMatch(
-    source.slice(source.indexOf("async function pollInstallStatus"), source.indexOf("export async function restoreInstallStatus")),
-    /showInlineError\(error\.message\)/,
-  );
+test("gateway settings are part of the same flow and the loose wizard button is gone", () => {
+  assert.match(english, /applying_gateway_settings/);
+  assert.doesNotMatch(markup, /id="provider-defaults"/);
+  assert.doesNotMatch(source, /configure-defaults/);
+});
+
+test("success collapses to an accessible expandable summary and activates sign-in", () => {
+  assert.match(markup, /<details aria-expanded="true" class="long-task"/);
+  assert.match(source, /completed_summary/);
+  assert.match(component, /details\.open = false/);
+  assert.match(component, /details\.setAttribute\("aria-expanded"/);
+  assert.match(source, /select\("#provider-login-methods"\)\.hidden = false/);
+  assert.match(source, /select\("#nord-token"\)\?\.focus/);
+});
+
+test("failure marks one step, preserves completed steps and offers retry", () => {
+  assert.match(component, /status === "failed"/);
+  assert.match(component, /long-task-step-error/);
+  assert.match(source, /provider-install-retry/);
+  assert.match(source, /installProvider\(\{ confirm: false \}\)/);
   assert.match(source, /journalctl -u exitlane-provider-install-nordvpn\.service -n 100 --no-pager/);
+  assert.doesNotMatch(markup, /provider-install-log/);
+  assert.doesNotMatch(source, /status\.logs|apt.*output|journal.*output/);
 });
 
-test("token login maps stable errors and always releases its busy state", () => {
+test("token login remains explicit and always releases busy state", () => {
   assert.match(source, /provider\.authentication\.errors\.\$\{code\}/);
   assert.match(source, /finally \{\s*setBusy\(button, false\)/);
+  assert.doesNotMatch(source, /void loginWithToken\(\)|await loginWithToken\(\)/);
+  assert.doesNotMatch(source, /void startBrowserLogin\(\)|await startBrowserLogin\(\)/);
 });

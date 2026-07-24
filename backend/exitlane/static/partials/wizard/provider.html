@@ -27,42 +27,31 @@
            Linux-client nog niet gecontroleerd.
           </p>
          </div>
-         <button class="button button-secondary" data-i18n="provider.install" id="provider-install" type="button">
-          Installeren
-         </button>
         </div>
-        <section class="result-card" hidden="" id="provider-install-progress">
-         <div class="result-heading">
-          <div>
-           <strong data-i18n="provider.installing_title" id="provider-install-title">
+        <details aria-expanded="true" class="long-task" id="provider-install-disclosure" open="">
+         <summary>
+          <span aria-hidden="true" class="long-task-icon" data-status="active"></span>
+          <strong data-i18n="provider.installation.title" id="provider-install-summary">NordVPN installeren</strong>
+          <span class="long-task-detail-label" data-i18n="provider.installation.hide_details" id="provider-install-detail-label">Details verbergen</span>
+         </summary>
+         <div class="long-task-content">
+          <ol aria-label="NordVPN installation progress" class="long-task-list" data-i18n-aria-label="provider.installation.progress_label" id="provider-install-steps"></ol>
+          <p class="long-task-guidance" data-i18n="provider.installation.wait_hint">
+           Dit kan op een schone installatie enkele minuten duren. Je hoeft niets te doen.
+          </p>
+          <p class="long-task-context" hidden="" id="provider-install-context"></p>
+          <div aria-atomic="true" aria-live="polite" class="sr-only" id="provider-install-live"></div>
+          <div class="long-task-actions">
+           <button class="button button-primary" data-i18n="provider.installation.start" id="provider-install" type="button">
             NordVPN installeren
-           </strong>
-           <p data-i18n="provider.preparing" id="provider-install-message">
-            Installatie voorbereiden...
-           </p>
+           </button>
+           <button class="button button-primary" data-i18n="provider.installation.retry" hidden="" id="provider-install-retry" type="button">
+            Opnieuw proberen
+           </button>
           </div>
-          <span class="status-pill status-neutral" data-i18n="common.waiting" id="provider-install-state">
-           Wachten
-          </span>
+          <p class="inline-error" hidden="" id="provider-install-error"></p>
          </div>
-        </section>
-        <div class="provider-actions">
-         <button class="button button-secondary" data-i18n="provider.apply_gateway_settings" id="provider-defaults" type="button">
-          Gatewayinstellingen toepassen
-         </button>
-        </div>
-        <section class="settings-result" hidden="" id="provider-defaults-result">
-         <div class="settings-result-header">
-          <strong data-i18n="provider.gateway_settings">
-           Gatewayinstellingen
-          </strong>
-          <span class="status-pill status-neutral" data-i18n="provider.not_applied" id="provider-defaults-state">
-           Nog niet toegepast
-          </span>
-         </div>
-         <div class="settings-result-list" id="provider-defaults-list">
-         </div>
-        </section>
+        </details>
         <section class="login-methods" id="provider-login-methods">
          <div class="login-method-heading">
           <div>

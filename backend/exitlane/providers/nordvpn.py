@@ -9,6 +9,7 @@ import re
 import shutil
 import time
 import urllib.parse
+from datetime import UTC, datetime
 from pathlib import Path
 
 from exitlane.core import command
@@ -166,6 +167,7 @@ def _installation_error_code(unit: dict[str, str]) -> str:
         "66": "client_install_failed",
         "67": "provider_daemon_failed",
         "68": "provider_installation_validation_failed",
+        "69": "provider_readiness_timeout",
         "77": "insufficient_privileges",
     }.get(unit.get("ExecMainStatus", ""), "installation_failed")
 
@@ -173,7 +175,133 @@ def _installation_error_code(unit: dict[str, str]) -> str:
 _country_catalog_cache: list[dict] = []
 INSTALL_UNIT = "exitlane-provider-install-nordvpn.service"
 INSTALL_START_TIMEOUT_SECONDS = 10
+INSTALL_PHASE_FILE = Path("/run/exitlane-provider-install/nordvpn.phase")
+INSTALL_PHASES = (
+    "checking_system",
+    "preparing_repository",
+    "verifying_repository",
+    "refreshing_packages",
+    "installing_client",
+    "starting_daemon",
+    "waiting_for_provider",
+    "applying_gateway_settings",
+    "validating_installation",
+)
+INSTALL_RESPONSE_PHASES = frozenset((*INSTALL_PHASES, "completed", "failed"))
+INSTALL_ERROR_CODES = frozenset(
+    {
+        "unsupported_platform",
+        "helper_timeout",
+        "repository_failed",
+        "client_install_failed",
+        "provider_daemon_failed",
+        "provider_installation_validation_failed",
+        "provider_readiness_timeout",
+        "gateway_settings_failed",
+        "installation_start_failed",
+        "installation_failed",
+        "insufficient_privileges",
+    }
+)
+INSTALL_HELPER_ERROR_MAP = {
+    "repository_download_failed": "repository_failed",
+    "repository_verification_failed": "repository_failed",
+    "repository_setup_failed": "repository_failed",
+    "package_index_failed": "repository_failed",
+    "client_install_failed": "client_install_failed",
+    "provider_daemon_failed": "provider_daemon_failed",
+    "provider_installation_validation_failed": "provider_installation_validation_failed",
+    "provider_readiness_timeout": "provider_readiness_timeout",
+    "unsupported_platform": "unsupported_platform",
+    "insufficient_privileges": "insufficient_privileges",
+}
 _installation_starting = False
+_installation_started_at: str | None = None
+_gateway_defaults_task: asyncio.Task | None = None
+_installation_monitor_task: asyncio.Task | None = None
+_installation_status_lock: asyncio.Lock | None = None
+
+
+def _installation_started_timestamp() -> str:
+    global _installation_started_at
+    if _installation_started_at is None:
+        try:
+            timestamp = INSTALL_PHASE_FILE.stat().st_mtime
+            _installation_started_at = datetime.fromtimestamp(timestamp, UTC).isoformat()
+        except OSError:
+            _installation_started_at = datetime.now(UTC).isoformat()
+    return _installation_started_at
+
+
+def _read_installation_phase() -> tuple[str | None, str | None, str | None]:
+    try:
+        value = INSTALL_PHASE_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None, None, None
+    if value in INSTALL_RESPONSE_PHASES:
+        return value, None, None
+    fields = value.split("|")
+    if len(fields) == 3 and fields[0] == "failed" and fields[1] in INSTALL_PHASES:
+        error_code = INSTALL_HELPER_ERROR_MAP.get(fields[2], fields[2])
+        if error_code not in INSTALL_ERROR_CODES:
+            error_code = "installation_failed"
+        return "failed", fields[1], error_code
+    return None, None, None
+
+
+def _installation_response(
+    *,
+    phase: str,
+    error_code: str | None = None,
+    failed_phase: str | None = None,
+    provider_available: bool = False,
+) -> dict:
+    safe_phase = phase if phase in INSTALL_RESPONSE_PHASES else "failed"
+    safe_error = (
+        error_code
+        if error_code in INSTALL_ERROR_CODES
+        else ("installation_failed" if error_code else None)
+    )
+    active_phase = failed_phase if safe_phase == "failed" else safe_phase
+    active_index = (
+        INSTALL_PHASES.index(active_phase)
+        if active_phase in INSTALL_PHASES
+        else len(INSTALL_PHASES)
+    )
+    steps = []
+    for index, step_phase in enumerate(INSTALL_PHASES):
+        if safe_phase == "completed":
+            status = "completed"
+        elif safe_phase == "failed" and index == active_index:
+            status = "failed"
+        elif index < active_index:
+            status = "completed"
+        elif index == active_index:
+            status = "active"
+        else:
+            status = "pending"
+        steps.append(
+            {
+                "phase": step_phase,
+                "status": status,
+                "error_code": safe_error if status == "failed" else None,
+            }
+        )
+    return {
+        "state": (
+            InstallationState.AVAILABLE
+            if safe_phase == "completed"
+            else InstallationState.FAILED
+            if safe_phase == "failed"
+            else InstallationState.INSTALLING
+        ),
+        "phase": safe_phase,
+        "steps": steps,
+        "started_at": _installation_started_timestamp(),
+        "error_code": safe_error,
+        "installation_in_progress": safe_phase not in {"completed", "failed"},
+        "provider_available": provider_available,
+    }
 
 
 def _supports_managed_installation() -> bool:
@@ -251,13 +379,62 @@ class NordVPN(Provider):
             },
         }
 
-    async def installation_status(self) -> dict:
-        if not _supports_managed_installation():
+    async def _installation_health(self) -> dict:
+        installed = shutil.which("nordvpn") is not None
+        if not installed:
             return {
-                "state": InstallationState.UNSUPPORTED,
-                "phase": "unsupported",
-                "error_code": "unsupported_platform",
+                "state": InstallationState.NOT_INSTALLED,
+                "error_code": None,
             }
+        load_rc, load_out, _ = await command(
+            "systemctl",
+            "show",
+            "nordvpnd",
+            "--property=LoadState",
+            "--value",
+            timeout=5,
+        )
+        if load_rc != 0 or load_out.strip() != "loaded":
+            return {
+                "state": InstallationState.DAEMON_MISSING,
+                "error_code": "provider_daemon_failed",
+            }
+        daemon_rc, _, _ = await command("systemctl", "is-active", "nordvpnd", timeout=5)
+        if daemon_rc != 0:
+            return {
+                "state": InstallationState.DAEMON_INACTIVE,
+                "error_code": "provider_daemon_failed",
+            }
+        provider_rc, provider_out, provider_err = await command("nordvpn", "status", timeout=5)
+        provider_output = f"{provider_out}\n{provider_err}".casefold()
+        if provider_rc == 0 or any(
+            marker in provider_output for marker in ("not logged in", "not signed in")
+        ):
+            return {
+                "state": InstallationState.AVAILABLE,
+                "error_code": None,
+            }
+        return {
+            "state": InstallationState.FAILED,
+            "error_code": "provider_installation_validation_failed",
+        }
+
+    async def installation_status(self) -> dict:
+        global _installation_status_lock
+        if _installation_status_lock is None:
+            _installation_status_lock = asyncio.Lock()
+        async with _installation_status_lock:
+            return await self._installation_status_unlocked()
+
+    async def _installation_status_unlocked(self) -> dict:
+        global _gateway_defaults_task
+        if not _supports_managed_installation():
+            response = _installation_response(
+                phase="failed",
+                failed_phase="checking_system",
+                error_code="unsupported_platform",
+            )
+            return {**response, "state": InstallationState.UNSUPPORTED}
 
         unit_rc, unit_out, _ = await command(
             "systemctl",
@@ -270,67 +447,120 @@ class NordVPN(Provider):
         )
         unit = _parse_systemd_properties(unit_out) if unit_rc == 0 else {}
         active_state = unit.get("ActiveState", "")
-        installed = shutil.which("nordvpn") is not None
-        if installed:
-            load_rc, load_out, _ = await command(
-                "systemctl",
-                "show",
-                "nordvpnd",
-                "--property=LoadState",
-                "--value",
-                timeout=5,
-            )
-            if load_rc != 0 or load_out.strip() != "loaded":
-                return {
-                    "state": InstallationState.DAEMON_MISSING,
-                    "phase": "failed",
-                    "error_code": "provider_daemon_failed",
-                }
-            daemon_rc, _, _ = await command("systemctl", "is-active", "nordvpnd", timeout=5)
-            if daemon_rc == 0:
-                provider_rc, provider_out, provider_err = await command(
-                    "nordvpn", "status", timeout=5
-                )
-                provider_output = f"{provider_out}\n{provider_err}".casefold()
-                if provider_rc == 0 or any(
-                    marker in provider_output for marker in ("not logged in", "not signed in")
-                ):
-                    return {
-                        "state": InstallationState.AVAILABLE,
-                        "phase": "validating",
-                        "error_code": None,
-                    }
-                return {
-                    "state": InstallationState.FAILED,
-                    "phase": "failed",
-                    "error_code": "provider_installation_validation_failed",
-                }
-            return {
-                "state": InstallationState.DAEMON_INACTIVE,
-                "phase": "starting_daemon",
-                "error_code": "provider_daemon_failed",
-            }
+        phase, failed_phase, phase_error = _read_installation_phase()
+        health = await self._installation_health()
+        provider_available = health["state"] == InstallationState.AVAILABLE
 
         if _installation_starting or active_state in {"activating", "active"}:
-            return {
-                "state": InstallationState.INSTALLING,
-                "phase": "installing_client",
-                "error_code": None,
-            }
+            current = phase if phase in INSTALL_PHASES else "checking_system"
+            return _installation_response(
+                phase=current,
+                provider_available=provider_available,
+            )
+
+        if phase == "failed" and failed_phase == "applying_gateway_settings":
+            return _installation_response(
+                phase="failed",
+                failed_phase=failed_phase,
+                error_code=phase_error or "gateway_settings_failed",
+                provider_available=provider_available,
+            )
+
+        if provider_available:
+            if phase == "completed":
+                return _installation_response(
+                    phase="completed",
+                    provider_available=True,
+                )
+            if phase == "validating_installation":
+                try:
+                    INSTALL_PHASE_FILE.write_text("completed\n", encoding="utf-8")
+                except OSError:
+                    logger.warning("Could not persist completed provider installation phase")
+                return _installation_response(
+                    phase="completed",
+                    provider_available=True,
+                )
+            if _gateway_defaults_task is None:
+                try:
+                    INSTALL_PHASE_FILE.write_text(
+                        "applying_gateway_settings\n",
+                        encoding="utf-8",
+                    )
+                except OSError:
+                    logger.warning("Could not persist the provider installation phase")
+                _gateway_defaults_task = asyncio.create_task(self.defaults())
+                return _installation_response(
+                    phase="applying_gateway_settings",
+                    provider_available=True,
+                )
+            if not _gateway_defaults_task.done():
+                return _installation_response(
+                    phase="applying_gateway_settings",
+                    provider_available=True,
+                )
+            try:
+                gateway_results = _gateway_defaults_task.result()
+            except Exception:  # noqa: BLE001 - provider boundary emits only a stable code.
+                gateway_results = []
+            _gateway_defaults_task = None
+            if not gateway_results or not all(
+                result.get("ok", False) for result in gateway_results
+            ):
+                try:
+                    INSTALL_PHASE_FILE.write_text(
+                        "failed|applying_gateway_settings|gateway_settings_failed\n",
+                        encoding="utf-8",
+                    )
+                except OSError:
+                    logger.warning("Could not persist failed gateway configuration phase")
+                return _installation_response(
+                    phase="failed",
+                    failed_phase="applying_gateway_settings",
+                    error_code="gateway_settings_failed",
+                    provider_available=True,
+                )
+            final_health = await self._installation_health()
+            if final_health["state"] != InstallationState.AVAILABLE:
+                return _installation_response(
+                    phase="failed",
+                    failed_phase="validating_installation",
+                    error_code="provider_installation_validation_failed",
+                )
+            try:
+                INSTALL_PHASE_FILE.write_text(
+                    "validating_installation\n",
+                    encoding="utf-8",
+                )
+            except OSError:
+                logger.warning("Could not persist final provider validation phase")
+            return _installation_response(
+                phase="validating_installation",
+                provider_available=True,
+            )
+
+        if phase == "failed":
+            return _installation_response(
+                phase="failed",
+                failed_phase=failed_phase,
+                error_code=phase_error or _installation_error_code(unit),
+            )
         if active_state == "failed":
-            return {
-                "state": InstallationState.FAILED,
-                "phase": "failed",
-                "error_code": _installation_error_code(unit),
-            }
+            return _installation_response(
+                phase="failed",
+                failed_phase=phase if phase in INSTALL_PHASES else "installing_client",
+                error_code=_installation_error_code(unit),
+            )
+        response = _installation_response(phase="checking_system")
         return {
-            "state": InstallationState.NOT_INSTALLED,
-            "phase": "not_installed",
-            "error_code": None,
+            **response,
+            "state": health["state"],
+            "installation_in_progress": False,
+            "error_code": health["error_code"],
         }
 
     async def start_installation(self) -> dict:
-        global _installation_starting
+        global _installation_monitor_task, _installation_started_at, _installation_starting
         status = await self.installation_status()
         if status["state"] == InstallationState.UNSUPPORTED:
             return {"ok": False, "error_code": "unsupported_platform"}
@@ -338,7 +568,12 @@ class NordVPN(Provider):
             return {"ok": False, "error_code": "installation_in_progress"}
 
         _installation_starting = True
+        _installation_started_at = datetime.now(UTC).isoformat()
         try:
+            try:
+                INSTALL_PHASE_FILE.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("Could not reset the provider installation phase")
             await command(
                 "systemctl",
                 "reset-failed",
@@ -358,7 +593,17 @@ class NordVPN(Provider):
             return {"ok": False, "error_code": "helper_timeout"}
         if return_code != 0:
             return {"ok": False, "error_code": "installation_start_failed"}
+        if _installation_monitor_task is None or _installation_monitor_task.done():
+            _installation_monitor_task = asyncio.create_task(self._monitor_installation())
         return {"ok": True, "state": InstallationState.INSTALLING}
+
+    async def _monitor_installation(self) -> None:
+        for _ in range(360):
+            await asyncio.sleep(1)
+            status = await self.installation_status()
+            if not status["installation_in_progress"]:
+                return
+        logger.warning("Provider installation monitor reached its bounded deadline")
 
     async def authenticate(self, credential: str) -> dict:
         return await self.login_token(credential)
