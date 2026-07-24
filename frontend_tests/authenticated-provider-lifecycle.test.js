@@ -57,8 +57,11 @@ test("dashboard activation loads protected data and logout/session expiry tears 
   const auth = await readFile(authUrl, "utf8");
   assert.match(app, /await activateAuthenticatedProviderData\(\)/);
   assert.match(app, /lifecycle\.stop\(\);\s*deactivateAuthenticatedProviderData\(\)/);
-  assert.match(auth, /deactivateAuthenticatedProviderData\(\);\s*await postJson\("\/api\/auth\/logout"\)/);
-  assert.match(auth, /resetAuthenticatedState\(\);\s*showLogin\(\)/);
+  assert.match(
+    auth,
+    /deactivateAuthenticatedProviderData\(\);[\s\S]+resetAuthenticatedState\(\);[\s\S]+showLogin\(\);\s*await postJson\("\/api\/auth\/logout"\)/,
+  );
+  assert.match(auth, /resetAuthenticatedState\(\);\s*resetSessionNavigation\(\);\s*showLogin\(\)/);
 });
 
 test("country load errors remain visible only on the authenticated loader path", async () => {

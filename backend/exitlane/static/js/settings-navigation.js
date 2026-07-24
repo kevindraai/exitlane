@@ -37,12 +37,12 @@ export function renderSettingsNavigation(container) {
   }));
 }
 
-export function setSettingsGroupExpanded(expanded) {
-  const toggle = document.querySelector("#settings-navigation-toggle");
+export function setSettingsGroupExpanded(expanded, root = document) {
+  const toggle = root.querySelector("#settings-navigation-toggle");
   toggle.setAttribute("aria-expanded", String(expanded));
-  document.querySelector("#settings-navigation-items").hidden = !expanded;
+  root.querySelector("#settings-navigation-items").hidden = !expanded;
   renderIcon(
-    document.querySelector("#settings-navigation-toggle .sidebar-group-chevron"),
+    root.querySelector("#settings-navigation-toggle .sidebar-group-chevron"),
     expanded ? "chevron-down" : "chevron-right",
   );
 }

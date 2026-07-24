@@ -1,7 +1,7 @@
 import { postJson, api } from "./api.js";
 import { t } from "./i18n.js";
 import { appState, getSlice, resetAuthenticatedState, subscribe, succeedRefresh } from "./state.js";
-import { setApplicationMode } from "./navigation.js";
+import { resetSessionNavigation, setApplicationMode } from "./navigation.js";
 import {
   select,
   setBusy,
@@ -67,6 +67,7 @@ async function login(event) {
       select("#mfa-login-code").focus();
       return;
     }
+    resetSessionNavigation();
     await refreshApplication();
   } catch (error) {
     const translationKey = loginErrorTranslationKey(error);
@@ -89,6 +90,7 @@ async function verifyMfa(event) {
       mode: select("#mfa-login-mode").value,
     });
     select("#mfa-login-code").value = "";
+    resetSessionNavigation();
     await refreshApplication();
   } catch (error) {
     errorElement.textContent = t(`auth.mfa.errors.${error.payload?.detail || "invalid"}`, {}, "The code is invalid or expired.");
@@ -112,11 +114,12 @@ async function backToPasswordLogin() {
 
 async function logout() {
   deactivateAuthenticatedProviderData();
-  await postJson("/api/auth/logout");
   appState.session = { authenticated: false, user: null };
   succeedRefresh("auth", appState.session);
   resetAuthenticatedState();
+  resetSessionNavigation();
   showLogin();
+  await postJson("/api/auth/logout");
 }
 
 export function initialiseAuth(refreshCallback) {
@@ -133,6 +136,7 @@ export function initialiseAuth(refreshCallback) {
     appState.session = { authenticated: false, user: null, setup_complete: true };
     succeedRefresh("auth", appState.session);
     resetAuthenticatedState();
+    resetSessionNavigation();
     showLogin();
   });
 }

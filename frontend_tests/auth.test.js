@@ -65,3 +65,26 @@ test("login status is outside the stable field grid", async () => {
   assert.match(markup, /id="login-error"[^>]+role="alert"/);
   assert.match(markup, /class="form-grid login-fields"/);
 });
+
+test("successful password and MFA login, logout, and session expiry reset navigation", async () => {
+  const source = await readFile(
+    new URL("../backend/exitlane/static/js/auth.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /if \(result\.mfa_required\)[\s\S]+resetSessionNavigation\(\);\s+await refreshApplication\(\)/,
+  );
+  assert.match(
+    source,
+    /postJson\("\/api\/auth\/mfa"[\s\S]+resetSessionNavigation\(\);\s+await refreshApplication\(\)/,
+  );
+  assert.match(
+    source,
+    /async function logout\(\)[\s\S]+resetAuthenticatedState\(\);\s+resetSessionNavigation\(\);\s+showLogin\(\);\s+await postJson\("\/api\/auth\/logout"\)/,
+  );
+  assert.match(
+    source,
+    /exitlane:authenticationrequired[\s\S]+resetAuthenticatedState\(\);\s+resetSessionNavigation\(\);\s+showLogin\(\)/,
+  );
+});

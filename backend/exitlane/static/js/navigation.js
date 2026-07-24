@@ -4,9 +4,11 @@ import {
   setSettingsGroupExpanded,
   validSettingsSection,
 } from "./settings-navigation.js";
+import { renderIcon } from "./icons.js";
 
 const STORAGE_KEY = "exitlane-active-view";
 const DEFAULT_VIEW = "dashboard";
+const DEFAULT_ROUTE = "#dashboard";
 const APPLICATION_MODES = new Set(["wizard", "login", "dashboard"]);
 const DEFAULT_SETTINGS_SECTION = "general";
 let initialised = false;
@@ -63,7 +65,7 @@ export function renderApplicationState(application, root = document, auth = getS
   if (settingsToggle) {
     const settingsActive = state.activeView === "settings";
     settingsToggle.classList.toggle("active", settingsActive);
-    setSettingsGroupExpanded(settingsActive || settingsGroupManuallyExpanded);
+    setSettingsGroupExpanded(settingsActive || settingsGroupManuallyExpanded, root);
   }
 
   return state;
@@ -106,6 +108,61 @@ export function showView(
 }
 
 export const setActiveView = showView;
+
+function collapseNavigationGroup(root, toggleSelector, itemsSelector) {
+  const toggle = root.querySelector(toggleSelector);
+  const items = root.querySelector(itemsSelector);
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", "false");
+    const chevron = toggle.querySelector?.(".sidebar-group-chevron");
+    if (chevron) renderIcon(chevron, "chevron-right");
+  }
+  if (items) items.hidden = true;
+}
+
+export function resetSessionNavigation({
+  root = document,
+  persistentStorage = localStorage,
+  sessionStorageArea = sessionStorage,
+  navigationWindow = window,
+} = {}) {
+  persistentStorage.removeItem(STORAGE_KEY);
+  sessionStorageArea.removeItem(STORAGE_KEY);
+  settingsGroupManuallyExpanded = false;
+
+  collapseNavigationGroup(root, "#vpn-navigation-toggle", "#vpn-navigation-items");
+  collapseNavigationGroup(root, "#settings-navigation-toggle", "#settings-navigation-items");
+
+  const sidebar = root.querySelector("#sidebar");
+  sidebar?.classList?.remove?.("mobile-open", "open");
+  root.querySelectorAll("[data-mobile-navigation-toggle]").forEach((toggle) => {
+    toggle.setAttribute("aria-expanded", "false");
+  });
+  root.querySelectorAll("[data-mobile-navigation]").forEach((menu) => {
+    menu.hidden = true;
+  });
+  root.querySelectorAll("dialog[open]").forEach((dialog) => dialog.close());
+  root.querySelectorAll("details[open]").forEach((details) => {
+    details.open = false;
+  });
+  for (const selector of ["#activity-category", "#activity-level"]) {
+    const filter = root.querySelector(selector);
+    if (filter) filter.value = "";
+  }
+
+  const next = renderApplicationState({
+    ...getSlice("application"),
+    activeView: DEFAULT_VIEW,
+    providerId: null,
+    settingsSection: DEFAULT_SETTINGS_SECTION,
+  }, root);
+  updateSlice("application", next);
+  navigationWindow.history.replaceState(null, "", DEFAULT_ROUTE);
+  navigationWindow.dispatchEvent(new navigationWindow.CustomEvent("exitlane:viewchange", {
+    detail: { view: DEFAULT_VIEW, settingsSection: DEFAULT_SETTINGS_SECTION },
+  }));
+  return next;
+}
 
 export function navigationTarget(button) {
   return {
