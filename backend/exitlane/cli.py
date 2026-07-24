@@ -159,8 +159,8 @@ def set_proxy_config(
             fields=supplied,
         )
     except NetworkSecurityError as error:
-        suffix = f" on line {error.line}: {error.value}" if error.line is not None else ""
-        print(f"Proxy configuration rejected: {error.code}{suffix}", file=sys.stderr)
+        suffix = f" on line {error.line}" if error.line is not None else ""
+        print(f"Proxy configuration rejected: {error.code}{suffix}.", file=sys.stderr)
         return 2
     except core.SettingsStorageError:
         print("Proxy configuration could not be stored.", file=sys.stderr)

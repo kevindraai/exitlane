@@ -275,6 +275,25 @@ def test_cli_environment_only_attempt_does_not_create_shadow_database_values(
     assert "EXITLANE_PUBLIC_URL" in capsys.readouterr().err
 
 
+def test_cli_validation_error_reports_code_and_line_without_echoing_input(
+    isolated_database, capsys
+):
+    untrusted_value = "potential-secret.invalid"
+    assert (
+        cli.set_proxy_config(
+            trusted_proxies=["192.0.2.10", "", untrusted_value],
+            effective_user_id=0,
+        )
+        == 2
+    )
+    output = capsys.readouterr()
+    assert output.err.splitlines() == [
+        "Proxy configuration rejected: invalid_trusted_proxy on line 3."
+    ]
+    assert untrusted_value not in output.out
+    assert untrusted_value not in output.err
+
+
 def test_proxy_cli_command_family_routes_status_set_clear_and_reset(
     isolated_database, monkeypatch, capsys
 ):
@@ -296,9 +315,8 @@ def test_proxy_cli_command_family_routes_status_set_clear_and_reset(
         == 0
     )
     assert cli.main(["proxy", "status"]) == 0
-    status = capsys.readouterr().out
-    assert "http://cli.example" in status
-    assert "[source: database]" in status
+    status_lines = capsys.readouterr().out.splitlines()
+    assert "Public URL: http://cli.example [source: database]" in status_lines
     assert cli.main(["proxy", "clear-public-url"]) == 0
     assert network_security.current_config().public_url == ""
     assert cli.main(["proxy", "clear-trusted-proxies"]) == 0
