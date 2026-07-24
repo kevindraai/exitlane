@@ -13,6 +13,16 @@ ROOT = Path(__file__).parents[2]
 PASSWORD = "correct horse battery staple"
 
 
+@pytest.fixture(autouse=True)
+def reset_installation_operation(tmp_path, monkeypatch):
+    monkeypatch.setattr(nordvpn, "INSTALL_PHASE_FILE", tmp_path / "installation.phase")
+    monkeypatch.setattr(nordvpn, "_gateway_defaults_task", None)
+    monkeypatch.setattr(nordvpn, "_installation_monitor_task", None)
+    monkeypatch.setattr(nordvpn, "_installation_status_lock", None)
+    monkeypatch.setattr(nordvpn, "_installation_started_at", None)
+    monkeypatch.setattr(nordvpn, "_installation_starting", False)
+
+
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     data = tmp_path / "data"
@@ -57,7 +67,7 @@ def login(client):
             3,
             "daemon_inactive",
         ),
-        (True, True, "ActiveState=inactive\nResult=success\nExecMainStatus=0\n", 0, "available"),
+        (True, True, "ActiveState=inactive\nResult=success\nExecMainStatus=0\n", 0, "installing"),
         (False, False, "", 3, "unsupported"),
         (
             True,
@@ -128,6 +138,35 @@ def test_duplicate_installation_returns_stable_409(client, monkeypatch):
     assert response.json() == {"detail": "installation_in_progress"}
 
 
+def test_successful_start_creates_server_side_monitor(monkeypatch):
+    monitored = asyncio.Event()
+
+    async def status():
+        return {"state": InstallationState.NOT_INSTALLED}
+
+    async def fake_command(*arguments, **_options):
+        if arguments[:2] == ("systemctl", "reset-failed"):
+            return 0, "", ""
+        if arguments[:2] == ("systemctl", "start"):
+            return 0, "", ""
+        raise AssertionError(arguments)
+
+    async def monitor():
+        monitored.set()
+
+    monkeypatch.setattr(nordvpn.provider, "installation_status", status)
+    monkeypatch.setattr(nordvpn.provider, "_monitor_installation", monitor)
+    monkeypatch.setattr(nordvpn, "command", fake_command)
+
+    async def run():
+        result = await nordvpn.provider.start_installation()
+        await asyncio.wait_for(monitored.wait(), timeout=1)
+        return result
+
+    result = asyncio.run(run())
+    assert result == {"ok": True, "state": InstallationState.INSTALLING}
+
+
 def test_installer_places_fixed_helper_and_unit_without_installing_nordvpn():
     installer = (ROOT / "installer/install-debian.sh").read_text(encoding="utf-8")
     helper = (ROOT / "installer/install-nordvpn.sh").read_text(encoding="utf-8")
@@ -175,13 +214,13 @@ def test_helper_cleanup_is_nounset_safe_and_preserves_success():
 
 def test_helper_performs_explicit_final_availability_validation():
     helper = (ROOT / "installer/install-nordvpn.sh").read_text(encoding="utf-8")
-    validation = helper[helper.index("validate_installation()") : helper.index("main()")]
+    validation = helper[helper.index("provider_ready()") : helper.index("main()")]
     assert "command -v nordvpn" in validation
     assert "--property=LoadState" in validation
     assert "systemctl is-active --quiet nordvpnd" in validation
     assert "nordvpn status" in validation
-    assert "provider_installation_validation_failed" in validation
-    assert "provider_daemon_failed" in validation
+    assert "provider_readiness_timeout" in validation
+    assert "PROVIDER_READY_ATTEMPTS" in validation
 
 
 def test_failed_helper_start_reconciles_to_available(client, monkeypatch):
@@ -223,12 +262,24 @@ def test_stale_failed_unit_is_ignored_when_provider_is_available(monkeypatch):
         raise AssertionError(arguments)
 
     monkeypatch.setattr(nordvpn, "command", fake_command)
-    result = asyncio.run(nordvpn.provider.installation_status())
-    assert result == {
-        "state": InstallationState.AVAILABLE,
-        "phase": "validating",
-        "error_code": None,
-    }
+
+    async def defaults():
+        return [{"setting": "routing", "ok": True}]
+
+    monkeypatch.setattr(nordvpn.provider, "defaults", defaults)
+
+    async def reconcile():
+        first = await nordvpn.provider.installation_status()
+        await asyncio.sleep(0)
+        validating = await nordvpn.provider.installation_status()
+        completed = await nordvpn.provider.installation_status()
+        return first, validating, completed
+
+    first, validating, completed = asyncio.run(reconcile())
+    assert first["phase"] == "applying_gateway_settings"
+    assert validating["phase"] == "validating_installation"
+    assert completed["state"] == InstallationState.AVAILABLE
+    assert completed["phase"] == "completed"
 
 
 def test_final_provider_validation_failure_has_stable_code(monkeypatch):
@@ -250,3 +301,154 @@ def test_final_provider_validation_failure_has_stable_code(monkeypatch):
     result = asyncio.run(nordvpn.provider.installation_status())
     assert result["state"] == InstallationState.FAILED
     assert result["error_code"] == "provider_installation_validation_failed"
+
+
+def test_installation_phase_order_and_step_transitions_are_allowlisted():
+    assert nordvpn.INSTALL_PHASES == (
+        "checking_system",
+        "preparing_repository",
+        "verifying_repository",
+        "refreshing_packages",
+        "installing_client",
+        "starting_daemon",
+        "waiting_for_provider",
+        "applying_gateway_settings",
+        "validating_installation",
+    )
+    for active_index, phase in enumerate(nordvpn.INSTALL_PHASES):
+        response = nordvpn._installation_response(phase=phase)
+        assert response["phase"] in nordvpn.INSTALL_RESPONSE_PHASES
+        assert [step["status"] for step in response["steps"]] == [
+            "completed"
+            if index < active_index
+            else "active"
+            if index == active_index
+            else "pending"
+            for index in range(len(nordvpn.INSTALL_PHASES))
+        ]
+        assert set(response) == {
+            "state",
+            "phase",
+            "steps",
+            "started_at",
+            "error_code",
+            "installation_in_progress",
+            "provider_available",
+        }
+        assert "output" not in repr(response).casefold()
+        assert "token" not in repr(response).casefold()
+
+
+def test_definitive_failure_marks_only_current_step():
+    response = nordvpn._installation_response(
+        phase="failed",
+        failed_phase="refreshing_packages",
+        error_code="repository_failed",
+    )
+    statuses = [step["status"] for step in response["steps"]]
+    assert statuses.count("failed") == 1
+    assert statuses[:3] == ["completed", "completed", "completed"]
+    assert statuses[3] == "failed"
+    assert set(statuses[4:]) == {"pending"}
+
+
+def test_active_systemd_operation_uses_persisted_phase(monkeypatch):
+    nordvpn.INSTALL_PHASE_FILE.write_text("refreshing_packages\n", encoding="utf-8")
+    monkeypatch.setattr(nordvpn, "_supports_managed_installation", lambda: True)
+    monkeypatch.setattr(nordvpn.shutil, "which", lambda _name: None)
+
+    async def fake_command(*arguments, **_options):
+        if arguments[:3] == ("systemctl", "show", nordvpn.INSTALL_UNIT):
+            return 0, "ActiveState=activating\nResult=success\nExecMainStatus=0\n", ""
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(nordvpn, "command", fake_command)
+    status = asyncio.run(nordvpn.provider.installation_status())
+    assert status["phase"] == "refreshing_packages"
+    assert status["installation_in_progress"] is True
+    assert status["provider_available"] is False
+
+
+def test_signed_out_provider_is_ready_before_gateway_configuration(monkeypatch):
+    monkeypatch.setattr(nordvpn, "_supports_managed_installation", lambda: True)
+    monkeypatch.setattr(nordvpn.shutil, "which", lambda _name: "/usr/bin/nordvpn")
+    calls = []
+
+    async def fake_command(*arguments, **_options):
+        calls.append(arguments)
+        if arguments[:3] == ("systemctl", "show", nordvpn.INSTALL_UNIT):
+            return 0, "ActiveState=inactive\nResult=success\nExecMainStatus=0\n", ""
+        if arguments[:3] == ("systemctl", "show", "nordvpnd"):
+            return 0, "loaded\n", ""
+        if arguments[:2] == ("systemctl", "is-active"):
+            return 0, "active\n", ""
+        if arguments[:2] == ("nordvpn", "status"):
+            return 1, "", "You are not logged in."
+        raise AssertionError(arguments)
+
+    async def defaults():
+        assert ("nordvpn", "status") in calls
+        return [{"setting": "routing", "ok": True}]
+
+    monkeypatch.setattr(nordvpn, "command", fake_command)
+    monkeypatch.setattr(nordvpn.provider, "defaults", defaults)
+
+    async def run():
+        applying = await nordvpn.provider.installation_status()
+        await asyncio.sleep(0)
+        validating = await nordvpn.provider.installation_status()
+        completed = await nordvpn.provider.installation_status()
+        return applying, validating, completed
+
+    applying, validating, completed = asyncio.run(run())
+    assert applying["phase"] == "applying_gateway_settings"
+    assert applying["provider_available"] is True
+    assert validating["phase"] == "validating_installation"
+    assert completed["phase"] == "completed"
+    assert all(step["status"] == "completed" for step in completed["steps"])
+
+
+def test_gateway_failure_is_distinct_and_persisted(monkeypatch):
+    monkeypatch.setattr(nordvpn, "_supports_managed_installation", lambda: True)
+    monkeypatch.setattr(nordvpn.shutil, "which", lambda _name: "/usr/bin/nordvpn")
+
+    async def fake_command(*arguments, **_options):
+        if arguments[:3] == ("systemctl", "show", nordvpn.INSTALL_UNIT):
+            return 0, "ActiveState=inactive\nResult=success\nExecMainStatus=0\n", ""
+        if arguments[:3] == ("systemctl", "show", "nordvpnd"):
+            return 0, "loaded\n", ""
+        if arguments[:2] == ("systemctl", "is-active"):
+            return 0, "active\n", ""
+        if arguments[:2] == ("nordvpn", "status"):
+            return 0, "Status: Disconnected\n", ""
+        raise AssertionError(arguments)
+
+    async def defaults():
+        return [{"setting": "routing", "ok": False}]
+
+    monkeypatch.setattr(nordvpn, "command", fake_command)
+    monkeypatch.setattr(nordvpn.provider, "defaults", defaults)
+
+    async def run():
+        await nordvpn.provider.installation_status()
+        await asyncio.sleep(0)
+        failed = await nordvpn.provider.installation_status()
+        persisted = await nordvpn.provider.installation_status()
+        return failed, persisted
+
+    failed, persisted = asyncio.run(run())
+    for status in (failed, persisted):
+        assert status["phase"] == "failed"
+        assert status["error_code"] == "gateway_settings_failed"
+        assert [step["status"] for step in status["steps"]].count("failed") == 1
+
+
+def test_helper_reports_every_installation_phase_and_retries_readiness():
+    helper = (ROOT / "installer/install-nordvpn.sh").read_text(encoding="utf-8")
+    for phase in nordvpn.INSTALL_PHASES[:7]:
+        assert phase in helper
+    assert "systemctl enable --now nordvpnd" in helper
+    assert "systemctl is-active --quiet nordvpnd" in helper
+    assert "nordvpn status" in helper
+    assert 'sleep "${PROVIDER_READY_DELAY}"' in helper
+    assert "nordvpn.service" not in helper

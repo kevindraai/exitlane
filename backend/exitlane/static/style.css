@@ -617,6 +617,136 @@ h2 {
   color: var(--danger);
 }
 
+.long-task {
+  margin: 18px 0;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface-translucent-soft);
+}
+
+.long-task > summary {
+  min-height: 54px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.long-task > summary::-webkit-details-marker {
+  display: none;
+}
+
+.long-task-detail-label {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.long-task-content {
+  padding: 0 16px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.long-task-list {
+  margin: 0;
+  padding: 14px 0 0;
+  display: grid;
+  gap: 0;
+  list-style: none;
+}
+
+.long-task-step {
+  position: relative;
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.long-task-step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 26px;
+  bottom: 0;
+  left: 12px;
+  width: 2px;
+  background: var(--border);
+}
+
+.long-task-step strong,
+.long-task-step small {
+  display: block;
+}
+
+.long-task-step small {
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.long-task-icon {
+  position: relative;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 26px;
+  border: 2px solid var(--text);
+  border-radius: 50%;
+  color: #fff;
+  background: transparent;
+  font-size: 0.85rem;
+  font-weight: 900;
+}
+
+.long-task-icon[data-status="active"] {
+  background: var(--text);
+}
+
+.long-task-icon[data-status="completed"] {
+  border-color: var(--success);
+  background: var(--success);
+}
+
+.long-task-icon[data-status="completed"]::before {
+  content: "✓";
+}
+
+.long-task-icon[data-status="failed"] {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+
+.long-task-icon[data-status="failed"]::before {
+  content: "×";
+}
+
+.long-task-step-error {
+  margin: 7px 0 14px;
+  color: var(--danger-text);
+  font-size: 0.86rem;
+}
+
+.long-task-guidance,
+.long-task-context {
+  margin: 12px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.long-task-context {
+  padding: 11px 12px;
+  border-radius: 10px;
+  background: var(--panel-soft);
+}
+
+.long-task-actions {
+  margin-top: 15px;
+}
+
 .empty-state {
   color: var(--muted);
   text-align: center;

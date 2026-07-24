@@ -5,8 +5,12 @@ IFS=$'\n\t'
 
 readonly RELEASE_URL="https://repo.nordvpn.com/deb/nordvpn/debian/pool/main/n/nordvpn-release/nordvpn-release_1.0.0_all.deb"
 readonly RELEASE_SHA256="16a05919b7259e679e4483aa39f61ef9bc9c07cbe040276e04884b5f9d7f933d"
+readonly PHASE_FILE="/run/exitlane-provider-install/nordvpn.phase"
+readonly PROVIDER_READY_ATTEMPTS=45
+readonly PROVIDER_READY_DELAY=2
 
 work_dir=""
+current_phase="checking_system"
 
 cleanup() {
   local exit_code=$?
@@ -24,8 +28,24 @@ trap cleanup EXIT
 die() {
   local code="$1"
   local message="$2"
+  printf 'failed|%s|%s\n' "${current_phase}" "${message}" >"${PHASE_FILE}" || true
   printf '%s\n' "${message}" >&2
   exit "${code}"
+}
+
+set_phase() {
+  local phase="$1"
+  case "${phase}" in
+    checking_system|preparing_repository|verifying_repository|\
+      refreshing_packages|installing_client|starting_daemon|\
+      waiting_for_provider|validating_installation|completed|failed)
+      current_phase="${phase}"
+      printf '%s\n' "${phase}" >"${PHASE_FILE}"
+      ;;
+    *)
+      die 68 "provider_installation_validation_failed"
+      ;;
+  esac
 }
 
 require_debian_13() {
@@ -36,30 +56,39 @@ require_debian_13() {
     die 64 "unsupported_platform"
 }
 
-validate_installation() {
+provider_ready() {
   local provider_status
-  command -v nordvpn >/dev/null 2>&1 ||
-    die 68 "provider_installation_validation_failed"
+  command -v nordvpn >/dev/null 2>&1 || return 1
   [[ "$(systemctl show nordvpnd --property=LoadState --value 2>/dev/null)" == "loaded" ]] ||
-    die 68 "provider_installation_validation_failed"
-  systemctl is-active --quiet nordvpnd ||
-    die 67 "provider_daemon_failed"
+    return 1
+  systemctl is-active --quiet nordvpnd || return 1
   if ! provider_status="$(nordvpn status 2>&1)"; then
     provider_status="${provider_status,,}"
     [[ "${provider_status}" == *"not logged in"* ||
-      "${provider_status}" == *"not signed in"* ]] ||
-      die 68 "provider_installation_validation_failed"
+      "${provider_status}" == *"not signed in"* ]] || return 1
   fi
 }
 
+wait_for_provider() {
+  local attempt
+  set_phase "waiting_for_provider"
+  for ((attempt = 1; attempt <= PROVIDER_READY_ATTEMPTS; attempt++)); do
+    provider_ready && return 0
+    sleep "${PROVIDER_READY_DELAY}"
+  done
+  die 69 "provider_readiness_timeout"
+}
+
 main() {
+  set_phase "checking_system"
   [[ "${EUID}" -eq 0 ]] || die 77 "insufficient_privileges"
   [[ "$#" -eq 0 ]] || die 64 "arguments_not_allowed"
   require_debian_13
 
   if command -v nordvpn >/dev/null 2>&1; then
+    set_phase "starting_daemon"
     systemctl enable --now nordvpnd || die 67 "provider_daemon_failed"
-    validate_installation
+    wait_for_provider
     printf '%s\n' "installation_available"
     return
   fi
@@ -68,22 +97,27 @@ main() {
   work_dir="$(mktemp -d)"
   release_package="${work_dir}/nordvpn-release.deb"
 
+  set_phase "preparing_repository"
   curl --fail --silent --show-error --location \
     --proto '=https' --tlsv1.2 \
     --connect-timeout 15 --max-time 120 \
     "${RELEASE_URL}" --output "${release_package}" ||
     die 65 "repository_download_failed"
+  set_phase "verifying_repository"
   printf '%s  %s\n' "${RELEASE_SHA256}" "${release_package}" |
     sha256sum --check --status ||
     die 65 "repository_verification_failed"
 
   dpkg --install "${release_package}" >/dev/null ||
     die 66 "repository_setup_failed"
+  set_phase "refreshing_packages"
   apt-get update -qq || die 66 "package_index_failed"
+  set_phase "installing_client"
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nordvpn ||
     die 66 "client_install_failed"
+  set_phase "starting_daemon"
   systemctl enable --now nordvpnd || die 67 "provider_daemon_failed"
-  validate_installation
+  wait_for_provider
   printf '%s\n' "installation_available"
 }
 
