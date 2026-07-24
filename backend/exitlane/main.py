@@ -90,6 +90,7 @@ _wireguard_observed_state: tuple[bool, bool] | None = None
 _pending_provider_connection: dict | None = None
 _wireguard_generation_lock: asyncio.Lock | None = None
 _provider_installation_lock = asyncio.Lock()
+_available_provider_installations: set[str] = set()
 _password_change_failures: dict[tuple[Path, int], deque[float]] = defaultdict(deque)
 _provider_sign_out_failures: dict[tuple[Path, int], deque[float]] = defaultdict(deque)
 _login_failures: dict[tuple[Path, str, str], deque[float]] = defaultdict(deque)
@@ -480,10 +481,7 @@ async def require_authentication(request: Request, call_next):
     request.state.user = user
     setup_complete = bool(setting("setup_complete", False))
     setup_client_download = is_setup_client_download(request.method, path)
-    if user or (
-        not setup_complete
-        and (route in SETUP_API_ROUTES or setup_client_download)
-    ):
+    if user or (not setup_complete and (route in SETUP_API_ROUTES or setup_client_download)):
         return await call_next(request)
     return JSONResponse(status_code=401, content={"detail": "Authentication required"})
 
@@ -1468,9 +1466,20 @@ async def vpn_provider_status(provider_id: str) -> dict:
 @app.get("/api/vpn/providers/{provider_id}/installation")
 async def vpn_provider_installation_status(provider_id: str, request: Request) -> dict:
     provider_instance = _provider_or_404(provider_id)
+    status = await provider_instance.installation_status()
+    if status.get("state") == "available":
+        if provider_instance.id not in _available_provider_installations:
+            _available_provider_installations.add(provider_instance.id)
+            record_event(
+                "provider.installation_succeeded",
+                actor=request.state.user,
+                metadata={"provider": provider_instance.id},
+            )
+    else:
+        _available_provider_installations.discard(provider_instance.id)
     return {
         "provider_id": provider_instance.id,
-        **await provider_instance.installation_status(),
+        **status,
     }
 
 
@@ -1494,6 +1503,15 @@ async def install_vpn_provider(provider_id: str, request: Request) -> dict:
             "state": "installing",
             "phase": "starting",
         }
+    reconciled = await provider_instance.installation_status()
+    if reconciled.get("state") == "available":
+        _available_provider_installations.add(provider_instance.id)
+        record_event(
+            "provider.installation_succeeded",
+            actor=request.state.user,
+            metadata={"provider": provider_instance.id},
+        )
+        return {"ok": True, "provider_id": provider_instance.id, **reconciled}
     error_code = result.get("error_code", "installation_start_failed")
     status_code = 409 if error_code == "installation_in_progress" else 422
     raise HTTPException(status_code=status_code, detail=error_code)

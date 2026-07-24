@@ -11,6 +11,7 @@ class ProviderActionUnsupported(RuntimeError):
 
 class InstallationState(StrEnum):
     NOT_INSTALLED = "not_installed"
+    DAEMON_MISSING = "daemon_missing"
     DAEMON_INACTIVE = "daemon_inactive"
     AVAILABLE = "available"
     UNSUPPORTED = "unsupported"

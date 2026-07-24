@@ -227,7 +227,7 @@ def test_provider_status_preserves_timeout_error(
     management = asyncio.run(nordvpn.NordVPN().status())["management"]
     assert management["authentication"]["state"] == expected_authentication
     assert management["error_code"] == "timeout"
-    assert management["capabilities"]["can_sign_out"] is (expected_authentication == "signed_in")
+    assert management["capabilities"]["can_sign_out"] is False
 
 
 def test_actions_fail_safely_when_cli_is_outside_runtime(monkeypatch):

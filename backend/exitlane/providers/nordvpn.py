@@ -164,8 +164,8 @@ def _installation_error_code(unit: dict[str, str]) -> str:
         "64": "unsupported_platform",
         "65": "repository_failed",
         "66": "client_install_failed",
-        "67": "daemon_start_failed",
-        "68": "validation_failed",
+        "67": "provider_daemon_failed",
+        "68": "provider_installation_validation_failed",
         "77": "insufficient_privileges",
     }.get(unit.get("ExecMainStatus", ""), "installation_failed")
 
@@ -246,8 +246,8 @@ class NordVPN(Provider):
             "can_install": installation_state
             in {
                 InstallationState.NOT_INSTALLED,
+                InstallationState.DAEMON_MISSING,
                 InstallationState.DAEMON_INACTIVE,
-                InstallationState.FAILED,
             },
         }
 
@@ -270,36 +270,53 @@ class NordVPN(Provider):
         )
         unit = _parse_systemd_properties(unit_out) if unit_rc == 0 else {}
         active_state = unit.get("ActiveState", "")
+        installed = shutil.which("nordvpn") is not None
+        if installed:
+            load_rc, load_out, _ = await command(
+                "systemctl",
+                "show",
+                "nordvpnd",
+                "--property=LoadState",
+                "--value",
+                timeout=5,
+            )
+            if load_rc != 0 or load_out.strip() != "loaded":
+                return {
+                    "state": InstallationState.DAEMON_MISSING,
+                    "phase": "failed",
+                    "error_code": "provider_daemon_failed",
+                }
+            daemon_rc, _, _ = await command("systemctl", "is-active", "nordvpnd", timeout=5)
+            if daemon_rc == 0:
+                provider_rc, provider_out, provider_err = await command(
+                    "nordvpn", "status", timeout=5
+                )
+                provider_output = f"{provider_out}\n{provider_err}".casefold()
+                if provider_rc == 0 or any(
+                    marker in provider_output for marker in ("not logged in", "not signed in")
+                ):
+                    return {
+                        "state": InstallationState.AVAILABLE,
+                        "phase": "validating",
+                        "error_code": None,
+                    }
+                return {
+                    "state": InstallationState.FAILED,
+                    "phase": "failed",
+                    "error_code": "provider_installation_validation_failed",
+                }
+            return {
+                "state": InstallationState.DAEMON_INACTIVE,
+                "phase": "starting_daemon",
+                "error_code": "provider_daemon_failed",
+            }
+
         if _installation_starting or active_state in {"activating", "active"}:
             return {
                 "state": InstallationState.INSTALLING,
                 "phase": "installing_client",
                 "error_code": None,
             }
-
-        installed = shutil.which("nordvpn") is not None
-        if installed:
-            daemon_rc, _, _ = await command(
-                "systemctl", "is-active", "nordvpnd", timeout=5
-            )
-            if daemon_rc == 0:
-                return {
-                    "state": InstallationState.AVAILABLE,
-                    "phase": "validating",
-                    "error_code": None,
-                }
-            if active_state == "failed":
-                return {
-                    "state": InstallationState.FAILED,
-                    "phase": "failed",
-                    "error_code": _installation_error_code(unit),
-                }
-            return {
-                "state": InstallationState.DAEMON_INACTIVE,
-                "phase": "starting_daemon",
-                "error_code": "daemon_inactive",
-            }
-
         if active_state == "failed":
             return {
                 "state": InstallationState.FAILED,
@@ -461,7 +478,7 @@ class NordVPN(Provider):
 
         return {
             "installed": True,
-            "available": daemon_active and authentication_state != "unavailable",
+            "available": daemon_active and status_error is None,
             "daemon_active": daemon_active,
             "authenticated": authentication_state == "signed_in",
             "connected": connected,
@@ -481,8 +498,12 @@ class NordVPN(Provider):
             "management": self.management_status(
                 installation_state=(
                     InstallationState.AVAILABLE
-                    if daemon_active
-                    else InstallationState.DAEMON_INACTIVE
+                    if daemon_active and status_error is None
+                    else (
+                        InstallationState.DAEMON_INACTIVE
+                        if not daemon_active
+                        else InstallationState.FAILED
+                    )
                 ),
                 authentication_state=authentication_state,
                 connection_state=connection_state,

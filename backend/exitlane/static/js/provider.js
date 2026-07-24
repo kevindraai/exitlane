@@ -21,6 +21,7 @@ export function renderProviderStatus(status) {
     || (status.installed ? status.daemon_active === false ? "daemon_inactive" : "available" : "not_installed");
   const installed = ["available", "daemon_inactive"].includes(installation);
   const available = installation === "available";
+  const installable = ["not_installed", "daemon_missing", "daemon_inactive"].includes(installation);
   const authenticated = Boolean(status.authenticated);
   const connected = Boolean(status.connected);
 
@@ -48,11 +49,16 @@ export function renderProviderStatus(status) {
       : t("provider.description.signed_out", {}, "The NordVPN Linux client is installed but signed out.")
     : t("provider.description.not_installed", {}, "The NordVPN Linux client is not installed yet.");
 
-  select("#provider-install").disabled = !status.management?.capabilities?.can_install;
-  select("#provider-install").hidden = installation === "unsupported" || available;
+  select("#provider-install").disabled = !installable
+    || !status.management?.capabilities?.can_install;
+  select("#provider-install").hidden = !installable;
   select("#provider-defaults").disabled = !available;
   select("#provider-next").disabled = !authenticated;
   select("#provider-login-methods").hidden = !available;
+  if (available) {
+    clearInlineError();
+    setBusy(select("#provider-install"), false);
+  }
 
   renderVpnView(status);
   renderVpnProviderAccess(status);
@@ -531,11 +537,16 @@ async function installProvider() {
 
 function installationErrorMessage(error) {
   const code = error.payload?.detail || error.code || "installation_failed";
-  return t(
+  const message = t(
     `provider.installation.errors.${code}`,
     {},
     t("provider.installation.errors.installation_failed", {}, "The provider installation failed."),
   );
+  return `${message} ${t(
+    "provider.installation.diagnosis",
+    {},
+    "Local diagnosis: journalctl -u exitlane-provider-install-nordvpn.service -n 100 --no-pager",
+  )}`;
 }
 
 async function pollInstallStatus(providerId) {
@@ -585,7 +596,7 @@ async function pollInstallStatus(providerId) {
       return;
     }
 
-    if (["failed", "unsupported", "daemon_inactive"].includes(status.state)) {
+    if (["failed", "unsupported", "daemon_missing", "daemon_inactive"].includes(status.state)) {
       setStatusPill(
         select("#provider-install-state"),
         t("provider.installation.status.failed", {}, "Installation failed"),
@@ -605,7 +616,7 @@ async function pollInstallStatus(providerId) {
       "danger",
     );
 
-    showInlineError(error.message);
+    showInlineError(installationErrorMessage(error));
   }
 }
 
@@ -622,6 +633,15 @@ export async function restoreInstallStatus() {
       select("#provider-install-progress").hidden = false;
       setBusy(select("#provider-install"), true, t("busy.installing", {}, "Installing…"));
       await pollInstallStatus(providerId);
+    } else {
+      setBusy(select("#provider-install"), false);
+      await refreshProviderState({ deduplicate: false });
+      if (status.state === "available") clearInlineError();
+      if (["failed", "daemon_missing", "daemon_inactive"].includes(status.state)) {
+        showInlineError(
+          installationErrorMessage({ payload: { detail: status.error_code } }),
+        );
+      }
     }
   } catch {
     // Er is nog geen installatiejob of de status is niet beschikbaar.
