@@ -76,6 +76,8 @@ function renderEvent(event) {
 export function renderActivity(slice = getSlice("activity")) {
   const list = document.querySelector("#activity-list");
   if (!list) return;
+  document.querySelector("#activity-category").value = slice.filters.category;
+  document.querySelector("#activity-level").value = slice.filters.level;
   list.replaceChildren(...slice.data.map(renderEvent));
   document.querySelector("#activity-loading").hidden = !(slice.loading && !slice.data.length);
   document.querySelector("#activity-empty").hidden = Boolean(slice.loading || slice.data.length || slice.error);
