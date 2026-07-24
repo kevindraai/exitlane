@@ -1010,17 +1010,24 @@ async def update_deployment_security(req: NetworkSecurityUpdate, request: Reques
         failures.append(now)
         raise HTTPException(status_code=401, detail="invalid_mfa_code")
     try:
-        public_url, proxies, _policy = network_security.validate_configuration(
-            req.public_url,
-            req.trusted_proxies,
-            req.secure_cookie_policy,
+        prospective = network_security.validate_update(
+            public_url=req.public_url,
+            trusted_proxies=req.trusted_proxies,
+            secure_cookie_policy=req.secure_cookie_policy,
             confirm_broad_trust=req.confirm_broad_trust,
         )
     except network_security.NetworkSecurityError as error:
         raise HTTPException(
             status_code=409 if "confirmation_required" in error.code else 422,
-            detail={"code": error.code, "field": error.field},
+            detail={
+                "code": error.code,
+                "field": error.field,
+                **({"line": error.line} if error.line is not None else {}),
+                **({"value": error.value} if error.value is not None else {}),
+            },
         ) from None
+    public_url = prospective.public_url
+    proxies = prospective.trusted_proxies
     current_origin = request.headers.get("origin") or request.headers.get("referer") or ""
     origin_risk = bool(
         public_url and normalized_origin(current_origin) != normalized_origin(public_url)
@@ -1045,7 +1052,17 @@ async def update_deployment_security(req: NetworkSecurityUpdate, request: Reques
     except network_security.NetworkSecurityError as error:
         raise HTTPException(
             status_code=409 if error.code == "environment_override" else 422,
-            detail={"code": error.code, "field": error.field},
+            detail={
+                "code": error.code,
+                "field": error.field,
+                **({"line": error.line} if error.line is not None else {}),
+                **({"value": error.value} if error.value is not None else {}),
+            },
+        ) from None
+    except SettingsStorageError:
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "settings_storage_failed", "field": None},
         ) from None
     _network_reauth_failures.pop(failure_key, None)
     if changed:

@@ -154,6 +154,21 @@ def setting(key, default=None):
     return default if row is None else json.loads(row[0])
 
 
+def stored_settings(keys: tuple[str, ...]) -> dict[str, object]:
+    """Return only explicitly stored settings from an internal key allowlist."""
+    with sqlite3.connect(DB) as connection:
+        rows = [
+            row
+            for key in keys
+            if (
+                row := connection.execute(
+                    "SELECT key,value FROM settings WHERE key=?", (key,)
+                ).fetchone()
+            )
+        ]
+    return {key: json.loads(value) for key, value in rows}
+
+
 def set_setting(key, value):
     with sqlite3.connect(DB) as c:
         c.execute(
@@ -175,6 +190,18 @@ def set_settings(values: dict[str, object]) -> None:
             )
     except sqlite3.DatabaseError as error:
         raise SettingsStorageError("Settings could not be stored") from error
+
+
+def delete_settings(keys: tuple[str, ...]) -> None:
+    """Delete a validated group of internal settings in one transaction."""
+    if not keys:
+        return
+    try:
+        with sqlite3.connect(DB, timeout=5.0) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.executemany("DELETE FROM settings WHERE key=?", ((key,) for key in keys))
+    except sqlite3.DatabaseError as error:
+        raise SettingsStorageError("Settings could not be deleted") from error
 
 
 def hash_password(password, salt=None):
