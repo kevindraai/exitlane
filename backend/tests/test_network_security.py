@@ -1,4 +1,5 @@
 import ipaddress
+import json
 import sqlite3
 
 import pytest
@@ -126,6 +127,11 @@ def test_sources_follow_environment_database_default_precedence(isolated_databas
         "public_url": "default",
         "trusted_proxies": "default",
         "secure_cookie_policy": "default",
+    }
+    assert defaults.as_public_dict()["environment_overrides"] == {
+        "public_url": False,
+        "trusted_proxies": False,
+        "secure_cookie_policy": False,
     }
     core.set_settings(
         {
@@ -257,6 +263,30 @@ def test_cli_update_and_reset_share_service_and_preserve_environment_override(
     assert reset.sources["public_url"] == "default"
     assert reset.secure_cookie_policy == "always"
     assert reset.sources["secure_cookie_policy"] == "environment"
+
+
+def test_cli_update_stores_event_with_real_validator(isolated_database, caplog):
+    assert (
+        cli.set_proxy_config(
+            public_url="https://cli.example",
+            trusted_proxies=["192.0.2.10"],
+            effective_user_id=0,
+        )
+        == 0
+    )
+    with sqlite3.connect(isolated_database) as connection:
+        stored = connection.execute(
+            "SELECT metadata_json FROM events WHERE code = ?",
+            ("network.security_settings_updated",),
+        ).fetchone()
+    assert stored is not None
+    metadata = json.loads(stored[0])
+    assert metadata == {
+        "fields": ["public_url", "trusted_proxies"],
+        "public_scheme": "https",
+        "trusted_proxy_count": "1",
+    }
+    assert "Could not store application event" not in caplog.text
 
 
 def test_cli_environment_only_attempt_does_not_create_shadow_database_values(
@@ -447,7 +477,7 @@ def test_authenticated_update_requires_reauthentication_and_records_safe_event(
     assert event[1]["metadata"] == {
         "fields": ["trusted_proxies"],
         "public_scheme": "none",
-        "trusted_proxy_count": 1,
+        "trusted_proxy_count": "1",
     }
     assert "password" not in str(event)
 

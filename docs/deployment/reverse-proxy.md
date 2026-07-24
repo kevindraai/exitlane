@@ -32,6 +32,13 @@ The effective runtime configuration has one defined precedence:
 2. the corresponding value saved under Settings → Network;
 3. direct-access defaults: no public URL, no trusted proxy, and automatic cookies.
 
+New installations leave these three optional variables out of
+`/etc/default/exitlane`, so the settings remain manageable through the web interface and the
+application supplies its own defaults. During an upgrade, the installer always preserves an
+existing `/etc/default/exitlane`. Empty `EXITLANE_PUBLIC_URL=`,
+`EXITLANE_TRUSTED_PROXIES=`, and `EXITLANE_SECURE_COOKIES=` lines left by older installations can
+be removed safely; restart `exitlane.service` afterwards.
+
 An environment-controlled field is read-only in the web interface and is marked as managed
 through environment configuration. The interface shows the effective value and its source
 (`environment`, `database`, or `default`) independently for every field. Database changes apply

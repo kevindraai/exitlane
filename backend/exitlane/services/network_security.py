@@ -212,6 +212,18 @@ def current_config() -> NetworkSecurityConfig:
     return NetworkSecurityConfig(public_url, proxies, policy, overrides, sources)
 
 
+def settings_updated_event_metadata(
+    configuration: NetworkSecurityConfig, changed: list[str]
+) -> dict[str, object]:
+    return {
+        "fields": changed,
+        "public_scheme": urlsplit(configuration.public_url).scheme
+        if configuration.public_url
+        else "none",
+        "trusted_proxy_count": str(len(configuration.trusted_proxies)),
+    }
+
+
 def validate_update(
     *,
     public_url: str,
