@@ -116,7 +116,15 @@ def test_installer_places_fixed_helper_and_unit_without_installing_nordvpn():
     assert "eval " not in helper
     assert '[[ "$#" -eq 0 ]]' in helper
     assert 'VERSION_ID:-}" == "13"' in helper
-    assert "https://repo.nordvpn.com/" in helper
+    release_url = next(
+        line.split("=", 1)[1].strip('"')
+        for line in helper.splitlines()
+        if line.startswith("readonly RELEASE_URL=")
+    )
+    assert release_url == (
+        "https://repo.nordvpn.com/deb/nordvpn/debian/pool/main/n/"
+        "nordvpn-release/nordvpn-release_1.0.0_all.deb"
+    )
     assert "command -v nordvpn" in helper
     assert "systemctl enable --now nordvpnd" in helper
     assert helper.index("if command -v nordvpn") < helper.index("curl --fail")
