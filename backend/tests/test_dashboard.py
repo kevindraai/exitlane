@@ -135,6 +135,8 @@ def test_dashboard_keeps_partial_provider_failure_available(monkeypatch):
     assert isinstance(response, DashboardResponse)
     assert response.vpn.available is False
     assert response.vpn.error == "provider_status_unavailable"
+    assert response.killswitch.available is False
+    assert response.killswitch.state == "unknown"
     assert "secret" not in response.model_dump_json()
 
 

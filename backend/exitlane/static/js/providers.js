@@ -18,35 +18,110 @@ import {
 let initialised = false;
 let signingOut = false;
 let killswitchStatus = null;
+let killswitchDialogTrigger = null;
+const KNOWN_KILLSWITCH_STATES = new Set([
+  "disabled",
+  "enabled_protected",
+  "enabled_waiting_for_tunnel",
+  "enabled_degraded",
+]);
 
 function yesNo(value) {
   return t(value ? "common.yes" : "common.no", {}, value ? "Yes" : "No");
 }
 
-async function loadKillswitch() {
-  try {
-    killswitchStatus = await api("/api/vpn/killswitch");
-    const state = killswitchStatus.state || "unknown";
+function renderKillswitchStatus(status) {
+  const state = status?.state || "unknown";
+  const known = KNOWN_KILLSWITCH_STATES.has(state);
+  const configured = known ? Boolean(status.configured) : null;
+  if (status) {
     select("#killswitch-state").textContent = t(`killswitch.states.${state}`, {}, state);
-    select("#killswitch-configured").textContent = yesNo(killswitchStatus.configured);
-    select("#killswitch-effective").textContent = yesNo(killswitchStatus.effective);
-    select("#killswitch-tunnel").textContent = yesNo(killswitchStatus.tunnel_available);
-    select("#killswitch-sources").textContent = (killswitchStatus.protected_sources || []).join(", ") || "—";
-    select("#killswitch-transition").textContent = formatObservedAt(killswitchStatus.last_transition);
-    select("#killswitch-change").textContent = killswitchStatus.configured
+    select("#killswitch-configured").textContent = known ? yesNo(status.configured) : "—";
+    select("#killswitch-effective").textContent = known ? yesNo(status.effective) : "—";
+    select("#killswitch-tunnel").textContent = known ? yesNo(status.tunnel_available) : "—";
+    select("#killswitch-sources").textContent = (status.protected_sources || []).join(", ") || "—";
+    select("#killswitch-transition").textContent = formatObservedAt(status.last_transition);
+    select("#killswitch-change").textContent = status.configured
       ? t("killswitch.disable", {}, "Disable")
       : t("killswitch.enable", {}, "Enable");
-    select("#killswitch-totp-field").hidden = !killswitchStatus.mfa_required;
-    select("#killswitch-totp").required = Boolean(killswitchStatus.mfa_required);
     const tone = state === "enabled_protected" ? "success"
-      : ["enabled_waiting_for_tunnel", "enabled_degraded", "error"].includes(state) ? "warning" : "neutral";
+      : ["enabled_waiting_for_tunnel", "enabled_degraded", "error"].includes(state)
+        ? "warning" : "neutral";
     select("#killswitch-badge").className = `provider-overview-status provider-overview-status--${tone}`;
     renderIcon(select("#killswitch-icon"), state === "enabled_protected" ? "shield-check" : state === "disabled" ? "shield" : "shield-alert");
     renderIcon(select("#killswitch-badge-icon"), state === "enabled_protected" ? "circle-check" : state === "disabled" ? "circle-minus" : "triangle-alert");
     clearInlineError("#killswitch-error");
+  }
+  const dashboardTone = state === "enabled_protected" ? "success" : "neutral";
+  const dashboardState = configured === true
+    ? t("dashboard.killswitch_active", {}, "Active")
+    : configured === false
+      ? t("dashboard.killswitch_disabled", {}, "Disabled")
+      : t("dashboard.killswitch_unknown", {}, "Status unknown");
+  setStatusPill(select("#dashboard-killswitch-pill"), dashboardState, dashboardTone);
+  renderIcon(
+    select("#dashboard-killswitch-icon"),
+    state === "enabled_protected"
+      ? "shield-check"
+      : configured === false ? "shield" : "shield-alert",
+  );
+  select("#dashboard-killswitch-description").textContent = configured === true
+    ? t(
+      "dashboard.killswitch_active_description",
+      {},
+      "Traffic is blocked when the VPN connection is lost.",
+    )
+    : configured === false
+      ? t(
+        "dashboard.killswitch_disabled_description",
+        {},
+        "Traffic can continue without an active VPN connection.",
+      )
+      : t("dashboard.killswitch_unknown", {}, "Status unknown");
+}
+
+async function loadKillswitch() {
+  try {
+    killswitchStatus = await api("/api/vpn/killswitch");
+    renderKillswitchStatus(killswitchStatus);
   } catch (error) {
+    renderKillswitchStatus(null);
     showInlineError(t("killswitch.errors.status", {}, "Killswitch status is unavailable."), "#killswitch-error");
   }
+}
+
+function closeKillswitchDialog() {
+  select("#killswitch-dialog").close();
+  killswitchDialogTrigger?.focus();
+  killswitchDialogTrigger = null;
+}
+
+function openKillswitchDialog() {
+  const disabling = Boolean(killswitchStatus?.configured);
+  const dialog = select("#killswitch-dialog");
+  killswitchDialogTrigger = document.activeElement;
+  select("#killswitch-dialog-title").textContent = disabling
+    ? t("killswitch.disable_title", {}, "Disable killswitch?")
+    : t("killswitch.enable_title", {}, "Enable killswitch?");
+  select("#killswitch-dialog-description").textContent = disabling
+    ? t(
+      "killswitch.disable_impact",
+      {},
+      "Internet traffic can then continue without an active VPN connection.",
+    )
+    : t(
+      "killswitch.enable_impact",
+      {},
+      "If the VPN connection is lost, internet traffic is blocked. Local management remains available.",
+    );
+  const confirm = select("#killswitch-confirm");
+  confirm.textContent = disabling
+    ? t("killswitch.disable", {}, "Disable")
+    : t("killswitch.enable", {}, "Enable");
+  confirm.className = `button ${disabling ? "button-warning" : "button-primary"}`;
+  clearInlineError("#killswitch-dialog-error");
+  dialog.showModal();
+  window.requestAnimationFrame(() => select("#killswitch-cancel").focus());
 }
 
 async function changeKillswitch(event) {
@@ -58,14 +133,9 @@ async function changeKillswitch(event) {
   try {
     killswitchStatus = await api(`/api/vpn/killswitch/${action}`, {
       method: "POST",
-      body: JSON.stringify({
-        current_password: select("#killswitch-password").value,
-        code: killswitchStatus?.mfa_required ? select("#killswitch-totp").value : null,
-        confirm_access_loss: select("#killswitch-confirm-loss").checked,
-      }),
     });
-    select("#killswitch-dialog").close();
-    select("#killswitch-form").reset();
+    renderKillswitchStatus(killswitchStatus);
+    closeKillswitchDialog();
     await loadKillswitch();
     showMessage(t(`killswitch.${action}d`, {}, `Killswitch ${action}d.`), "success");
   } catch (error) {
@@ -457,8 +527,26 @@ export function initialiseProviders() {
   select("#provider-management-retry").addEventListener("click", () => {
     refreshProviderState({ deduplicate: false }).catch(() => {});
   });
-  select("#killswitch-change").addEventListener("click", () => select("#killswitch-dialog").showModal());
-  select("#killswitch-cancel").addEventListener("click", () => select("#killswitch-dialog").close());
+  select("#killswitch-change").addEventListener("click", openKillswitchDialog);
+  select("#killswitch-cancel").addEventListener("click", closeKillswitchDialog);
+  select("#killswitch-dialog").addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeKillswitchDialog();
+  });
+  select("#killswitch-dialog").addEventListener("keydown", (event) => {
+    if (event.key !== "Tab") return;
+    const focusable = [...select("#killswitch-dialog").querySelectorAll("button:not(:disabled)")];
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
   select("#killswitch-form").addEventListener("submit", changeKillswitch);
   select("#killswitch-refresh").addEventListener("click", loadKillswitch);
   loadKillswitch();

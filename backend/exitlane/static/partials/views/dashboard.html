@@ -18,6 +18,14 @@
          </div>
          <div class="view-actions"><button class="button button-secondary" data-i18n="dashboard.open_vpn" data-open-view="vpn" type="button">Open VPN page</button></div>
         </article>
+        <article class="panel dashboard-card dashboard-killswitch-card">
+         <div class="panel-heading compact">
+          <div><p class="eyebrow" data-i18n="dashboard.security">SECURITY</p><h2 data-i18n="dashboard.killswitch">Killswitch</h2></div>
+          <span class="status-pill status-neutral" id="dashboard-killswitch-pill" role="status"><span aria-hidden="true" id="dashboard-killswitch-icon"></span><span id="dashboard-killswitch-state">—</span></span>
+         </div>
+         <p id="dashboard-killswitch-description" data-i18n="dashboard.killswitch_unknown">Status unknown.</p>
+         <div class="view-actions"><button class="button button-secondary" data-i18n="dashboard.open_vpn" data-open-view="vpn" type="button">Open VPN page</button></div>
+        </article>
         <article aria-live="polite" class="panel dashboard-card">
          <div class="panel-heading compact"><div><p class="eyebrow">WIREGUARD</p><h2>WireGuard</h2></div><span class="status-pill status-neutral" id="dashboard-wg-pill" role="status">—</span></div>
          <div class="metric-grid dashboard-metrics">

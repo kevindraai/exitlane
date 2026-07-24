@@ -1,4 +1,5 @@
 import { t } from "./i18n.js";
+import { renderIcon } from "./icons.js";
 import { select, setBusy, setStatusPill } from "./ui.js";
 import { formatBytes, formatDuration, formatRelativeTime as formatRelative } from "./dashboard-format.js";
 import { createDashboardRefreshState } from "./dashboard-refresh-state.js";
@@ -45,6 +46,41 @@ export function renderDashboard(data, { successfulRefresh = true } = {}) {
   text("#dashboard-vpn-updated", data.vpn.updated_at ? formatRelativeTime(data.vpn.updated_at) : t("dashboard.unavailable", {}, "Unavailable"));
   text("#dashboard-vpn-error", data.vpn.error ? t("dashboard.vpn_unavailable", {}, "VPN status is unavailable.") : "");
   select("#dashboard-vpn-error").hidden = !data.vpn.error;
+
+  const killswitchKnown = data.killswitch?.available === true;
+  const killswitchConfigured = killswitchKnown ? data.killswitch.configured : null;
+  const killswitchLabel = killswitchConfigured === true
+    ? t("dashboard.killswitch_active", {}, "Active")
+    : killswitchConfigured === false
+      ? t("dashboard.killswitch_disabled", {}, "Disabled")
+      : t("dashboard.killswitch_unknown", {}, "Status unknown");
+  setStatusPill(
+    select("#dashboard-killswitch-pill"),
+    killswitchLabel,
+    data.killswitch?.state === "enabled_protected" ? "success" : "neutral",
+  );
+  renderIcon(
+    select("#dashboard-killswitch-icon"),
+    data.killswitch?.state === "enabled_protected"
+      ? "shield-check"
+      : killswitchConfigured === false ? "shield" : "shield-alert",
+  );
+  text(
+    "#dashboard-killswitch-description",
+    killswitchConfigured === true
+      ? t(
+        "dashboard.killswitch_active_description",
+        {},
+        "Traffic is blocked when the VPN connection is lost.",
+      )
+      : killswitchConfigured === false
+        ? t(
+          "dashboard.killswitch_disabled_description",
+          {},
+          "Traffic can continue without an active VPN connection.",
+        )
+        : t("dashboard.killswitch_unknown", {}, "Status unknown"),
+  );
 
   setStatusPill(select("#dashboard-wg-pill"), t(`dashboard.${data.wireguard.active ? (data.wireguard.connected ? "connected" : "waiting") : "inactive"}`, {}, data.wireguard.active ? "Waiting" : "Inactive"), data.wireguard.connected ? "success" : data.wireguard.active ? "neutral" : "danger");
   text("#dashboard-wg-client", data.wireguard.client);
