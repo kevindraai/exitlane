@@ -134,24 +134,28 @@
          <div class="alert" hidden="" id="settings-network-status"></div>
          <label>
           <span data-i18n="settings.network.public_url">Public URL</span>
-          <input aria-describedby="settings-network-public-url-help settings-network-public-url-override" id="settings-network-public-url" maxlength="2048" placeholder="https://exitlane.example.internal" type="url"/>
-          <small data-i18n="settings.network.public_url_help" id="settings-network-public-url-help">The URL you use to open ExitLane in your browser.</small>
+          <input aria-describedby="settings-network-public-url-help settings-network-public-url-source settings-network-public-url-override" id="settings-network-public-url" maxlength="2048" placeholder="https://exitlane.example.internal" type="url"/>
+          <small data-i18n="settings.network.public_url_help" id="settings-network-public-url-help">The external URL used to open ExitLane. Leave empty to use the direct request context.</small>
+          <small id="settings-network-public-url-source"></small>
           <small data-i18n="settings.network.managed_environment" hidden="" id="settings-network-public-url-override">Managed through environment configuration.</small>
          </label>
          <label>
           <span data-i18n="settings.network.trusted_proxies">Trusted proxies</span>
-          <textarea aria-describedby="settings-network-proxies-help settings-network-proxies-override" id="settings-network-proxies" rows="5" spellcheck="false"></textarea>
-          <small data-i18n="settings.network.trusted_proxies_help" id="settings-network-proxies-help">One IPv4, IPv6, or CIDR entry per line.</small>
+          <textarea aria-describedby="settings-network-proxies-help settings-network-proxies-source settings-network-proxies-override" id="settings-network-proxies" rows="5" spellcheck="false"></textarea>
+          <small data-i18n="settings.network.trusted_proxies_help" id="settings-network-proxies-help">One IPv4, IPv6, or CIDR entry per line. Leave empty to trust no proxy.</small>
+          <small id="settings-network-proxies-source"></small>
           <small data-i18n="settings.network.managed_environment" hidden="" id="settings-network-proxies-override">Managed through environment configuration.</small>
          </label>
          <label>
           <span data-i18n="settings.network.cookie_policy">Secure cookies</span>
-          <select aria-describedby="settings-network-cookie-override" id="settings-network-cookie-policy">
+          <select aria-describedby="settings-network-cookie-source settings-network-cookie-override settings-network-cookie-warning" id="settings-network-cookie-policy">
            <option data-i18n="settings.network.cookie_auto" value="auto">Automatic</option>
            <option data-i18n="settings.network.cookie_always" value="always">Always</option>
            <option data-i18n="settings.network.cookie_never" value="never">Never, for local HTTP only</option>
           </select>
+          <small id="settings-network-cookie-source"></small>
           <small data-i18n="settings.network.managed_environment" hidden="" id="settings-network-cookie-override">Managed through environment configuration.</small>
+          <div class="alert alert-warning" data-i18n="settings.network.cookie_disabled_warning" hidden="" id="settings-network-cookie-warning" role="alert">Disabling Secure cookies can expose sessions on untrusted networks.</div>
          </label>
          <label>
           <span data-i18n="settings.network.current_password">Current password</span>

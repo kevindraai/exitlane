@@ -140,12 +140,18 @@
       "https": "HTTPS connection", "reverse_proxy": "Reverse proxy", "trusted_proxy": "Direct peer trusted",
       "direct_peer": "Direct peer", "secure_cookie": "Secure cookie", "public_url": "Public URL", "warnings": "Warnings",
       "status_title": "Deployment status", "configuration_title": "Reverse-proxy configuration",
-      "configuration_help": "Changes are applied immediately.",
-      "managed_environment_information": "Environment-managed values are read-only. Other changes apply immediately.",
-      "public_url_help": "The URL you use to open ExitLane in your browser.",
-      "trusted_proxies": "Trusted proxies", "trusted_proxies_help": "One IPv4, IPv6, or CIDR entry per line.",
+      "configuration_help": "Stored changes are applied immediately; no restart is required.",
+      "managed_environment_information": "Only fields marked as environment-managed are read-only. Editable changes apply immediately.",
+      "public_url_help": "The external URL used to open ExitLane. Leave empty to use the direct request context.",
+      "trusted_proxies": "Trusted proxies", "trusted_proxies_help": "One IPv4, IPv6, or CIDR entry per line. Empty lines are ignored; leave empty to trust no proxy.",
       "cookie_policy": "Secure cookies", "cookie_auto": "Automatic", "cookie_always": "Always",
       "cookie_never": "Never, for local HTTP only", "managed_environment": "Managed through environment configuration.",
+      "cookie_disabled_warning": "Warning: disabling Secure cookies can expose administrator sessions on untrusted networks.",
+      "sources": {
+        "environment": "Source: environment (change externally; a service restart is required)",
+        "database": "Source: ExitLane database (active immediately)",
+        "default": "Source: safe default (active immediately)"
+      },
       "current_password": "Current password", "totp": "Verification code", "save": "Save configuration",
       "saving": "Saving…", "saved": "Network configuration saved.",
       "confirm_title": "Save potentially disruptive configuration?",
@@ -153,7 +159,7 @@
       "confirm_save": "Save configuration anyway", "cancel": "Cancel",
       "errors": {
         "invalid_public_url": "Enter a valid HTTP or HTTPS origin without a path.",
-        "invalid_trusted_proxy": "Enter only valid IP addresses or CIDR ranges.",
+        "invalid_trusted_proxy": "Line {line} ({value}) is not a valid IPv4 address, IPv6 address, or CIDR range.",
         "proxy_range_too_broad": "Universal proxy ranges are not allowed.",
         "trusted_proxy_required": "An HTTPS public URL requires at least one trusted proxy.",
         "inconsistent_cookie_policy": "The cookie policy conflicts with the public URL.",
@@ -161,6 +167,7 @@
         "invalid_mfa_code": "The verification code is incorrect.",
         "too_many_attempts": "Too many attempts. Try again later.",
         "environment_override": "This value is managed through environment configuration.",
+        "settings_storage_failed": "The validated configuration could not be stored; no changes were applied.",
         "save_failed": "The network configuration could not be saved."
       }
     },

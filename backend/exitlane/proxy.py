@@ -26,11 +26,12 @@ class RequestSecurity:
     forwarded_ignored: bool
     forwarded_rejected: bool = False
     cookie_policy: str = "auto"
+    public_url_secure: bool = False
 
     @property
     def secure_cookie(self) -> bool:
         return self.cookie_policy == "always" or (
-            self.cookie_policy == "auto" and self.scheme == "https"
+            self.cookie_policy == "auto" and (self.scheme == "https" or self.public_url_secure)
         )
 
 
@@ -60,7 +61,13 @@ def _configuration() -> NetworkSecurityConfig:
         if SESSION_COOKIE_POLICY != _INITIAL_COOKIE_POLICY
         else configured.secure_cookie_policy
     )
-    return NetworkSecurityConfig(public_url, tuple(proxies), cookie_policy, configured.overrides)
+    return NetworkSecurityConfig(
+        public_url,
+        tuple(proxies),
+        cookie_policy,
+        configured.overrides,
+        configured.sources,
+    )
 
 
 def _trusted(
@@ -82,6 +89,10 @@ def request_security(request: Request) -> RequestSecurity:
         name in request.headers
         for name in ("forwarded", "x-forwarded-for", "x-forwarded-proto", "x-forwarded-host")
     )
+    public_url_secure = (
+        bool(configuration.public_url)
+        and urlsplit(configuration.public_url).scheme.casefold() == "https"
+    )
     if not trusted_peer:
         return RequestSecurity(
             str(peer),
@@ -90,6 +101,7 @@ def request_security(request: Request) -> RequestSecurity:
             False,
             forwarding_present,
             cookie_policy=configuration.secure_cookie_policy,
+            public_url_secure=public_url_secure,
         )
 
     # ExitLane's explicit contract uses X-Forwarded-* and ignores RFC Forwarded when both exist.
@@ -133,6 +145,7 @@ def request_security(request: Request) -> RequestSecurity:
         forwarded_rejected,
         forwarded_rejected,
         configuration.secure_cookie_policy,
+        public_url_secure,
     )
 
 

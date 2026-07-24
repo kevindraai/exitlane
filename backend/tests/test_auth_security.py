@@ -201,3 +201,53 @@ def test_forwarded_headers_require_trusted_direct_peer(monkeypatch):
     assert forwarded.client_ip == "198.51.100.8"
     assert forwarded.scheme == "https"
     assert forwarded.direct_peer_trusted
+
+
+def test_automatic_secure_cookie_uses_public_url_but_not_untrusted_forwarded_header(
+    monkeypatch,
+):
+    headers = (("x-forwarded-proto", "https"),)
+    monkeypatch.setattr(
+        proxy,
+        "_configuration",
+        lambda: NetworkSecurityConfig("", (), "auto", frozenset()),
+    )
+    unconfigured = proxy.request_security(_request("192.0.2.10", headers))
+    assert unconfigured.scheme == "http"
+    assert not unconfigured.secure_cookie
+    assert unconfigured.forwarded_ignored
+
+    monkeypatch.setattr(
+        proxy,
+        "_configuration",
+        lambda: NetworkSecurityConfig(
+            "https://exitlane.example",
+            (),
+            "auto",
+            frozenset(),
+        ),
+    )
+    configured = proxy.request_security(_request("192.0.2.10", headers))
+    assert configured.scheme == "http"
+    assert configured.secure_cookie
+
+
+@pytest.mark.parametrize(
+    ("policy", "scheme", "expected"),
+    [
+        ("auto", "http", False),
+        ("auto", "https", True),
+        ("always", "http", True),
+        ("never", "https", False),
+    ],
+)
+def test_secure_cookie_policies_are_deterministic(policy, scheme, expected):
+    state = proxy.RequestSecurity(
+        client_ip="192.0.2.1",
+        scheme=scheme,
+        direct_peer_trusted=False,
+        reverse_proxy=False,
+        forwarded_ignored=False,
+        cookie_policy=policy,
+    )
+    assert state.secure_cookie is expected

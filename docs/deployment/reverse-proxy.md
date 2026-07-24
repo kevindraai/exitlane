@@ -33,10 +33,33 @@ The effective runtime configuration has one defined precedence:
 3. direct-access defaults: no public URL, no trusted proxy, and automatic cookies.
 
 An environment-controlled field is read-only in the web interface and is marked as managed
-through environment configuration. Saving requires the current administrator password and,
-when MFA is enabled, a fresh TOTP code. Universal proxy ranges are rejected. Broad private ranges
-and changes that may invalidate the current browser origin or trusted peer require an explicit
-extra confirmation.
+through environment configuration. The interface shows the effective value and its source
+(`environment`, `database`, or `default`) independently for every field. Database changes apply
+on the next request without a restart. Environment changes remain external deployment changes
+and require restarting the service. Saving requires the current administrator password and, when
+MFA is enabled, a fresh TOTP code. Universal proxy ranges are rejected. Broad private ranges and
+changes that may invalidate the current browser origin or trusted peer require an explicit extra
+confirmation.
+
+The same validation and transactional storage are available from the root-only local CLI:
+
+```console
+sudo exitlane-cli proxy status
+sudo exitlane-cli proxy set \
+  --public-url https://exitlane.example.internal \
+  --trusted-proxy 192.168.1.10 \
+  --trusted-proxy 10.0.0.0/8 \
+  --secure-cookies automatic \
+  --confirm-broad-trust
+sudo exitlane-cli proxy clear-public-url
+sudo exitlane-cli proxy clear-trusted-proxies
+sudo exitlane-cli proxy reset
+```
+
+`proxy status` reports the effective value and source per field. An explicit environment override
+remains dominant; CLI attempts for that field are not stored and produce a warning. `proxy reset`
+removes only the three database-backed proxy settings, revokes existing sessions as a lockout
+precaution, and leaves environment overrides untouched.
 
 ## Caddy
 
@@ -137,7 +160,7 @@ sudo exitlane-cli network-status
 sudo exitlane-cli reset-network-security
 ```
 
-The reset command requires typing `RESET NETWORK SECURITY`, restores the database values to
-direct-access defaults, revokes every session, and records a safe Activity event. Environment
-overrides remain active; change those in the service or container configuration and restart
-ExitLane when an override caused the lockout.
+These legacy aliases remain available. The reset command requires typing `RESET NETWORK SECURITY`,
+removes the database values so safe defaults become effective, revokes every session, and records
+a safe Activity event. Environment overrides remain active; change those in the service or
+container configuration and restart ExitLane when an override caused the lockout.

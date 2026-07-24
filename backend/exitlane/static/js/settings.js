@@ -178,15 +178,35 @@ async function loadAuthenticationSecurity() {
   select("#settings-network-proxies").value = configuration.trusted_proxies.join("\n");
   select("#settings-network-cookie-policy").value = configuration.secure_cookie_policy;
   const fields = {
-    public_url: ["#settings-network-public-url", "#settings-network-public-url-override"],
-    trusted_proxies: ["#settings-network-proxies", "#settings-network-proxies-override"],
-    secure_cookie_policy: ["#settings-network-cookie-policy", "#settings-network-cookie-override"],
+    public_url: [
+      "#settings-network-public-url",
+      "#settings-network-public-url-override",
+      "#settings-network-public-url-source",
+    ],
+    trusted_proxies: [
+      "#settings-network-proxies",
+      "#settings-network-proxies-override",
+      "#settings-network-proxies-source",
+    ],
+    secure_cookie_policy: [
+      "#settings-network-cookie-policy",
+      "#settings-network-cookie-override",
+      "#settings-network-cookie-source",
+    ],
   };
-  for (const [field, [controlSelector, helpSelector]] of Object.entries(fields)) {
+  for (const [field, [controlSelector, helpSelector, sourceSelector]] of Object.entries(fields)) {
     const locked = Boolean(configuration.environment_overrides[field]);
     select(controlSelector).disabled = locked;
     select(helpSelector).hidden = !locked;
+    const source = configuration.sources[field];
+    select(sourceSelector).textContent = t(
+      `settings.network.sources.${source}`,
+      {},
+      `Source: ${source}`,
+    );
   }
+  select("#settings-network-cookie-warning").hidden =
+    configuration.secure_cookie_policy !== "never";
   const hasEnvironmentOverrides = Object.values(
     configuration.environment_overrides,
   ).some(Boolean);
@@ -439,7 +459,10 @@ async function submitNetworkSecurity({ confirmAccessLoss = false } = {}) {
       errorTarget,
       t(
         `settings.network.errors.${code || "save_failed"}`,
-        {},
+        {
+          line: detail?.line || "",
+          value: detail?.value || "",
+        },
         "The network configuration could not be saved.",
       ),
       ALERT_TYPES.ERROR,
@@ -619,6 +642,9 @@ export function initialiseSettings() {
   form.addEventListener("change", updateSaveState);
   select("#settings-password-form").addEventListener("submit", changePassword);
   select("#settings-network-form").addEventListener("submit", saveNetworkSecurity);
+  select("#settings-network-cookie-policy").addEventListener("change", (event) => {
+    select("#settings-network-cookie-warning").hidden = event.currentTarget.value !== "never";
+  });
   select("#settings-network-confirm-cancel").addEventListener("click", () => {
     select("#settings-network-confirm").close();
     networkBroadTrustConfirmation = false;

@@ -140,12 +140,18 @@
       "https": "HTTPS-verbinding", "reverse_proxy": "Reverse proxy", "trusted_proxy": "Directe peer vertrouwd",
       "direct_peer": "Directe peer", "secure_cookie": "Beveiligde cookie", "public_url": "Publieke URL", "warnings": "Waarschuwingen",
       "status_title": "Deploymentstatus", "configuration_title": "Reverse-proxyconfiguratie",
-      "configuration_help": "Wijzigingen worden direct toegepast.",
-      "managed_environment_information": "Omgevingsvariabelen zijn alleen-lezen. Andere wijzigingen worden direct toegepast.",
-      "public_url_help": "De URL waarmee je ExitLane in de browser opent.",
-      "trusted_proxies": "Vertrouwde proxies", "trusted_proxies_help": "Eén IPv4-, IPv6- of CIDR-entry per regel.",
+      "configuration_help": "Opgeslagen wijzigingen worden direct toegepast; een herstart is niet nodig.",
+      "managed_environment_information": "Alleen velden die als omgevingsbeheer zijn gemarkeerd zijn alleen-lezen. Bewerkbare wijzigingen worden direct toegepast.",
+      "public_url_help": "De externe URL waarmee ExitLane wordt geopend. Laat leeg om de directe requestcontext te gebruiken.",
+      "trusted_proxies": "Vertrouwde proxies", "trusted_proxies_help": "Eén IPv4-, IPv6- of CIDR-entry per regel. Lege regels worden genegeerd; laat leeg om geen proxy te vertrouwen.",
       "cookie_policy": "Beveiligde cookies", "cookie_auto": "Automatisch", "cookie_always": "Altijd",
       "cookie_never": "Nooit, alleen voor lokaal HTTP-gebruik", "managed_environment": "Beheerd via omgevingsconfiguratie.",
+      "cookie_disabled_warning": "Waarschuwing: het uitschakelen van Secure-cookies kan beheerderssessies op niet-vertrouwde netwerken blootstellen.",
+      "sources": {
+        "environment": "Bron: omgeving (extern wijzigen; een serviceherstart is vereist)",
+        "database": "Bron: ExitLane-database (direct actief)",
+        "default": "Bron: veilige standaardwaarde (direct actief)"
+      },
       "current_password": "Huidig wachtwoord", "totp": "Verificatiecode", "save": "Configuratie opslaan",
       "saving": "Opslaan…", "saved": "Netwerkconfiguratie opgeslagen.",
       "confirm_title": "Mogelijk verstorende configuratie opslaan?",
@@ -153,7 +159,7 @@
       "confirm_save": "Configuratie toch opslaan", "cancel": "Annuleren",
       "errors": {
         "invalid_public_url": "Voer een geldige HTTP- of HTTPS-origin zonder pad in.",
-        "invalid_trusted_proxy": "Voer alleen geldige IP-adressen of CIDR-ranges in.",
+        "invalid_trusted_proxy": "Regel {line} ({value}) is geen geldig IPv4-adres, IPv6-adres of CIDR-range.",
         "proxy_range_too_broad": "Universele proxyranges zijn niet toegestaan.",
         "trusted_proxy_required": "Een publieke HTTPS-URL vereist minimaal één vertrouwde proxy.",
         "inconsistent_cookie_policy": "Het cookiebeleid conflicteert met de publieke URL.",
@@ -161,6 +167,7 @@
         "invalid_mfa_code": "De verificatiecode is onjuist.",
         "too_many_attempts": "Te veel pogingen. Probeer het later opnieuw.",
         "environment_override": "Deze waarde wordt beheerd via omgevingsconfiguratie.",
+        "settings_storage_failed": "De gevalideerde configuratie kon niet worden opgeslagen; er zijn geen wijzigingen toegepast.",
         "save_failed": "De netwerkconfiguratie kon niet worden opgeslagen."
       }
     },

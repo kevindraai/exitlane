@@ -227,15 +227,36 @@ test("network deployment status and editable security configuration stay separat
   assert.match(markup, /id="settings-network-public-url"/);
   assert.match(markup, /id="settings-network-proxies" rows="5"/);
   assert.match(markup, /id="settings-network-cookie-policy"/);
+  assert.match(markup, /id="settings-network-public-url-source"/);
+  assert.match(markup, /id="settings-network-proxies-source"/);
+  assert.match(markup, /id="settings-network-cookie-source"/);
+  assert.match(markup, /id="settings-network-cookie-warning"/);
   assert.match(markup, /id="settings-network-password" required="" type="password"/);
   assert.match(markup, /id="settings-network-totp-field"/);
   assert.match(markup, /id="settings-network-confirm"/);
   assert.match(source, /configuration\.environment_overrides\[field\]/);
+  assert.match(source, /configuration\.sources\[field\]/);
   assert.match(source, /controlSelector\)\.disabled = locked/);
+  assert.match(source, /cookie-warning"\)\.hidden = event\.currentTarget\.value !== "never"/);
   assert.match(source, /method: "PUT"/);
   assert.match(source, /access_loss_confirmation_required/);
   assert.match(source, /broad_proxy_confirmation_required/);
   assert.match(source, /direct_peer: deployment\.direct_peer/);
+});
+
+test("network configuration sources and security warnings are translated in every locale", async () => {
+  const locales = await Promise.all(
+    [englishUrl, dutchUrl].map(async (url) => JSON.parse(await readFile(url, "utf8"))),
+  );
+  for (const locale of locales) {
+    assert.deepEqual(
+      Object.keys(locale.settings.network.sources).sort(),
+      ["database", "default", "environment"],
+    );
+    assert.ok(locale.settings.network.cookie_disabled_warning);
+    assert.match(locale.settings.network.errors.invalid_trusted_proxy, /\{line\}/);
+    assert.ok(locale.settings.network.errors.settings_storage_failed);
+  }
 });
 
 test("MFA copy actions retain unformatted state and are explicit user actions", async () => {
