@@ -84,7 +84,7 @@ def network_status(*, effective_user_id: int | None = None) -> int:
     configuration = current_config()
     public_url = configuration.public_url or "(direct access)"
     proxies = ", ".join(str(proxy) for proxy in configuration.trusted_proxies) or "(none)"
-    sys.stdout.write(
+    output = (
         "\n".join(
             [
                 f"Public URL: {public_url} [source: {configuration.sources['public_url']}]",
@@ -99,7 +99,9 @@ def network_status(*, effective_user_id: int | None = None) -> int:
             ]
         )
         + "\n"
-    )
+    ).encode()
+    while output:
+        output = output[os.write(sys.stdout.fileno(), output) :]
     return 0
 
 

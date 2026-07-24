@@ -295,7 +295,7 @@ def test_cli_validation_error_reports_code_and_line_without_echoing_input(
 
 
 def test_proxy_cli_command_family_routes_status_set_clear_and_reset(
-    isolated_database, monkeypatch, capsys
+    isolated_database, monkeypatch, capfd
 ):
     monkeypatch.setattr(cli.os, "geteuid", lambda: 0)
     monkeypatch.setattr(cli, "record_event", lambda *_args, **_values: None)
@@ -315,8 +315,13 @@ def test_proxy_cli_command_family_routes_status_set_clear_and_reset(
         == 0
     )
     assert cli.main(["proxy", "status"]) == 0
-    status_lines = capsys.readouterr().out.splitlines()
-    assert "Public URL: http://cli.example [source: database]" in status_lines
+    status_lines = capfd.readouterr().out.splitlines()
+    assert status_lines == [
+        "Proxy configuration updated. Changes are active immediately.",
+        "Public URL: http://cli.example [source: database]",
+        "Trusted proxies: 192.0.2.10/32 [source: database]",
+        "Secure-cookie policy: auto [source: database]",
+    ]
     assert cli.main(["proxy", "clear-public-url"]) == 0
     assert network_security.current_config().public_url == ""
     assert cli.main(["proxy", "clear-trusted-proxies"]) == 0
