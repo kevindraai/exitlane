@@ -67,6 +67,7 @@ EVENT_DEFINITIONS = {
     "provider.session_started": ("provider", "info", {"provider"}),
     "provider.session_ended": ("provider", "warning", {"provider"}),
     "provider.session_end_failed": ("provider", "error", {"provider", "reason"}),
+    "provider.installation_succeeded": ("provider", "info", {"provider"}),
     "wireguard.configuration_generated": ("wireguard", "info", {"client_name"}),
     "wireguard.configuration_regenerated": ("wireguard", "warning", {"client_name"}),
     "wireguard.interface_active": ("wireguard", "info", {"interface"}),
