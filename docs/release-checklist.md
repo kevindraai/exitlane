@@ -19,16 +19,16 @@ blocker and the pull request must remain draft.
   killswitch test, wheel/sdist build, and `git diff --check`.
 - [ ] Gitleaks, CodeQL, dependency review, ZAP baseline, and all GitHub checks
   pass on the final branch.
-- [ ] Final package content and generated artifact checks contain no secrets,
+- [x] Final package content and generated artifact checks contain no secrets,
   sessions, private keys, backups, or unexpected files.
-- [ ] No open critical/high finding; every medium is fixed or explicitly accepted.
+- [x] No open critical/high finding; every medium is fixed or explicitly accepted.
 
 ## Appliance lifecycle
 
 - [x] Clean Debian 13 beta install (provider-authenticated wizard remains open).
 - [x] Exact alpha baseline clean install and representative configuration.
 - [x] Alpha-to-beta upgrade and automatic protected pre-upgrade snapshot.
-- [ ] Settings, MFA, recovery codes, sessions, Activity, reverse proxy, trusted
+- [x] Settings, MFA, recovery codes, sessions, Activity, reverse proxy, trusted
   proxies, WireGuard, NordVPN, token renewal, and killswitch preserved.
 - [x] Candidate installer is idempotent when run a second time.
 - [x] Injected upgrade failure restores code, database, configuration, units,
@@ -37,7 +37,7 @@ blocker and the pull request must remain draft.
 - [x] Disaster restore onto a clean beta appliance.
 - [x] Malicious restore corpus leaves active data and service intact and cleans
   staging plaintext.
-- [ ] IPv4, IPv6, DNS UDP/TCP and tunnel-present leak tests; fail-closed
+- [x] IPv4, IPv6, DNS UDP/TCP and tunnel-present leak tests; fail-closed
   tunnel-unavailable state, recovery, and preservation
   of non-ExitLane nftables tables.
 
@@ -52,9 +52,9 @@ blocker and the pull request must remain draft.
 - [ ] Setup/access route variants, CSRF origin/content-type matrix, trusted-proxy
   chain/IP/CIDR edges, Host/public-URL mismatch, cookie flags, cache headers, CSP,
   and HTTPS-context HSTS.
-- [ ] Provider hostile-output/input-validation corpus and bounded availability
+- [x] Provider hostile-output/input-validation corpus and bounded availability
   checks.
-- [ ] Filesystem owners/modes, systemd state/hardening, logs, diagnostics, and
+- [x] Filesystem owners/modes, systemd state/hardening, logs, diagnostics, and
   health checks.
 
 ## Documentation and handoff
@@ -62,7 +62,7 @@ blocker and the pull request must remain draft.
 - [x] Backup/restore, upgrade/recovery, threat model, assurance matrix, ASVS,
   hardening, changelog, roadmap, security policy, and beta limitations updated
   in English.
-- [ ] Deployment and LXC evidence reflect the final candidate exactly.
+- [x] Deployment and LXC evidence reflect the final candidate exactly.
 - [ ] PR #34 contains commands, test counts, findings, residual risks, appliance
   evidence, original/final SHAs, and all branch-protection confirmations.
 - [ ] Maintainer manually marks the PR ready and merges it; Codex does not merge.

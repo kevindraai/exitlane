@@ -75,7 +75,7 @@ def test_deploy_script_fails_closed_on_unexpected_lxc_identity():
     assert 'HOST="${EXITLANE_TEST_HOST:-exitlane-reference}"' in deploy
     assert 'EXPECTED_TEST_IP="${EXITLANE_TEST_IP:-172.16.130.81}"' in deploy
     assert 'REMOTE_IPS="$(ssh "$HOST" hostname -I)"' in deploy
-    assert "grep -Fx -- \"$EXPECTED_TEST_IP\"" in deploy
+    assert 'grep -Fx -- "$EXPECTED_TEST_IP"' in deploy
     assert "'hostname -I" not in deploy
     assert 'sudo bash "${REMOTE_DIR}installer/install-debian.sh"' in deploy
     assert "install-exitlane-candidate" not in deploy

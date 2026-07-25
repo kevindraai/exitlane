@@ -103,10 +103,43 @@ credential, cookies, scanner and sanitized summary were removed. No ZAP context,
 request archive or response artifact was created, and Activity metadata
 contained no password, token or cookie fields.
 
-Provider credential/login/token-renewal testing, tunnel-present IPv4/IPv6/DNS
-leak tests and recovery remain incomplete because no disposable test provider
-token file path has been supplied. Pull request #34 therefore remains draft.
+A disposable NordVPN token was supplied as a root-owned `0600` regular file.
+ExitLane read it through a no-follow, close-on-exec descriptor and submitted it
+only to the CLI's private, echo-disabled terminal prompt. A concurrent scan of
+process arguments and environments found no token. Login, provider defaults,
+connection, disconnect/reconnect, token metadata/renewal, logout with token
+retention, and a fresh login all passed. NordVPN's regular state files were
+root-owned, inaccessible to other users, and limited to the intended daemon
+group where applicable.
 
-The provider wizard was not completed because no test NordVPN token was supplied.
-Setup completion was set locally only to create migration evidence; this is not
-claimed as a successful end-to-end wizard/provider test.
+With the NordLynx tunnel present, two independent IPv4 observers and explicit
+DNS queries over both UDP and TCP all observed the tunnel egress. The LXC had no
+IPv6 address or route and the IPv6 observer was unreachable. The same matrix
+passed from a temporary routed network namespace protected by ExitLane's real
+nftables rules. After a deliberate disconnect, IPv4, IPv6, DNS/UDP, and DNS/TCP
+were all blocked fail-closed. Reconnection restored the protected tunnel and
+the complete matrix passed again.
+
+Stopping `nordvpnd` produced the expected provider-unavailable state and engaged
+the same four-way fail-closed behavior. ExitLane health, SSH management, and an
+unrelated nftables sentinel survived disconnect, daemon loss, and recovery.
+Restarting the daemon restored the tunnel and `enabled_protected` state.
+
+Before cleanup, an exact-value in-memory scan found no disposable token in
+process arguments/environments, ExitLane Activity/SQLite, system or provider
+journals, CLI logs, the deployment candidate, `/tmp`, or test artifacts. Final
+cleanup disconnected and logged out of NordVPN, disabled the ExitLane
+killswitch, removed its test namespace and sentinel, deleted the token file,
+candidate tree, and two test-only upgrade snapshots, and reset the temporary
+routed-ingress setting. Post-cleanup checks confirmed those objects absent,
+NordVPN signed out and disconnected, HTTP health 200, and SSH preserved.
+
+Pull request #34 remains draft until all four required GitHub Actions workflows
+are green on the final branch SHA.
+
+The final local regression run passed 324 backend tests and 124 frontend test
+definitions. Ruff check and format, Bandit, pip-audit, Python compilation,
+JavaScript syntax, JSON and translation validation, Bash syntax, ShellCheck,
+`git diff --check`, and wheel/sdist builds also passed. Package inspection found
+no private-key material, databases, backups, provider credentials, sessions, or
+unexpected generated files.
