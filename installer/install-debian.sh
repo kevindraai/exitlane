@@ -3,7 +3,14 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-readonly INSTALLER_VERSION="0.2.0-alpha.1"
+readonly INSTALLER_VERSION="0.2.0-beta.1"
+readonly LIFECYCLE_LOCK="${EXITLANE_LIFECYCLE_LOCK:-/run/lock/exitlane-lifecycle.lock}"
+readonly RECOVERY_ROOT="${EXITLANE_RECOVERY_ROOT:-/var/lib/exitlane/recovery}"
+UPGRADE_MODE=0
+UPGRADE_COMMITTED=0
+RECOVERY_DIR=""
+LOCK_FD=""
+CURRENT_VERSION=""
 
 # De repository waarin dit script staat.
 SOURCE_DIR="$(
@@ -39,6 +46,9 @@ on_error() {
   local exit_code=$?
   local line_number="${1:-unknown}"
 
+  if [[ "${UPGRADE_MODE}" -eq 1 && "${UPGRADE_COMMITTED}" -eq 0 && -n "${RECOVERY_DIR}" ]]; then
+    rollback_upgrade || true
+  fi
   echo
   echo "Exitlane-installatie mislukt."
   echo "Regel: ${line_number}"
@@ -72,6 +82,115 @@ require_root() {
   if [[ "${EUID}" -ne 0 ]]; then
     fail "Voer dit installatiescript uit als root of via sudo."
   fi
+}
+
+acquire_lifecycle_lock() {
+  install -d -m 0755 "$(dirname "${LIFECYCLE_LOCK}")"
+  exec {LOCK_FD}>"${LIFECYCLE_LOCK}"
+  if ! flock -n "${LOCK_FD}"; then
+    fail "Een andere ExitLane lifecycle-actie is al actief."
+  fi
+  success "Exclusieve lifecyclelock verkregen"
+}
+
+detect_installation_mode() {
+  if [[ -f "${TARGET}/backend/pyproject.toml" || -f "${DATA_DIR}/exitlane.db" ]]; then
+    UPGRADE_MODE=1
+    if [[ -f "${DATA_DIR}/installed-version" ]]; then
+      CURRENT_VERSION="$(head -n 1 "${DATA_DIR}/installed-version")"
+    elif [[ -f "${TARGET}/backend/pyproject.toml" ]]; then
+      CURRENT_VERSION="$(
+        sed -n 's/^version="\([^"]*\)"$/\1/p' \
+          "${TARGET}/backend/pyproject.toml" |
+          head -n 1
+      )"
+    fi
+    if [[ -n "${CURRENT_VERSION}" ]] &&
+      dpkg --compare-versions "${CURRENT_VERSION}" gt "${INSTALLER_VERSION}"; then
+      fail "Downgrade van ${CURRENT_VERSION} naar ${INSTALLER_VERSION} wordt geweigerd."
+    fi
+    log "Bestaande ExitLane-installatie gedetecteerd"
+    [[ -z "${CURRENT_VERSION}" ]] ||
+      success "Huidige versie ${CURRENT_VERSION}; doelversie ${INSTALLER_VERSION}"
+  else
+    UPGRADE_MODE=0
+    log "Schone ExitLane-installatie gedetecteerd"
+  fi
+}
+
+check_free_space() {
+  local required_kib=524288
+  local available_kib
+  available_kib="$(df -Pk "${TARGET%/*}" | awk 'NR==2 {print $4}')"
+  if [[ ! "${available_kib}" =~ ^[0-9]+$ ]] || (( available_kib < required_kib )); then
+    fail "Minimaal 512 MiB vrije ruimte is vereist voor installatie en recovery."
+  fi
+  success "Voldoende vrije schijfruimte beschikbaar"
+}
+
+snapshot_sqlite_database() {
+  local source="$1"
+  local destination="$2"
+  python3 -c '
+import sqlite3
+import sys
+with sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True) as source:
+    with sqlite3.connect(sys.argv[2]) as destination:
+        source.backup(destination)
+' "${source}" "${destination}"
+  chmod 0600 "${destination}"
+}
+
+prepare_upgrade_recovery() {
+  [[ "${UPGRADE_MODE}" -eq 1 ]] || return 0
+  install -d -o root -g root -m 0700 "${RECOVERY_ROOT}"
+  RECOVERY_DIR="$(mktemp -d "${RECOVERY_ROOT}/pre-upgrade.XXXXXXXX")"
+  chmod 0700 "${RECOVERY_DIR}"
+  install -d -m 0700 "${RECOVERY_DIR}/files"
+
+  if [[ -f "${DATA_DIR}/exitlane.db" ]]; then
+    snapshot_sqlite_database \
+      "${DATA_DIR}/exitlane.db" \
+      "${RECOVERY_DIR}/exitlane.db"
+  fi
+  for path in \
+    "${TARGET}" \
+    "${CONFIG_DIR}" \
+    "${SERVICE_TARGET}" \
+    "${KILLSWITCH_SERVICE_TARGET}" \
+    "${PROVIDER_INSTALL_SERVICE_TARGET}" \
+    "${DEFAULTS_TARGET}"; do
+    if [[ -e "${path}" ]]; then
+      cp -a --parents "${path}" "${RECOVERY_DIR}/files"
+    fi
+  done
+  printf '%s\n' "${INSTALLER_VERSION}" > "${RECOVERY_DIR}/target-version"
+  chmod -R go-rwx "${RECOVERY_DIR}"
+  success "Root-only pre-upgrade recovery snapshot gemaakt"
+}
+
+rollback_upgrade() {
+  warning "Upgrade mislukt; vorige ExitLane-installatie wordt hersteld"
+  systemctl stop "${SERVICE_NAME}" >/dev/null 2>&1 || true
+  if [[ -d "${RECOVERY_DIR}/files" ]]; then
+    cp -a "${RECOVERY_DIR}/files/." /
+  fi
+  if [[ -f "${RECOVERY_DIR}/exitlane.db" ]]; then
+    install -o root -g root -m 0600 \
+      "${RECOVERY_DIR}/exitlane.db" \
+      "${DATA_DIR}/exitlane.db"
+  fi
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  systemctl restart "${SERVICE_NAME}" >/dev/null 2>&1 || true
+  warning "Rollback uitgevoerd; recovery snapshot behouden in ${RECOVERY_DIR}"
+}
+
+commit_upgrade() {
+  [[ "${UPGRADE_MODE}" -eq 1 ]] || return 0
+  printf '%s\n' "${INSTALLER_VERSION}" > "${DATA_DIR}/installed-version"
+  chmod 0600 "${DATA_DIR}/installed-version"
+  UPGRADE_COMMITTED=1
+  success "Upgrade transactioneel afgerond; recovery: ${RECOVERY_DIR}"
 }
 
 require_systemd() {
@@ -437,6 +556,7 @@ main() {
   echo
 
   require_root
+  acquire_lifecycle_lock
   detect_operating_system
   require_systemd
   check_source_layout
@@ -449,8 +569,11 @@ main() {
   check_connectivity
   check_network_administration
 
+  detect_installation_mode
+  check_free_space
   create_directories
   create_master_key
+  prepare_upgrade_recovery
   stop_existing_service
   copy_application
   create_virtual_environment
@@ -459,6 +582,7 @@ main() {
   install_service_files
   configure_ip_forwarding
   start_service
+  commit_upgrade
   show_summary
 }
 

@@ -26,3 +26,17 @@ def test_installer_creates_new_defaults_and_preserves_existing_installation(tmp_
     target.write_text("EXISTING_CONFIGURATION=preserved\n", encoding="utf-8")
     subprocess.run(["bash", "-c", command], check=True)
     assert target.read_text(encoding="utf-8") == "EXISTING_CONFIGURATION=preserved\n"
+
+
+def test_installer_has_locked_upgrade_snapshot_and_rollback_contract():
+    installer = INSTALLER.read_text(encoding="utf-8")
+
+    assert 'flock -n "${LOCK_FD}"' in installer
+    assert "snapshot_sqlite_database" in installer
+    assert "source.backup(destination)" in installer
+    assert "prepare_upgrade_recovery" in installer
+    assert "rollback_upgrade" in installer
+    assert "commit_upgrade" in installer
+    assert 'dpkg --compare-versions "${CURRENT_VERSION}" gt "${INSTALLER_VERSION}"' in installer
+    assert installer.index("prepare_upgrade_recovery") < installer.index("stop_existing_service")
+    assert installer.index("stop_existing_service") < installer.index("copy_application")
