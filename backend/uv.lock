@@ -375,7 +375,7 @@ wheels = [
 
 [[package]]
 name = "exitlane"
-version = "0.2.0a1"
+version = "0.2.0b1"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },
