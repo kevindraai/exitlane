@@ -183,6 +183,11 @@ def test_installer_places_fixed_helper_and_unit_without_installing_nordvpn():
     assert "install -o root -g root -m 0644" in installer
     assert "apt-get install -y -qq nordvpn" not in installer
     assert "ExecStart=/usr/local/libexec/exitlane-install-nordvpn" in unit
+    assert "Environment=HOME=/root" in unit
+    assert "Environment=USER=root" in unit
+    assert "Environment=LOGNAME=root" in unit
+    assert "ProtectHome=true" in unit
+    assert "PrivateTmp=true" in unit
     assert "bash -c" not in helper
     assert "eval " not in helper
     assert '[[ "$#" -eq 0 ]]' in helper
