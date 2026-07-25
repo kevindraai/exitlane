@@ -25,25 +25,27 @@ blocker and the pull request must remain draft.
 
 ## Appliance lifecycle
 
-- [ ] Clean Debian 13 beta install and wizard.
+- [x] Clean Debian 13 beta install (provider-authenticated wizard remains open).
 - [x] Exact alpha baseline clean install and representative configuration.
 - [x] Alpha-to-beta upgrade and automatic protected pre-upgrade snapshot.
 - [ ] Settings, MFA, recovery codes, sessions, Activity, reverse proxy, trusted
   proxies, WireGuard, NordVPN, token renewal, and killswitch preserved.
 - [x] Candidate installer is idempotent when run a second time.
-- [ ] Injected upgrade failure restores code, database, configuration, units,
+- [x] Injected upgrade failure restores code, database, configuration, units,
   version state, permissions, and a healthy service without secret leakage.
 - [x] Encrypted backup create, inspect, verify, restore, and old-session rejection.
-- [ ] Disaster restore onto a clean beta appliance.
+- [x] Disaster restore onto a clean beta appliance.
 - [ ] Malicious restore corpus leaves active data and service intact and cleans
   staging plaintext.
-- [ ] IPv4, IPv6, DNS UDP/TCP, fail-closed tunnel loss, recovery, and preservation
+- [ ] IPv4, IPv6, DNS UDP/TCP and tunnel-present leak tests; fail-closed
+  tunnel-unavailable state, recovery, and preservation
   of non-ExitLane nftables tables.
 
 ## Web and operational security
 
-- [ ] Bounded passive and active scan target only `172.16.130.81`.
-- [ ] Unauthenticated and authenticated crawl; docs/OpenAPI authorization.
+- [ ] Bounded active scan target only `172.16.130.81`; passive CI scan passed.
+- [ ] Authenticated crawl; unauthenticated route matrix and docs/OpenAPI
+  authorization passed.
 - [ ] Login/MFA enumeration, replay, concurrency, rate limiting, expiry, rotation,
   revocation, password change, and local recovery.
 - [ ] Setup/access route variants, CSRF origin/content-type matrix, trusted-proxy
