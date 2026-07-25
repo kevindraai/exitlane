@@ -78,6 +78,9 @@ The installer creates `/etc/exitlane/secret.key` with mode `0600` and never repl
 upgrade. Preserve the database and key together. Losing the key never bypasses MFA: run
 `sudo exitlane-cli disable-mfa` locally and enroll again.
 
-The current release has no built-in update, rollback, backup, or restore workflow. Preserve the
-appliance's configuration and data directories using an operator-managed backup process, and test
-changes on a separate LXC before applying them to a live gateway.
+ExitLane provides root-only encrypted appliance backup and strictly validated restore commands.
+Create and verify a portable backup before upgrading, retain the installer's protected local
+recovery snapshot until post-upgrade validation is complete, and test changes on a separate LXC
+before applying them to a live gateway. See the
+[backup and restore](backup-and-restore.md) and
+[upgrade and recovery](upgrade-and-recovery.md) guides.
