@@ -430,6 +430,7 @@ def restore_backup(
     effective_user_id: int | None = None,
     lock_path: Path = LOCK_PATH,
     service_action: Callable[[str], None] | None = None,
+    health_check: Callable[[], bool] | None = None,
 ) -> BackupInfo:
     _root_only(effective_user_id)
     if confirmation != "RESTORE EXITLANE":
@@ -480,6 +481,8 @@ def restore_backup(
             if service_action:
                 service_action("start")
             _inspect_database(core.DB)
+            if health_check and not health_check():
+                raise LifecycleError("restored_service_unhealthy")
         except Exception:
             os.replace(recovery_dir / "database.sqlite3", core.DB)
             os.replace(recovery_dir / "master-key", CONFIG_DIR / "secret.key")

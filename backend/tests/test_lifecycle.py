@@ -155,3 +155,31 @@ def test_future_database_schema_stops_before_application_migrations(
         connection.execute("UPDATE schema_version SET version=999 WHERE singleton=1")
     with pytest.raises(core.SettingsStorageError, match="Unsupported database schema"):
         core.init()
+
+
+def test_failed_restore_health_check_rolls_database_back(
+    appliance: dict[str, Path], tmp_path: Path
+) -> None:
+    destination = tmp_path / "appliance.elb"
+    lifecycle.create_backup(
+        destination,
+        "correct horse battery staple",
+        effective_user_id=0,
+        lock_path=appliance["lock"],
+    )
+    core.set_setting("language", "state-before-failed-restore")
+    actions: list[str] = []
+
+    with pytest.raises(lifecycle.LifecycleError, match="restored_service_unhealthy"):
+        lifecycle.restore_backup(
+            destination,
+            "correct horse battery staple",
+            confirmation="RESTORE EXITLANE",
+            effective_user_id=0,
+            lock_path=appliance["lock"],
+            service_action=actions.append,
+            health_check=lambda: False,
+        )
+
+    assert core.setting("language") == "state-before-failed-restore"
+    assert actions == ["stop", "start", "start"]

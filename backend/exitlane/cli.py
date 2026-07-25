@@ -8,6 +8,9 @@ import sqlite3
 import stat
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -314,6 +317,18 @@ def _systemd_service_action(action: str) -> None:
     )
 
 
+def _local_health_check() -> bool:
+    url = f"http://127.0.0.1:{os.getenv('EXITLANE_PORT', '8787')}/api/health"
+    for _attempt in range(15):
+        try:
+            with urllib.request.urlopen(url, timeout=2) as response:
+                if response.status == 200:
+                    return True
+        except (OSError, urllib.error.URLError):
+            time.sleep(1)
+    return False
+
+
 def backup_command(arguments: argparse.Namespace) -> int:
     try:
         passphrase = _read_backup_passphrase(
@@ -335,6 +350,7 @@ def backup_command(arguments: argparse.Namespace) -> int:
                 passphrase,
                 confirmation=confirmation,
                 service_action=_systemd_service_action,
+                health_check=_local_health_check,
             )
             print("Backup restored. Existing sessions were revoked.")
         print(f"Backup ID: {info.backup_id}")
