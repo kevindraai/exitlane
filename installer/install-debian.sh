@@ -178,12 +178,7 @@ rollback_upgrade() {
   warning "Upgrade mislukt; vorige ExitLane-installatie wordt hersteld"
   systemctl stop "${SERVICE_NAME}" >/dev/null 2>&1 || true
   if [[ -d "${RECOVERY_DIR}/files" ]]; then
-    local top_level
-    for top_level in "${RECOVERY_DIR}/files"/*; do
-      [[ -d "${top_level}" ]] || continue
-      install -d -m 0755 "/$(basename "${top_level}")"
-      cp -a "${top_level}/." "/$(basename "${top_level}")/"
-    done
+    restore_recovery_files "${RECOVERY_DIR}/files" /
   fi
   if [[ -f "${RECOVERY_DIR}/exitlane.db" ]]; then
     install -o root -g root -m 0600 \
@@ -193,6 +188,27 @@ rollback_upgrade() {
   systemctl daemon-reload >/dev/null 2>&1 || true
   systemctl restart "${SERVICE_NAME}" >/dev/null 2>&1 || true
   warning "Rollback uitgevoerd; recovery snapshot behouden in ${RECOVERY_DIR}"
+}
+
+restore_recovery_files() {
+  local recovery_files="$1"
+  local destination_root="${2:-/}"
+  local top_level
+  local destination
+  local saved
+  local -a saved_entries=()
+
+  for top_level in "${recovery_files}"/*; do
+    [[ -d "${top_level}" ]] || continue
+    destination="${destination_root%/}/$(basename "${top_level}")"
+    install -d -m 0755 "${destination}"
+    shopt -s dotglob nullglob
+    saved_entries=("${top_level}"/*)
+    shopt -u dotglob nullglob
+    for saved in "${saved_entries[@]}"; do
+      cp -a "${saved}" "${destination}/"
+    done
+  done
 }
 
 commit_upgrade() {

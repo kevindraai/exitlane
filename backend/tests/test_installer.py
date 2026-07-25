@@ -38,7 +38,8 @@ def test_installer_has_locked_upgrade_snapshot_and_rollback_contract():
     assert "prepare_upgrade_recovery" in installer
     assert "rollback_upgrade" in installer
     assert 'cp -a "${RECOVERY_DIR}/files/." /' not in installer
-    assert 'cp -a "${top_level}/." "/$(basename "${top_level}")/"' in installer
+    assert 'cp -a "${top_level}/." "/$(basename "${top_level}")/"' not in installer
+    assert 'restore_recovery_files "${RECOVERY_DIR}/files" /' in installer
     assert "commit_upgrade" in installer
     assert 'readonly PACKAGE_VERSION="0.2.0b1"' in installer
     assert 'dpkg --compare-versions "${CURRENT_VERSION}" gt "${PACKAGE_VERSION}"' in installer
@@ -75,3 +76,24 @@ def test_deploy_script_fails_closed_on_unexpected_lxc_identity():
     assert 'EXPECTED_TEST_IP="${EXITLANE_TEST_IP:-172.16.130.81}"' in deploy
     assert deploy.index("EXPECTED_TEST_IP") < deploy.index("rsync -az")
     assert "Refusing deployment" in deploy
+
+
+def test_recovery_file_restore_preserves_top_level_directory_modes(tmp_path):
+    recovery = tmp_path / "recovery"
+    target = tmp_path / "target"
+    (recovery / "etc" / "exitlane").mkdir(parents=True, mode=0o700)
+    (recovery / "opt" / "exitlane").mkdir(parents=True, mode=0o700)
+    (recovery / "etc").chmod(0o700)
+    (recovery / "opt").chmod(0o700)
+    (recovery / "etc" / "exitlane" / "setting").write_text("preserved", encoding="utf-8")
+    (recovery / "opt" / "exitlane" / "version").write_text("beta", encoding="utf-8")
+    (target / "etc").mkdir(parents=True, mode=0o755)
+    (target / "opt").mkdir(parents=True, mode=0o755)
+    command = f"source {INSTALLER}; restore_recovery_files {recovery} {target}"
+
+    subprocess.run(["bash", "-c", command], check=True)
+
+    assert (target / "etc").stat().st_mode & 0o777 == 0o755
+    assert (target / "opt").stat().st_mode & 0o777 == 0o755
+    assert (target / "etc" / "exitlane" / "setting").read_text(encoding="utf-8") == "preserved"
+    assert (target / "opt" / "exitlane" / "version").read_text(encoding="utf-8") == "beta"
