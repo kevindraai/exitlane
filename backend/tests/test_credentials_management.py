@@ -210,34 +210,66 @@ def test_uncontrolled_provider_error_is_not_reflected(client, monkeypatch):
     assert marker not in response.text
 
 
-def test_nordvpn_token_login_has_bounded_explicit_subprocess_mitigations(monkeypatch, caplog):
+def test_nordvpn_token_login_uses_sanitized_pty_boundary(monkeypatch, caplog):
     marker = "dummy-token-never-log-1234567890"
     captured = {}
 
-    async def safe_command(*arguments, **options):
-        captured["arguments"] = arguments
+    async def safe_pty(token, **options):
+        captured["token"] = token
         captured["options"] = options
-        return 1, "", "upstream rejected credentials"
+        return 1
 
-    monkeypatch.setattr(nordvpn, "command", safe_command)
+    monkeypatch.setattr(nordvpn, "_login_token_via_pty", safe_pty)
     result = asyncio.run(nordvpn.provider.login_token(marker))
-    assert captured["arguments"] == ("nordvpn", "login", "--token", marker)
-    assert captured["options"]["timeout"] == nordvpn.TOKEN_LOGIN_TIMEOUT_SECONDS
-    assert marker not in captured["options"]["environment"].values()
-    assert "environment" in captured["options"]
+    assert captured == {"token": marker, "options": {}}
     assert result["error"] == "provider_error"
     assert marker not in str(result)
     assert marker not in caplog.text
 
 
 def test_nordvpn_token_timeout_is_safely_classified(monkeypatch):
-    async def timed_out(*_arguments, **_options):
-        return 124, "", "timeout"
+    async def timed_out(_token, **_options):
+        return 124
 
-    monkeypatch.setattr(nordvpn, "command", timed_out)
+    monkeypatch.setattr(nordvpn, "_login_token_via_pty", timed_out)
     result = asyncio.run(nordvpn.provider.login_token("dummy-timeout-token-123456789"))
     assert result["ok"] is False
     assert result["error"] == "timeout"
+
+
+def test_nordvpn_secure_pty_never_places_token_in_argv(tmp_path, monkeypatch):
+    marker = "dummy-token-never-argv-1234567890"
+    executable = tmp_path / "fake-nordvpn"
+    executable.write_text(
+        """#!/usr/bin/python3
+import getpass
+import sys
+
+if sys.argv[1:] != ["login", "--token"]:
+    raise SystemExit(2)
+consent = input("Do you allow us to collect and use limited app performance data? (y/n)")
+if consent != "n":
+    raise SystemExit(4)
+value = getpass.getpass("Enter access token: ")
+raise SystemExit(0 if value.startswith("dummy-token-") and len(value) >= 20 else 3)
+""",
+        encoding="utf-8",
+    )
+    executable.chmod(0o700)
+    original = asyncio.create_subprocess_exec
+    arguments = []
+
+    async def capture(*args, **options):
+        arguments.append(args)
+        return await original(*args, **options)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", capture)
+    result = asyncio.run(
+        nordvpn._login_token_via_pty(marker, executable=str(executable), timeout=3)
+    )
+    assert result == 0
+    assert arguments == [(str(executable), "login", "--token")]
+    assert marker not in str(arguments)
 
 
 @pytest.mark.parametrize(

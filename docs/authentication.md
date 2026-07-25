@@ -44,18 +44,21 @@ The command prompts twice without echo, applies the same password policy, revoke
 and records a secret-free Activity event. It intentionally has no password argument, HTTP
 endpoint, reset token, or remote flow.
 
-## NordVPN token subprocess exception
+## NordVPN token subprocess boundary
 
-The supported upstream NordVPN CLI requires headless token login as
-`nordvpn login --token <token>` and documents no stdin- or file-based alternative. Only for this
-provider operation, Exitlane therefore supplies the token temporarily as a local subprocess
-argument. Local accounts with sufficient process-inspection privileges may be able to observe it
-during that short operation.
+NordVPN Linux 5.2 supports a masked interactive token prompt when
+`nordvpn login --token` is invoked without a token argument. Exitlane attaches a
+private pseudo-terminal, waits until the provider has disabled terminal echo,
+then writes the validated token to that terminal. The process argument list
+contains only `nordvpn login --token`; the token is never placed in argv, the
+environment, stdout or stderr.
 
-Exitlane invokes a fixed argument array without a shell, uses a short timeout and restricted
-non-secret environment, and never logs, stores in its own configuration, reflects, or adds the
-token to Activity metadata. This is an upstream provider-interface limitation. Future providers
-must not inherit this exception automatically.
+Exitlane uses a short timeout and restricted non-secret environment, discards
+all provider terminal output for this operation, and never logs, persists,
+reflects or adds the token to Activity metadata. This PTY adapter is specific to
+the verified NordVPN interface. If NordVPN presents its first-run analytics
+consent before the token prompt, Exitlane explicitly answers no. Future
+providers must define and test their own secret-input boundary.
 
 The CLI also offers no supported, non-destructive way to validate a replacement token while an
 account session is active. Exitlane therefore never logs out automatically or claims that it
