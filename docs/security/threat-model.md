@@ -1,10 +1,10 @@
 # Exitlane threat model
 
-Status: alpha baseline, reviewed 2026-07-22. A trusted management network is a deployment assumption, not a substitute for application security.
+Status: beta candidate, reviewed 2026-07-25. A trusted management network is a deployment assumption, not a substitute for application security.
 
 ## System and trust boundaries
 
-The browser loads same-origin static HTML/JavaScript and sends credentials and a HttpOnly session cookie to FastAPI. FastAPI validates authentication, setup state, CSRF source and request models before reading SQLite or invoking explicit-argv subprocesses. SQLite and generated WireGuard files cross the application/filesystem boundary. NordVPN CLI, `wg`, `ip`, `systemctl` and `wg-quick` cross into privileged host and provider-controlled components. systemd starts Exitlane as root because the current alpha directly configures networking and WireGuard; Linux, the NordVPN daemon and router are separate trust domains. The router consumes a downloaded private client configuration.
+The browser loads same-origin static HTML/JavaScript and sends credentials and a HttpOnly session cookie to FastAPI. FastAPI validates authentication, setup state, CSRF source and request models before reading SQLite or invoking explicit-argv subprocesses. SQLite and generated WireGuard files cross the application/filesystem boundary. NordVPN CLI, `wg`, `ip`, `systemctl` and `wg-quick` cross into privileged host and provider-controlled components. systemd starts Exitlane as root because the beta candidate directly configures networking and WireGuard; Linux, the NordVPN daemon and router are separate trust domains. The router consumes a downloaded private client configuration.
 
 Before setup, health/session plus the allowlisted wizard operations are public on the management network. Completion closes that bootstrap boundary; all API routes except health, login and session then require a valid session. `/`, static assets and passive partials remain public; docs/OpenAPI require authentication.
 
@@ -26,7 +26,7 @@ Plausible attackers include an unauthorised management-LAN user, compromised bro
 | Malicious provider/subprocess output | Secret leak, UI injection or parser confusion | Parsers and frontend `textContent` in dynamic paths | Safe error codes, bounded Activity metadata, CSP | Some setup diagnostic/provider output remains visible to an authorised/setup operator; deferred sanitisation review |
 | Local Linux file read/write | Credential/key/database theft | 0700 directories, 0600 key files, umask 0077 | systemd filesystem sandbox and permission tests | Root or equivalent host control defeats these controls |
 | Compromised dependency or Action | Build/runtime compromise | Narrow dependencies | CodeQL, Bandit, pip-audit, dependency review, Gitleaks, SHA-pinned Actions, Dependabot | Python ranges are not a lockfile; reproducible constraints are deferred |
-| Malicious backup/update/release | Persistent compromise | Manual operator workflow | release checklist, package-content and checksum review | No signed update channel exists in alpha |
+| Malicious backup/update/release | Persistent compromise | Authenticated encrypted backup format, strict restore staging, lifecycle lock, root-only recovery snapshot and downgrade rejection | Lifecycle negative tests, release checklist, package-content and checksum review | No signed update channel exists; operators must verify trusted source provenance |
 | Proxy/Internet misconfiguration | Client-IP/CSRF/cookie downgrade | Forwarded headers accepted only from configured IP/CIDR peers | Right-to-left chain parsing, reliable HTTPS status and conditional HSTS | Incorrectly broad operator trust remains dangerous |
 | Logs/errors/Activity mined | Secret disclosure | allowlisted metadata and generic auth/storage errors | size/control-character bounds, scanner checks | system journal contains third-party process messages outside application control |
 
@@ -36,6 +36,11 @@ Database-only theft does not expose the encrypted TOTP secret or usable recovery
 separate masterkey. Theft of both permits offline verification/decryption. Local root compromise
 defeats the application key, CLI and filesystem boundaries.
 
-## Accepted alpha assumptions
+## Beta assumptions and boundaries
 
-Exitlane is single-administrator, single-appliance software on a firewalled management VLAN. Root service execution, headerless non-browser writes, public static shell assets, memory-only/no login throttling, dependency ranges without a lock and no MFA are accepted or deferred alpha risks. Public Internet exposure, untrusted shared hosting and permanent active-scan targets are unsupported.
+Exitlane is single-administrator, single-appliance software on a firewalled management VLAN.
+MFA, one-time recovery codes, active-session management, encrypted backup, verified local restore,
+and an appliance upgrade/recovery path are present. Root service execution, headerless non-browser
+writes, public static shell assets and memory-only login throttling remain explicit beta risks.
+Public Internet exposure, untrusted shared hosting and permanent active-scan targets are
+unsupported. See `security-assurance-matrix.md` for test traceability and open appliance gates.
