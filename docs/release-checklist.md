@@ -26,14 +26,14 @@ blocker and the pull request must remain draft.
 ## Appliance lifecycle
 
 - [ ] Clean Debian 13 beta install and wizard.
-- [ ] Exact alpha baseline clean install and representative configuration.
-- [ ] Alpha-to-beta upgrade and automatic protected pre-upgrade snapshot.
+- [x] Exact alpha baseline clean install and representative configuration.
+- [x] Alpha-to-beta upgrade and automatic protected pre-upgrade snapshot.
 - [ ] Settings, MFA, recovery codes, sessions, Activity, reverse proxy, trusted
   proxies, WireGuard, NordVPN, token renewal, and killswitch preserved.
-- [ ] Candidate installer is idempotent when run a second time.
+- [x] Candidate installer is idempotent when run a second time.
 - [ ] Injected upgrade failure restores code, database, configuration, units,
   version state, permissions, and a healthy service without secret leakage.
-- [ ] Encrypted backup create, inspect, verify, restore, and old-session rejection.
+- [x] Encrypted backup create, inspect, verify, restore, and old-session rejection.
 - [ ] Disaster restore onto a clean beta appliance.
 - [ ] Malicious restore corpus leaves active data and service intact and cleans
   staging plaintext.

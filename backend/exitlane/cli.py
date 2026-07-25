@@ -6,7 +6,6 @@ import getpass
 import os
 import sqlite3
 import stat
-import subprocess
 import sys
 import time
 import urllib.error
@@ -309,19 +308,25 @@ def _read_backup_passphrase(
 
 
 def _systemd_service_action(action: str) -> None:
-    subprocess.run(
-        ["/usr/bin/systemctl", action, "exitlane.service"],
-        check=True,
-        timeout=30,
-        env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C"},
+    returncode, _output, _error = asyncio.run(
+        core.command(
+            "/usr/bin/systemctl",
+            action,
+            "exitlane.service",
+            timeout=30,
+            environment={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C"},
+        )
     )
+    if returncode:
+        raise OSError("service action failed")
 
 
 def _local_health_check() -> bool:
     url = f"http://127.0.0.1:{os.getenv('EXITLANE_PORT', '8787')}/api/health"
     for _attempt in range(15):
         try:
-            with urllib.request.urlopen(url, timeout=2) as response:
+            # Fixed loopback HTTP scheme and host; only the validated configured port varies.
+            with urllib.request.urlopen(url, timeout=2) as response:  # nosec B310
                 if response.status == 200:
                     return True
         except (OSError, urllib.error.URLError):
@@ -362,7 +367,7 @@ def backup_command(arguments: argparse.Namespace) -> int:
     except lifecycle.LifecycleError as error:
         print(f"Backup operation failed: {error.code}.", file=sys.stderr)
         return 2
-    except (OSError, subprocess.SubprocessError):
+    except OSError:
         print("Backup operation failed: local_operation_failed.", file=sys.stderr)
         return 1
 

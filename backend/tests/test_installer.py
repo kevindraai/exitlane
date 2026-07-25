@@ -6,6 +6,7 @@ from exitlane.services import network_security
 ROOT = Path(__file__).resolve().parents[2]
 INSTALLER = ROOT / "installer" / "install-debian.sh"
 DEFAULTS = ROOT / "installer" / "exitlane.default"
+DEPLOY_SCRIPT = ROOT / "scripts" / "deploy_worktree_to_test.sh"
 
 
 def test_new_installer_defaults_omit_optional_reverse_proxy_environment_variables():
@@ -65,3 +66,12 @@ def test_explicit_installer_failure_invokes_upgrade_rollback(tmp_path):
 
     assert result.returncode == 1
     assert marker.read_text(encoding="utf-8") == "rolled-back"
+
+
+def test_deploy_script_fails_closed_on_unexpected_lxc_identity():
+    deploy = DEPLOY_SCRIPT.read_text(encoding="utf-8")
+
+    assert 'HOST="${EXITLANE_TEST_HOST:-exitlane-reference}"' in deploy
+    assert 'EXPECTED_TEST_IP="${EXITLANE_TEST_IP:-172.16.130.81}"' in deploy
+    assert deploy.index("EXPECTED_TEST_IP") < deploy.index("rsync -az")
+    assert "Refusing deployment" in deploy
