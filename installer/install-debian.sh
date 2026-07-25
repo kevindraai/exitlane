@@ -4,6 +4,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 
 readonly INSTALLER_VERSION="0.2.0-beta.1"
+readonly PACKAGE_VERSION="0.2.0b1"
 readonly LIFECYCLE_LOCK="${EXITLANE_LIFECYCLE_LOCK:-/run/lock/exitlane-lifecycle.lock}"
 readonly RECOVERY_ROOT="${EXITLANE_RECOVERY_ROOT:-/var/lib/exitlane/recovery}"
 UPGRADE_MODE=0
@@ -106,7 +107,7 @@ detect_installation_mode() {
       )"
     fi
     if [[ -n "${CURRENT_VERSION}" ]] &&
-      dpkg --compare-versions "${CURRENT_VERSION}" gt "${INSTALLER_VERSION}"; then
+      dpkg --compare-versions "${CURRENT_VERSION}" gt "${PACKAGE_VERSION}"; then
       fail "Downgrade van ${CURRENT_VERSION} naar ${INSTALLER_VERSION} wordt geweigerd."
     fi
     log "Bestaande ExitLane-installatie gedetecteerd"

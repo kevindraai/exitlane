@@ -37,6 +37,14 @@ def test_installer_has_locked_upgrade_snapshot_and_rollback_contract():
     assert "prepare_upgrade_recovery" in installer
     assert "rollback_upgrade" in installer
     assert "commit_upgrade" in installer
-    assert 'dpkg --compare-versions "${CURRENT_VERSION}" gt "${INSTALLER_VERSION}"' in installer
+    assert 'readonly PACKAGE_VERSION="0.2.0b1"' in installer
+    assert 'dpkg --compare-versions "${CURRENT_VERSION}" gt "${PACKAGE_VERSION}"' in installer
     assert installer.index("prepare_upgrade_recovery") < installer.index("stop_existing_service")
     assert installer.index("stop_existing_service") < installer.index("copy_application")
+
+
+def test_alpha_package_version_is_not_classified_as_newer_than_beta():
+    subprocess.run(
+        ["dpkg", "--compare-versions", "0.2.0a1", "lt", "0.2.0b1"],
+        check=True,
+    )
