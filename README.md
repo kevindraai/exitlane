@@ -6,7 +6,7 @@ Exitlane is a self-hosted egress gateway for routers, VLANs, and applications. I
 browser-based control plane for routing traffic through a VPN without coupling the core to a
 specific router platform.
 
-The current beta candidate has a provider-neutral VPN core with NordVPN as its first implementation,
+The current beta release has a provider-neutral VPN core with NordVPN as its first implementation,
 and accepts traffic through the independent WireGuard ingress.
 Exitlane is intended for a trusted management network and is currently tested primarily on a
 Debian-based Proxmox LXC.

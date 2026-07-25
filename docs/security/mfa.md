@@ -21,6 +21,7 @@ sudo exitlane-cli disable-mfa
 
 There is no remote bypass. If the masterkey is lost or cannot decrypt the secret, login does not
 fall back to password-only; use the same local command. Preserve the database and masterkey
-together in any operator-managed backup. ExitLane has no built-in backup/restore feature.
+together with ExitLane's root-only encrypted appliance backup. Verify the backup before an
+upgrade or restore; see the [backup and restore guide](../backup-and-restore.md).
 
 TOTP is not phishing-resistant. Verify the ExitLane origin before entering a code.
