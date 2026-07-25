@@ -48,3 +48,18 @@ def test_alpha_package_version_is_not_classified_as_newer_than_beta():
         ["dpkg", "--compare-versions", "0.2.0a1", "lt", "0.2.0b1"],
         check=True,
     )
+
+
+def test_explicit_installer_failure_invokes_upgrade_rollback(tmp_path):
+    marker = tmp_path / "rollback-called"
+    command = (
+        f"source {INSTALLER}; "
+        "UPGRADE_MODE=1; UPGRADE_COMMITTED=0; RECOVERY_DIR=/tmp/recovery-test; "
+        f"rollback_upgrade() {{ printf rolled-back > {marker}; }}; "
+        "fail injected-test-failure"
+    )
+
+    result = subprocess.run(["bash", "-c", command], check=False, capture_output=True, text=True)
+
+    assert result.returncode == 1
+    assert marker.read_text(encoding="utf-8") == "rolled-back"

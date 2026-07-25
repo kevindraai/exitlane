@@ -76,6 +76,10 @@ warning() {
 
 fail() {
   printf '\033[1;31m✗\033[0m %s\n' "$*" >&2
+  if [[ "${UPGRADE_MODE}" -eq 1 && "${UPGRADE_COMMITTED}" -eq 0 && -n "${RECOVERY_DIR}" ]]; then
+    rollback_upgrade || true
+    RECOVERY_DIR=""
+  fi
   exit 1
 }
 
