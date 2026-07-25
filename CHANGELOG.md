@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.2.0-beta.1] - 2026-07-25
+
+### Added
+
+- Root-only encrypted appliance backup create, inspect, verify, and restore commands.
+- Versioned authenticated backup envelope, logical manifest, checksums, and strict archive limits.
+- Explicit monotonic SQLite schema version and fail-closed future-schema handling.
+- Locked Debian alpha-to-beta upgrade with root-only pre-upgrade recovery snapshots.
+- Automatic restoration of previous code, data, configuration, and systemd units after an
+  installer failure.
+- Traceable STRIDE/ASVS security-assurance matrix and lifecycle adversarial regressions.
+
+### Changed
+
+- Restore revokes all sessions, pending MFA enrollments, and outstanding MFA challenges.
+- The installer now distinguishes clean install and upgrade, checks free space, preserves local
+  operator defaults, refuses downgrades, and records the installed version after health succeeds.
+- Security, hardening, deployment, roadmap, and recovery documentation now describe the beta
+  lifecycle boundary.
+
+### Security
+
+- Backups use scrypt with unique salts and AES-256-GCM with unique nonces; the complete payload and
+  bounded header are authenticated before archive parsing.
+- Restore rejects untrusted paths, links, special files, duplicate names, unknown logical types,
+  missing mandatory secrets, excessive sizes/counts/ratios, checksum failures, corrupt SQLite, and
+  future schemas.
+
+### Upgrade notes and known limitations
+
+- Run `sudo ./installer/install-debian.sh` from a trusted beta checkout to upgrade
+  `0.2.0-alpha.1`; create and verify an encrypted backup first.
+- There is no signed automatic update channel. Local recovery snapshots contain plaintext secrets
+  and must remain root-only. TLS termination remains external and direct Internet exposure is not
+  supported.
+- Independent security review, an independent penetration test, WebAuthn, high availability,
+  public API, plugins, and additional providers remain future work.
+
 ## Unreleased
 
 - Added optional TOTP MFA, encrypted secrets, one-time hashed recovery codes, replay protection,
