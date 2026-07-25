@@ -43,8 +43,9 @@ blocker and the pull request must remain draft.
 
 ## Web and operational security
 
-- [ ] Bounded active scan target only `172.16.130.81`; passive CI scan passed.
-- [ ] Authenticated crawl; unauthenticated route matrix and docs/OpenAPI
+- [x] Bounded read-only active scan targeted only `172.16.130.81`; passive CI
+  scan passed on the earlier candidate.
+- [x] Authenticated crawl; unauthenticated route matrix and docs/OpenAPI
   authorization passed.
 - [ ] Login/MFA enumeration, replay, concurrency, rate limiting, expiry, rotation,
   revocation, password change, and local recovery.

@@ -87,10 +87,25 @@ and WireGuard configurations remained unchanged; SQLite integrity and HTTP
 health passed; no restore staging directory remained. The encrypted corpus,
 passphrase, and generator were then deleted.
 
+A temporary 48-byte-url-safe administrator password was generated and used
+entirely inside a root process on the LXC. The existing TOTP secret was decrypted
+only in that process to complete MFA; no recovery code was consumed. Secure
+challenge/session cookies remained in memory and were sent only to the fixed
+`172.16.130.81:8787` target with the configured trusted public Origin.
+
+The bounded scan ran 5 public GETs, 14 authenticated GETs, 13 HEADs, 13 OPTIONS
+and 42 read-only injection/header/path probes. Mutating credential, settings,
+setup, provider, killswitch, WireGuard and notification routes were hard
+excluded. It observed no HTTP 5xx or finding. The original password verifier was
+restored, all temporary sessions and challenges were deleted, MFA and all ten
+unused recovery codes remained, and service health passed. The root-only
+credential, cookies, scanner and sanitized summary were removed. No ZAP context,
+request archive or response artifact was created, and Activity metadata
+contained no password, token or cookie fields.
+
 Provider credential/login/token-renewal testing, tunnel-present IPv4/IPv6/DNS
-leak tests, authenticated crawling, and bounded active scanning remain
-incomplete because no test provider token or retained administrator credential
-was supplied. Pull request #34 therefore remains draft.
+leak tests and recovery remain incomplete because no disposable test provider
+token file path has been supplied. Pull request #34 therefore remains draft.
 
 The provider wizard was not completed because no test NordVPN token was supplied.
 Setup completion was set locally only to create migration evidence; this is not
