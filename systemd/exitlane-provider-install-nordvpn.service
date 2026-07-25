@@ -8,6 +8,9 @@ Type=oneshot
 ExecStart=/usr/local/libexec/exitlane-install-nordvpn
 TimeoutStartSec=5min
 UMask=0077
+Environment=HOME=/run/exitlane-provider-install
+Environment=USER=root
+Environment=LOGNAME=root
 RuntimeDirectory=exitlane-provider-install
 RuntimeDirectoryMode=0700
 RuntimeDirectoryPreserve=yes

@@ -23,6 +23,16 @@ def init():
     DATA.mkdir(parents=True, exist_ok=True, mode=0o700)
     WG_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     with sqlite3.connect(DB) as c:
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS schema_version(
+                singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                version INTEGER NOT NULL CHECK(version >= 1)
+            )"""
+        )
+        c.execute("INSERT OR IGNORE INTO schema_version(singleton, version) VALUES(1, 1)")
+        schema = c.execute("SELECT version FROM schema_version WHERE singleton=1").fetchone()
+        if schema != (1,):
+            raise SettingsStorageError("Unsupported database schema version")
         c.executescript(
             """
             CREATE TABLE IF NOT EXISTS settings(
@@ -146,6 +156,14 @@ def init():
         c.execute("CREATE UNIQUE INDEX IF NOT EXISTS sessions_public_id_idx ON sessions(public_id)")
         # Legacy sessions lack the metadata needed to enforce the new idle policy.
         c.execute("DELETE FROM sessions WHERE public_id IS NULL")
+
+
+def database_schema_version() -> int:
+    with sqlite3.connect(DB) as connection:
+        row = connection.execute("SELECT version FROM schema_version WHERE singleton=1").fetchone()
+    if row is None or not isinstance(row[0], int):
+        raise SettingsStorageError("Unknown database schema state")
+    return row[0]
 
 
 def setting(key, default=None):

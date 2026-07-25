@@ -7,8 +7,10 @@ import logging
 import os
 import re
 import shutil
+import termios
 import time
 import urllib.parse
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -19,7 +21,7 @@ from .base import InstallationState, Provider, ProviderMetadata
 logger = logging.getLogger(__name__)
 SERVER_HOSTNAME_PATTERN = re.compile(r"^([a-z]{2}[0-9]+)\.nordvpn\.com$")
 CONNECT_FAILURE_TIMEOUT_SECONDS = 25
-TOKEN_LOGIN_TIMEOUT_SECONDS = 15
+TOKEN_LOGIN_TIMEOUT_SECONDS = 30
 SIGN_OUT_TIMEOUT_SECONDS = 15
 TOKEN_ERROR_CODES = frozenset(
     {
@@ -48,6 +50,93 @@ def _provider_cli_environment() -> dict[str, str]:
     """Return the minimal non-secret environment needed by the installed CLI."""
     allowed = ("HOME", "LANG", "LC_ALL", "PATH", "XDG_RUNTIME_DIR")
     return {name: os.environ[name] for name in allowed if name in os.environ}
+
+
+async def _login_token_via_pty(
+    token: str,
+    *,
+    executable: str = "nordvpn",
+    timeout: int = TOKEN_LOGIN_TIMEOUT_SECONDS,
+) -> int:
+    """Enter a token only after the provider terminal has disabled input echo."""
+    master, slave = os.openpty()
+    process = None
+    try:
+        try:
+            process = await asyncio.create_subprocess_exec(
+                executable,
+                "login",
+                "--token",
+                stdin=slave,
+                stdout=slave,
+                stderr=slave,
+                env=_provider_cli_environment(),
+            )
+        except FileNotFoundError:
+            return 127
+        finally:
+            os.close(slave)
+
+        os.set_blocking(master, False)
+        prompt = bytearray()
+        consent_answered = False
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                chunk = os.read(master, 1024)
+            except BlockingIOError:
+                chunk = b""
+            except OSError:
+                break
+            if chunk:
+                prompt.extend(chunk)
+                if len(prompt) > 4096:
+                    del prompt[:-4096]
+            try:
+                echo_disabled = not termios.tcgetattr(master)[3] & termios.ECHO
+            except OSError:
+                echo_disabled = False
+            if (
+                not consent_answered
+                and b"Do you allow us to collect and use limited app performance data? (y/n)"
+                in prompt
+            ):
+                os.write(master, b"n\n")
+                consent_answered = True
+                prompt.clear()
+                await asyncio.sleep(0.01)
+                continue
+            if b"Enter access token:" in prompt and echo_disabled:
+                encoded = bytearray(token.encode())
+                try:
+                    os.write(master, encoded)
+                    os.write(master, b"\n")
+                finally:
+                    encoded[:] = b"\0" * len(encoded)
+                break
+            if process.returncode is not None:
+                return process.returncode
+            await asyncio.sleep(0.01)
+        else:
+            process.kill()
+            await process.wait()
+            return 124
+
+        remaining = max(deadline - time.monotonic(), 0.01)
+        try:
+            return await asyncio.wait_for(process.wait(), remaining)
+        except TimeoutError:
+            process.kill()
+            await process.wait()
+            return 124
+    except asyncio.CancelledError:
+        if process and process.returncode is None:
+            process.kill()
+            await process.wait()
+        raise
+    finally:
+        with suppress(OSError):
+            os.close(master)
 
 
 def classify_token_login_failure(return_code: int, output: str, error: str) -> str:
@@ -840,16 +929,16 @@ class NordVPN(Provider):
                 "error": "invalid_token_format",
             }
 
-        rc, out, err = await command(
-            "nordvpn",
-            "login",
-            "--token",
-            token,
-            timeout=TOKEN_LOGIN_TIMEOUT_SECONDS,
-            environment=_provider_cli_environment(),
+        rc = await _login_token_via_pty(token)
+        error = (
+            None
+            if rc == 0
+            else "timeout"
+            if rc == 124
+            else "command_unavailable"
+            if rc == 127
+            else "provider_error"
         )
-        classified = classify_token_login_failure(rc, out, err)
-        error = None if rc == 0 and classified == "provider_error" else classified
 
         return {
             "ok": error is None,

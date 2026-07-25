@@ -1,5 +1,12 @@
 # Deployment
 
+For lifecycle operations, use the root-only
+[backup and restore](backup-and-restore.md) and
+[upgrade and recovery](upgrade-and-recovery.md) procedures. A portable backup
+must be encrypted and verified before an upgrade. Local pre-upgrade recovery
+directories are plaintext, host-bound rollback material and must remain mode
+`0700`.
+
 ## Local administrator recovery
 
 The Debian installer installs `/usr/local/sbin/exitlane-cli` with root-owned executable

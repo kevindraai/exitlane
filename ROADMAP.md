@@ -1,7 +1,16 @@
 # Roadmap
 
 The roadmap describes direction rather than a release commitment. Priorities may change as the
-alpha is tested in real networks.
+beta is tested in real networks.
+
+## Completed in v0.2.0-beta.1
+
+- Encrypted, authenticated appliance backup
+- Strictly validated root-only restore with session revocation
+- Explicit monotonic database schema versioning
+- Locked alpha-to-beta upgrade with a pre-upgrade recovery snapshot
+- Automatic data, code, configuration, and systemd-unit rollback on installer failure
+- Internal security-assurance matrix for lifecycle and existing application boundaries
 
 ## Completed in v0.2.0-alpha.1
 
@@ -26,8 +35,6 @@ alpha is tested in real networks.
 
 ## Next
 
-- Update and rollback mechanism
-- Backup and restore
 - Provider abstraction hardening
 - Additional VPN providers
 - Better notification management

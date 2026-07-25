@@ -5,10 +5,15 @@ import asyncio
 import getpass
 import os
 import sqlite3
+import stat
 import sys
+import time
+import urllib.error
+import urllib.request
 from collections.abc import Callable, Sequence
+from pathlib import Path
 
-from exitlane import core
+from exitlane import core, lifecycle
 from exitlane.events import record_event
 from exitlane.providers.nordvpn import provider
 from exitlane.services import killswitch, network_security
@@ -281,6 +286,92 @@ def restore_killswitch(*, effective_user_id: int | None = None) -> int:
     return 0
 
 
+def _read_backup_passphrase(
+    secret_file: str | None,
+    *,
+    password_reader: Callable[[str], str] = getpass.getpass,
+    confirmation: bool = False,
+) -> str:
+    if secret_file:
+        path = Path(secret_file)
+        details = path.lstat()
+        if details.st_mode & 0o077 or not stat.S_ISREG(details.st_mode) or details.st_nlink != 1:
+            raise lifecycle.LifecycleError("unsafe_passphrase_file")
+        value = path.read_text(encoding="utf-8").rstrip("\r\n")
+    else:
+        value = password_reader("Backup passphrase: ")
+        if confirmation and value != password_reader("Repeat backup passphrase: "):
+            raise lifecycle.LifecycleError("passphrase_mismatch")
+    if len(value) < 12:
+        raise lifecycle.LifecycleError("passphrase_too_short")
+    return value
+
+
+def _systemd_service_action(action: str) -> None:
+    returncode, _output, _error = asyncio.run(
+        core.command(
+            "/usr/bin/systemctl",
+            action,
+            "exitlane.service",
+            timeout=30,
+            environment={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C"},
+        )
+    )
+    if returncode:
+        raise OSError("service action failed")
+
+
+def _local_health_check() -> bool:
+    url = f"http://127.0.0.1:{os.getenv('EXITLANE_PORT', '8787')}/api/health"
+    for _attempt in range(15):
+        try:
+            # Fixed loopback HTTP scheme and host; only the validated configured port varies.
+            with urllib.request.urlopen(url, timeout=2) as response:  # nosec B310
+                if response.status == 200:
+                    return True
+        except (OSError, urllib.error.URLError):
+            time.sleep(1)
+    return False
+
+
+def backup_command(arguments: argparse.Namespace) -> int:
+    try:
+        passphrase = _read_backup_passphrase(
+            arguments.passphrase_file, confirmation=arguments.backup_command == "create"
+        )
+        source = Path(arguments.path)
+        if arguments.backup_command == "create":
+            core.init()
+            info = lifecycle.create_backup(source, passphrase)
+            print(f"Encrypted backup created: {source}")
+        elif arguments.backup_command in {"inspect", "verify"}:
+            info = lifecycle.inspect_backup(source, passphrase)
+            if arguments.backup_command == "verify":
+                print("Backup authentication, manifest, checksums, and database verified.")
+        else:
+            confirmation = input("Type RESTORE EXITLANE to continue: ")
+            info = lifecycle.restore_backup(
+                source,
+                passphrase,
+                confirmation=confirmation,
+                service_action=_systemd_service_action,
+                health_check=_local_health_check,
+            )
+            print("Backup restored. Existing sessions were revoked.")
+        print(f"Backup ID: {info.backup_id}")
+        print(f"Created: {info.created_at}")
+        print(f"ExitLane version: {info.exitlane_version}")
+        print(f"Database schema: {info.database_schema_version}")
+        print(f"Files: {len(info.files)}")
+        return 0
+    except lifecycle.LifecycleError as error:
+        print(f"Backup operation failed: {error.code}.", file=sys.stderr)
+        return 2
+    except OSError:
+        print("Backup operation failed: local_operation_failed.", file=sys.stderr)
+        return 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="exitlane-cli")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -312,6 +403,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     subcommands.add_parser("killswitch-status", help="show the ExitLane killswitch status")
     subcommands.add_parser("disable-killswitch", help="remove only the ExitLane killswitch rules")
     subcommands.add_parser("restore-killswitch", help=argparse.SUPPRESS)
+    backup_parser = subcommands.add_parser("backup", help="create, inspect, verify, or restore")
+    backup_commands = backup_parser.add_subparsers(dest="backup_command", required=True)
+    for backup_action in ("create", "inspect", "verify", "restore"):
+        action_parser = backup_commands.add_parser(backup_action)
+        action_parser.add_argument("path")
+        action_parser.add_argument(
+            "--passphrase-file",
+            help="read the passphrase from a root-only file instead of the terminal",
+        )
     arguments = parser.parse_args(argv)
     if arguments.command == "reset-password":
         core.init()
@@ -351,6 +451,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.command == "restore-killswitch":
         core.init()
         return restore_killswitch()
+    if arguments.command == "backup":
+        return backup_command(arguments)
     return 2
 
 

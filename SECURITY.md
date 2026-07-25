@@ -3,11 +3,12 @@
 ## Supported versions
 
 Exitlane is pre-release software. Security fixes are provided only for the most recent published
-alpha release.
+pre-release.
 
 | Version | Supported |
 | --- | --- |
-| v0.2.0-alpha.1 | Yes |
+| v0.2.0-beta.1 | Yes |
+| v0.2.0-alpha.1 | No |
 | v0.1.x | No |
 
 ## Reporting a vulnerability
@@ -26,8 +27,8 @@ Reports are triaged by exploitability, required privilege, exposure and impact o
 routing and host control. No fixed response time is promised. Fixes are coordinated privately and
 published through an advisory when operators need to act; request a CVE only when ecosystem impact
 warrants one. Rotate any session, provider credential or WireGuard key that may have been exposed.
-Alpha fixes normally ship forward, with backports considered only for materially deployed older
-alphas.
+Pre-release fixes normally ship forward, with backports considered only for materially deployed
+older candidates.
 
 TOTP MFA reduces the impact of a stolen password but is not phishing-resistant. Keep recovery
 codes offline. The SQLite database and `/etc/exitlane/secret.key` are jointly sensitive and must

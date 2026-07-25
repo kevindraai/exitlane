@@ -71,5 +71,5 @@ minutes. Analytics or journal messages are observability signals only and never 
 - The current design targets one Exitlane instance, one active VPN provider, and a trusted
   management network.
 
-These boundaries keep the current alpha small while leaving room for additional providers,
+These boundaries keep the current beta candidate small while leaving room for additional providers,
 backup and restore, and a supported API in later releases.

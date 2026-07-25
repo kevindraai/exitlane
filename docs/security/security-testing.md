@@ -1,5 +1,19 @@
 # Security testing
 
+The beta traceability source is the
+[security assurance matrix](security-assurance-matrix.md). It distinguishes
+automated regression tests, the internal white-hat assessment, manual appliance
+validation, accepted residual risk, and work reserved for a future independent
+security review. None of the checks in this repository are an independent
+penetration test.
+
+Lifecycle security checks include authenticated-encryption tampering, wrong
+passphrases, root-only enforcement, malicious archive paths, schema
+compatibility, lifecycle concurrency, session revocation, installer syntax,
+ShellCheck, downgrade rejection, recovery snapshot creation, and rollback
+contracts. The bounded malicious-archive corpus and failed-service rollback must
+also run on the Debian 13 test appliance before the candidate can leave draft.
+
 Every PR runs backend/frontend regressions, Ruff, Bandit, pip-audit, secret scanning, dependency review, CodeQL and a passive ZAP baseline. Scheduled runs repeat CodeQL, dependency/secret audits and ZAP. Release/manual work adds disposable-target authenticated/active scanning, package inspection, test-LXC validation and systemd review.
 
 Local commands are the normal project checks plus `bandit -c backend/pyproject.toml -r backend/exitlane`, `pip-audit` in the installed backend environment, `gitleaks git .`, workflow SHA/permission inspection and the passive ZAP container command from its workflow. Findings are classified as fixed, accepted, deferred or false positive with severity, owner and evidence. Critical/high findings block publication and potentially exploitable details use private disclosure.

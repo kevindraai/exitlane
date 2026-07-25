@@ -6,13 +6,13 @@ Exitlane is a self-hosted egress gateway for routers, VLANs, and applications. I
 browser-based control plane for routing traffic through a VPN without coupling the core to a
 specific router platform.
 
-The current alpha release has a provider-neutral VPN core with NordVPN as its first implementation,
+The current beta candidate has a provider-neutral VPN core with NordVPN as its first implementation,
 and accepts traffic through the independent WireGuard ingress.
 Exitlane is intended for a trusted management network and is currently tested primarily on a
 Debian-based Proxmox LXC.
 
 > [!WARNING]
-> Exitlane is alpha software. Do not expose the management interface directly to the internet.
+> Exitlane is beta software. Do not expose the management interface directly to the internet.
 
 The trusted management network is a deployment assumption, not a substitute for application
 security. See the [hardening guide](docs/security/hardening-guide.md),
@@ -43,6 +43,13 @@ security. See the [hardening guide](docs/security/hardening-guide.md),
 - Recover a forgotten password locally with `sudo exitlane-cli reset-password`.
 - Enable TOTP multifactor authentication, use one-time recovery codes, and manage active sessions.
 - Run safely behind an explicitly trusted HTTPS reverse proxy.
+
+### Appliance lifecycle
+
+- Create passphrase-encrypted, authenticated appliance backups from the root-only CLI.
+- Inspect and verify backups before a strictly staged local restore.
+- Upgrade an existing alpha appliance with an exclusive lifecycle lock, pre-upgrade recovery
+  snapshot, schema compatibility checks, and automatic rollback after installer failure.
 
 ### Settings
 
@@ -106,7 +113,9 @@ sudo ./installer/install-debian.sh
 ```
 
 Open `http://<host>:8787` and complete the first-run wizard. Read the
-[deployment guide](docs/deployment.md) and [Proxmox LXC notes](docs/proxmox-lxc.md) before using
+[deployment guide](docs/deployment.md), [backup and restore guide](docs/backup-and-restore.md),
+[upgrade and recovery guide](docs/upgrade-and-recovery.md), and
+[Proxmox LXC notes](docs/proxmox-lxc.md) before using
 Exitlane outside a development environment.
 
 Direct HTTP remains available on a trusted local network. For HTTPS termination, follow the
