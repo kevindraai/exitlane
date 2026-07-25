@@ -35,7 +35,7 @@ blocker and the pull request must remain draft.
   version state, permissions, and a healthy service without secret leakage.
 - [x] Encrypted backup create, inspect, verify, restore, and old-session rejection.
 - [x] Disaster restore onto a clean beta appliance.
-- [ ] Malicious restore corpus leaves active data and service intact and cleans
+- [x] Malicious restore corpus leaves active data and service intact and cleans
   staging plaintext.
 - [ ] IPv4, IPv6, DNS UDP/TCP and tunnel-present leak tests; fail-closed
   tunnel-unavailable state, recovery, and preservation

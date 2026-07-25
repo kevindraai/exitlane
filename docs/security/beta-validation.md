@@ -78,6 +78,15 @@ approximately 1.1 MB request body. The public session-status endpoint also
 returns 200 under an arbitrary Host header but exposes only generic
 authentication/setup state; this matches the documented direct-access model.
 
+An eleven-case, authentically encrypted malicious restore corpus exercised
+traversal, absolute and nested paths, symlinks, duplicate entries, missing
+manifest, unexpected files, checksum mismatch, future schema, invalid SQLite,
+and excessive compression ratio. Every case failed with its expected safe error
+before service mutation. The service activation timestamp, database, master key,
+and WireGuard configurations remained unchanged; SQLite integrity and HTTP
+health passed; no restore staging directory remained. The encrypted corpus,
+passphrase, and generator were then deleted.
+
 Provider credential/login/token-renewal testing, tunnel-present IPv4/IPv6/DNS
 leak tests, authenticated crawling, and bounded active scanning remain
 incomplete because no test provider token or retained administrator credential
