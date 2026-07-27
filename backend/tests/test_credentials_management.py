@@ -221,7 +221,8 @@ def test_nordvpn_token_login_uses_sanitized_pty_boundary(monkeypatch, caplog):
 
     monkeypatch.setattr(nordvpn, "_login_token_via_pty", safe_pty)
     result = asyncio.run(nordvpn.provider.login_token(marker))
-    assert captured == {"token": marker, "options": {}}
+    assert captured["token"] == marker
+    assert isinstance(captured["options"]["output_sink"], bytearray)
     assert result["error"] == "provider_error"
     assert marker not in str(result)
     assert marker not in caplog.text
@@ -277,6 +278,8 @@ raise SystemExit(0 if value.startswith("dummy-token-") and len(value) >= 20 else
     [
         (1, "You are already logged in.", "already_logged_in"),
         (1, "The token is invalid.", "invalid_token"),
+        (1, "The token has expired.", "token_expired"),
+        (1, "The token has been revoked.", "token_revoked"),
         (0, "The token is invalid.", "invalid_token"),
         (1, "Cannot reach daemon.", "daemon_unavailable"),
         (127, "", "command_unavailable"),

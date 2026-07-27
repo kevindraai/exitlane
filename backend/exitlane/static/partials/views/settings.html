@@ -206,6 +206,42 @@
         </div>
        </form>
       </section>
+      <section class="panel" data-settings-page="system" id="settings-system-actions">
+       <div class="panel-heading compact">
+        <div>
+         <p class="eyebrow" data-i18n="settings.system.eyebrow">SYSTEM</p>
+         <h1 data-i18n="settings.system.title">System actions</h1>
+         <p class="lead" data-i18n="settings.system.description">Restart ExitLane or control the ExitLane instance.</p>
+        </div>
+       </div>
+       <div class="system-action-list">
+        <div>
+         <h2 data-i18n="settings.system.restart.title">Restart ExitLane</h2>
+         <p data-i18n="settings.system.restart.description">Restart only the ExitLane application service. The web interface will be briefly unavailable.</p>
+         <button class="button button-secondary" data-system-action="restart" data-i18n="settings.system.restart.action" type="button">Restart ExitLane</button>
+        </div>
+        <div>
+         <h2 data-i18n="settings.system.reboot.title">Reboot system</h2>
+         <p data-i18n="settings.system.reboot.description">Reboot the entire instance. VPN and WireGuard traffic will be temporarily interrupted.</p>
+         <button class="button button-warning" data-system-action="reboot" data-i18n="settings.system.reboot.action" type="button">Reboot system</button>
+        </div>
+        <div>
+         <h2 data-i18n="settings.system.shutdown.title">Shut down system</h2>
+         <p data-i18n="settings.system.shutdown.description">Shut down the instance. It cannot be started again from this web interface.</p>
+         <button class="button button-danger" data-system-action="shutdown" data-i18n="settings.system.shutdown.action" type="button">Shut down system</button>
+        </div>
+       </div>
+       <dialog aria-describedby="system-action-confirm-description" aria-labelledby="system-action-confirm-title" id="system-action-confirm">
+        <div class="recovery-dialog-content">
+         <h2 id="system-action-confirm-title"></h2>
+         <p id="system-action-confirm-description"></p>
+         <div class="form-submit">
+          <button class="button button-secondary" data-i18n="common.cancel" id="system-action-cancel" type="button">Cancel</button>
+          <button class="button" id="system-action-submit" type="button"></button>
+         </div>
+        </div>
+       </dialog>
+      </section>
       <section class="panel" data-settings-page="general">
        <div class="panel-heading compact">
         <div>

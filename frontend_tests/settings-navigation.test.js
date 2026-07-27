@@ -13,7 +13,7 @@ const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 test("Settings registry is ordered, allowlisted, and hides unfinished sections", () => {
   assert.deepEqual(
     availableSettingsSections().map(({ id }) => id),
-    ["general", "security", "network", "notifications", "about"],
+    ["general", "security", "network", "system", "notifications", "about"],
   );
   assert.equal(validSettingsSection("security"), true);
   assert.equal(validSettingsSection("backup"), false);
@@ -75,7 +75,7 @@ test("submenu controls retain native button keyboard semantics", async () => {
 
 test("Settings pages contain the existing functionality exactly once", async () => {
   const markup = await read("../backend/exitlane/static/partials/views/settings.html");
-  for (const section of ["general", "security", "network", "notifications", "about"]) {
+  for (const section of ["general", "security", "network", "system", "notifications", "about"]) {
     assert.match(markup, new RegExp(`data-settings-page="${section}"`));
   }
   for (const id of [

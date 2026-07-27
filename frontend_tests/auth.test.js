@@ -66,6 +66,22 @@ test("login status is outside the stable field grid", async () => {
   assert.match(markup, /class="form-grid login-fields"/);
 });
 
+test("login offers an accessible localized local password recovery disclosure", async () => {
+  const markup = await readFile(
+    new URL("../backend/exitlane/static/partials/login.html", import.meta.url),
+    "utf8",
+  );
+  assert.match(markup, /<details class="password-recovery">/);
+  assert.match(markup, /<summary data-i18n="auth\.forgot_password">/);
+  assert.match(markup, /sudo exitlane-cli reset-password/);
+  const [english, dutch] = await Promise.all([
+    readFile(new URL("../backend/exitlane/static/locales/en.json", import.meta.url), "utf8").then(JSON.parse),
+    readFile(new URL("../backend/exitlane/static/locales/nl.json", import.meta.url), "utf8").then(JSON.parse),
+  ]);
+  assert.equal(english.auth.forgot_password, "Forgot your password?");
+  assert.equal(dutch.auth.forgot_password, "Wachtwoord vergeten?");
+});
+
 test("successful password and MFA login, logout, and session expiry reset navigation", async () => {
   const source = await readFile(
     new URL("../backend/exitlane/static/js/auth.js", import.meta.url),

@@ -16,6 +16,9 @@ Level = Literal["info", "warning", "error"]
 
 EVENT_DEFINITIONS = {
     "system.started": ("system", "info", set()),
+    "system.action_accepted": ("system", "warning", {"action"}),
+    "system.action_started": ("system", "warning", {"action"}),
+    "system.action_failed": ("system", "error", {"action"}),
     "setup.completed": ("setup", "info", set()),
     "auth.login_succeeded": ("auth", "info", set()),
     "auth.login_failed": ("auth", "warning", {"reason"}),

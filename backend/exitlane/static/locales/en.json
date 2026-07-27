@@ -171,6 +171,13 @@
         "save_failed": "The network configuration could not be saved."
       }
     },
+    "system": {
+      "eyebrow": "SYSTEM", "title": "System actions", "description": "Restart ExitLane or control the ExitLane instance.",
+      "accepted": "The system action was accepted. This page may become unavailable.", "failed": "The system action could not be started.",
+      "restart": { "title": "Restart ExitLane", "description": "Restart only the ExitLane application service. The web interface will be briefly unavailable.", "action": "Restart ExitLane", "confirm_title": "Restart ExitLane?", "confirm_description": "The ExitLane service will restart and this web interface will be briefly unavailable." },
+      "reboot": { "title": "Reboot system", "description": "Reboot the entire instance. VPN and WireGuard traffic will be temporarily interrupted.", "action": "Reboot system", "confirm_title": "Reboot the system?", "confirm_description": "The entire instance will reboot. VPN and WireGuard traffic will be temporarily interrupted." },
+      "shutdown": { "title": "Shut down system", "description": "Shut down the instance. It cannot be started again from this web interface.", "action": "Shut down system", "confirm_title": "Shut down the system?", "confirm_description": "The instance will shut down. Physical, hypervisor, or host access may be required to start it again." }
+    },
     "appearance": {
       "eyebrow": "APPEARANCE",
       "title": "Appearance",
@@ -331,7 +338,7 @@
       "errors": { "installation_in_progress": "A provider installation is already running.", "unsupported_platform": "Managed installation is supported on Debian 13 only.", "helper_timeout": "The protected installer timed out.", "repository_failed": "The official NordVPN repository could not be configured.", "client_install_failed": "The NordVPN client could not be installed.", "daemon_start_failed": "The NordVPN daemon could not be started.", "daemon_inactive": "The NordVPN daemon is not running.", "validation_failed": "The NordVPN installation could not be validated.", "provider_installation_cleanup_failed": "Installation succeeded, but temporary files could not be cleaned up.", "provider_installation_validation_failed": "NordVPN was installed, but its final availability check failed.", "provider_readiness_timeout": "NordVPN did not become ready within the allowed time.", "provider_daemon_failed": "The NordVPN daemon is missing or could not be started.", "gateway_settings_failed": "NordVPN is available, but the safe gateway settings could not be confirmed.", "insufficient_privileges": "The protected installer lacks the required privileges.", "installation_start_failed": "The protected installer could not be started.", "installation_failed": "The NordVPN installation failed." }
     },
     "authentication": {
-      "errors": { "invalid_token_format": "Enter a non-empty NordVPN access token in the expected format.", "invalid_token": "NordVPN rejected this access token.", "daemon_unavailable": "The NordVPN daemon is unavailable.", "command_unavailable": "The NordVPN client is unavailable.", "timeout": "NordVPN token sign-in timed out.", "already_logged_in": "NordVPN is already signed in.", "token_replacement_unsupported": "End the current NordVPN session before using another token.", "provider_error": "NordVPN could not complete sign-in." }
+      "errors": { "invalid_token_format": "Enter a non-empty NordVPN access token in the expected format.", "invalid_token": "Unable to sign in to NordVPN. The supplied access token is invalid or has expired. Generate a new access token in your Nord Account and try again.", "token_expired": "Unable to sign in to NordVPN. The supplied access token is invalid or has expired. Generate a new access token in your Nord Account and try again.", "token_revoked": "Unable to sign in to NordVPN. The supplied access token is invalid or has expired. Generate a new access token in your Nord Account and try again.", "daemon_unavailable": "The NordVPN daemon is unavailable.", "command_unavailable": "The NordVPN client is unavailable.", "timeout": "NordVPN token sign-in timed out.", "already_logged_in": "NordVPN is already signed in.", "token_replacement_unsupported": "End the current NordVPN session before using another token.", "provider_error": "NordVPN could not complete sign-in." }
     },
     "apply_gateway_settings": "Apply gateway settings",
     "gateway_settings": "Gateway settings",
@@ -549,6 +556,7 @@
     "settings_general": "General",
     "settings_security": "Security",
     "settings_network": "Network",
+    "settings_system": "System",
     "settings_notifications": "Notifications",
     "settings_backup": "Backup & Restore",
     "settings_updates": "Updates",
@@ -583,7 +591,7 @@
     "metadata": { "target": "Target", "country": "Country", "city": "City", "server": "Server", "reason": "Reason", "provider": "Provider", "fields": "Fields", "client_name": "Client", "interface": "Interface", "name": "Name" }
   },
   "events": {
-    "system": { "started": "Exitlane started" },
+    "system": { "started": "Exitlane started", "action_accepted": "System action {action} accepted", "action_started": "System action {action} started", "action_failed": "System action {action} failed" },
     "setup": { "completed": "Setup completed" },
     "auth": { "login_succeeded": "Administrator signed in", "login_failed": "Sign-in attempt failed", "logout": "Administrator signed out", "session_expired": "Session expired", "session_revoked": "Session revoked", "password_changed": "Administrator password changed", "password_reset": "Administrator password reset locally", "mfa_enrollment_started": "MFA enrollment started", "mfa_enabled": "MFA enabled", "mfa_disabled": "MFA disabled", "mfa_disabled_locally": "MFA disabled locally", "recovery_codes_generated": "Recovery codes generated", "recovery_codes_regenerated": "Recovery codes regenerated", "recovery_code_used": "Recovery code used", "other_sessions_revoked": "Other sessions revoked" },
     "settings": { "updated": "Settings updated: {fields}" },
@@ -598,6 +606,9 @@
     "description": "Use your local administrator account.",
     "username": "Username",
     "password": "Password",
+    "forgot_password": "Forgot your password?",
+    "password_recovery_local": "Password recovery is performed locally on the ExitLane instance.",
+    "password_recovery_instruction": "Log on to the shell and run the following command with root privileges:",
     "login": "Sign in",
     "logout": "Log out",
     "logging_in": "Signing in…",

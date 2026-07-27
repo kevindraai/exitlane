@@ -17,7 +17,9 @@ EXITLANE_PUBLIC_URL=https://exitlane.example.internal
 EXITLANE_SECURE_COOKIES=auto
 ```
 
-Restart ExitLane after changing environment. Values saved in Settings apply on the next request
+Restart the **ExitLane application service** after changing environment; a full instance reboot
+is not required. Use **Settings → System → Restart ExitLane** or
+`sudo systemctl restart exitlane.service`. Values saved in Settings apply on the next request
 without a restart. Serve ExitLane at `/`, not a subpath. Verify status under
 **Settings → Network**. Direct HTTP remains available for trusted local networks and warns.
 `always` forces Secure cookies; `never` is only for explicit local development. HSTS is emitted
@@ -170,4 +172,4 @@ sudo exitlane-cli reset-network-security
 These legacy aliases remain available. The reset command requires typing `RESET NETWORK SECURITY`,
 removes the database values so safe defaults become effective, revokes every session, and records
 a safe Activity event. Environment overrides remain active; change those in the service or
-container configuration and restart ExitLane when an override caused the lockout.
+container configuration and restart `exitlane.service` when an override caused the lockout.

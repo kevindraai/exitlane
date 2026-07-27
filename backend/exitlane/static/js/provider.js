@@ -221,8 +221,11 @@ function countryCard(country) {
   button.dataset.countryCode = country.country_code;
   button.setAttribute("aria-pressed", String(country.is_connected));
   button.disabled = active || !vpnProviderAccess(appState.provider || {}).canSelectLocation;
-  const latency = country.latency_ms == null
+  const measuring = country.measuring === true;
+  const latency = measuring
     ? t("provider.country_selection.measuring", {}, "Measuring…")
+    : country.latency_ms == null
+      ? "—"
     : t("provider.country_selection.latency_ms", { latency: country.latency_ms }, `${country.latency_ms} ms`);
   const flag = document.createElement("span");
   flag.className = "country-card__flag";
@@ -435,7 +438,9 @@ async function remeasureCountries() {
   const button = select("#remeasure-countries");
   setBusy(button, true, t("provider.country_selection.measuring", {}, "Measuring…"));
   try {
-    await Promise.all(quickCountryCodes.map((code) => postJson(providerApiPath(`/locations/${code}/measure`))));
+    for (const code of quickCountryCodes) {
+      await postJson(providerApiPath(`/locations/${code}/measure`));
+    }
     await refreshCountries();
   } catch {
     showMessage(t("provider.country_selection.measure_failed", {}, "Not all latency values could be measured."), "error");
@@ -450,13 +455,37 @@ async function measureMissingCountries({ signal } = {}) {
     return country && country.latency_measured_at == null;
   });
   if (!missing.length) return;
-  await Promise.allSettled(
-    missing.map((code) => postJson(
-      providerApiPath(`/locations/${code}/measure`),
-      undefined,
-      { signal },
-    )),
-  );
+  vpnCountries = vpnCountries.map((country) => (
+    missing.includes(country.country_code) ? { ...country, measuring: true } : country
+  ));
+  renderCountries();
+  for (const code of missing) {
+    try {
+      const result = await postJson(
+        providerApiPath(`/locations/${code}/measure`),
+        undefined,
+        { signal },
+      );
+      if (signal?.aborted) return;
+      vpnCountries = vpnCountries.map((country) => (
+        country.country_code === code
+          ? {
+            ...country,
+            latency_ms: result.latency_ms,
+            latency_measured_at: result.latency_measured_at,
+            measuring: false,
+          }
+          : country
+      ));
+      renderCountries();
+    } catch (error) {
+      if (signal?.aborted || error.code === "aborted") return;
+      vpnCountries = vpnCountries.map((country) => (
+        country.country_code === code ? { ...country, measuring: false } : country
+      ));
+      renderCountries();
+    }
+  }
   if (signal?.aborted) return;
   await refreshCountries({ signal });
 }
@@ -906,7 +935,11 @@ export function initialiseProviderControls() {
     }
   });
   window.addEventListener("exitlane:viewchange", (event) => {
-    if (event.detail?.view === "vpn") void activateAuthenticatedProviderData();
+    if (event.detail?.view === "vpn-provider") {
+      void activateAuthenticatedProviderData();
+    } else {
+      suspendProviderData();
+    }
   });
 
   document

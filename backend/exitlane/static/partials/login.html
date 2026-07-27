@@ -22,6 +22,12 @@
         <button class="button button-primary" data-i18n="auth.login" type="submit">Sign in</button>
        </div>
       </form>
+      <details class="password-recovery">
+       <summary data-i18n="auth.forgot_password">Forgot your password?</summary>
+       <p data-i18n="auth.password_recovery_local">Password recovery is performed locally on the ExitLane instance.</p>
+       <p data-i18n="auth.password_recovery_instruction">Log on to the shell and run the following command with root privileges:</p>
+       <code>sudo exitlane-cli reset-password</code>
+      </details>
       <form class="form-grid" hidden="" id="mfa-login-form" method="post">
        <p class="inline-error" hidden="" id="mfa-login-error"></p>
        <h2 data-i18n="auth.mfa.title">Verify your sign-in</h2>

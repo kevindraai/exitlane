@@ -47,6 +47,21 @@ test("settings contains application settings but no provider or WireGuard manage
   assert.doesNotMatch(markup, /NordVPN|provider-token/i);
 });
 
+test("system actions use confirmation and one protected POST path", async () => {
+  const [source, markup] = await Promise.all([
+    readFile(sourceUrl, "utf8"),
+    readFile(markupUrl, "utf8"),
+  ]);
+  for (const action of ["restart", "reboot", "shutdown"]) {
+    assert.match(markup, new RegExp(`data-system-action="${action}"`));
+  }
+  assert.match(markup, /id="system-action-confirm"/);
+  assert.match(source, /if \(!pendingSystemAction \|\| systemActionSubmitted\) return false/);
+  assert.match(source, /api\(`\/api\/system\/actions\/\$\{action\}`,\s*\{ method: "POST" \}\)/);
+  assert.match(source, /systemActionSubmitted = true/);
+  assert.match(source, /system-action-cancel[\s\S]+pendingSystemAction = null/);
+});
+
 test("password status is a stable full-width region outside the field grid", async () => {
   const markup = await readFile(markupUrl, "utf8");
   const status = markup.indexOf('id="settings-password-status"');

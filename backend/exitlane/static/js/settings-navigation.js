@@ -5,6 +5,7 @@ export const SETTINGS_SECTIONS = Object.freeze([
   Object.freeze({ id: "general", route: "settings/general", labelKey: "nav.settings_general", icon: "sliders-horizontal", order: 10, enabled: true }),
   Object.freeze({ id: "security", route: "settings/security", labelKey: "nav.settings_security", icon: "shield-check", order: 20, enabled: true }),
   Object.freeze({ id: "network", route: "settings/network", labelKey: "nav.settings_network", icon: "network", order: 30, enabled: true }),
+  Object.freeze({ id: "system", route: "settings/system", labelKey: "nav.settings_system", icon: "power", order: 35, enabled: true }),
   Object.freeze({ id: "notifications", route: "settings/notifications", labelKey: "nav.settings_notifications", icon: "bell", order: 40, enabled: true }),
   Object.freeze({ id: "backup", route: "settings/backup", labelKey: "nav.settings_backup", icon: "archive-restore", order: 50, enabled: false }),
   Object.freeze({ id: "updates", route: "settings/updates", labelKey: "nav.settings_updates", icon: "refresh-cw", order: 60, enabled: false }),

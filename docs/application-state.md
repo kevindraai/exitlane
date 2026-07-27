@@ -44,3 +44,14 @@ the outcome.
 Not every form field belongs in central state. Short-lived input and purely presentational state
 can remain local. Central state is reserved for information that crosses views, participates in
 the application lifecycle, or is refreshed asynchronously.
+## System actions
+
+`POST /api/system/actions/{action}` accepts only `restart`, `reboot`, or
+`shutdown`. The normal authenticated-session, origin, host, and CSRF boundaries
+apply. The API records the administrator and returns `202 Accepted` before
+launching one fixed absolute `systemctl` argv without a shell. `restart` targets
+only `exitlane.service`; `reboot` and `shutdown` affect the full instance.
+
+Shutdown cannot be reversed from ExitLane because the web application is no
+longer running. Starting the instance again requires host, hypervisor, or
+physical access.

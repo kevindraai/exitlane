@@ -44,3 +44,12 @@ and an appliance upgrade/recovery path are present. Root service execution, head
 writes, public static shell assets and memory-only login throttling remain explicit beta risks.
 Public Internet exposure, untrusted shared hosting and permanent active-scan targets are
 unsupported. See `security-assurance-matrix.md` for test traceability and open appliance gates.
+### System power actions
+
+An authenticated administrator can request three fixed host lifecycle actions.
+The browser never supplies a command string: the backend maps an allowlisted
+action identifier to an absolute `systemctl` argv and invokes it with
+`shell=False`. Existing same-origin, CSRF, host, and session controls protect the
+POST endpoints, and accepted or failed launches are written to the Activity
+audit log. The service already runs as root for network gateway management, so
+this feature installs no broader sudoers rule or generic privileged helper.

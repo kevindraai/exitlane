@@ -109,6 +109,11 @@ NETWORK_REAUTH_ATTEMPTS = 5
 NETWORK_REAUTH_WINDOW_SECONDS = 300
 NORDVPN_HOST_COUNTRY_CODES = {"UK": "GB"}
 provider_registry = ProviderRegistry([provider], default_id=provider.id)
+SYSTEM_ACTION_COMMANDS = {
+    "restart": ("/usr/bin/systemctl", "restart", "exitlane.service"),
+    "reboot": ("/usr/bin/systemctl", "reboot"),
+    "shutdown": ("/usr/bin/systemctl", "poweroff"),
+}
 
 
 def observe_auth_phase(_request: Request, _phase: str) -> None:
@@ -1562,9 +1567,15 @@ def _vpn_snapshot(status: dict) -> dict:
 
 async def _fresh_vpn_status(provider_instance=provider) -> dict:
     try:
-        return _vpn_snapshot(
+        snapshot = _vpn_snapshot(
             await provider_instance.status(timeout=vpn_operations.STATUS_TIMEOUT_SECONDS)
         )
+        try:
+            latency = server_latency(snapshot.get("server"))
+        except (OSError, sqlite3.Error):
+            # Latency is optional telemetry and must never downgrade a valid VPN snapshot.
+            latency = {"latency_ms": None, "latency_measured_at": None}
+        return {**snapshot, **latency}
     except asyncio.CancelledError:
         raise
     except Exception:  # noqa: BLE001 - provider boundary returns a sanitized availability snapshot.
@@ -1576,6 +1587,41 @@ async def _fresh_vpn_status(provider_instance=provider) -> dict:
                 "error_code": "provider_status_unavailable",
             }
         )
+
+
+async def _run_system_action(action: str, actor: dict | None) -> None:
+    command_argv = SYSTEM_ACTION_COMMANDS[action]
+    try:
+        await asyncio.create_subprocess_exec(
+            *command_argv,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        record_event("system.action_started", actor=actor, metadata={"action": action})
+    except OSError:
+        logger.exception("Accepted system action failed to start: %s", action)
+        record_event("system.action_failed", actor=actor, metadata={"action": action})
+
+
+def _start_system_action_task(action: str, actor: dict | None) -> None:
+    asyncio.create_task(_run_system_action(action, actor))
+
+
+def schedule_system_action(action: str, actor: dict | None) -> None:
+    """Run a fixed host action after the HTTP acceptance response can be flushed."""
+    asyncio.get_running_loop().call_later(0.25, _start_system_action_task, action, actor)
+
+
+@app.post("/api/system/actions/{action}", status_code=202)
+async def system_action(action: str, request: Request) -> dict:
+    if action not in SYSTEM_ACTION_COMMANDS:
+        raise HTTPException(status_code=404, detail="system_action_unsupported")
+    actor = request_actor(request)
+    record_event("system.action_accepted", actor=actor, metadata={"action": action})
+    schedule_system_action(action, actor)
+    return {"accepted": True, "action": action}
 
 
 async def _fresh_status_for(provider_instance) -> dict:

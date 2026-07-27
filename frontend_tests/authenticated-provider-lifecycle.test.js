@@ -50,6 +50,8 @@ test("provider controls do not load countries before authenticated activation", 
   assert.match(source, /if \(!countryLoadPromise\)/);
   assert.match(source, /countryLoadController\?\.abort\("authentication-ended"\)/);
   assert.match(source, /error\.code === "aborted"/);
+  assert.match(source, /event\.detail\?\.view === "vpn-provider"/);
+  assert.match(source, /else \{\s*suspendProviderData\(\)/);
 });
 
 test("dashboard activation loads protected data and logout/session expiry tears it down", async () => {
