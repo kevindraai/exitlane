@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from exitlane import core, main
 from exitlane.providers.base import Provider, ProviderMetadata
 from exitlane.providers.registry import ProviderNotFound, ProviderRegistry
+from exitlane.services import vpn_selection
 
 
 class StubProvider(Provider):
@@ -135,6 +136,67 @@ def test_provider_status_uses_only_server_specific_latency(client, monkeypatch):
     status = client.get("/api/vpn/providers/nordvpn/status").json()["status"]
     assert status["latency_ms"] == 19
     assert status["server"] == "nl1234.nordvpn.com"
+
+
+def test_connected_provider_status_measures_exact_server_once_during_polling(client, monkeypatch):
+    calls = []
+    release = asyncio.Event()
+
+    async def connected(*, timeout=8):
+        return {
+            "installed": True,
+            "authenticated": True,
+            "connected": True,
+            "country": "France",
+            "server": " FR825.NORDVPN.COM. ",
+        }
+
+    async def measure(hostname):
+        calls.append(hostname)
+        await release.wait()
+        return {"latency_ms": 27, "status": "reachable", "method": "tcp"}
+
+    monkeypatch.setattr(main.provider, "status", connected)
+    monkeypatch.setattr(vpn_selection, "tcp_latency", measure)
+
+    async def poll():
+        first = asyncio.create_task(main._fresh_vpn_status())
+        second = asyncio.create_task(main._fresh_vpn_status())
+        await asyncio.sleep(0)
+        release.set()
+        return await asyncio.gather(first, second)
+
+    snapshots = asyncio.run(poll())
+    cached = asyncio.run(main._fresh_vpn_status())
+
+    assert calls == ["fr825.nordvpn.com"]
+    assert [item["latency_ms"] for item in snapshots] == [27, 27]
+    assert all(item["connected"] is True for item in snapshots)
+    assert cached["latency_ms"] == 27
+    assert cached["server"] == "fr825.nordvpn.com"
+
+
+def test_failed_active_latency_probe_preserves_connected_status(client, monkeypatch):
+    async def connected(*, timeout=8):
+        return {
+            "installed": True,
+            "authenticated": True,
+            "connected": True,
+            "country": "France",
+            "server": "fr900.nordvpn.com",
+        }
+
+    async def fail(_hostname):
+        raise OSError("probe unavailable")
+
+    monkeypatch.setattr(main.provider, "status", connected)
+    monkeypatch.setattr(vpn_selection, "tcp_latency", fail)
+
+    snapshot = asyncio.run(main._fresh_vpn_status())
+
+    assert snapshot["connected"] is True
+    assert snapshot["server"] == "fr900.nordvpn.com"
+    assert snapshot["latency_ms"] is None
 
 
 def test_system_actions_are_allowlisted_post_actions(client, monkeypatch):

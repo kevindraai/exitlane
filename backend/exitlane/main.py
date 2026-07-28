@@ -72,7 +72,9 @@ from exitlane.services.diagnostics import run as diagnostics
 from exitlane.services.vpn_selection import (
     QUICK_COUNTRIES,
     country_summary,
+    ensure_active_server_latency,
     measure_servers,
+    normalize_server_hostname,
     remember_country,
     select_server,
     server_latency,
@@ -1543,7 +1545,7 @@ def _country_id(catalog: list[dict], country_code: str) -> int | None:
 
 
 def _vpn_snapshot(status: dict) -> dict:
-    hostname = status.get("server", "")
+    hostname = normalize_server_hostname(status.get("server")) or ""
     match = re.fullmatch(r"([a-z]{2})[0-9]+\.nordvpn\.com", hostname.lower())
     connected = bool(status.get("connected"))
     hostname_code = match.group(1).upper() if connected and match else None
@@ -1572,7 +1574,11 @@ async def _fresh_vpn_status(provider_instance=provider) -> dict:
         )
         try:
             latency = server_latency(snapshot.get("server"))
-        except (OSError, sqlite3.Error):
+            if snapshot.get("connected") and latency["latency_measured_at"] is None:
+                latency = await ensure_active_server_latency(snapshot.get("server"))
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - optional telemetry cannot downgrade VPN state.
             # Latency is optional telemetry and must never downgrade a valid VPN snapshot.
             latency = {"latency_ms": None, "latency_measured_at": None}
         return {**snapshot, **latency}
@@ -1754,12 +1760,11 @@ async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
         metadata={"target": country_name, **technical},
         correlation_id=correlation_id,
     )
-    indication = None
     result = {"ok": False, "exit_code": None, "error_code": "provider_connect_failed"}
     status = None
     recovered = False
     try:
-        indication = await select_server(code, await provider.servers(country_id))
+        await select_server(code, await provider.servers(country_id))
         result = await provider.connect_country(
             code, timeout=vpn_operations.CONNECT_TIMEOUT_SECONDS
         )
@@ -1870,7 +1875,7 @@ async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
         "success": proven,
         "country_code": code,
         "server": status.get("server"),
-        "latency_ms": indication["latency_ms"] if indication else None,
+        "latency_ms": status.get("latency_ms"),
         "status": "connected" if proven else "error",
         "error": error_code,
         "error_code": error_code,

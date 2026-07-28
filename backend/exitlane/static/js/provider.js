@@ -166,6 +166,10 @@ function renderVpnProviderAccess(status) {
   if (access.blocked) suspendProviderData();
 }
 
+export function formatActiveLatency(status) {
+  return status.latency_ms == null ? "—" : `${status.latency_ms} ms`;
+}
+
 function renderVpnView(status) {
   const runtimeError = select("#vpn-runtime-error");
   runtimeError.hidden = !status.error_code;
@@ -199,7 +203,7 @@ function renderVpnView(status) {
   select("#metric-city").textContent = status.city || "—";
   select("#metric-server").textContent = status.server || "—";
   select("#metric-ip").textContent = status.external_ip || "—";
-  select("#metric-latency").textContent = status.latency_ms == null ? "—" : `${status.latency_ms} ms`;
+  select("#metric-latency").textContent = formatActiveLatency(status);
 }
 
 let vpnCountries = [];
