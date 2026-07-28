@@ -167,6 +167,7 @@ def classify_token_login_failure(return_code: int, output: str, error: str) -> s
         for marker in (
             "invalid token",
             "token is invalid",
+            "access token is not valid",
             "incorrect token",
         )
     ):

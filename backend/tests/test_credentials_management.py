@@ -11,6 +11,10 @@ from exitlane.providers import nordvpn
 PASSWORD = "correct horse battery staple"
 NEW_PASSWORD = "a new administrator password"
 ROOT = Path(__file__).parents[2]
+REAL_INVALID_TOKEN_OUTPUT = (
+    "We couldn't log you in - the access token is not valid. Please check if you've "
+    "entered the token correctly. If the issue persists, contact our customer support."
+)
 
 
 @pytest.fixture
@@ -278,17 +282,42 @@ raise SystemExit(0 if value.startswith("dummy-token-") and len(value) >= 20 else
     [
         (1, "You are already logged in.", "already_logged_in"),
         (1, "The token is invalid.", "invalid_token"),
+        (1, REAL_INVALID_TOKEN_OUTPUT, "invalid_token"),
         (1, "The token has expired.", "token_expired"),
         (1, "The token has been revoked.", "token_revoked"),
         (0, "The token is invalid.", "invalid_token"),
         (1, "Cannot reach daemon.", "daemon_unavailable"),
         (127, "", "command_unavailable"),
         (1, "Please log out first.", "token_replacement_unsupported"),
+        (1, "The provider configuration is not valid.", "provider_error"),
         (1, "Unrecognized provider failure.", "provider_error"),
     ],
 )
 def test_token_failure_classification_is_specific_and_sanitized(return_code, output, expected):
     assert nordvpn.classify_token_login_failure(return_code, output, "") == expected
+
+
+def test_real_cli_invalid_token_output_returns_only_stable_api_code(client, monkeypatch, caplog):
+    async def rejected(_token, **options):
+        options["output_sink"].extend(REAL_INVALID_TOKEN_OUTPUT.encode())
+        return 1
+
+    async def signed_out(**_options):
+        return {"authenticated": False}
+
+    monkeypatch.setattr(nordvpn, "_login_token_via_pty", rejected)
+    monkeypatch.setattr(main.provider, "status", signed_out)
+    assert login(client).status_code == 200
+
+    response = client.post(
+        "/api/providers/nordvpn/token",
+        json={"token": "real-cli-invalid-token-test-value"},
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "invalid_token"}
+    assert REAL_INVALID_TOKEN_OUTPUT not in response.text
+    assert REAL_INVALID_TOKEN_OUTPUT not in caplog.text
 
 
 def test_active_provider_session_blocks_replacement_without_cli_call(client, monkeypatch):

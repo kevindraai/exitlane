@@ -25,6 +25,10 @@ test("provider authentication normalizes supported safe API error shapes", () =>
     "invalid_token",
   );
   assert.equal(
+    providerAuthenticationErrorCode({ payload: { detail: "invalid_token" } }),
+    "invalid_token",
+  );
+  assert.equal(
     providerAuthenticationErrorCode({ payload: { error: "token_expired" } }),
     "token_expired",
   );
