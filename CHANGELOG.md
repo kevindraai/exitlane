@@ -7,11 +7,16 @@
 - Automatically load and incrementally display quick-choice latency measurements when the NordVPN page opens.
 - Report the cached server-specific latency for the active VPN connection.
 - Show a clear, localized message when a NordVPN access token is invalid or expired.
+- Preserve stable provider error codes in the token form and never display raw provider output.
 
 ### Added
 
 - Local password-recovery instructions on the login page.
 - Protected restart, reboot, and shutdown actions under Settings > System.
+
+### Changed
+
+- Standardized Debian installer output and maintainer comments in English.
 
 ## [0.2.0-beta.1] - 2026-07-25
 

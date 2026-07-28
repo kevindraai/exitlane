@@ -16,6 +16,43 @@ import { refreshSetup } from "./wizard.js";
 import { t } from "./i18n.js";
 
 let wizardInstallationCompleted = false;
+const PROVIDER_AUTHENTICATION_ERROR_CODES = new Set([
+  "invalid_token_format",
+  "invalid_token",
+  "token_expired",
+  "token_revoked",
+  "timeout",
+  "daemon_unavailable",
+  "command_unavailable",
+  "already_logged_in",
+  "token_replacement_unsupported",
+  "provider_error",
+]);
+
+export function providerAuthenticationErrorCode(value) {
+  const detail = value?.payload?.detail;
+  const candidates = [
+    value?.error,
+    value?.payload?.error,
+    typeof detail === "string" ? detail : detail?.code,
+    value?.code,
+  ];
+  return candidates.find((code) => PROVIDER_AUTHENTICATION_ERROR_CODES.has(code))
+    || "provider_error";
+}
+
+export function providerAuthenticationErrorMessage(value) {
+  const code = providerAuthenticationErrorCode(value);
+  return t(
+    `provider.authentication.errors.${code}`,
+    {},
+    t(
+      "provider.authentication.errors.provider_error",
+      {},
+      "The provider could not complete sign-in.",
+    ),
+  );
+}
 
 export function renderProviderStatus(status) {
   appState.provider = status;
@@ -733,11 +770,7 @@ async function startBrowserLogin() {
     );
 
     if (!result.ok || !result.login_url) {
-      throw new Error(
-        result.message ||
-          result.stderr ||
-          "Aanmeldlink kon niet worden opgehaald.",
-      );
+      throw new Error("provider_login_link_failed");
     }
 
     select("#browser-login-url").value = result.login_url;
@@ -751,8 +784,12 @@ async function startBrowserLogin() {
     "The NordVPN login link is ready.",
   ),
 );
-  } catch (error) {
-    showInlineError(error.message);
+  } catch {
+    showInlineError(t(
+      "messages.login_link_failed",
+      {},
+      "The NordVPN login link could not be loaded.",
+    ));
   } finally {
     setBusy(button, false);
   }
@@ -799,23 +836,24 @@ async function loginWithToken(event) {
       { token: input.value },
     );
 
-    input.value = "";
-
     if (!result.ok) {
-      throw new Error(
-        result.message || result.stderr || "NordVPN-aanmelding mislukt.",
-      );
+      const authenticationError = new Error("provider_authentication_failed");
+      authenticationError.code = providerAuthenticationErrorCode(result);
+      throw authenticationError;
     }
 
-    showMessage(result.stdout || "NordVPN-aanmelding geslaagd.");
+    input.value = "";
+    showMessage(
+      t(
+        "provider.authentication.success",
+        {},
+        "Signed in to NordVPN successfully.",
+      ),
+      "success",
+    );
     await Promise.all([refreshProvider(), refreshSetup()]);
   } catch (error) {
-    const code = error.payload?.detail || error.code || "provider_error";
-    showInlineError(t(
-      `provider.authentication.errors.${code}`,
-      {},
-      t("provider.authentication.errors.provider_error", {}, "The provider could not complete sign-in."),
-    ));
+    showInlineError(providerAuthenticationErrorMessage(error));
   } finally {
     setBusy(button, false);
   }
@@ -838,15 +876,20 @@ async function loginWithCallback(event) {
     );
 
     if (!result.ok) {
-      throw new Error(
-        result.message || result.stderr || "Callback-aanmelding mislukt.",
-      );
+      throw new Error("provider_authentication_failed");
     }
 
-    showMessage(result.stdout || "NordVPN-aanmelding geslaagd.");
+    showMessage(
+      t(
+        "provider.authentication.success",
+        {},
+        "Signed in to NordVPN successfully.",
+      ),
+      "success",
+    );
     await Promise.all([refreshProvider(), refreshSetup()]);
-  } catch (error) {
-    showInlineError(error.message);
+  } catch {
+    showInlineError(providerAuthenticationErrorMessage({ error: "provider_error" }));
   } finally {
     setBusy(button, false);
   }

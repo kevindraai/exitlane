@@ -47,6 +47,24 @@ def test_installer_has_locked_upgrade_snapshot_and_rollback_contract():
     assert installer.index("stop_existing_service") < installer.index("copy_application")
 
 
+def test_installer_user_visible_output_is_english():
+    installer = INSTALLER.read_text(encoding="utf-8")
+
+    assert "ExitLane installation failed." in installer
+    assert "Clean ExitLane installation detected" in installer
+    assert "ExitLane service is running" in installer
+    assert "ExitLane ${INSTALLER_VERSION} is installed" in installer
+    for dutch_text in (
+        "installatie mislukt",
+        "gedetecteerd",
+        "geïnstalleerd",
+        "ontbreekt",
+        "Voer dit installatiescript",
+        "Volgende stap",
+    ):
+        assert dutch_text not in installer
+
+
 def test_alpha_package_version_is_not_classified_as_newer_than_beta():
     subprocess.run(
         ["dpkg", "--compare-versions", "0.2.0a1", "lt", "0.2.0b1"],
