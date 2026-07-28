@@ -141,14 +141,51 @@ def determine_health(
 
 
 def _read_cpu_ticks() -> tuple[int, int] | None:
+    """Return Linux aggregate total and idle ticks without double-counting guest time."""
     try:
         values = [
             int(value) for value in Path("/proc/stat").read_text().splitlines()[0].split()[1:]
         ]
     except (OSError, ValueError, IndexError):
         return None
-    idle = values[3] + (values[4] if len(values) > 4 else 0)
-    return sum(values), idle
+    if len(values) < 4:
+        return None
+
+    user, nice, system, idle = values[:4]
+    iowait = values[4] if len(values) > 4 else 0
+    irq = values[5] if len(values) > 5 else 0
+    softirq = values[6] if len(values) > 6 else 0
+    steal = values[7] if len(values) > 7 else 0
+    idle_ticks = idle + iowait
+    non_idle_ticks = user + nice + system + irq + softirq + steal
+    return idle_ticks + non_idle_ticks, idle_ticks
+
+
+def _cpu_percent(previous: tuple[int, int], current: tuple[int, int]) -> float | None:
+    total_delta = current[0] - previous[0]
+    idle_delta = current[1] - previous[1]
+    if total_delta <= 0 or idle_delta < 0:
+        return None
+    busy_delta = total_delta - idle_delta
+    percentage = busy_delta / total_delta * 100
+    return round(min(100.0, max(0.0, percentage)), 1)
+
+
+class _CpuSampler:
+    def __init__(self) -> None:
+        self._previous: tuple[int, int] | None = None
+
+    def sample(self) -> float | None:
+        current = _read_cpu_ticks()
+        if current is None:
+            return None
+        previous, self._previous = self._previous, current
+        if previous is None:
+            return None
+        return _cpu_percent(previous, current)
+
+
+_cpu_sampler = _CpuSampler()
 
 
 def _memory_status() -> tuple[int, int, float] | None:
@@ -167,13 +204,7 @@ def _memory_status() -> tuple[int, int, float] | None:
 
 
 async def system_status(disk_path: Path = Path("/")) -> SystemStatus:
-    first = _read_cpu_ticks()
-    await asyncio.sleep(0.1)
-    second = _read_cpu_ticks()
-    cpu_percent = None
-    if first and second and second[0] > first[0]:
-        busy_delta = (second[0] - first[0]) - (second[1] - first[1])
-        cpu_percent = round(max(0.0, busy_delta / (second[0] - first[0]) * 100), 1)
+    cpu_percent = _cpu_sampler.sample()
 
     memory = _memory_status()
     memory_used, memory_total, memory_percent = memory or (None, None, None)

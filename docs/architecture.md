@@ -36,6 +36,14 @@ per-code metadata allowlists are stored in SQLite; the browser translates them a
 Event writes are best-effort so audit storage cannot break the primary action. This Activity log
 is intentionally distinct from systemd/journald operational logs.
 
+Dashboard system metrics are collected directly from Linux interfaces available on both bare-metal
+hosts and LXC containers. Memory comes from `/proc/meminfo`, uptime from `/proc/uptime`, CPU time
+from the aggregate line in `/proc/stat`, and filesystem usage from the configured dashboard path.
+CPU utilisation is the change in non-idle time divided by the change in total time between
+consecutive dashboard samples. A single cumulative `/proc/stat` reading cannot express current
+utilisation, so the first reading only establishes a baseline and the API intentionally returns
+`null` until the next sample; the browser displays an em dash during that interval.
+
 The provider registry and contract are the VPN boundary; see
 [VPN provider architecture](architecture/providers.md). NordVPN is currently the only registered
 implementation. Exitlane delegates VPN tunnel ownership to a mature local client. WireGuard is the

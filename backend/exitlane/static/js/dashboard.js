@@ -1,7 +1,12 @@
 import { t } from "./i18n.js";
 import { renderIcon } from "./icons.js";
 import { select, setBusy, setStatusPill } from "./ui.js";
-import { formatBytes, formatDuration, formatRelativeTime as formatRelative } from "./dashboard-format.js";
+import {
+  formatBytes,
+  formatCpuPercent,
+  formatDuration,
+  formatRelativeTime as formatRelative,
+} from "./dashboard-format.js";
 import { createDashboardRefreshState } from "./dashboard-refresh-state.js";
 import { getSlice, subscribe } from "./state.js";
 import { refreshDashboardState } from "./lifecycle.js";
@@ -91,7 +96,7 @@ export function renderDashboard(data, { successfulRefresh = true } = {}) {
   text("#dashboard-wg-endpoint", data.wireguard.endpoint);
 
   text("#dashboard-hostname", data.system.hostname);
-  text("#dashboard-cpu", data.system.cpu_percent == null ? "—" : `${data.system.cpu_percent}%`);
+  text("#dashboard-cpu", formatCpuPercent(data.system.cpu_percent));
   text("#dashboard-memory", data.system.memory_percent == null ? "—" : `${bytesOrUnknown(data.system.memory_used_bytes)} / ${bytesOrUnknown(data.system.memory_total_bytes)} (${data.system.memory_percent}%)`);
   text("#dashboard-disk", data.system.disk_percent == null ? "—" : `${bytesOrUnknown(data.system.disk_used_bytes)} / ${bytesOrUnknown(data.system.disk_total_bytes)} (${data.system.disk_percent}%)`);
   text("#dashboard-uptime", data.system.uptime_seconds == null ? "—" : formatDuration(data.system.uptime_seconds));

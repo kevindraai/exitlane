@@ -5,6 +5,8 @@ from exitlane.services.dashboard import (
     SystemStatus,
     VPNStatus,
     WireGuardStatus,
+    _cpu_percent,
+    _CpuSampler,
     build_dashboard,
     determine_health,
     system_status,
@@ -243,6 +245,41 @@ def test_system_status_tolerates_missing_proc_fields_and_uses_requested_filesyst
     assert result.load_average is None
     assert result.disk_percent == 25.0
     assert result.temperature_celsius is None
+
+
+def test_cpu_percent_reports_low_usage_for_idle_tick_delta():
+    assert _cpu_percent((1_000, 900), (2_000, 1_850)) == 5.0
+
+
+def test_cpu_percent_reports_high_usage_for_busy_tick_delta():
+    assert _cpu_percent((1_000, 900), (2_000, 950)) == 95.0
+
+
+def test_cpu_percent_is_clamped_and_invalid_deltas_are_withheld():
+    assert _cpu_percent((100, 90), (200, 210)) == 0.0
+    assert _cpu_percent((100, 90), (200, 0)) is None
+    assert _cpu_percent((100, 90), (100, 90)) is None
+    assert _cpu_percent((100, 90), (200, 90)) == 100.0
+
+
+def test_cpu_sampler_withholds_first_sample_and_handles_missing_metrics(monkeypatch):
+    samples = iter([(100, 90), None, (200, 185)])
+    monkeypatch.setattr("exitlane.services.dashboard._read_cpu_ticks", lambda: next(samples))
+    sampler = _CpuSampler()
+
+    assert sampler.sample() is None
+    assert sampler.sample() is None
+    assert sampler.sample() == 5.0
+
+
+def test_dashboard_api_model_keeps_nullable_cpu_percent_field():
+    payload = system().model_dump(mode="json")
+    assert "cpu_percent" in payload
+    assert payload["cpu_percent"] == 5.0
+
+    payload = system().model_copy(update={"cpu_percent": None}).model_dump(mode="json")
+    assert "cpu_percent" in payload
+    assert payload["cpu_percent"] is None
 
 
 def test_wireguard_internal_error_message_is_replaced_with_stable_code():
