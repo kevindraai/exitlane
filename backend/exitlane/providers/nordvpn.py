@@ -28,6 +28,8 @@ TOKEN_ERROR_CODES = frozenset(
         "already_logged_in",
         "invalid_token_format",
         "invalid_token",
+        "token_expired",
+        "token_revoked",
         "timeout",
         "daemon_unavailable",
         "command_unavailable",
@@ -57,6 +59,7 @@ async def _login_token_via_pty(
     *,
     executable: str = "nordvpn",
     timeout: int = TOKEN_LOGIN_TIMEOUT_SECONDS,
+    output_sink: bytearray | None = None,
 ) -> int:
     """Enter a token only after the provider terminal has disabled input echo."""
     master, slave = os.openpty()
@@ -90,6 +93,10 @@ async def _login_token_via_pty(
                 break
             if chunk:
                 prompt.extend(chunk)
+                if output_sink is not None:
+                    output_sink.extend(chunk)
+                    if len(output_sink) > 4096:
+                        del output_sink[:-4096]
                 if len(prompt) > 4096:
                     del prompt[:-4096]
             try:
@@ -146,6 +153,10 @@ def classify_token_login_failure(return_code: int, output: str, error: str) -> s
     if return_code == 127:
         return "command_unavailable"
     message = f"{output}\n{error}".casefold()
+    if any(marker in message for marker in ("token has expired", "expired token")):
+        return "token_expired"
+    if any(marker in message for marker in ("token has been revoked", "revoked token")):
+        return "token_revoked"
     if any(
         marker in message
         for marker in ("already logged in", "already logged-in", "already signed in")
@@ -156,7 +167,7 @@ def classify_token_login_failure(return_code: int, output: str, error: str) -> s
         for marker in (
             "invalid token",
             "token is invalid",
-            "token has expired",
+            "access token is not valid",
             "incorrect token",
         )
     ):
@@ -929,16 +940,13 @@ class NordVPN(Provider):
                 "error": "invalid_token_format",
             }
 
-        rc = await _login_token_via_pty(token)
-        error = (
-            None
-            if rc == 0
-            else "timeout"
-            if rc == 124
-            else "command_unavailable"
-            if rc == 127
-            else "provider_error"
-        )
+        output = bytearray()
+        rc = await _login_token_via_pty(token, output_sink=output)
+        message = output.decode(errors="replace")
+        error = None if rc == 0 else classify_token_login_failure(rc, message, "")
+        output[:] = b"\0" * len(output)
+        if error is not None:
+            logger.warning("NordVPN token authentication failed: %s", error)
 
         return {
             "ok": error is None,

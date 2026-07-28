@@ -15,6 +15,8 @@ from exitlane.core import set_setting, setting
 PROVIDER = "nordvpn"
 CACHE_TTL = timedelta(minutes=5)
 QUICK_COUNTRIES = ("NL", "BE", "DE", "FR", "GB")
+NORDVPN_SERVER_PATTERN = re.compile(r"^(?P<country>[a-z]{2})[0-9]+\.nordvpn\.com$")
+_active_server_measurements: dict[tuple[str, str], asyncio.Task[dict]] = {}
 COUNTRY_NAMES = {
     "AT": "Oostenrijk",
     "AU": "Australië",
@@ -63,6 +65,13 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def normalize_server_hostname(server: str | None) -> str | None:
+    if not isinstance(server, str):
+        return None
+    normalized = server.strip().rstrip(".").casefold()
+    return normalized or None
+
+
 def _cached(
     country_code: str,
     *,
@@ -108,13 +117,17 @@ def country_summary(
 
 
 def server_latency(server: str | None) -> dict:
-    if not server:
+    normalized = normalize_server_hostname(server)
+    if not normalized:
         return {"latency_ms": None, "latency_measured_at": None}
     with sqlite3.connect(core.DB) as connection:
         row = connection.execute(
             """SELECT latency_ms, measured_at FROM vpn_latency_cache
-               WHERE provider=? AND server=? AND measured_at>=?""",
-            (PROVIDER, server, (_now() - CACHE_TTL).isoformat()),
+               WHERE provider=?
+                 AND lower(rtrim(trim(server), '.'))=?
+                 AND measured_at>=?
+               ORDER BY measured_at DESC LIMIT 1""",
+            (PROVIDER, normalized, (_now() - CACHE_TTL).isoformat()),
         ).fetchone()
     return {
         "latency_ms": row[0] if row else None,
@@ -141,6 +154,72 @@ async def tcp_latency(hostname: str, *, attempts: int = 3, timeout: float = 1.5)
         "status": "reachable" if measurements else "unreachable",
         "method": "tcp",
     }
+
+
+async def _measure_active_server(
+    hostname: str,
+    *,
+    measurer: Callable[[str], Awaitable[dict]],
+) -> dict:
+    match = NORDVPN_SERVER_PATTERN.fullmatch(hostname)
+    if not match:
+        return {"latency_ms": None, "latency_measured_at": None}
+    result = await measurer(hostname)
+    measured_at = _now().isoformat()
+    with sqlite3.connect(core.DB) as connection:
+        connection.execute(
+            """INSERT INTO vpn_latency_cache
+               (provider, country_code, server, latency_ms, status, measured_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(provider, server) DO UPDATE SET
+                 country_code=excluded.country_code, latency_ms=excluded.latency_ms,
+                 status=excluded.status, measured_at=excluded.measured_at""",
+            (
+                PROVIDER,
+                match.group("country").upper(),
+                hostname,
+                result.get("latency_ms"),
+                result.get("status", "unknown"),
+                measured_at,
+            ),
+        )
+    return {
+        "latency_ms": result.get("latency_ms"),
+        "latency_measured_at": measured_at,
+    }
+
+
+async def ensure_active_server_latency(
+    server: str | None,
+    *,
+    measurer: Callable[[str], Awaitable[dict]] | None = None,
+) -> dict:
+    """Return or measure fresh RTT telemetry for the exact connected server."""
+    hostname = normalize_server_hostname(server)
+    cached = server_latency(hostname)
+    if cached["latency_measured_at"] is not None or hostname is None:
+        return cached
+    if not NORDVPN_SERVER_PATTERN.fullmatch(hostname):
+        return cached
+
+    key = (str(core.DB.resolve()), hostname)
+    task = _active_server_measurements.get(key)
+    if task is None:
+        task = asyncio.create_task(
+            _measure_active_server(hostname, measurer=measurer or tcp_latency)
+        )
+        _active_server_measurements[key] = task
+
+        def clear_completed(completed: asyncio.Task[dict]) -> None:
+            if _active_server_measurements.get(key) is completed:
+                _active_server_measurements.pop(key, None)
+
+        task.add_done_callback(clear_completed)
+    try:
+        return await asyncio.shield(task)
+    finally:
+        if task.done() and _active_server_measurements.get(key) is task:
+            _active_server_measurements.pop(key, None)
 
 
 async def measure_latency(endpoint: str, *, attempts: int = 3, timeout: float = 1.0) -> dict:
@@ -185,7 +264,11 @@ async def measure_servers(
         if cached:
             return cached
 
-    candidates = [item for item in servers if item.get("hostname")][:5]
+    candidates = [
+        {**item, "hostname": normalize_server_hostname(item.get("hostname"))}
+        for item in servers
+        if normalize_server_hostname(item.get("hostname"))
+    ][:5]
     measurer = measurer or measure_latency
     results = await asyncio.gather(
         *(measurer(item.get("station") or item["hostname"]) for item in candidates)

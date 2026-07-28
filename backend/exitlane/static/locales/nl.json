@@ -171,6 +171,13 @@
         "save_failed": "De netwerkconfiguratie kon niet worden opgeslagen."
       }
     },
+    "system": {
+      "eyebrow": "SYSTEEM", "title": "Systeemacties", "description": "Herstart ExitLane of beheer de ExitLane-instance.",
+      "accepted": "De systeemactie is geaccepteerd. Deze pagina kan onbereikbaar worden.", "failed": "De systeemactie kon niet worden gestart.",
+      "restart": { "title": "ExitLane herstarten", "description": "Herstart alleen de ExitLane-applicatieservice. De webinterface is kort niet beschikbaar.", "action": "ExitLane herstarten", "confirm_title": "ExitLane herstarten?", "confirm_description": "De ExitLane-service wordt herstart en deze webinterface is kort niet beschikbaar." },
+      "reboot": { "title": "Systeem herstarten", "description": "Herstart de volledige instance. VPN- en WireGuard-verkeer wordt tijdelijk onderbroken.", "action": "Systeem herstarten", "confirm_title": "Het systeem herstarten?", "confirm_description": "De volledige instance wordt herstart. VPN- en WireGuard-verkeer wordt tijdelijk onderbroken." },
+      "shutdown": { "title": "Systeem afsluiten", "description": "Sluit de instance af. Deze kan niet vanuit de webinterface opnieuw worden gestart.", "action": "Systeem afsluiten", "confirm_title": "Het systeem afsluiten?", "confirm_description": "De instance wordt afgesloten. Fysieke, hypervisor- of hosttoegang kan nodig zijn om deze opnieuw te starten." }
+    },
     "appearance": {
       "eyebrow": "WEERGAVE",
       "title": "Weergave",
@@ -331,7 +338,8 @@
       "errors": { "installation_in_progress": "Er draait al een providerinstallatie.", "unsupported_platform": "Beheerde installatie wordt alleen op Debian 13 ondersteund.", "helper_timeout": "De beveiligde installer duurde te lang.", "repository_failed": "De officiële NordVPN-repository kon niet worden ingesteld.", "client_install_failed": "De NordVPN-client kon niet worden geïnstalleerd.", "daemon_start_failed": "De NordVPN-daemon kon niet worden gestart.", "daemon_inactive": "De NordVPN-daemon draait niet.", "validation_failed": "De NordVPN-installatie kon niet worden gevalideerd.", "provider_installation_cleanup_failed": "De installatie is geslaagd, maar tijdelijke bestanden konden niet worden opgeruimd.", "provider_installation_validation_failed": "NordVPN is geïnstalleerd, maar de laatste beschikbaarheidscontrole is mislukt.", "provider_readiness_timeout": "NordVPN werd niet binnen de toegestane tijd beschikbaar.", "provider_daemon_failed": "De NordVPN-daemon ontbreekt of kon niet worden gestart.", "gateway_settings_failed": "NordVPN is beschikbaar, maar de veilige gatewayinstellingen konden niet worden bevestigd.", "insufficient_privileges": "De beveiligde installer heeft onvoldoende rechten.", "installation_start_failed": "De beveiligde installer kon niet worden gestart.", "installation_failed": "De NordVPN-installatie is mislukt." }
     },
     "authentication": {
-      "errors": { "invalid_token_format": "Vul een niet-leeg NordVPN-access token met een geldig formaat in.", "invalid_token": "NordVPN heeft dit access token afgewezen.", "daemon_unavailable": "De NordVPN-daemon is niet beschikbaar.", "command_unavailable": "De NordVPN-client is niet beschikbaar.", "timeout": "De NordVPN-tokenaanmelding duurde te lang.", "already_logged_in": "NordVPN is al aangemeld.", "token_replacement_unsupported": "Beëindig de huidige NordVPN-sessie voordat je een ander token gebruikt.", "provider_error": "NordVPN kon de aanmelding niet voltooien." }
+      "success": "Aanmelden bij NordVPN is geslaagd.",
+      "errors": { "invalid_token_format": "Vul een niet-leeg NordVPN-access token met een geldig formaat in.", "invalid_token": "De opgegeven toegangstoken is ongeldig. Maak in je Nord Account een nieuwe toegangstoken aan en probeer het opnieuw.", "token_expired": "De opgegeven toegangstoken is verlopen. Maak in je Nord Account een nieuwe toegangstoken aan en probeer het opnieuw.", "token_revoked": "De opgegeven toegangstoken is ingetrokken. Maak in je Nord Account een nieuwe toegangstoken aan en probeer het opnieuw.", "daemon_unavailable": "De NordVPN-daemon is niet beschikbaar.", "command_unavailable": "De NordVPN-client is niet beschikbaar.", "timeout": "De NordVPN-tokenaanmelding duurde te lang.", "already_logged_in": "NordVPN is al aangemeld.", "token_replacement_unsupported": "Beëindig de huidige NordVPN-sessie voordat je een ander token gebruikt.", "provider_error": "NordVPN kon de aanmelding niet voltooien." }
     },
     "apply_gateway_settings": "Gatewayinstellingen toepassen",
     "gateway_settings": "Gatewayinstellingen",
@@ -549,6 +557,7 @@
     "settings_general": "Algemeen",
     "settings_security": "Beveiliging",
     "settings_network": "Netwerk",
+    "settings_system": "Systeem",
     "settings_notifications": "Notificaties",
     "settings_backup": "Backup & Restore",
     "settings_updates": "Updates",
@@ -583,7 +592,7 @@
     "metadata": { "target": "Doel", "country": "Land", "city": "Stad", "server": "Server", "reason": "Reden", "provider": "Provider", "fields": "Velden", "client_name": "Client", "interface": "Interface", "name": "Naam" }
   },
   "events": {
-    "system": { "started": "Exitlane gestart" },
+    "system": { "started": "Exitlane gestart", "action_accepted": "Systeemactie {action} geaccepteerd", "action_started": "Systeemactie {action} gestart", "action_failed": "Systeemactie {action} mislukt" },
     "setup": { "completed": "Setup afgerond" },
     "auth": { "login_succeeded": "Beheerder aangemeld", "login_failed": "Aanmeldpoging mislukt", "logout": "Beheerder afgemeld", "session_expired": "Sessie verlopen", "session_revoked": "Sessie ingetrokken", "password_changed": "Beheerderswachtwoord gewijzigd", "password_reset": "Beheerderswachtwoord lokaal hersteld", "mfa_enrollment_started": "MFA-activering gestart", "mfa_enabled": "MFA ingeschakeld", "mfa_disabled": "MFA uitgeschakeld", "mfa_disabled_locally": "MFA lokaal uitgeschakeld", "recovery_codes_generated": "Herstelcodes gegenereerd", "recovery_codes_regenerated": "Herstelcodes opnieuw gegenereerd", "recovery_code_used": "Herstelcode gebruikt", "other_sessions_revoked": "Andere sessies ingetrokken" },
     "settings": { "updated": "Instellingen bijgewerkt: {fields}" },
@@ -598,6 +607,9 @@
     "description": "Gebruik je lokale beheerdersaccount.",
     "username": "Gebruikersnaam",
     "password": "Wachtwoord",
+    "forgot_password": "Wachtwoord vergeten?",
+    "password_recovery_local": "Wachtwoordherstel wordt lokaal uitgevoerd op de ExitLane-instance.",
+    "password_recovery_instruction": "Meld je aan op de shell en voer de volgende opdracht uit met rootrechten:",
     "login": "Aanmelden",
     "logout": "Afmelden",
     "logging_in": "Aanmelden…",
@@ -673,6 +685,7 @@
   "setup_completed": "Setup afgerond.",
   "gateway_settings_applied": "Gatewayinstellingen zijn toegepast.",
   "login_link_ready": "NordVPN-aanmeldlink is gereed.",
+  "login_link_failed": "De NordVPN-aanmeldlink kon niet worden geladen.",
   "login_link_copied": "Aanmeldlink gekopieerd.",
   "copy_link_manually": "Selecteer en kopieer de link handmatig.",
   "wireguard_config_copied": "WireGuard-configuratie gekopieerd."

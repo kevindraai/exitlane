@@ -3,8 +3,8 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-readonly INSTALLER_VERSION="0.2.0-beta.1"
-readonly PACKAGE_VERSION="0.2.0b1"
+readonly INSTALLER_VERSION="0.2.0-beta.2"
+readonly PACKAGE_VERSION="0.2.0b2"
 readonly LIFECYCLE_LOCK="${EXITLANE_LIFECYCLE_LOCK:-/run/lock/exitlane-lifecycle.lock}"
 readonly RECOVERY_ROOT="${EXITLANE_RECOVERY_ROOT:-/var/lib/exitlane/recovery}"
 UPGRADE_MODE=0
@@ -13,13 +13,13 @@ RECOVERY_DIR=""
 LOCK_FD=""
 CURRENT_VERSION=""
 
-# De repository waarin dit script staat.
+# The repository containing this script.
 SOURCE_DIR="$(
   cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1
   pwd
 )"
 readonly SOURCE_DIR
-# Overschrijfbaar voor testdoeleinden:
+# Override for testing:
 # TARGET=/tmp/exitlane-test ./installer/install-debian.sh
 readonly TARGET="${TARGET:-/opt/exitlane}"
 readonly VENV_DIR="${TARGET}/venv"
@@ -51,11 +51,11 @@ on_error() {
     rollback_upgrade || true
   fi
   echo
-  echo "Exitlane-installatie mislukt."
-  echo "Regel: ${line_number}"
-  echo "Exitcode: ${exit_code}"
+  echo "ExitLane installation failed."
+  echo "Line: ${line_number}"
+  echo "Exit code: ${exit_code}"
   echo
-  echo "Bekijk zo nodig:"
+  echo "If needed, inspect:"
   echo "  journalctl -u ${SERVICE_NAME} -n 100 --no-pager"
   exit "${exit_code}"
 }
@@ -85,7 +85,7 @@ fail() {
 
 require_root() {
   if [[ "${EUID}" -ne 0 ]]; then
-    fail "Voer dit installatiescript uit als root of via sudo."
+    fail "Run this installation script as root or with sudo."
   fi
 }
 
@@ -93,9 +93,9 @@ acquire_lifecycle_lock() {
   install -d -m 0755 "$(dirname "${LIFECYCLE_LOCK}")"
   exec {LOCK_FD}>"${LIFECYCLE_LOCK}"
   if ! flock -n "${LOCK_FD}"; then
-    fail "Een andere ExitLane lifecycle-actie is al actief."
+    fail "Another ExitLane lifecycle action is already active."
   fi
-  success "Exclusieve lifecyclelock verkregen"
+  success "Exclusive lifecycle lock acquired"
 }
 
 detect_installation_mode() {
@@ -112,14 +112,14 @@ detect_installation_mode() {
     fi
     if [[ -n "${CURRENT_VERSION}" ]] &&
       dpkg --compare-versions "${CURRENT_VERSION}" gt "${PACKAGE_VERSION}"; then
-      fail "Downgrade van ${CURRENT_VERSION} naar ${INSTALLER_VERSION} wordt geweigerd."
+      fail "Downgrade from ${CURRENT_VERSION} to ${INSTALLER_VERSION} is not allowed."
     fi
-    log "Bestaande ExitLane-installatie gedetecteerd"
+    log "Existing ExitLane installation detected"
     [[ -z "${CURRENT_VERSION}" ]] ||
-      success "Huidige versie ${CURRENT_VERSION}; doelversie ${INSTALLER_VERSION}"
+      success "Current version ${CURRENT_VERSION}; target version ${INSTALLER_VERSION}"
   else
     UPGRADE_MODE=0
-    log "Schone ExitLane-installatie gedetecteerd"
+    log "Clean ExitLane installation detected"
   fi
 }
 
@@ -128,9 +128,9 @@ check_free_space() {
   local available_kib
   available_kib="$(df -Pk "${TARGET%/*}" | awk 'NR==2 {print $4}')"
   if [[ ! "${available_kib}" =~ ^[0-9]+$ ]] || (( available_kib < required_kib )); then
-    fail "Minimaal 512 MiB vrije ruimte is vereist voor installatie en recovery."
+    fail "At least 512 MiB of free space is required for installation and recovery."
   fi
-  success "Voldoende vrije schijfruimte beschikbaar"
+  success "Sufficient free disk space available"
 }
 
 snapshot_sqlite_database() {
@@ -171,11 +171,11 @@ prepare_upgrade_recovery() {
   done
   printf '%s\n' "${INSTALLER_VERSION}" > "${RECOVERY_DIR}/target-version"
   chmod -R go-rwx "${RECOVERY_DIR}"
-  success "Root-only pre-upgrade recovery snapshot gemaakt"
+  success "Root-only pre-upgrade recovery snapshot created"
 }
 
 rollback_upgrade() {
-  warning "Upgrade mislukt; vorige ExitLane-installatie wordt hersteld"
+  warning "Upgrade failed; restoring the previous ExitLane installation"
   systemctl stop "${SERVICE_NAME}" >/dev/null 2>&1 || true
   if [[ -d "${RECOVERY_DIR}/files" ]]; then
     restore_recovery_files "${RECOVERY_DIR}/files" /
@@ -187,7 +187,7 @@ rollback_upgrade() {
   fi
   systemctl daemon-reload >/dev/null 2>&1 || true
   systemctl restart "${SERVICE_NAME}" >/dev/null 2>&1 || true
-  warning "Rollback uitgevoerd; recovery snapshot behouden in ${RECOVERY_DIR}"
+  warning "Rollback completed; recovery snapshot retained at ${RECOVERY_DIR}"
 }
 
 restore_recovery_files() {
@@ -216,110 +216,110 @@ commit_upgrade() {
   printf '%s\n' "${INSTALLER_VERSION}" > "${DATA_DIR}/installed-version"
   chmod 0600 "${DATA_DIR}/installed-version"
   UPGRADE_COMMITTED=1
-  success "Upgrade transactioneel afgerond; recovery: ${RECOVERY_DIR}"
+  success "Upgrade transaction completed; recovery: ${RECOVERY_DIR}"
 }
 
 require_systemd() {
   if ! command -v systemctl >/dev/null 2>&1; then
-    fail "systemd is niet beschikbaar. Exitlane vereist momenteel systemd."
+    fail "systemd is unavailable. ExitLane currently requires systemd."
   fi
 
   if [[ ! -d /run/systemd/system ]]; then
-    fail "systemd draait niet als init-systeem."
+    fail "systemd is not running as the init system."
   fi
 
-  success "systemd beschikbaar"
+  success "systemd available"
 }
 
 detect_operating_system() {
   if [[ ! -r /etc/os-release ]]; then
-    fail "/etc/os-release ontbreekt; het besturingssysteem kan niet worden vastgesteld."
+    fail "/etc/os-release is missing; the operating system cannot be determined."
   fi
 
   # shellcheck disable=SC1091
   source /etc/os-release
 
   if [[ "${ID:-}" != "debian" ]]; then
-    fail "Deze installer ondersteunt momenteel alleen Debian."
+    fail "This installer currently supports Debian only."
   fi
 
   case "${VERSION_ID:-}" in
     12|13)
-      success "Debian ${VERSION_ID} gedetecteerd"
+      success "Debian ${VERSION_ID} detected"
       ;;
     *)
-      fail "Debian ${VERSION_ID:-onbekend} wordt nog niet ondersteund. Gebruik Debian 12 of 13."
+      fail "Debian ${VERSION_ID:-unknown} is not supported yet. Use Debian 12 or 13."
       ;;
   esac
 }
 
 check_source_layout() {
   [[ -f "${SOURCE_DIR}/backend/pyproject.toml" ]] ||
-    fail "backend/pyproject.toml ontbreekt."
+    fail "backend/pyproject.toml is missing."
 
   [[ -f "${SERVICE_SOURCE}" ]] ||
-    fail "${SERVICE_SOURCE} ontbreekt."
+    fail "${SERVICE_SOURCE} is missing."
 
   [[ -f "${DEFAULTS_SOURCE}" ]] ||
-    fail "${DEFAULTS_SOURCE} ontbreekt."
+    fail "${DEFAULTS_SOURCE} is missing."
   [[ -f "${NORDVPN_HELPER_SOURCE}" ]] ||
-    fail "${NORDVPN_HELPER_SOURCE} ontbreekt."
+    fail "${NORDVPN_HELPER_SOURCE} is missing."
   [[ -f "${PROVIDER_INSTALL_SERVICE_SOURCE}" ]] ||
-    fail "${PROVIDER_INSTALL_SERVICE_SOURCE} ontbreekt."
+    fail "${PROVIDER_INSTALL_SERVICE_SOURCE} is missing."
 
   if [[ "$(realpath -m "${SOURCE_DIR}")" == "$(realpath -m "${TARGET}")" ]]; then
-    fail "De Git-repository en installatiemap mogen niet dezelfde map zijn.
+    fail "The Git repository and installation directory must not be the same directory.
 
-Gebruik bijvoorbeeld:
+For example, use:
   repository: /srv/exitlane
-  installatie: /opt/exitlane"
+  installation: /opt/exitlane"
   fi
 
-  success "Bronstructuur gecontroleerd"
+  success "Source layout verified"
 }
 
 check_tun_device() {
   if [[ ! -c /dev/net/tun ]]; then
-    fail "/dev/net/tun ontbreekt.
+    fail "/dev/net/tun is missing.
 
-Voeg bij een Proxmox-LXC bijvoorbeeld toe aan /etc/pve/lxc/<CTID>.conf:
+For a Proxmox LXC, add the following to /etc/pve/lxc/<CTID>.conf:
 
   lxc.cgroup2.devices.allow: c 10:200 rwm
   lxc.mount.entry: /dev/net/tun dev/net/tun none bind,create=file
 
-Stop en start de LXC daarna volledig."
+Then fully stop and start the LXC."
   fi
 
-  success "/dev/net/tun beschikbaar"
+  success "/dev/net/tun available"
 }
 
 check_network_administration() {
-  log "WireGuard-functionaliteit controleren"
+  log "Checking WireGuard functionality"
 
   local test_interface="elwg$$"
   local output=""
 
-  # Verwijder een eventueel achtergebleven testinterface.
+  # Remove any leftover test interface.
   ip link delete "${test_interface}" >/dev/null 2>&1 || true
 
   if ! output="$(ip link add "${test_interface}" type wireguard 2>&1)"; then
     [[ -n "${output}" ]] && echo "${output}"
-    fail "De container kan geen WireGuard-interface aanmaken.
+    fail "The container cannot create a WireGuard interface.
 
-Controleer of de LXC voldoende NET_ADMIN-rechten heeft en bij voorkeur
-privileged draait."
+Verify that the LXC has sufficient NET_ADMIN privileges and preferably runs
+as a privileged container."
   fi
 
   ip link delete "${test_interface}" >/dev/null 2>&1 || true
 
-  success "WireGuard-interface kan worden aangemaakt"
+  success "WireGuard interface can be created"
 }
 
 check_connectivity() {
   if ! getent hosts deb.debian.org >/dev/null 2>&1; then
-    fail "DNS-resolutie werkt niet."
+    fail "DNS resolution is not working."
   fi
-  success "DNS-resolutie werkt"
+  success "DNS resolution works"
 
   if ! curl \
     --fail \
@@ -330,13 +330,13 @@ check_connectivity() {
     --max-time 20 \
     https://deb.debian.org/ \
     >/dev/null; then
-    fail "Geen werkende HTTPS-verbinding naar internet."
+    fail "No working HTTPS connection to the internet."
   fi
-  success "Internetverbinding werkt"
+  success "Internet connection works"
 }
 
 install_system_packages() {
-  log "Benodigde Debian-pakketten installeren"
+  log "Installing required Debian packages"
 
   export DEBIAN_FRONTEND=noninteractive
 
@@ -355,24 +355,24 @@ install_system_packages() {
     rsync \
     wireguard-tools
 
-  success "Systeempakketten geïnstalleerd"
+  success "System packages installed"
 }
 
 create_directories() {
-  log "Installatie- en datamappen voorbereiden"
+  log "Preparing installation and data directories"
 
   install -d -m 0755 "${TARGET}"
   install -d -m 0700 "${CONFIG_DIR}"
   install -d -m 0700 "${DATA_DIR}"
   install -d -m 0700 "${LOG_DIR}"
 
-  success "Mappen aangemaakt"
+  success "Directories created"
 }
 
 create_master_key() {
   if [[ -e "${MASTER_KEY}" ]]; then
     chmod 0600 "${MASTER_KEY}"
-    success "Bestaande applicatiemasterkey behouden"
+    success "Existing application master key retained"
     return
   fi
   (
@@ -380,18 +380,18 @@ create_master_key() {
     head -c 32 /dev/urandom > "${MASTER_KEY}"
   )
   chmod 0600 "${MASTER_KEY}"
-  success "Applicatiemasterkey veilig aangemaakt"
+  success "Application master key created securely"
 }
 
 stop_existing_service() {
   if systemctl is-active --quiet "${SERVICE_NAME}"; then
-    log "Bestaande Exitlane-service stoppen"
+    log "Stopping existing ExitLane service"
     systemctl stop "${SERVICE_NAME}"
   fi
 }
 
 copy_application() {
-  log "Exitlane naar ${TARGET} kopiëren"
+  log "Copying ExitLane to ${TARGET}"
 
   rsync -a \
     --delete \
@@ -409,18 +409,18 @@ copy_application() {
     "${SOURCE_DIR}/" \
     "${TARGET}/"
 
-  success "Applicatiebestanden gekopieerd"
+  success "Application files copied"
 }
 
 create_virtual_environment() {
-  log "Python virtual environment voorbereiden"
+  log "Preparing Python virtual environment"
 
   if [[ ! -x "${VENV_DIR}/bin/python" ]]; then
     rm -rf "${VENV_DIR}"
     python3 -m venv "${VENV_DIR}"
-    success "Nieuwe virtual environment aangemaakt"
+    success "New virtual environment created"
   else
-    success "Bestaande virtual environment hergebruikt"
+    success "Existing virtual environment reused"
   fi
 
   "${VENV_DIR}/bin/python" -m pip install \
@@ -434,20 +434,20 @@ create_virtual_environment() {
     "${TARGET}/backend"
 
   chmod -R a+rX "${VENV_DIR}"
-  success "Exitlane Python-package geïnstalleerd"
+  success "ExitLane Python package installed"
 }
 
 install_cli() {
-  log "Lokaal beheercommando installeren"
+  log "Installing local management command"
   install -m 0755 "${VENV_DIR}/bin/exitlane-cli" "${CLI_TARGET}"
-  success "${CLI_TARGET} geïnstalleerd"
+  success "${CLI_TARGET} installed"
 }
 
 install_provider_helper() {
-  log "Vaste providerinstallatiehelper installeren"
+  log "Installing fixed provider installation helper"
   install -d -m 0755 /usr/local/libexec
   install -o root -g root -m 0755 "${NORDVPN_HELPER_SOURCE}" "${NORDVPN_HELPER_TARGET}"
-  success "${NORDVPN_HELPER_TARGET} geïnstalleerd"
+  success "${NORDVPN_HELPER_TARGET} installed"
 }
 
 install_defaults_file() {
@@ -455,16 +455,16 @@ install_defaults_file() {
   local target_path="$2"
 
   if [[ -f "${target_path}" ]]; then
-    warning "${target_path} bestaat al en is behouden"
+    warning "${target_path} already exists and was retained"
     return
   fi
 
   install -m 0600 "${source_path}" "${target_path}"
-  success "${target_path} aangemaakt"
+  success "${target_path} created"
 }
 
 install_service_files() {
-  log "systemd-configuratie installeren"
+  log "Installing systemd configuration"
 
   install \
     -m 0644 \
@@ -478,14 +478,14 @@ install_service_files() {
   install_defaults_file "${DEFAULTS_SOURCE}" "${DEFAULTS_TARGET}"
 
   systemctl daemon-reload
-  success "systemd-configuratie geladen"
+  success "systemd configuration loaded"
 }
 
 configure_ip_forwarding() {
-  log "IPv4-forwarding configureren"
+  log "Configuring IPv4 forwarding"
 
   cat > /etc/sysctl.d/99-exitlane.conf <<'EOF'
-# Required by Exitlane to forward ingress traffic through a VPN provider.
+# Required by ExitLane to forward ingress traffic through a VPN provider.
 net.ipv4.ip_forward=1
 EOF
 
@@ -494,21 +494,21 @@ EOF
 
   if [[ "${current_value}" != "1" ]]; then
     if ! sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1; then
-      fail "net.ipv4.ip_forward kon niet worden ingeschakeld."
+      fail "net.ipv4.ip_forward could not be enabled."
     fi
   fi
 
   current_value="$(sysctl -n net.ipv4.ip_forward 2>/dev/null || echo 0)"
 
   if [[ "${current_value}" != "1" ]]; then
-    fail "IPv4-forwarding is na configuratie nog steeds uitgeschakeld."
+    fail "IPv4 forwarding is still disabled after configuration."
   fi
 
-  success "IPv4-forwarding staat aan"
+  success "IPv4 forwarding is enabled"
 }
 
 start_service() {
-  log "Exitlane-service inschakelen en starten"
+  log "Enabling and starting the ExitLane service"
 
   systemctl enable "${SERVICE_NAME}"
   systemctl enable exitlane-killswitch.service
@@ -518,10 +518,10 @@ start_service() {
 
   if ! systemctl is-active --quiet "${SERVICE_NAME}"; then
     systemctl status "${SERVICE_NAME}" --no-pager --full || true
-    fail "Exitlane is niet succesvol gestart."
+    fail "ExitLane did not start successfully."
   fi
 
-  success "Exitlane-service draait"
+  success "ExitLane service is running"
 }
 
 detect_management_ip() {
@@ -549,19 +549,19 @@ show_summary() {
 
   echo
   echo "============================================================"
-  echo " Exitlane ${INSTALLER_VERSION} is geïnstalleerd"
+  echo " ExitLane ${INSTALLER_VERSION} is installed"
   echo "============================================================"
   echo
-  echo " Webinterface:"
+  echo " Web interface:"
   echo "   http://${management_ip}:8787"
   echo
-  echo " Applicatie:"
+  echo " Application:"
   echo "   ${TARGET}"
   echo
-  echo " Configuratie:"
+  echo " Configuration:"
   echo "   ${CONFIG_DIR}"
   echo
-  echo " Runtime-data:"
+  echo " Runtime data:"
   echo "   ${DATA_DIR}"
   echo
   echo " Service:"
@@ -570,14 +570,14 @@ show_summary() {
   echo " Logs:"
   echo "   journalctl -u ${SERVICE_NAME} -f"
   echo
-  echo " Volgende stap:"
-  echo "   Open de webinterface en doorloop de first-runwizard."
+  echo " Next step:"
+  echo "   Open the web interface and complete the first-run wizard."
   echo
 }
 
 main() {
   echo
-  echo "Exitlane Installer ${INSTALLER_VERSION}"
+  echo "ExitLane Installer ${INSTALLER_VERSION}"
   echo "Smart egress for every network"
   echo
 
@@ -588,9 +588,8 @@ main() {
   check_source_layout
   check_tun_device
 
-  # ip en curl zijn mogelijk nog niet aanwezig op een echt minimale Debian-
-  # installatie. Installeer daarom eerst de packages en voer daarna de overige
-  # preflightchecks uit.
+  # ip and curl may not be available yet on a truly minimal Debian installation.
+  # Install the packages first, then run the remaining preflight checks.
   install_system_packages
   check_connectivity
   check_network_administration

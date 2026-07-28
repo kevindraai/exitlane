@@ -90,6 +90,9 @@ Important authentication, setup, VPN, WireGuard, settings, notification, and sys
 - Protect the application and API with expiring server-side sessions.
 - Change the administrator password in Settings and revoke existing sessions.
 - Recover a forgotten password locally with `sudo exitlane-cli reset-password`.
+- Under **Settings > System**, an authenticated administrator can restart only
+  `exitlane.service`, reboot the instance, or shut it down. Shutdown cannot be
+  reversed from ExitLane; host, hypervisor, or physical access is required.
 - Enable TOTP multifactor authentication, use one-time recovery codes, and manage active sessions.
 - Run behind an explicitly trusted HTTPS reverse proxy.
 

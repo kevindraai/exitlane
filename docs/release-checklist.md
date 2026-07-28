@@ -8,8 +8,8 @@ blocker and the pull request must remain draft.
 - [x] Work is on `release/beta`, based on origin/main
   `11bc3bf4ab4314d9812e67fdfff0c609ca783751`.
 - [x] No direct main commit, merge, reset, rebase, force-push, tag, or release.
-- [x] Runtime and installer version are `0.2.0-beta.1`; Python package version is
-  the PEP 440 equivalent `0.2.0b1`.
+- [x] Runtime and installer version are `0.2.0-beta.2`; Python package version is
+  the PEP 440 equivalent `0.2.0b2`.
 - [ ] Final branch SHA and unchanged remote main are recorded in PR #34.
 
 ## Automated validation

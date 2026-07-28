@@ -37,6 +37,51 @@ let loadingSettings = false;
 const mfaState = createMfaState();
 let networkMfaRequired = false;
 let networkBroadTrustConfirmation = false;
+let pendingSystemAction = null;
+let systemActionSubmitted = false;
+
+const SYSTEM_ACTIONS = Object.freeze({
+  restart: { buttonClass: "button-primary" },
+  reboot: { buttonClass: "button-warning" },
+  shutdown: { buttonClass: "button-danger" },
+});
+
+export function openSystemActionDialog(action) {
+  if (!SYSTEM_ACTIONS[action] || systemActionSubmitted) return false;
+  pendingSystemAction = action;
+  const dialog = select("#system-action-confirm");
+  const submit = select("#system-action-submit");
+  select("#system-action-confirm-title").textContent = t(`settings.system.${action}.confirm_title`);
+  select("#system-action-confirm-description").textContent = t(`settings.system.${action}.confirm_description`);
+  submit.textContent = t(`settings.system.${action}.action`);
+  submit.className = `button ${SYSTEM_ACTIONS[action].buttonClass}`;
+  dialog.showModal();
+  select("#system-action-cancel").focus();
+  return true;
+}
+
+export async function confirmSystemAction() {
+  if (!pendingSystemAction || systemActionSubmitted) return false;
+  systemActionSubmitted = true;
+  const action = pendingSystemAction;
+  const buttons = document.querySelectorAll("[data-system-action]");
+  buttons.forEach((button) => { button.disabled = true; });
+  select("#system-action-submit").disabled = true;
+  select("#system-action-cancel").disabled = true;
+  try {
+    await api(`/api/system/actions/${action}`, { method: "POST" });
+    select("#system-action-confirm").close();
+    showMessage(t("settings.system.accepted"), ALERT_TYPES.SUCCESS);
+    return true;
+  } catch (error) {
+    systemActionSubmitted = false;
+    buttons.forEach((button) => { button.disabled = false; });
+    select("#system-action-submit").disabled = false;
+    select("#system-action-cancel").disabled = false;
+    showMessage(t("settings.system.failed"), ALERT_TYPES.ERROR);
+    return false;
+  }
+}
 
 function removeRenderedMfaSecrets() {
   select("#settings-mfa-setup-key").textContent = "";
@@ -641,6 +686,14 @@ export function initialiseSettings() {
   form.addEventListener("input", updateSaveState);
   form.addEventListener("change", updateSaveState);
   select("#settings-password-form").addEventListener("submit", changePassword);
+  document.querySelectorAll("[data-system-action]").forEach((button) => {
+    button.addEventListener("click", () => openSystemActionDialog(button.dataset.systemAction));
+  });
+  select("#system-action-cancel").addEventListener("click", () => {
+    select("#system-action-confirm").close();
+    pendingSystemAction = null;
+  });
+  select("#system-action-submit").addEventListener("click", confirmSystemAction);
   select("#settings-network-form").addEventListener("submit", saveNetworkSecurity);
   select("#settings-network-cookie-policy").addEventListener("change", (event) => {
     select("#settings-network-cookie-warning").hidden = event.currentTarget.value !== "never";

@@ -71,6 +71,77 @@ def test_country_summary_keeps_provider_latency_caches_separate(tmp_path, monkey
     assert vpn_selection.country_summary("NL", provider_id="other")["latency_ms"] == 48
 
 
+def test_exact_normalized_server_latency_is_used_without_country_substitution(
+    tmp_path, monkeypatch
+):
+    initialise_database(tmp_path, monkeypatch)
+    measured_at = vpn_selection._now().isoformat()
+    with sqlite3.connect(core.DB) as connection:
+        connection.executemany(
+            """INSERT INTO vpn_latency_cache
+               (provider, country_code, server, latency_ms, status, measured_at)
+               VALUES ('nordvpn', 'FR', ?, ?, 'reachable', ?)""",
+            [
+                ("FR825.NORDVPN.COM.", 27, measured_at),
+                ("fr900.nordvpn.com", 11, measured_at),
+            ],
+        )
+
+    assert vpn_selection.server_latency("  fr825.nordvpn.com  ")["latency_ms"] == 27
+    assert vpn_selection.server_latency("fr825.nordvpn.com.")["latency_ms"] == 27
+    assert vpn_selection.server_latency("fr825")["latency_ms"] is None
+    assert vpn_selection.server_latency("fr901.nordvpn.com")["latency_ms"] is None
+
+
+def test_active_server_measurement_is_deduplicated_and_persisted(tmp_path, monkeypatch):
+    initialise_database(tmp_path, monkeypatch)
+    calls = []
+    release = asyncio.Event()
+
+    async def measure(hostname):
+        calls.append(hostname)
+        await release.wait()
+        return {"latency_ms": 23, "status": "reachable", "method": "tcp"}
+
+    async def run():
+        first = asyncio.create_task(
+            vpn_selection.ensure_active_server_latency(" FR825.NORDVPN.COM. ", measurer=measure)
+        )
+        second = asyncio.create_task(
+            vpn_selection.ensure_active_server_latency("fr825.nordvpn.com", measurer=measure)
+        )
+        await asyncio.sleep(0)
+        release.set()
+        return await asyncio.gather(first, second)
+
+    results = asyncio.run(run())
+
+    assert calls == ["fr825.nordvpn.com"]
+    assert [item["latency_ms"] for item in results] == [23, 23]
+    assert vpn_selection.server_latency("fr825.nordvpn.com")["latency_ms"] == 23
+
+
+def test_failed_active_server_measurement_is_cached_as_optional_telemetry(tmp_path, monkeypatch):
+    initialise_database(tmp_path, monkeypatch)
+    calls = []
+
+    async def unreachable(hostname):
+        calls.append(hostname)
+        return {"latency_ms": None, "status": "unreachable", "method": "tcp"}
+
+    first = asyncio.run(
+        vpn_selection.ensure_active_server_latency("fr825.nordvpn.com", measurer=unreachable)
+    )
+    second = asyncio.run(
+        vpn_selection.ensure_active_server_latency("fr825.nordvpn.com", measurer=unreachable)
+    )
+
+    assert first["latency_ms"] is None
+    assert first["latency_measured_at"] is not None
+    assert second == first
+    assert calls == ["fr825.nordvpn.com"]
+
+
 def test_icmp_latency_uses_median_without_dns_lookup(monkeypatch):
     calls = []
 

@@ -44,3 +44,31 @@ the outcome.
 Not every form field belongs in central state. Short-lived input and purely presentational state
 can remain local. Central state is reserved for information that crosses views, participates in
 the application lifecycle, or is refreshed asynchronously.
+
+## Active-server latency
+
+The active VPN latency is telemetry for the exact normalized server hostname
+reported by NordVPN status. ExitLane trims whitespace, compares hostnames
+case-insensitively, and removes an optional trailing dot, while keeping short
+names distinct from fully qualified domain names. A fresh cache row is reused
+only when that normalized hostname matches exactly.
+
+If an active server has no fresh row, one deduplicated measurement probes that
+validated NordVPN hostname over TCP/443 and stores the result under the same
+normalized hostname. Concurrent provider polls share the in-flight probe. An
+unreachable server produces optional `—` telemetry and never changes the VPN's
+connected state. Country summaries may reuse the row only when their measured
+catalog hostname is the same exact server; country averages and recommended
+servers are not substituted into the active metric.
+
+## System actions
+
+`POST /api/system/actions/{action}` accepts only `restart`, `reboot`, or
+`shutdown`. The normal authenticated-session, origin, host, and CSRF boundaries
+apply. The API records the administrator and returns `202 Accepted` before
+launching one fixed absolute `systemctl` argv without a shell. `restart` targets
+only `exitlane.service`; `reboot` and `shutdown` affect the full instance.
+
+Shutdown cannot be reversed from ExitLane because the web application is no
+longer running. Starting the instance again requires host, hypervisor, or
+physical access.

@@ -16,6 +16,43 @@ import { refreshSetup } from "./wizard.js";
 import { t } from "./i18n.js";
 
 let wizardInstallationCompleted = false;
+const PROVIDER_AUTHENTICATION_ERROR_CODES = new Set([
+  "invalid_token_format",
+  "invalid_token",
+  "token_expired",
+  "token_revoked",
+  "timeout",
+  "daemon_unavailable",
+  "command_unavailable",
+  "already_logged_in",
+  "token_replacement_unsupported",
+  "provider_error",
+]);
+
+export function providerAuthenticationErrorCode(value) {
+  const detail = value?.payload?.detail;
+  const candidates = [
+    value?.error,
+    value?.payload?.error,
+    typeof detail === "string" ? detail : detail?.code,
+    value?.code,
+  ];
+  return candidates.find((code) => PROVIDER_AUTHENTICATION_ERROR_CODES.has(code))
+    || "provider_error";
+}
+
+export function providerAuthenticationErrorMessage(value) {
+  const code = providerAuthenticationErrorCode(value);
+  return t(
+    `provider.authentication.errors.${code}`,
+    {},
+    t(
+      "provider.authentication.errors.provider_error",
+      {},
+      "The provider could not complete sign-in.",
+    ),
+  );
+}
 
 export function renderProviderStatus(status) {
   appState.provider = status;
@@ -129,6 +166,10 @@ function renderVpnProviderAccess(status) {
   if (access.blocked) suspendProviderData();
 }
 
+export function formatActiveLatency(status) {
+  return status.latency_ms == null ? "—" : `${status.latency_ms} ms`;
+}
+
 function renderVpnView(status) {
   const runtimeError = select("#vpn-runtime-error");
   runtimeError.hidden = !status.error_code;
@@ -162,7 +203,7 @@ function renderVpnView(status) {
   select("#metric-city").textContent = status.city || "—";
   select("#metric-server").textContent = status.server || "—";
   select("#metric-ip").textContent = status.external_ip || "—";
-  select("#metric-latency").textContent = status.latency_ms == null ? "—" : `${status.latency_ms} ms`;
+  select("#metric-latency").textContent = formatActiveLatency(status);
 }
 
 let vpnCountries = [];
@@ -221,8 +262,11 @@ function countryCard(country) {
   button.dataset.countryCode = country.country_code;
   button.setAttribute("aria-pressed", String(country.is_connected));
   button.disabled = active || !vpnProviderAccess(appState.provider || {}).canSelectLocation;
-  const latency = country.latency_ms == null
+  const measuring = country.measuring === true;
+  const latency = measuring
     ? t("provider.country_selection.measuring", {}, "Measuring…")
+    : country.latency_ms == null
+      ? "—"
     : t("provider.country_selection.latency_ms", { latency: country.latency_ms }, `${country.latency_ms} ms`);
   const flag = document.createElement("span");
   flag.className = "country-card__flag";
@@ -435,7 +479,9 @@ async function remeasureCountries() {
   const button = select("#remeasure-countries");
   setBusy(button, true, t("provider.country_selection.measuring", {}, "Measuring…"));
   try {
-    await Promise.all(quickCountryCodes.map((code) => postJson(providerApiPath(`/locations/${code}/measure`))));
+    for (const code of quickCountryCodes) {
+      await postJson(providerApiPath(`/locations/${code}/measure`));
+    }
     await refreshCountries();
   } catch {
     showMessage(t("provider.country_selection.measure_failed", {}, "Not all latency values could be measured."), "error");
@@ -450,13 +496,37 @@ async function measureMissingCountries({ signal } = {}) {
     return country && country.latency_measured_at == null;
   });
   if (!missing.length) return;
-  await Promise.allSettled(
-    missing.map((code) => postJson(
-      providerApiPath(`/locations/${code}/measure`),
-      undefined,
-      { signal },
-    )),
-  );
+  vpnCountries = vpnCountries.map((country) => (
+    missing.includes(country.country_code) ? { ...country, measuring: true } : country
+  ));
+  renderCountries();
+  for (const code of missing) {
+    try {
+      const result = await postJson(
+        providerApiPath(`/locations/${code}/measure`),
+        undefined,
+        { signal },
+      );
+      if (signal?.aborted) return;
+      vpnCountries = vpnCountries.map((country) => (
+        country.country_code === code
+          ? {
+            ...country,
+            latency_ms: result.latency_ms,
+            latency_measured_at: result.latency_measured_at,
+            measuring: false,
+          }
+          : country
+      ));
+      renderCountries();
+    } catch (error) {
+      if (signal?.aborted || error.code === "aborted") return;
+      vpnCountries = vpnCountries.map((country) => (
+        country.country_code === code ? { ...country, measuring: false } : country
+      ));
+      renderCountries();
+    }
+  }
   if (signal?.aborted) return;
   await refreshCountries({ signal });
 }
@@ -704,11 +774,7 @@ async function startBrowserLogin() {
     );
 
     if (!result.ok || !result.login_url) {
-      throw new Error(
-        result.message ||
-          result.stderr ||
-          "Aanmeldlink kon niet worden opgehaald.",
-      );
+      throw new Error("provider_login_link_failed");
     }
 
     select("#browser-login-url").value = result.login_url;
@@ -722,8 +788,12 @@ async function startBrowserLogin() {
     "The NordVPN login link is ready.",
   ),
 );
-  } catch (error) {
-    showInlineError(error.message);
+  } catch {
+    showInlineError(t(
+      "messages.login_link_failed",
+      {},
+      "The NordVPN login link could not be loaded.",
+    ));
   } finally {
     setBusy(button, false);
   }
@@ -770,23 +840,24 @@ async function loginWithToken(event) {
       { token: input.value },
     );
 
-    input.value = "";
-
     if (!result.ok) {
-      throw new Error(
-        result.message || result.stderr || "NordVPN-aanmelding mislukt.",
-      );
+      const authenticationError = new Error("provider_authentication_failed");
+      authenticationError.code = providerAuthenticationErrorCode(result);
+      throw authenticationError;
     }
 
-    showMessage(result.stdout || "NordVPN-aanmelding geslaagd.");
+    input.value = "";
+    showMessage(
+      t(
+        "provider.authentication.success",
+        {},
+        "Signed in to NordVPN successfully.",
+      ),
+      "success",
+    );
     await Promise.all([refreshProvider(), refreshSetup()]);
   } catch (error) {
-    const code = error.payload?.detail || error.code || "provider_error";
-    showInlineError(t(
-      `provider.authentication.errors.${code}`,
-      {},
-      t("provider.authentication.errors.provider_error", {}, "The provider could not complete sign-in."),
-    ));
+    showInlineError(providerAuthenticationErrorMessage(error));
   } finally {
     setBusy(button, false);
   }
@@ -809,15 +880,20 @@ async function loginWithCallback(event) {
     );
 
     if (!result.ok) {
-      throw new Error(
-        result.message || result.stderr || "Callback-aanmelding mislukt.",
-      );
+      throw new Error("provider_authentication_failed");
     }
 
-    showMessage(result.stdout || "NordVPN-aanmelding geslaagd.");
+    showMessage(
+      t(
+        "provider.authentication.success",
+        {},
+        "Signed in to NordVPN successfully.",
+      ),
+      "success",
+    );
     await Promise.all([refreshProvider(), refreshSetup()]);
-  } catch (error) {
-    showInlineError(error.message);
+  } catch {
+    showInlineError(providerAuthenticationErrorMessage({ error: "provider_error" }));
   } finally {
     setBusy(button, false);
   }
@@ -906,7 +982,11 @@ export function initialiseProviderControls() {
     }
   });
   window.addEventListener("exitlane:viewchange", (event) => {
-    if (event.detail?.view === "vpn") void activateAuthenticatedProviderData();
+    if (event.detail?.view === "vpn-provider") {
+      void activateAuthenticatedProviderData();
+    } else {
+      suspendProviderData();
+    }
   });
 
   document

@@ -47,6 +47,14 @@ def configure(monkeypatch, *, status):
     monkeypatch.setattr(main.provider, "connect_country", connect_country)
     monkeypatch.setattr(main.provider, "status", provider_status)
     monkeypatch.setattr(main, "select_server", selection)
+    monkeypatch.setattr(
+        main,
+        "server_latency",
+        lambda server: {
+            "latency_ms": 31 if server == status.get("server") else None,
+            "latency_measured_at": "measured" if server == status.get("server") else None,
+        },
+    )
     monkeypatch.setattr(main, "country_summary", lambda *args, **kwargs: {"name": "Nederland"})
     monkeypatch.setattr(main, "remember_country", lambda code: calls.append(f"remember:{code}"))
     monkeypatch.setattr(main, "record_event", lambda code, **values: events.append((code, values)))
@@ -73,11 +81,40 @@ def test_success_requires_status_and_reports_actual_server(monkeypatch):
     assert calls == ["NL", "remember:NL"]
     assert result["success"] is True
     assert result["server"] == "nl987.nordvpn.com"
-    assert result["latency_ms"] == 17
+    assert result["latency_ms"] == 31
+    assert result["vpn"]["latency_ms"] == 31
     assert events[0][0] == "provider.connect_started"
     assert events[0][1]["metadata"]["target"] == "Nederland"
     assert events[-1][0] == "provider.connected"
     assert events[-1][1]["metadata"]["server"] == "nl987.nordvpn.com"
+
+
+def test_reconnect_returns_latency_for_fresh_actual_server(monkeypatch):
+    monkeypatch.setattr(main, "setting", lambda *_args: "nordvpn")
+    configure(
+        monkeypatch,
+        status={
+            "available": True,
+            "authenticated": True,
+            "connected": True,
+            "country": "Netherlands",
+            "city": "Amsterdam",
+            "server": "nl999.nordvpn.com",
+        },
+    )
+
+    result = asyncio.run(
+        main.reconnect_vpn_provider(
+            "nordvpn",
+            main.ProviderReconnect(country_code="NL"),
+            request(),
+        )
+    )
+
+    assert result["success"] is True
+    assert result["server"] == "nl999.nordvpn.com"
+    assert result["latency_ms"] == 31
+    assert result["vpn"]["latency_ms"] == 31
 
 
 def test_exit_zero_without_connected_status_is_failure(monkeypatch):
