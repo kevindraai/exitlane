@@ -45,3 +45,8 @@ export function formatDuration(seconds) {
   const minutes = Math.floor((value % 3600) / 60);
   return days ? `${days}d ${hours}h` : hours ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
+
+export function formatCpuPercent(value) {
+  if (value == null || !Number.isFinite(Number(value))) return "—";
+  return `${Number(value).toFixed(1)}%`;
+}

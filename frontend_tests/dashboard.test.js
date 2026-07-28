@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatBytes, formatDuration, formatRelativeTime, normaliseTimestamp } from "../backend/exitlane/static/js/dashboard-format.js";
+import {
+  formatBytes,
+  formatCpuPercent,
+  formatDuration,
+  formatRelativeTime,
+  normaliseTimestamp,
+} from "../backend/exitlane/static/js/dashboard-format.js";
 import { getSlice, succeedRefresh } from "../backend/exitlane/static/js/state.js";
 
 const translate = (key, variables) => `${key}:${variables.count ?? ""}`;
@@ -46,4 +52,19 @@ test("language rerender and ticker formatting never reset updatedAt", () => {
 test("formats byte counts and uptime deterministically", () => {
   assert.equal(formatBytes(1536), "1.5 KiB");
   assert.equal(formatDuration(90061), "1d 1h");
+});
+
+test("formats CPU usage to one locale-independent decimal", () => {
+  assert.equal(formatCpuPercent(7.34), "7.3%");
+  assert.equal(formatCpuPercent(7), "7.0%");
+  assert.equal(formatCpuPercent("7.36"), "7.4%");
+  assert.equal(formatCpuPercent(null), "—");
+  assert.equal(formatCpuPercent(undefined), "—");
+  assert.equal(formatCpuPercent("invalid"), "—");
+});
+
+test("CPU formatting reflects a refreshed sample", () => {
+  assert.equal(formatCpuPercent(null), "—");
+  assert.equal(formatCpuPercent(3.2), "3.2%");
+  assert.equal(formatCpuPercent(68.75), "68.8%");
 });
