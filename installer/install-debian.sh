@@ -348,6 +348,7 @@ install_system_packages() {
     gnupg \
     iproute2 \
     iputils-ping \
+    iptables \
     nftables \
     python3 \
     python3-pip \

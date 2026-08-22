@@ -33,6 +33,10 @@ the wizard requirement is stricter than the runtime architecture.
 6. Completion renders the provider item as `Deferred`, not `Ready`. The next button and step marker
    accept the deliberate deferred state while provider installation/authentication controls remain
    usable when the user navigates back.
+7. WireGuard ingress uses the appliance's main default-route interface while provider setup is
+   deferred. The installer includes the iptables compatibility frontend used by `wg-quick`; on
+   current Debian it applies these rules through the nftables backend. Provider mode retains its
+   provider-owned egress interface.
 
 ## Acceptance and regression coverage
 
