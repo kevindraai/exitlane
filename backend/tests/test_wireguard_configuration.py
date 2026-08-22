@@ -251,6 +251,52 @@ def test_wizard_and_management_share_provisioning_service(client, monkeypatch):
     assert response.json()["client_config"].endswith("synthetic-wizard-secret\n")
 
 
+def test_deferred_provider_routes_wireguard_through_default_interface(client, monkeypatch):
+    calls = []
+
+    async def provision(**kwargs):
+        calls.append(kwargs)
+        return {
+            "interface": "wg0",
+            "server_public_key": "synthetic-server-public",
+            "client_public_key": "synthetic-client-public",
+            "client_config": "[Interface]\nPrivateKey = synthetic-wizard-secret\n",
+            "client_name": "router",
+        }
+
+    async def network():
+        return {"interface": "eth0", "endpoint": "192.0.2.10", "source": "main-default-route"}
+
+    core.set_setting("setup_provider_deferred", True)
+    monkeypatch.setattr(main.wireguard_service, "provision", provision)
+    monkeypatch.setattr(main, "system_network", network)
+    monkeypatch.setattr(main, "record_event", lambda *_args, **_kwargs: None)
+    response = client.post(
+        "/api/ingress/wireguard",
+        json={
+            "endpoint": "192.0.2.10",
+            "subnet": "10.90.0.0/24",
+            "dns": "1.1.1.1",
+            "port": 51820,
+            "interface": "wg0",
+            "client": "router",
+        },
+    )
+
+    assert response.status_code == 200
+    assert calls[0]["vpn_interface"] == "eth0"
+
+
+def test_provider_mode_keeps_provider_wireguard_egress(client, monkeypatch):
+    core.set_setting("setup_provider_deferred", False)
+
+    async def unexpected_network():
+        raise AssertionError("direct route must not be selected in provider mode")
+
+    monkeypatch.setattr(main, "system_network", unexpected_network)
+    assert asyncio.run(main.wireguard_egress_interface()) == "nordlynx"
+
+
 def test_reload_failure_returns_only_stable_error_code(client, monkeypatch):
     assert login(client).status_code == 200
     for key, value in {
@@ -361,6 +407,28 @@ def test_successful_provision_replaces_keys_consistently(tmp_path, monkeypatch):
     assert result["client_config"] == client_config
     assert activated == ["wg0"]
     assert not list(tmp_path.glob(".*.conf.*"))
+
+
+def test_direct_egress_configuration_uses_selected_default_interface(tmp_path, monkeypatch):
+    monkeypatch.setattr(wireguard, "WG_DIR", tmp_path)
+    pairs = iter(
+        [
+            (SERVER_PRIVATE_NEW, SERVER_PUBLIC_NEW),
+            (CLIENT_PRIVATE_NEW, CLIENT_PUBLIC_NEW),
+        ]
+    )
+
+    async def keypair():
+        return next(pairs)
+
+    monkeypatch.setattr(wireguard, "keypair", keypair)
+    asyncio.run(wireguard.create(endpoint="192.0.2.10", vpn_interface="eth0"))
+
+    server_config = (tmp_path / "wg0.conf").read_text(encoding="utf-8")
+    assert "-i wg0 -o eth0" in server_config
+    assert "-i eth0 -o wg0" in server_config
+    assert "-o eth0 -j MASQUERADE" in server_config
+    assert "nordlynx" not in server_config
 
 
 def test_read_current_rejects_inconsistent_keys_and_handles_missing(tmp_path, monkeypatch):

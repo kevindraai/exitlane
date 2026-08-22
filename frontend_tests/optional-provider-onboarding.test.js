@@ -52,3 +52,12 @@ test("copy explains direct egress, later provider setup and no provider killswit
   }
   assert.doesNotMatch(wizard, /speedtest|vpn\/connect|killswitch\/enable/);
 });
+
+test("WireGuard generation localizes stable backend errors", () => {
+  const wireguard = fs.readFileSync(
+    new URL("../backend/exitlane/static/js/wireguard.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(wireguard, /error\.payload\?\.detail/);
+  assert.match(wireguard, /wireguard_management\.errors\.\$\{code\}/);
+});
