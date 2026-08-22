@@ -31,6 +31,7 @@ from exitlane.config import (
     DEFAULT_WIREGUARD_INTERFACE,
     DEFAULT_WIREGUARD_PORT,
     DEFAULT_WIREGUARD_SUBNET,
+    DEFAULT_WIREGUARD_VPN_INTERFACE,
     MAX_PASSWORD_LENGTH,
     MAX_REQUEST_BODY_BYTES,
     MIN_PASSWORD_LENGTH,
@@ -333,6 +334,7 @@ SETUP_API_ROUTES = {
     ("GET", "/api/config/public"),
     ("GET", "/api/setup/state"),
     ("POST", "/api/setup/admin"),
+    ("POST", "/api/setup/provider/defer"),
     ("POST", "/api/setup/complete"),
     ("GET", "/api/system/network"),
     ("GET", "/api/diagnostics"),
@@ -1055,11 +1057,16 @@ async def setup_state() -> dict:
     selected_provider_id = setting("vpn.provider_id", provider_registry.default_id)
     selected_provider = _provider_or_404(selected_provider_id)
     provider_status = await selected_provider.status()
+    provider_authenticated = bool(provider_status.get("authenticated", False))
+    provider_deferred = bool(setting("setup_provider_deferred", False))
+    if provider_authenticated and provider_deferred:
+        set_setting("setup_provider_deferred", False)
+        provider_deferred = False
 
     steps = {
         "system": bool(setting("setup_system_complete", False)),
         "admin": admin_count > 0,
-        "provider": bool(provider_status.get("authenticated", False)),
+        "provider": provider_authenticated or provider_deferred,
         "wireguard": bool(setting("wireguard_configured", False)),
     }
 
@@ -1084,8 +1091,37 @@ async def setup_state() -> dict:
         "current_step": current_step,
         "steps": steps,
         "provider": provider_status,
+        "provider_authenticated": provider_authenticated,
+        "provider_deferred": provider_deferred,
         "providers": [_provider_metadata(item) for item in provider_registry.all()],
         "selected_provider_id": selected_provider_id,
+    }
+
+
+@app.post("/api/setup/provider/defer")
+async def defer_provider_setup(request: Request) -> dict:
+    if setting("setup_complete", False):
+        raise HTTPException(status_code=409, detail="setup_already_complete")
+    if request_actor(request) is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    with sqlite3.connect(DB) as connection:
+        admin_count = connection.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    if not setting("setup_system_complete", False) or admin_count < 1:
+        raise HTTPException(status_code=409, detail="setup_prerequisites_incomplete")
+
+    selected_provider_id = setting("vpn.provider_id", provider_registry.default_id)
+    provider_status = await _provider_or_404(selected_provider_id).status()
+    if provider_status.get("authenticated"):
+        raise HTTPException(status_code=409, detail="provider_already_authenticated")
+
+    set_setting("setup_provider_deferred", True)
+    set_setting("setup_provider_complete", False)
+    set_setting("setup_current_step", 4)
+    return {
+        "ok": True,
+        "provider_deferred": True,
+        "current_step": 4,
     }
 
 
@@ -1281,6 +1317,7 @@ async def _authenticate_provider(provider_instance, req: Token, request: Request
         metadata={"provider": provider_instance.id},
     )
     set_setting("vpn.provider_id", provider_instance.id)
+    set_setting("setup_provider_deferred", False)
     if not setting("setup_complete", False):
         set_setting("setup_provider_complete", True)
         set_setting("setup_current_step", 4)
@@ -1388,6 +1425,7 @@ async def login_callback(req: Callback) -> dict:
     result = await provider.login_callback(req.callback_url)
 
     if result.get("ok"):
+        set_setting("setup_provider_deferred", False)
         set_setting("setup_provider_complete", True)
         set_setting("setup_current_step", 4)
 
@@ -2202,6 +2240,13 @@ async def activate_wireguard_interface(interface: str) -> None:
         raise RuntimeError(active_error or "De WireGuard-service is niet actief geworden.")
 
 
+async def wireguard_egress_interface() -> str:
+    if not setting("setup_provider_deferred", False):
+        return DEFAULT_WIREGUARD_VPN_INTERFACE
+    network = await system_network()
+    return network["interface"]
+
+
 @app.post("/api/ingress/wireguard")
 async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
     global _wireguard_observed_state
@@ -2220,6 +2265,7 @@ async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
                 port=req.port,
                 interface=req.interface,
                 client=req.client,
+                vpn_interface=await wireguard_egress_interface(),
             )
     except ValueError as error:
         raise HTTPException(
@@ -2363,6 +2409,7 @@ async def regenerate_wireguard_configuration(request: Request) -> JSONResponse:
         }
         if not all(parameters.values()):
             parameters = await wireguard_service.parameters_from_current(interface, client)
+        parameters["vpn_interface"] = await wireguard_egress_interface()
         async with generation_lock:
             result = await wireguard_service.provision(
                 activate=activate_wireguard_interface,

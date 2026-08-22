@@ -17,6 +17,9 @@ import {
 
 let initialised = false;
 let signingOut = false;
+let providerInstallationActive = false;
+let providerInstallationPollTimer = null;
+let providerInstallationStatusLoadedFor = null;
 let killswitchStatus = null;
 let killswitchDialogTrigger = null;
 const KNOWN_KILLSWITCH_STATES = new Set([
@@ -25,6 +28,7 @@ const KNOWN_KILLSWITCH_STATES = new Set([
   "enabled_waiting_for_tunnel",
   "enabled_degraded",
 ]);
+const PROVIDER_INSTALLATION_POLL_INTERVAL_MS = 1500;
 
 function yesNo(value) {
   return t(value ? "common.yes" : "common.no", {}, value ? "Yes" : "No");
@@ -418,8 +422,149 @@ export function renderProviderManagement(status = {}) {
   select("#provider-signed-in").hidden = !signedIn;
   select("#provider-token-form").hidden = !(signedOut && view.canSignIn);
   select("#provider-unavailable").hidden = signedIn || signedOut;
+  const installation = select("#provider-management-installation");
+  const installButton = select("#provider-management-install");
+  const installable = view.canInstall || providerInstallationActive;
+  installation.hidden = !installable;
+  select("#provider-management-retry").hidden = installable;
+  select("#provider-management-install-description").textContent = t(
+    "provider.management.install_description",
+    { provider: name },
+    `${name} is not installed. ExitLane can install the official client for you.`,
+  );
+  installButton.textContent = t(
+    "provider.management.install",
+    { provider: name },
+    `Install ${name}`,
+  );
+  installButton.disabled = !view.canInstall || providerInstallationActive;
   select("#provider-end-session").hidden = !view.canSignOut;
   select("#provider-end-session").disabled = !view.canSignOut || signingOut;
+  if (view.installationState === "installing") {
+    void restoreManagementProviderInstallation();
+  }
+}
+
+function managementInstallationError(error) {
+  const code = error.payload?.detail || error.code || "installation_failed";
+  return t(
+    `provider.installation.errors.${code}`,
+    {},
+    t("provider.installation.errors.installation_failed", {}, "The provider installation failed."),
+  );
+}
+
+function renderManagementInstallationProgress(status) {
+  const progress = select("#provider-management-install-status");
+  const inProgress = status.installation_in_progress === true;
+  progress.hidden = false;
+  progress.textContent = inProgress
+    ? t(
+      `provider.installation.phase.${status.phase}`,
+      {},
+      t("provider.installation.status.installing", {}, "Installing"),
+    )
+    : status.phase === "completed" || status.state === "available"
+      ? t("provider.installation.success", {}, "The VPN provider is installed and available.")
+      : managementInstallationError({ payload: { detail: status.error_code } });
+}
+
+async function pollManagementProviderInstallation(providerId) {
+  window.clearTimeout(providerInstallationPollTimer);
+  try {
+    const status = await api(
+      `/api/vpn/providers/${encodeURIComponent(providerId)}/installation`,
+      { deduplicate: false },
+    );
+    renderManagementInstallationProgress(status);
+    if (status.installation_in_progress) {
+      providerInstallationActive = true;
+      setBusy(
+        select("#provider-management-install"),
+        true,
+        t("busy.installing", {}, "Installing…"),
+      );
+      providerInstallationPollTimer = window.setTimeout(
+        () => pollManagementProviderInstallation(providerId),
+        PROVIDER_INSTALLATION_POLL_INTERVAL_MS,
+      );
+      return;
+    }
+
+    providerInstallationActive = false;
+    setBusy(select("#provider-management-install"), false);
+    if (status.phase === "completed" || status.state === "available") {
+      showMessage(t("provider.installation.success", {}, "The VPN provider is installed and available."), "success");
+      await Promise.all([loadProviders(), refreshProviderState({ deduplicate: false })]);
+      return;
+    }
+
+    const button = select("#provider-management-install");
+    button.disabled = false;
+    button.textContent = t("provider.installation.retry", {}, "Try again");
+    showInlineError(managementInstallationError({ payload: { detail: status.error_code } }), "#provider-management-error");
+  } catch (error) {
+    providerInstallationPollTimer = window.setTimeout(
+      () => pollManagementProviderInstallation(providerId),
+      PROVIDER_INSTALLATION_POLL_INTERVAL_MS,
+    );
+  }
+}
+
+async function restoreManagementProviderInstallation() {
+  const providerId = activeProviderId();
+  if (!providerId || providerInstallationStatusLoadedFor === providerId) return;
+  providerInstallationStatusLoadedFor = providerId;
+  try {
+    const status = await api(
+      `/api/vpn/providers/${encodeURIComponent(providerId)}/installation`,
+      { deduplicate: false },
+    );
+    if (status.installation_in_progress) {
+      providerInstallationActive = true;
+      renderManagementInstallationProgress(status);
+      await pollManagementProviderInstallation(providerId);
+    }
+  } catch {
+    providerInstallationStatusLoadedFor = null;
+  }
+}
+
+async function installProviderFromManagement() {
+  if (providerInstallationActive) return;
+  const providerId = activeProviderId();
+  const metadata = providerMetadata();
+  if (!providerId || !metadata) return;
+  if (!window.confirm(t(
+    "provider.installation.confirm",
+    {},
+    "Install this VPN provider on this Debian 13 system?",
+  ))) return;
+
+  const button = select("#provider-management-install");
+  clearInlineError("#provider-management-error");
+  providerInstallationActive = true;
+  setBusy(button, true, t("busy.installing", {}, "Installing…"));
+  select("#provider-management-install-status").hidden = false;
+  select("#provider-management-install-status").textContent = t(
+    "provider.installation.phase.starting",
+    {},
+    "Starting the protected installer…",
+  );
+  try {
+    await api(`/api/vpn/providers/${encodeURIComponent(providerId)}/installation`, {
+      method: "POST",
+    });
+    await pollManagementProviderInstallation(providerId);
+  } catch (error) {
+    if (error.payload?.detail === "installation_in_progress") {
+      await pollManagementProviderInstallation(providerId);
+      return;
+    }
+    providerInstallationActive = false;
+    setBusy(button, false);
+    showInlineError(managementInstallationError(error), "#provider-management-error");
+  }
 }
 
 function renderProviderNavigation(slice = getSlice("providers")) {
@@ -527,6 +672,10 @@ export function initialiseProviders() {
   select("#provider-management-retry").addEventListener("click", () => {
     refreshProviderState({ deduplicate: false }).catch(() => {});
   });
+  select("#provider-management-install").addEventListener(
+    "click",
+    installProviderFromManagement,
+  );
   select("#killswitch-change").addEventListener("click", openKillswitchDialog);
   select("#killswitch-cancel").addEventListener("click", closeKillswitchDialog);
   select("#killswitch-dialog").addEventListener("cancel", (event) => {

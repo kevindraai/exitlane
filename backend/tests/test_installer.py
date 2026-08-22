@@ -47,6 +47,13 @@ def test_installer_has_locked_upgrade_snapshot_and_rollback_contract():
     assert installer.index("stop_existing_service") < installer.index("copy_application")
 
 
+def test_installer_includes_wireguard_firewall_runtime():
+    installer = INSTALLER.read_text(encoding="utf-8")
+
+    assert "    iptables \\\n" in installer
+    assert "    nftables \\\n" in installer
+
+
 def test_installer_user_visible_output_is_english():
     installer = INSTALLER.read_text(encoding="utf-8")
 
