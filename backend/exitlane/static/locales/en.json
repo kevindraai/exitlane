@@ -255,6 +255,7 @@
     "provider": "VPN provider",
     "wireguard": "WireGuard ingress",
     "ready": "Ready",
+    "deferred": "Deferred",
     "not_ready": "Not ready"
   },
   "common": {
@@ -297,7 +298,14 @@
   "step3": {
     "kicker": "Step 3",
     "title": "VPN provider",
-    "description": "NordVPN is the first provider implementation. Exitlane keeps the underlying architecture provider-independent."
+    "description": "NordVPN is the first provider implementation. Exitlane keeps the underlying architecture provider-independent.",
+    "defer_title": "Continue without a VPN provider",
+    "defer_description": "ExitLane will provide WireGuard access using this appliance's normal internet connection. No provider VPN or provider killswitch will be active. You can configure a provider later from VPN management.",
+    "defer_action": "Skip provider for now",
+    "deferring": "Saving choice…",
+    "deferred_title": "Provider setup deferred",
+    "deferred_description": "WireGuard clients will use ExitLane's direct internet route until you configure a VPN provider later.",
+    "deferred_message": "Provider setup deferred. You can configure one later from VPN management."
   },
   "provider": {
     "management": {
@@ -368,8 +376,8 @@
     "callback_hint": "Paste the link behind the Continue button here.",
     "finish_browser_login": "Finish browser login",
     "token_placeholder": "Paste the token here",
-    "status": { "connected": "Connected", "disconnected": "Disconnected", "unavailable": "Unavailable", "authenticated": "Signed in", "signed_out": "Signed out", "not_installed": "Not installed" },
-    "description": { "ready": "The NordVPN Linux client is installed and signed in.", "signed_out": "The NordVPN Linux client is installed but signed out.", "not_installed": "The NordVPN Linux client is not installed yet." },
+    "status": { "connected": "Connected", "disconnected": "Disconnected", "unavailable": "Unavailable", "authenticated": "Signed in", "signed_out": "Signed out", "not_installed": "Not installed", "deferred": "Deferred" },
+    "description": { "ready": "The NordVPN Linux client is installed and signed in.", "signed_out": "The NordVPN Linux client is installed but signed out.", "not_installed": "The NordVPN Linux client is not installed yet.", "deferred": "No VPN provider is configured. ExitLane will use its direct internet route." },
     "action": { "connecting": "Connecting…", "disconnecting": "Disconnecting…" },
     "operation": { "connecting_country": "Connecting to {country}…", "recovering": "Recovering NordVPN…" },
     "notifications": { "connecting": "Connecting to {target}…", "connected": "Connected to {target} {server}.", "country_connected": "Connected to {server}.", "connect_failed": "Could not connect to {target}.", "disconnecting": "Disconnecting…", "disconnected": "Disconnected.", "disconnect_failed": "Could not disconnect." },

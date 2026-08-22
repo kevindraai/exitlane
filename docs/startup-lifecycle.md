@@ -18,7 +18,10 @@ favors a visible startup failure over an inconsistent or partially authorized in
 
 An incomplete setup selects wizard mode. Only setup data and public configuration needed for the
 guided flow are loaded. The wizard owns the progression through system checks, administrator
-creation, provider setup, WireGuard setup, and completion.
+creation, provider choice, WireGuard setup, and completion. Provider choice is explicit: a provider
+may be authenticated during onboarding or deferred. Deferred mode keeps the normal host route as
+egress for WireGuard clients and leaves provider installation/authentication available in the
+authenticated VPN management view after setup.
 
 Completing setup causes the application to reassess its session and mode rather than layering the
 dashboard over wizard state. This creates a clean boundary between initial provisioning and normal
