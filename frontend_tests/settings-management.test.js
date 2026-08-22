@@ -323,6 +323,7 @@ test("provider management keeps authentication and tunnel state distinct", () =>
       capabilities: {
         can_sign_in: false,
         can_sign_out: true,
+        can_install: false,
       },
     },
   });
@@ -330,6 +331,7 @@ test("provider management keeps authentication and tunnel state distinct", () =>
   assert.equal(signedIn.connectionState, "connected");
   assert.equal(signedIn.canSignOut, true);
   assert.equal(signedIn.canSignIn, false);
+  assert.equal(signedIn.canInstall, false);
   assert.equal(signedIn.canManageProviderKillswitch, false);
 
   const signedOut = providerManagementView({
@@ -341,6 +343,16 @@ test("provider management keeps authentication and tunnel state distinct", () =>
   });
   assert.equal(signedOut.canSignIn, true);
   assert.equal(signedOut.canSignOut, false);
+
+  const installable = providerManagementView({
+    management: {
+      provider: { id: "nordvpn", installation_state: "not_installed" },
+      authentication: { state: "unavailable" },
+      connection: { state: "unknown" },
+      capabilities: { can_install: true },
+    },
+  });
+  assert.equal(installable.canInstall, true);
 
   const olderUnknown = providerManagementView({});
   assert.equal(olderUnknown.authenticationState, "unknown");
@@ -354,6 +366,8 @@ test("provider page has state regions and no killswitch control", async () => {
   assert.match(markup, /<div hidden="" id="provider-signed-in"/);
   assert.match(markup, /id="provider-token-form"/);
   assert.match(markup, /<div hidden="" id="provider-unavailable"/);
+  assert.match(markup, /class="button button-primary"[^>]+id="provider-management-install"/);
+  assert.match(markup, /id="provider-management-install-status" role="status"/);
   assert.match(markup, /id="provider-end-session"/);
   assert.doesNotMatch(markup, /killswitch/i);
   const statusRegion = markup.indexOf('class="provider-management-status-region"');
@@ -363,6 +377,23 @@ test("provider page has state regions and no killswitch control", async () => {
   assert.match(source, /provider-signed-in"\)\.hidden = !signedIn/);
   assert.match(source, /provider-token-form"\)\.hidden = !\(signedOut && view\.canSignIn\)/);
   assert.match(source, /provider-end-session"\)\.hidden = !view\.canSignOut/);
+  assert.match(source, /provider-management-install"\)\.addEventListener[\s\S]+installProviderFromManagement/);
+  assert.match(source, /\/api\/vpn\/providers\/\$\{encodeURIComponent\(providerId\)\}\/installation/);
+});
+
+test("missing provider offers managed install with localized EN and NL copy", async () => {
+  const [english, dutch, source] = await Promise.all([
+    JSON.parse(await readFile(englishUrl, "utf8")),
+    JSON.parse(await readFile(dutchUrl, "utf8")),
+    readFile(providerSourceUrl, "utf8"),
+  ]);
+  for (const locale of [english, dutch]) {
+    assert.match(locale.provider.management.install, /\{provider\}/);
+    assert.match(locale.provider.management.install_description, /\{provider\}/);
+  }
+  assert.match(source, /window\.confirm\(t\([\s\S]+provider\.installation\.confirm/);
+  assert.match(source, /installation_in_progress/);
+  assert.match(source, /PROVIDER_INSTALLATION_POLL_INTERVAL_MS/);
 });
 
 test("session ending uses an accessible confirmed single-flight mutation", async () => {

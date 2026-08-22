@@ -35,6 +35,13 @@
          <div class="form-submit"><button class="button button-primary" data-i18n="provider.management.sign_in" id="provider-token-save" type="submit">Sign in with token</button></div>
         </form>
         <div hidden="" id="provider-unavailable">
+         <div hidden="" id="provider-management-installation">
+          <p id="provider-management-install-description"></p>
+          <div class="view-actions">
+           <button class="button button-primary" id="provider-management-install" type="button"></button>
+          </div>
+          <p hidden="" id="provider-management-install-status" role="status"></p>
+         </div>
          <button class="button button-secondary" data-i18n="provider.access.retry" id="provider-management-retry" type="button">Retry</button>
         </div>
         <dialog aria-describedby="provider-sign-out-description" aria-labelledby="provider-sign-out-title" id="provider-sign-out-dialog">

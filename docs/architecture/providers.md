@@ -31,6 +31,9 @@ First-run onboarding does not require a commercial provider. The persisted
 continue while the provider status remains honestly signed out or unavailable. In that mode,
 WireGuard ingress uses the appliance's normal internet route. A later successful provider
 authentication clears the deferred choice through the same provider-neutral authentication path.
+When an administrator later opens an uninstalled provider, its management page exposes the same
+protected, resumable installation operation as onboarding. A status retry is reserved for states
+where managed installation is unavailable and can therefore provide useful new information.
 
 Provider icon metadata is a local Lucide identifier, not a URL or SVG fragment. The frontend
 validates it against the allowlist in `static/js/icons.js` and uses `shield-check` as the safe
