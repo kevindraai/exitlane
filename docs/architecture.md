@@ -70,6 +70,20 @@ NordVPN recovery path. That path restarts the fixed `nordvpnd.service`, performs
 and retries the original validated country once. Recovery is limited to two attempts per ten
 minutes. Analytics or journal messages are observability signals only and never trigger recovery.
 
+Connection lifecycle state is keyed by a stable connection ID instead of stored in an anonymous
+singleton. The active provider currently uses `provider:nordvpn`; the state contract includes the
+connection kind, provider, interface, requested location and server-selection generation. This
+keeps the current single-egress behavior while preventing a later WireGuard instance from sharing
+or overwriting another connection's operation state. Latency measurement is non-exclusive
+telemetry. A connect action performs its own awaited selection and falls back to the validated
+provider country when no measured server is reachable.
+
+Authenticated connection diagnostics use transient, in-process runs. Each probe owns a fixed
+segment and progresses through pending, running, passed, warning, or failed. Automatic probes use
+fixed command arguments and endpoints; raw subprocess output is reduced to allowlisted fields
+before it crosses the API boundary. Speed test is an explicit action and never part of an automatic
+run. See [Connection diagnostics](diagnostics.md).
+
 ## Design boundaries
 
 - The backend, not the browser, performs privileged host and network actions.

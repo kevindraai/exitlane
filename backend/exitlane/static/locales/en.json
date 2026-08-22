@@ -553,6 +553,7 @@
     "vpn_overview": "Overview",
     "wireguard": "WireGuard",
     "activity": "Activity",
+    "diagnostics": "Diagnostics",
     "settings": "Settings",
     "settings_general": "General",
     "settings_security": "Security",
@@ -626,7 +627,23 @@
       "errors": {"invalid": "The code is invalid or expired.", "invalid_mfa_code": "The code is invalid.", "mfa_challenge_expired": "The sign-in expired. Start again.", "too_many_attempts": "Too many attempts. Start again."}
     }
   },
-"busy": {
+  "diagnostics": {
+    "eyebrow": "CONNECTION TEST", "title": "Diagnostics", "description": "Follow the path from this device through Exitlane and the VPN to the internet.",
+    "flow_label": "Connection health from device to internet",
+    "nodes": { "device": "Device", "exitlane": "Exitlane", "vpn": "VPN", "internet": "Internet" },
+    "status": { "pending": "Pending", "running": "Checking", "passed": "Passed", "warning": "Warning", "failed": "Failed" },
+    "summary": { "ready": "Ready to test the connection.", "pending": "Tests are queued…", "running": "Testing the connection…", "passed": "The full connection path passed.", "warning": "The connection works, but one or more checks need attention.", "failed": "A problem was found in the connection path.", "error": "The connection test could not be completed." },
+    "details": { "toggle": "Show troubleshooting details" },
+    "probes": { "exitlane_network": "Exitlane network", "vpn_interface": "VPN interface", "vpn_handshake": "VPN handshake", "vpn_route": "VPN route", "dns_resolution": "DNS resolution", "internet_reachability": "Internet reachability", "public_ip": "Public IP" },
+    "actions": { "run": "Run connection test", "ping": "Ping", "dns": "DNS lookup", "external_ip": "External IP", "speedtest": "Speed test", "running": "Running test…", "failed": "The test could not be completed." },
+    "tools": { "eyebrow": "INDIVIDUAL TESTS", "title": "Test one thing", "description": "These tests run only when you choose them.", "target": "Host or IP address", "speedtest_notice": "Speed test can use significant bandwidth and is never started automatically." },
+    "codes": {
+      "pending": "Waiting to start", "default_route_available": "Exitlane has a default route", "default_route_unavailable": "Exitlane has no usable default route", "default_route_unparseable": "The default route could not be verified", "network_tool_unavailable": "The network inspection tool is unavailable",
+      "vpn_disconnected": "The VPN is disconnected", "vpn_interface_active": "The VPN interface is active", "vpn_interface_inactive": "The VPN interface is inactive", "vpn_interface_unknown": "The VPN interface could not be identified", "vpn_handshake_recent": "The VPN handshake is recent", "vpn_handshake_stale": "The VPN handshake is stale", "vpn_handshake_missing": "No VPN handshake was found", "vpn_handshake_unavailable": "VPN handshake details are unavailable", "vpn_handshake_not_exposed": "This VPN technology does not expose a WireGuard handshake", "wireguard_tool_unavailable": "The WireGuard inspection tool is unavailable", "vpn_route_active": "Internet traffic uses the VPN interface", "vpn_route_unconfirmed": "The VPN route could not be confirmed", "internet_route_unavailable": "No internet route was found",
+      "dns_tool_unavailable": "The DNS lookup tool is unavailable", "dns_resolution_passed": "DNS resolution succeeded", "dns_resolution_failed": "DNS resolution failed", "ping_tool_unavailable": "The ping tool is unavailable", "internet_reachable": "The target is reachable", "internet_unreachable": "The target is unreachable", "public_ip_tool_unavailable": "The public IP tool is unavailable", "public_ip_available": "Public IP", "public_ip_unavailable": "The public IP could not be determined", "speedtest_tool_unavailable": "Speed test is not installed", "speedtest_failed": "Speed test failed", "speedtest_result_invalid": "Speed test returned an invalid result", "speedtest_passed": "Speed test completed", "probe_unavailable": "The check could not be completed"
+    }
+  },
+  "busy": {
   "default": "Working…",
   "checking": "Checking…",
   "checking_automatic": "Checking automatically…",

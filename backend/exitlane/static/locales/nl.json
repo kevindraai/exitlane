@@ -553,6 +553,7 @@
     "vpn_overview": "Overzicht",
     "wireguard": "WireGuard",
     "activity": "Activiteit",
+    "diagnostics": "Diagnostiek",
     "settings": "Instellingen",
     "settings_general": "Algemeen",
     "settings_security": "Beveiliging",
@@ -624,6 +625,22 @@
       "code": "Verificatiecode", "mode": "Codetype", "authenticator": "Authenticator-app", "recovery": "Herstelcode",
       "verify": "Controleren", "verifying": "Controleren…", "back": "Terug",
       "errors": {"invalid": "De code is ongeldig of verlopen.", "invalid_mfa_code": "De code is ongeldig.", "mfa_challenge_expired": "De aanmelding is verlopen. Begin opnieuw.", "too_many_attempts": "Te veel pogingen. Begin opnieuw."}
+    }
+  },
+  "diagnostics": {
+    "eyebrow": "VERBINDINGSTEST", "title": "Diagnostiek", "description": "Volg het pad van dit apparaat via Exitlane en de VPN naar het internet.",
+    "flow_label": "Verbindingsstatus van apparaat naar internet",
+    "nodes": { "device": "Apparaat", "exitlane": "Exitlane", "vpn": "VPN", "internet": "Internet" },
+    "status": { "pending": "Wachten", "running": "Controleren", "passed": "Geslaagd", "warning": "Waarschuwing", "failed": "Mislukt" },
+    "summary": { "ready": "Klaar om de verbinding te testen.", "pending": "Tests staan in de wachtrij…", "running": "Verbinding controleren…", "passed": "Het volledige verbindingspad is geslaagd.", "warning": "De verbinding werkt, maar een of meer controles vragen aandacht.", "failed": "Er is een probleem in het verbindingspad gevonden.", "error": "De verbindingstest kon niet worden voltooid." },
+    "details": { "toggle": "Probleemoplossingsdetails tonen" },
+    "probes": { "exitlane_network": "Exitlane-netwerk", "vpn_interface": "VPN-interface", "vpn_handshake": "VPN-handshake", "vpn_route": "VPN-route", "dns_resolution": "DNS-resolutie", "internet_reachability": "Internetbereikbaarheid", "public_ip": "Publiek IP" },
+    "actions": { "run": "Verbinding testen", "ping": "Ping", "dns": "DNS-lookup", "external_ip": "Extern IP", "speedtest": "Speedtest", "running": "Test uitvoeren…", "failed": "De test kon niet worden voltooid." },
+    "tools": { "eyebrow": "LOSSE TESTS", "title": "Test één onderdeel", "description": "Deze tests worden alleen uitgevoerd wanneer je ze kiest.", "target": "Host- of IP-adres", "speedtest_notice": "Een speedtest kan veel bandbreedte gebruiken en start nooit automatisch." },
+    "codes": {
+      "pending": "Wacht op start", "default_route_available": "Exitlane heeft een standaardroute", "default_route_unavailable": "Exitlane heeft geen bruikbare standaardroute", "default_route_unparseable": "De standaardroute kon niet worden gecontroleerd", "network_tool_unavailable": "De netwerktool is niet beschikbaar",
+      "vpn_disconnected": "De VPN is niet verbonden", "vpn_interface_active": "De VPN-interface is actief", "vpn_interface_inactive": "De VPN-interface is niet actief", "vpn_interface_unknown": "De VPN-interface kon niet worden herkend", "vpn_handshake_recent": "De VPN-handshake is recent", "vpn_handshake_stale": "De VPN-handshake is verouderd", "vpn_handshake_missing": "Er is geen VPN-handshake gevonden", "vpn_handshake_unavailable": "VPN-handshakedetails zijn niet beschikbaar", "vpn_handshake_not_exposed": "Deze VPN-techniek toont geen WireGuard-handshake", "wireguard_tool_unavailable": "De WireGuard-tool is niet beschikbaar", "vpn_route_active": "Internetverkeer gebruikt de VPN-interface", "vpn_route_unconfirmed": "De VPN-route kon niet worden bevestigd", "internet_route_unavailable": "Er is geen internetroute gevonden",
+      "dns_tool_unavailable": "De DNS-tool is niet beschikbaar", "dns_resolution_passed": "DNS-resolutie is geslaagd", "dns_resolution_failed": "DNS-resolutie is mislukt", "ping_tool_unavailable": "De pingtool is niet beschikbaar", "internet_reachable": "Het doel is bereikbaar", "internet_unreachable": "Het doel is niet bereikbaar", "public_ip_tool_unavailable": "De tool voor publiek IP is niet beschikbaar", "public_ip_available": "Publiek IP", "public_ip_unavailable": "Het publieke IP kon niet worden bepaald", "speedtest_tool_unavailable": "Speedtest is niet geïnstalleerd", "speedtest_failed": "Speedtest is mislukt", "speedtest_result_invalid": "Speedtest gaf een ongeldig resultaat", "speedtest_passed": "Speedtest voltooid", "probe_unavailable": "De controle kon niet worden uitgevoerd"
     }
   },
   "busy": {
