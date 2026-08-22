@@ -91,7 +91,14 @@ async function generateWireGuard(event) {
 
     await refreshSetup();
   } catch (error) {
-    showInlineError(error.message);
+    const code = error.payload?.detail || error.payload?.error || error.code;
+    showInlineError(
+      t(
+        `wireguard_management.errors.${code}`,
+        {},
+        error.message,
+      ),
+    );
   } finally {
     setBusy(button, false);
   }
