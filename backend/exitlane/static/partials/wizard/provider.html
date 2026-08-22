@@ -201,6 +201,17 @@
           </form>
          </section>
         </section>
+        <section class="notice-card provider-defer-card">
+         <div id="provider-defer-choice">
+          <strong data-i18n="step3.defer_title">Continue without a VPN provider</strong>
+          <p data-i18n="step3.defer_description">ExitLane will provide WireGuard access using this appliance's normal internet connection. You can install and sign in to a provider later from VPN management.</p>
+          <button class="button button-secondary" data-i18n="step3.defer_action" id="provider-defer" type="button">Skip provider for now</button>
+         </div>
+         <div aria-live="polite" hidden="" id="provider-deferred-status">
+          <strong data-i18n="step3.deferred_title">Provider setup deferred</strong>
+          <p data-i18n="step3.deferred_description">WireGuard clients will use ExitLane's direct internet route until you configure a VPN provider later.</p>
+         </div>
+        </section>
         <div class="step-actions">
          <button class="button button-secondary" data-back="2" data-i18n="common.back" type="button">
           Terug

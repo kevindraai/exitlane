@@ -26,6 +26,12 @@ Metadata creates sidebar entries, Overview cards, provider headings, and wizard 
 status and polling start only while the authenticated provider view is active; logout/session
 expiry stops pollers and clears the catalog and provider slices.
 
+First-run onboarding does not require a commercial provider. The persisted
+`setup_provider_deferred` choice is distinct from provider authentication: it allows onboarding to
+continue while the provider status remains honestly signed out or unavailable. In that mode,
+WireGuard ingress uses the appliance's normal internet route. A later successful provider
+authentication clears the deferred choice through the same provider-neutral authentication path.
+
 Provider icon metadata is a local Lucide identifier, not a URL or SVG fragment. The frontend
 validates it against the allowlist in `static/js/icons.js` and uses `shield-check` as the safe
 fallback. ExitLane ships only the selected Lucide 1.26.0 paths required by the vanilla frontend;

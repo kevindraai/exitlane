@@ -112,6 +112,10 @@ export function renderSetupState(setup) {
   select("#system-next").disabled = !setup.steps.system;
   select("#provider-next").disabled = !setup.steps.provider;
   select("#wireguard-next").disabled = !setup.steps.wireguard;
+  const providerDeferred = Boolean(setup.provider_deferred);
+  select("#provider-defer-choice").hidden = providerDeferred
+    || Boolean(setup.provider_authenticated);
+  select("#provider-deferred-status").hidden = !providerDeferred;
 
   renderCompletionChecks(setup);
 
@@ -177,13 +181,19 @@ function renderCompletionChecks(setup) {
           setup.steps?.[key],
         );
 
-        const status = complete
+        const status = key === "provider" && setup.provider_deferred
           ? t(
+              "completion.deferred",
+              {},
+              "Deferred",
+            )
+          : complete
+            ? t(
               "completion.ready",
               {},
               "Ready",
             )
-          : t(
+            : t(
               "completion.not_ready",
               {},
               "Not ready",
@@ -409,6 +419,35 @@ export async function refreshSetup({
   return setup;
 }
 
+export async function deferProviderSetup() {
+  const button = select("#provider-defer");
+  setBusy(
+    button,
+    true,
+    t("step3.deferring", {}, "Saving choice…"),
+  );
+  clearInlineError();
+  try {
+    await postJson("/api/setup/provider/defer");
+    await refreshSetup();
+    showMessage(
+      t(
+        "step3.deferred_message",
+        {},
+        "Provider setup deferred. You can configure one later from VPN management.",
+      ),
+    );
+  } catch (error) {
+    if (error.status === 401) {
+      showLogin();
+      return;
+    }
+    showInlineError(error.message);
+  } finally {
+    setBusy(button, false);
+  }
+}
+
 function updatePasswordMatchState() {
   const password = select("#admin-password");
   const confirmation = select("#admin-password-confirm");
@@ -473,6 +512,7 @@ export function initialiseWizardNavigation() {
   select("#wireguard-next").addEventListener("click", () => showStep(5));
   select("#diagnostics-button").addEventListener("click", runDiagnostics);
   select("#admin-form").addEventListener("submit", createAdmin);
+  select("#provider-defer").addEventListener("click", deferProviderSetup);
   select("#complete-button").addEventListener("click", completeSetup);
 
   const password = select("#admin-password");

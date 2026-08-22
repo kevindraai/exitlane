@@ -64,11 +64,14 @@ export function renderProviderStatus(status) {
   const installable = ["not_installed", "daemon_missing", "daemon_inactive"].includes(installation);
   const authenticated = Boolean(status.authenticated);
   const connected = Boolean(status.connected);
+  const deferred = Boolean(appState.setup?.provider_deferred) && !authenticated;
 
   if (connected) {
     setStatusPill(select("#provider-state"), t("provider.status.connected", {}, "Connected"), "success");
   } else if (authenticated) {
     setStatusPill(select("#provider-state"), t("provider.status.authenticated", {}, "Signed in"), "success");
+  } else if (deferred) {
+    setStatusPill(select("#provider-state"), t("provider.status.deferred", {}, "Deferred"), "neutral");
   } else if (installation === "installing") {
     setStatusPill(select("#provider-state"), t("provider.installation.status.installing", {}, "Installing"), "neutral");
   } else if (installation === "unsupported") {
@@ -83,7 +86,9 @@ export function renderProviderStatus(status) {
     setStatusPill(select("#provider-state"), t("provider.status.not_installed", {}, "Not installed"), "danger");
   }
 
-  select("#provider-description").textContent = installed
+  select("#provider-description").textContent = deferred
+    ? t("provider.description.deferred", {}, "No VPN provider is configured. ExitLane will use its direct internet route.")
+    : installed
     ? authenticated
       ? t("provider.description.ready", {}, "The NordVPN Linux client is installed and signed in.")
       : t("provider.description.signed_out", {}, "The NordVPN Linux client is installed but signed out.")
@@ -91,7 +96,7 @@ export function renderProviderStatus(status) {
 
   select("#provider-install").disabled = !installable
     || !status.management?.capabilities?.can_install;
-  select("#provider-next").disabled = !authenticated;
+  select("#provider-next").disabled = !(authenticated || deferred);
   select("#provider-login-methods").hidden = !available || !wizardInstallationCompleted;
   if (available) {
     clearInlineError();

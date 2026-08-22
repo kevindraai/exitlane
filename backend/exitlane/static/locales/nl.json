@@ -249,6 +249,7 @@
     "provider": "VPN-provider",
     "wireguard": "WireGuard-ingang",
     "ready": "Gereed",
+    "deferred": "Uitgesteld",
     "not_ready": "Niet gereed"
   },
   "password": {
@@ -297,7 +298,14 @@
   "step3": {
     "kicker": "Stap 3",
     "title": "VPN-provider",
-    "description": "NordVPN is de eerste providerimplementatie. Exitlane houdt de onderliggende architectuur provideronafhankelijk."
+    "description": "NordVPN is de eerste providerimplementatie. Exitlane houdt de onderliggende architectuur provideronafhankelijk.",
+    "defer_title": "Doorgaan zonder VPN-provider",
+    "defer_description": "ExitLane biedt WireGuard-toegang via de normale internetverbinding van deze appliance. Er is dan geen provider-VPN of provider-killswitch actief. Je kunt later vanuit VPN-beheer alsnog een provider configureren.",
+    "defer_action": "Provider voorlopig overslaan",
+    "deferring": "Keuze opslaan…",
+    "deferred_title": "Providerconfiguratie uitgesteld",
+    "deferred_description": "WireGuard-clients gebruiken de directe internetroute van ExitLane totdat je later een VPN-provider configureert.",
+    "deferred_message": "Providerconfiguratie uitgesteld. Je kunt later vanuit VPN-beheer alsnog een provider configureren."
   },
   "provider": {
     "management": {
@@ -368,8 +376,8 @@
     "callback_hint": "Plak hier de link achter de knop Continue.",
     "finish_browser_login": "Browserlogin afronden",
     "token_placeholder": "Plak hier het token",
-    "status": { "connected": "Verbonden", "disconnected": "Niet verbonden", "unavailable": "Niet beschikbaar", "authenticated": "Aangemeld", "signed_out": "Niet aangemeld", "not_installed": "Niet geïnstalleerd" },
-    "description": { "ready": "De NordVPN Linux-client is geïnstalleerd en aangemeld.", "signed_out": "De NordVPN Linux-client is geïnstalleerd, maar nog niet aangemeld.", "not_installed": "De NordVPN Linux-client is nog niet geïnstalleerd." },
+    "status": { "connected": "Verbonden", "disconnected": "Niet verbonden", "unavailable": "Niet beschikbaar", "authenticated": "Aangemeld", "signed_out": "Niet aangemeld", "not_installed": "Niet geïnstalleerd", "deferred": "Uitgesteld" },
+    "description": { "ready": "De NordVPN Linux-client is geïnstalleerd en aangemeld.", "signed_out": "De NordVPN Linux-client is geïnstalleerd, maar nog niet aangemeld.", "not_installed": "De NordVPN Linux-client is nog niet geïnstalleerd.", "deferred": "Er is geen VPN-provider geconfigureerd. ExitLane gebruikt de directe internetroute." },
     "action": { "connecting": "Verbinden…", "disconnecting": "Verbinding verbreken…" },
     "operation": { "connecting_country": "Verbinden met {country}…", "recovering": "NordVPN herstellen…" },
     "notifications": { "connecting": "Verbinden met {target}…", "connected": "Verbonden met {target} {server}.", "country_connected": "Verbonden met {server}.", "connect_failed": "Kon niet verbinden met {target}.", "disconnecting": "Verbinding verbreken…", "disconnected": "Verbinding verbroken.", "disconnect_failed": "Kon de verbinding niet verbreken." },

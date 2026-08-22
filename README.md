@@ -59,7 +59,10 @@ View the connected router peer and manage the current client configuration. The 
 
 ### Guided first-run setup
 
-The first-run wizard checks the system, creates the administrator, installs and authenticates the provider, and generates the WireGuard router configuration.
+The first-run wizard checks the system, creates the administrator, and generates the WireGuard
+router configuration. Installing and authenticating a commercial VPN provider is recommended but
+optional: you can defer it and initially use ExitLane as a regular WireGuard VPN with direct
+internet egress, then configure a provider later from VPN management.
 
 ![ExitLane first-run wizard](docs/images/Wizard_finish.png)
 
