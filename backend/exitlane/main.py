@@ -31,6 +31,7 @@ from exitlane.config import (
     DEFAULT_WIREGUARD_INTERFACE,
     DEFAULT_WIREGUARD_PORT,
     DEFAULT_WIREGUARD_SUBNET,
+    DEFAULT_WIREGUARD_VPN_INTERFACE,
     MAX_PASSWORD_LENGTH,
     MAX_REQUEST_BODY_BYTES,
     MIN_PASSWORD_LENGTH,
@@ -2207,6 +2208,13 @@ async def activate_wireguard_interface(interface: str) -> None:
         raise RuntimeError(active_error or "De WireGuard-service is niet actief geworden.")
 
 
+async def wireguard_egress_interface() -> str:
+    if not setting("setup_provider_deferred", False):
+        return DEFAULT_WIREGUARD_VPN_INTERFACE
+    network = await system_network()
+    return network["interface"]
+
+
 @app.post("/api/ingress/wireguard")
 async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
     global _wireguard_observed_state
@@ -2225,6 +2233,7 @@ async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
                 port=req.port,
                 interface=req.interface,
                 client=req.client,
+                vpn_interface=await wireguard_egress_interface(),
             )
     except ValueError as error:
         raise HTTPException(
@@ -2368,6 +2377,7 @@ async def regenerate_wireguard_configuration(request: Request) -> JSONResponse:
         }
         if not all(parameters.values()):
             parameters = await wireguard_service.parameters_from_current(interface, client)
+        parameters["vpn_interface"] = await wireguard_egress_interface()
         async with generation_lock:
             result = await wireguard_service.provision(
                 activate=activate_wireguard_interface,
