@@ -60,6 +60,7 @@ import { getSlice, subscribe } from "./state.js";
 import { initialiseActivity } from "./activity.js";
 import { initialiseProviders, loadProviders } from "./providers.js";
 import { initialiseIcons } from "./icons.js";
+import { initialiseDiagnostics } from "./diagnostics.js";
 
 let apiState = "checking";
 const dashboardIsActive = () =>
@@ -177,6 +178,7 @@ async function initialise() {
     initialiseSettings();
     initialiseDashboard();
     initialiseActivity();
+    initialiseDiagnostics();
     initialiseNavigation();
     initialiseProviders();
     initialiseProviderControls();

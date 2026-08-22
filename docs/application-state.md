@@ -45,6 +45,14 @@ Not every form field belongs in central state. Short-lived input and purely pres
 can remain local. Central state is reserved for information that crosses views, participates in
 the application lifecycle, or is refreshed asynchronously.
 
+## Diagnostics state
+
+The diagnostics slice owns the latest transient run shown in the Diagnostics view. Starting a run
+replaces the old browser snapshot; polling is bounded to that run ID and stops at passed, warning,
+or failed. Opening the view starts one run when none has been requested in the current authenticated
+browser lifecycle. Individual ping, DNS, external-IP, and speed-test results remain local to the
+view because they are explicit one-off actions, not shared application status.
+
 ## Active-server latency
 
 The active VPN latency is telemetry for the exact normalized server hostname

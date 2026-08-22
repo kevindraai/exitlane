@@ -52,7 +52,6 @@ def test_conflicting_actions_are_rejected_with_current_operation(monkeypatch):
             lambda: main.connect_vpn_country(main.CountryConnect(country_code="NL"), request()),
         ),
         ("disconnect", lambda: main.disconnect_vpn(request())),
-        ("latency", lambda: main.measure_vpn_country("NL")),
     ],
 )
 def test_all_vpn_mutations_claim_before_provider_preconditions(monkeypatch, name, action):
@@ -76,6 +75,33 @@ def test_all_vpn_mutations_claim_before_provider_preconditions(monkeypatch, name
     assert b'"error":"vpn_action_in_progress"' in response.body
     assert b'"requested_country_code":"BE"' in response.body
     assert calls == []
+
+
+def test_latency_measurement_does_not_conflict_with_connect(monkeypatch):
+    async def authenticated():
+        return {"authenticated": True, "connected": False}
+
+    async def catalog():
+        return [{"id": 153, "country_code": "NL", "provider_name": "Netherlands"}]
+
+    async def servers(_country_id):
+        return [{"hostname": "nl1.nordvpn.com", "station": "192.0.2.1"}]
+
+    async def measured(_code, _servers, *, force):
+        assert force is True
+        return [{"server": "nl1.nordvpn.com", "latency_ms": 12}]
+
+    monkeypatch.setattr(main, "_require_provider_authentication", authenticated)
+    monkeypatch.setattr(main, "_vpn_catalog", catalog)
+    monkeypatch.setattr(main.provider, "servers", servers)
+    monkeypatch.setattr(main, "measure_servers", measured)
+    monkeypatch.setattr(main, "country_summary", lambda *_args, **_kwargs: {"latency_ms": 12})
+    vpn_operations.begin("connecting", country_code="BE")
+
+    result = asyncio.run(main.measure_vpn_country("NL"))
+
+    assert result["latency_ms"] == 12
+    assert vpn_operations.snapshot()["state"] == "connecting"
 
 
 @pytest.mark.parametrize(
@@ -191,6 +217,26 @@ def test_recovery_is_limited_to_two_attempts_per_ten_minutes():
 
     assert vpn_operations.recovery_allowed(started + timedelta(minutes=9)) is False
     assert vpn_operations.recovery_allowed(started + timedelta(minutes=11)) is True
+
+
+def test_connection_states_are_isolated_and_stale_selection_is_ignored():
+    vpn_operations.begin("connecting", country_code="NL")
+    first = vpn_operations.begin_selection("NL")
+    second = vpn_operations.begin_selection("BE")
+
+    assert vpn_operations.finish_selection(first, server="nl1.nordvpn.com") is False
+    assert vpn_operations.finish_selection(second, server="be1.nordvpn.com", fallback=True) is True
+    assert vpn_operations.snapshot()["selection"] == {
+        "state": "fallback",
+        "country_code": "BE",
+        "server": "be1.nordvpn.com",
+        "generation": second,
+    }
+
+    vpn_operations.begin("connecting", connection_id="wireguard:branch-office")
+    assert vpn_operations.snapshot()["requested_country_code"] == "NL"
+    assert vpn_operations.snapshot("wireguard:branch-office")["kind"] == "wireguard"
+    assert len(vpn_operations.snapshots()) == 2
 
 
 def test_daemon_recovery_uses_only_fixed_commands(monkeypatch):

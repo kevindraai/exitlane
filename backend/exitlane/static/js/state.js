@@ -32,6 +32,7 @@ const state = {
     hasMore: false,
     filters: { category: "", level: "" },
   },
+  diagnostics: statusSlice(),
   providerAction: { state: "idle", target: null, error: null },
 };
 
@@ -72,7 +73,7 @@ export function subscribe(name, callback, { immediate = false } = {}) {
 }
 
 export function resetAuthenticatedState() {
-  for (const name of ["providers", "provider", "wireguard", "dashboard", "system", "activity"]) {
+  for (const name of ["providers", "provider", "wireguard", "dashboard", "system", "activity", "diagnostics"]) {
     if (name === "activity") {
       state[name] = { ...statusSlice(), data: [], nextCursor: null, hasMore: false, filters: { category: "", level: "" } };
       notify(name);

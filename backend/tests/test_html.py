@@ -149,7 +149,7 @@ def test_navigation_wizard_and_accessibility_references_are_complete():
         for attribute in ("aria-labelledby", "aria-describedby"):
             for target in (attrs.get(attribute) or "").split():
                 assert target in ids
-    assert len(values(parser, "aria-live")) == 13
+    assert len(values(parser, "aria-live")) == 15
 
 
 def test_javascript_static_id_selectors_exist_in_composed_markup():
@@ -163,7 +163,7 @@ def test_javascript_static_id_selectors_exist_in_composed_markup():
 
 
 def test_partials_are_passive_markup_fragments():
-    assert len(PARTIALS) == 15
+    assert len(PARTIALS) == 16
     for relative_path in PARTIALS.values():
         html = (STATIC_DIR / relative_path).read_text(encoding="utf-8")
         lowered = html.lower()

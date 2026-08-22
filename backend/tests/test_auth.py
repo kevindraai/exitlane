@@ -118,6 +118,20 @@ def test_auth_events_are_protected_and_do_not_enumerate_username(client):
     assert failure == (None, '{"reason": "invalid_credentials"}')
 
 
+def test_connection_diagnostics_are_not_setup_public_routes(client):
+    complete_setup()
+    assert client.post("/api/diagnostics/connection-runs").status_code == 401
+    assert (
+        client.get(
+            "/api/diagnostics/connection-runs/00000000-0000-0000-0000-000000000000"
+        ).status_code
+        == 401
+    )
+    assert (
+        client.post("/api/diagnostics/actions/ping", json={"target": "1.1.1.1"}).status_code == 401
+    )
+
+
 def test_missing_and_expired_session(client):
     assert client.get("/api/auth/session").json()["authenticated"] is False
     with sqlite3.connect(main.DB) as connection:

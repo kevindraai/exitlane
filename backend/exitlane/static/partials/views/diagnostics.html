@@ -1,0 +1,31 @@
+     <section class="app-view" data-view-panel="diagnostics" hidden="" id="view-diagnostics">
+      <section class="panel diagnostics-panel">
+       <div class="panel-heading diagnostics-heading">
+        <div><p class="eyebrow" data-i18n="diagnostics.eyebrow">CONNECTION TEST</p><h1 data-i18n="diagnostics.title">Diagnostics</h1><p class="lead" data-i18n="diagnostics.description">Follow the path from this device through Exitlane and the VPN to the internet.</p></div>
+        <button class="button button-primary" data-i18n="diagnostics.actions.run" id="diagnostics-run" type="button">Run connection test</button>
+       </div>
+       <p aria-live="polite" class="diagnostics-summary" id="connection-diagnostics-summary"></p>
+       <div aria-label="Connection health" class="diagnostics-flow" data-i18n-aria-label="diagnostics.flow_label" id="diagnostics-flow">
+        <article class="diagnostics-node" data-diagnostic-node="device"><span aria-hidden="true" data-lucide-icon="laptop"></span><strong data-i18n="diagnostics.nodes.device">Device</strong><span class="diagnostics-node-status"></span></article>
+        <button aria-expanded="false" class="diagnostics-link" data-diagnostic-segment="device_exitlane" type="button"><span class="diagnostics-link-line"></span><span class="diagnostics-link-icon" aria-hidden="true">…</span><span class="sr-only" data-i18n="diagnostics.details.toggle">Show troubleshooting details</span></button>
+        <article class="diagnostics-node" data-diagnostic-node="exitlane"><span aria-hidden="true" data-lucide-icon="router"></span><strong data-i18n="diagnostics.nodes.exitlane">Exitlane</strong><span class="diagnostics-node-status"></span></article>
+        <button aria-expanded="false" class="diagnostics-link" data-diagnostic-segment="exitlane_vpn" type="button"><span class="diagnostics-link-line"></span><span class="diagnostics-link-icon" aria-hidden="true">…</span><span class="sr-only" data-i18n="diagnostics.details.toggle">Show troubleshooting details</span></button>
+        <article class="diagnostics-node" data-diagnostic-node="vpn"><span aria-hidden="true" data-lucide-icon="shield-check"></span><strong data-i18n="diagnostics.nodes.vpn">VPN</strong><span class="diagnostics-node-status"></span></article>
+        <button aria-expanded="false" class="diagnostics-link" data-diagnostic-segment="vpn_internet" type="button"><span class="diagnostics-link-line"></span><span class="diagnostics-link-icon" aria-hidden="true">…</span><span class="sr-only" data-i18n="diagnostics.details.toggle">Show troubleshooting details</span></button>
+        <article class="diagnostics-node" data-diagnostic-node="internet"><span aria-hidden="true" data-lucide-icon="globe-2"></span><strong data-i18n="diagnostics.nodes.internet">Internet</strong><span class="diagnostics-node-status"></span></article>
+       </div>
+       <div class="diagnostics-details" id="diagnostics-details"></div>
+       <section class="diagnostics-tools">
+        <div><p class="eyebrow" data-i18n="diagnostics.tools.eyebrow">INDIVIDUAL TESTS</p><h2 data-i18n="diagnostics.tools.title">Test one thing</h2><p data-i18n="diagnostics.tools.description">These tests run only when you choose them.</p></div>
+        <div class="diagnostics-actions">
+         <label><span data-i18n="diagnostics.tools.target">Host or IP address</span><input id="diagnostics-target" maxlength="253" type="text" value="api.nordvpn.com"/></label>
+         <button class="button button-secondary" data-diagnostic-action="ping" data-i18n="diagnostics.actions.ping" type="button">Ping</button>
+         <button class="button button-secondary" data-diagnostic-action="dns" data-i18n="diagnostics.actions.dns" type="button">DNS lookup</button>
+         <button class="button button-secondary" data-diagnostic-action="external-ip" data-i18n="diagnostics.actions.external_ip" type="button">External IP</button>
+         <button class="button button-secondary" data-diagnostic-action="speedtest" data-i18n="diagnostics.actions.speedtest" type="button">Speed test</button>
+        </div>
+        <p aria-live="polite" class="diagnostics-action-result" id="diagnostics-action-result"></p>
+        <p class="form-help" data-i18n="diagnostics.tools.speedtest_notice">Speed test can use significant bandwidth and is never started automatically.</p>
+       </section>
+      </section>
+     </section>

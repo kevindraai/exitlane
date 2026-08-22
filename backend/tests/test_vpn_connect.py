@@ -15,7 +15,7 @@ def request():
     return SimpleNamespace(state=SimpleNamespace(user={"id": 1, "username": "admin"}))
 
 
-def configure(monkeypatch, *, status):
+def configure(monkeypatch, *, status, selection=None):
     calls = []
     events = []
 
@@ -39,14 +39,14 @@ def configure(monkeypatch, *, status):
     async def provider_status(**_kwargs):
         return status
 
-    async def selection(_code, _servers):
-        return {"server": "nl1155.nordvpn.com", "latency_ms": 17}
+    async def select(_code, _servers):
+        return selection or {"server": "nl1155.nordvpn.com", "latency_ms": 17}
 
     monkeypatch.setattr(main, "_vpn_catalog", catalog)
     monkeypatch.setattr(main.provider, "servers", servers)
     monkeypatch.setattr(main.provider, "connect_country", connect_country)
     monkeypatch.setattr(main.provider, "status", provider_status)
-    monkeypatch.setattr(main, "select_server", selection)
+    monkeypatch.setattr(main, "select_server", select)
     monkeypatch.setattr(
         main,
         "server_latency",
@@ -139,3 +139,30 @@ def test_exit_zero_without_connected_status_is_failure(monkeypatch):
     assert result["error_code"] == "not_connected"
     assert events[-1][0] == "provider.connect_failed"
     assert events[-1][1]["metadata"]["reason"] == "not_connected"
+
+
+def test_connect_waits_for_pending_selection_and_uses_latency_fallback(monkeypatch):
+    calls, _events = configure(
+        monkeypatch,
+        status={
+            "available": True,
+            "authenticated": True,
+            "connected": True,
+            "country": "Netherlands",
+            "city": "Amsterdam",
+            "server": "nl987.nordvpn.com",
+        },
+        selection={
+            "server": "nl1155.nordvpn.com",
+            "latency_ms": None,
+            "status": "unknown",
+        },
+    )
+
+    result = asyncio.run(
+        main.connect_vpn_country(main.CountryConnect(country_code="NL"), request())
+    )
+
+    assert result["success"] is True
+    assert calls == ["NL", "remember:NL"]
+    assert result["vpn"]["operation"]["selection"]["state"] == "fallback"

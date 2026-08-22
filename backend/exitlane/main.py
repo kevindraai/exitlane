@@ -65,7 +65,13 @@ from exitlane.providers.base import ProviderActionUnsupported
 from exitlane.providers.nordvpn import SIGN_OUT_ERROR_CODES, TOKEN_ERROR_CODES, provider
 from exitlane.providers.registry import ProviderNotFound, ProviderRegistry
 from exitlane.proxy import deployment_status, normalized_origin, request_security, trusted_origin
-from exitlane.services import auth_security, killswitch, network_security, vpn_operations
+from exitlane.services import (
+    auth_security,
+    connection_diagnostics,
+    killswitch,
+    network_security,
+    vpn_operations,
+)
 from exitlane.services import wireguard as wireguard_service
 from exitlane.services.credentials import CredentialError, change_password
 from exitlane.services.dashboard import DashboardResponse, build_dashboard, system_status
@@ -202,6 +208,10 @@ class CountryConnect(BaseModel):
 
 class ProviderReconnect(BaseModel):
     country_code: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")
+
+
+class DiagnosticAction(BaseModel):
+    target: str | None = Field(default=None, max_length=253)
 
 
 class WireGuard(BaseModel):
@@ -1249,6 +1259,29 @@ async def diagnostic_checks() -> dict:
     }
 
 
+@app.post("/api/diagnostics/connection-runs", status_code=202)
+async def start_connection_diagnostics() -> dict:
+    return connection_diagnostics.start(_fresh_vpn_status)
+
+
+@app.get("/api/diagnostics/connection-runs/{run_id}")
+async def connection_diagnostic_run(run_id: uuid.UUID) -> dict:
+    run = connection_diagnostics.snapshot(str(run_id))
+    if run is None:
+        raise HTTPException(status_code=404, detail="diagnostic_run_not_found")
+    return run
+
+
+@app.post("/api/diagnostics/actions/{action}")
+async def run_diagnostic_action(action: str, request: DiagnosticAction) -> dict:
+    try:
+        return await connection_diagnostics.action(action, request.target)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="diagnostic_action_unsupported") from None
+    except ValueError:
+        raise HTTPException(status_code=422, detail="invalid_diagnostic_target") from None
+
+
 @app.post("/api/providers/nordvpn/login/token")
 async def login_token(req: Token, request: Request) -> dict:
     return await _authenticate_provider(provider, req, request)
@@ -1586,6 +1619,8 @@ def _vpn_snapshot(status: dict) -> dict:
     hostname = normalize_server_hostname(status.get("server")) or ""
     match = re.fullmatch(r"([a-z]{2})[0-9]+\.nordvpn\.com", hostname.lower())
     connected = bool(status.get("connected"))
+    technology = str(status.get("technology", "")).casefold()
+    vpn_operations.set_interface("nordlynx" if connected and "nordlynx" in technology else None)
     hostname_code = match.group(1).upper() if connected and match else None
     country_code = NORDVPN_HOST_COUNTRY_CODES.get(hostname_code, hostname_code)
     operation = vpn_operations.snapshot()
@@ -1750,23 +1785,14 @@ async def vpn_country_servers(country_code: str) -> dict:
 
 @app.post("/api/vpn/countries/{country_code}/measure")
 async def measure_vpn_country(country_code: str) -> dict:
-    try:
-        vpn_operations.begin("measuring", country_code=country_code.upper(), timeout=30)
-    except vpn_operations.VPNActionInProgress:
-        return _action_conflict()
-    try:
-        vpn = await _require_provider_authentication()
-        code = country_code.upper()
-        country_id = _country_id(await _vpn_catalog(), code)
-        if country_id is None:
-            raise HTTPException(404, "Unsupported country")
-        servers = await provider.servers(country_id)
-        measurements = await measure_servers(code, servers, force=True)
-        vpn_operations.finish(connected=vpn.get("connected", False))
-        return {**country_summary(code), "servers": measurements}
-    except (asyncio.CancelledError, Exception) as error:
-        _release_vpn_claim_after_failure(error)
-        raise
+    await _require_provider_authentication()
+    code = country_code.upper()
+    country_id = _country_id(await _vpn_catalog(), code)
+    if country_id is None:
+        raise HTTPException(404, "Unsupported country")
+    servers = await provider.servers(country_id)
+    measurements = await measure_servers(code, servers, force=True)
+    return {**country_summary(code), "servers": measurements}
 
 
 @app.post("/api/vpn/connect")
@@ -1802,7 +1828,13 @@ async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
     status = None
     recovered = False
     try:
-        await select_server(code, await provider.servers(country_id))
+        selection_generation = vpn_operations.begin_selection(code)
+        selected = await select_server(code, await provider.servers(country_id))
+        vpn_operations.finish_selection(
+            selection_generation,
+            server=selected.get("server") if selected else None,
+            fallback=not bool(selected and selected.get("latency_ms") is not None),
+        )
         result = await provider.connect_country(
             code, timeout=vpn_operations.CONNECT_TIMEOUT_SECONDS
         )
