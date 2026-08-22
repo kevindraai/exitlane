@@ -78,3 +78,13 @@ test("handlers and provider data loading use explicit provider capabilities", as
   assert.match(source, /providerApiPath\("\/locations"\)/);
   assert.doesNotMatch(source, /showView\("settings"/);
 });
+
+test("installable unavailable provider points to installation instead of retry", async () => {
+  const source = await readFile(
+    new URL("../backend/exitlane/static/js/provider.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /retry\.hidden = access\.state !== "unavailable" \|\| access\.canInstall/);
+  assert.match(source, /provider\.access\.install_required_title/);
+  assert.match(source, /provider\.access\.install_required_description/);
+});

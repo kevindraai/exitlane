@@ -140,7 +140,7 @@ function renderVpnProviderAccess(status) {
   controls.inert = access.blocked;
   controls.setAttribute("aria-disabled", String(access.blocked));
   goToSignIn.hidden = access.state !== "signed_out";
-  retry.hidden = access.state !== "unavailable";
+  retry.hidden = access.state !== "unavailable" || access.canInstall;
 
   const content = {
     signed_out: [
@@ -148,8 +148,12 @@ function renderVpnProviderAccess(status) {
       t("provider.access.sign_in_required_description", {}, "Sign in to the local NordVPN client before selecting a country or managing the VPN connection."),
     ],
     unavailable: [
-      t("provider.access.unavailable_title", {}, "NordVPN is unavailable"),
-      t("provider.access.unavailable_description", {}, "Check the local NordVPN service and try again."),
+      access.canInstall
+        ? t("provider.access.install_required_title", {}, "Provider installation required")
+        : t("provider.access.unavailable_title", {}, "NordVPN is unavailable"),
+      access.canInstall
+        ? t("provider.access.install_required_description", {}, "Install the provider above before managing its VPN connection.")
+        : t("provider.access.unavailable_description", {}, "Check the local NordVPN service and try again."),
     ],
     signing_in: [
       t("provider.access.signing_in_title", {}, "Signing in to NordVPN"),
