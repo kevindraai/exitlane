@@ -147,6 +147,19 @@ def _unit_error_code(unit_output: str) -> str:
     }.get(values.get("ExecMainStatus", ""), "installation_failed")
 
 
+def _clear_stale_failed_phase() -> None:
+    """Remove only a completed prior-attempt failure before an accepted retry."""
+    phase, _failed_phase, _error_code = _read_phase()
+    if phase != "failed":
+        return
+    try:
+        INSTALL_PHASE_FILE.unlink()
+    except FileNotFoundError:
+        return
+    except OSError:
+        logger.warning("Could not clear the stale Speedtest installation failure phase")
+
+
 def _response(
     *,
     status: str,
@@ -236,6 +249,16 @@ async def status() -> dict:
         line in {"ActiveState=active", "ActiveState=activating"}
         for line in unit_output.splitlines()
     )
+    # A current systemd operation wins over stale phase data from a prior attempt.
+    if active:
+        return _response(
+            status="running",
+            phase=phase if phase in PHASES else "checking_system",
+            error_code=None,
+            supported_runtime=True,
+            can_install=False,
+            installation_in_progress=True,
+        )
     # A completed failure must win over the optimistic accepted-start marker.
     # systemd may finish before the browser's first status poll.
     if phase == "failed" or (rc == 0 and "ActiveState=failed" in unit_output.splitlines()):
@@ -247,15 +270,6 @@ async def status() -> dict:
             supported_runtime=True,
             can_install=cli_error == "speedtest_tool_unavailable",
             failed_phase=failed_phase or "installing_package",
-        )
-    if active:
-        return _response(
-            status="running",
-            phase=phase if phase in PHASES else "checking_system",
-            error_code=None,
-            supported_runtime=True,
-            can_install=False,
-            installation_in_progress=True,
         )
     if _starting:
         return _response(
@@ -285,6 +299,7 @@ async def start_installation() -> dict:
         current = await status()
         if current["installation_in_progress"] or not current["can_install"]:
             return current
+        _clear_stale_failed_phase()
         _starting = True
         _started_at = _now()
         await command(

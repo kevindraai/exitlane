@@ -219,6 +219,59 @@ def test_accepted_pending_start_converges_to_failed_unit_and_allows_retry(monkey
     assert len(starts) == 1
 
 
+def test_failed_attempt_retry_clears_stale_phase_and_reconciles_to_running(monkeypatch):
+    state = {"unit": "failed", "available": False, "phase_cleared_before_reset": False}
+    speedtest_installation.INSTALL_PHASE_FILE.write_text(
+        "failed|verifying_package|package_verification_failed\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(speedtest_installation, "_supports_managed_installation", lambda: True)
+
+    async def cli_state():
+        if state["available"]:
+            return True, ""
+        return False, "speedtest_tool_unavailable"
+
+    async def fake_command(*arguments, **_options):
+        if arguments[:2] == ("systemctl", "show"):
+            active_state = state["unit"]
+            return 0, f"ActiveState={active_state}\nResult=success\nExecMainStatus=0\n", ""
+        if arguments[:2] == ("systemctl", "reset-failed"):
+            state[
+                "phase_cleared_before_reset"
+            ] = not speedtest_installation.INSTALL_PHASE_FILE.exists()
+            return 0, "", ""
+        if arguments[:3] == ("systemctl", "start", "--no-block"):
+            state["unit"] = "activating"
+            return 0, "", ""
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(speedtest_installation, "_official_cli_state", cli_state)
+    monkeypatch.setattr(speedtest_installation, "command", fake_command)
+
+    async def exercise():
+        initial = await speedtest_installation.status()
+        accepted = await speedtest_installation.start_installation()
+        # Simulate a delayed cleanup/write race from the prior attempt: the active
+        # unit must still keep the UI polling rather than render terminal failure.
+        speedtest_installation.INSTALL_PHASE_FILE.write_text(
+            "failed|verifying_package|package_verification_failed\n", encoding="utf-8"
+        )
+        running = await speedtest_installation.status()
+        state["unit"] = "inactive"
+        state["available"] = True
+        completed = await speedtest_installation.status()
+        return initial, accepted, running, completed
+
+    initial, accepted, running, completed = asyncio.run(exercise())
+    assert initial["status"] == "failed"
+    assert accepted["status"] == "pending"
+    assert state["phase_cleared_before_reset"] is True
+    assert running["status"] == "running"
+    assert running["installation_in_progress"] is True
+    assert completed["status"] == "passed"
+    assert completed["installation_in_progress"] is False
+
+
 def test_single_flight_starts_systemd_once_and_never_executes_speedtest(monkeypatch):
     starts = []
     monkeypatch.setattr(speedtest_installation, "_supports_managed_installation", lambda: True)
