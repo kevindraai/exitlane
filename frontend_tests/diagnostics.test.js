@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   aggregateDiagnosticStatus,
   segmentStatuses,
+  speedtestInstallButtonDisabled,
 } from "../backend/exitlane/static/js/diagnostics.js";
 
 test("diagnostic segment aggregation preserves the most actionable state", () => {
@@ -90,6 +91,19 @@ test("installation status rendering allowlists phase and step text", async () =>
   assert.match(source, /speedtestPollTimer/);
   assert.match(source, /refreshSpeedtestInstallation\(\{ poll: true \}\)/);
   assert.match(source, /supported_runtime !== false/);
+});
+
+test("installable Speedtest can be opened again after the status GET settles", () => {
+  const unavailable = {
+    status: "warning",
+    available: false,
+    supported_runtime: true,
+    can_install: true,
+    installation_in_progress: false,
+  };
+  assert.equal(speedtestInstallButtonDisabled(unavailable, true), true);
+  assert.equal(speedtestInstallButtonDisabled(unavailable, false), false);
+  assert.equal(speedtestInstallButtonDisabled({ ...unavailable, supported_runtime: false }, false), true);
 });
 
 test("validated CLI stays runnable on an unsupported managed-install runtime and pending is rendered", async () => {

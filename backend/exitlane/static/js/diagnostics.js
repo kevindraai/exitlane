@@ -23,6 +23,12 @@ let speedtestDialogTrigger = null;
 let hasRun = false;
 let expandedSegment = null;
 
+export function speedtestInstallButtonDisabled(snapshot, inFlight = false) {
+  const canInstall = Boolean(snapshot?.can_install) && snapshot?.supported_runtime !== false
+    && !snapshot?.installation_in_progress && snapshot?.available !== true;
+  return Boolean(inFlight) || !canInstall;
+}
+
 export function aggregateDiagnosticStatus(probes) {
   if (!probes?.length) return "pending";
   const statuses = new Set(probes.map((probe) => probe.status));
@@ -107,10 +113,9 @@ function renderSpeedtestInstallation() {
   status.textContent = speedtestStatusText(statusValue);
   status.dataset.status = statusValue;
   const install = document.querySelector("#speedtest-install");
-  const canInstall = Boolean(snapshot?.can_install) && snapshot?.supported_runtime !== false
-    && !snapshot?.installation_in_progress && snapshot?.available !== true;
+  const canInstall = !speedtestInstallButtonDisabled(snapshot);
   install.hidden = !canInstall;
-  install.disabled = Boolean(speedtestInstallationFlight);
+  install.disabled = speedtestInstallButtonDisabled(snapshot, speedtestInstallationFlight);
   const steps = document.querySelector("#speedtest-install-steps");
   const safeSteps = Array.isArray(snapshot?.steps) ? snapshot.steps : [];
   steps.hidden = safeSteps.length === 0;
@@ -164,7 +169,10 @@ async function refreshSpeedtestInstallation({ poll = false } = {}) {
     }
     return null;
   } finally {
-    if (!poll) speedtestInstallationFlight = null;
+    if (!poll) {
+      speedtestInstallationFlight = null;
+      renderSpeedtestInstallation();
+    }
   }
 }
 
