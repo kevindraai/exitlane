@@ -64,7 +64,7 @@ def test_installation_endpoints_require_authentication_and_protect_origin(client
 
 def test_installation_confirmation_is_stable_and_accepted_returns_202(client, monkeypatch):
     response = speedtest_installation._response(
-        status="running",
+        status="pending",
         phase="checking_system",
         supported_runtime=True,
         can_install=False,
@@ -90,6 +90,7 @@ def test_installation_confirmation_is_stable_and_accepted_returns_202(client, mo
     )
     assert accepted.status_code == 202
     assert accepted.json() == response
+    assert accepted.json()["status"] == "pending"
 
 
 def test_public_snapshot_is_redacted_and_allowlisted(monkeypatch):
@@ -171,6 +172,51 @@ def test_reloaded_phase_is_reconciled_to_running(monkeypatch):
     assert response["status"] == "running"
     assert response["phase"] == "verifying_package"
     assert response["installation_in_progress"] is True
+
+
+def test_accepted_pending_start_converges_to_failed_unit_and_allows_retry(monkeypatch):
+    state = {"failed": False}
+    starts = []
+    monkeypatch.setattr(speedtest_installation, "_supports_managed_installation", lambda: True)
+
+    async def unavailable():
+        return False, "speedtest_tool_unavailable"
+
+    async def fake_command(*arguments, **_options):
+        if arguments[:2] == ("systemctl", "show"):
+            if state["failed"]:
+                return 0, "ActiveState=failed\nResult=exit-code\nExecMainStatus=65\n", ""
+            return 0, "ActiveState=inactive\nResult=success\nExecMainStatus=0\n", ""
+        if arguments[:2] == ("systemctl", "reset-failed"):
+            return 0, "", ""
+        if arguments[:3] == ("systemctl", "start", "--no-block"):
+            starts.append(arguments)
+            speedtest_installation.INSTALL_PHASE_FILE.write_text(
+                "failed|verifying_package|package_verification_failed\n",
+                encoding="utf-8",
+            )
+            state["failed"] = True
+            return 0, "", ""
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(speedtest_installation, "_official_cli_state", unavailable)
+    monkeypatch.setattr(speedtest_installation, "command", fake_command)
+
+    async def exercise():
+        accepted = await speedtest_installation.start_installation()
+        failed = await speedtest_installation.status()
+        retry = await speedtest_installation.status()
+        return accepted, failed, retry
+
+    accepted, failed, retry = asyncio.run(exercise())
+    assert accepted["status"] == "pending"
+    assert accepted["installation_in_progress"] is True
+    assert failed["status"] == "failed"
+    assert failed["error_code"] == "package_verification_failed"
+    assert failed["can_install"] is True
+    assert retry["status"] == "failed"
+    assert speedtest_installation._starting is False
+    assert len(starts) == 1
 
 
 def test_single_flight_starts_systemd_once_and_never_executes_speedtest(monkeypatch):

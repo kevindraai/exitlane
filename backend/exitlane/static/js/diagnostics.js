@@ -193,7 +193,7 @@ async function selectSpeedtest(button) {
   const snapshot = await refreshSpeedtestInstallation();
   button.disabled = false;
   if (!snapshot) return;
-  if (snapshot.available === true && snapshot.supported_runtime !== false) {
+  if (snapshot.available === true) {
     openSpeedtestDialog(document.querySelector("#speedtest-run-dialog"), button);
   }
 }

@@ -69,11 +69,11 @@ not merge a release pull request unless explicitly instructed.
   fail-closed tunnel-unavailable behavior, recovery, and preservation of
   non-ExitLane nftables tables.
 - [ ] Release-specific appliance behavior is verified and linked. For
-  `v0.2.0-beta.3`, this includes managed Speedtest installation only after every
-  confirmation, page-reload status reconciliation, failed-install recovery,
-  exact official-package ownership validation, and a separately confirmed
-  measurement that never starts automatically. Existing provider, lifecycle,
-  and system-action evidence remains required.
+  `v0.2.0-beta.3`, this is limited to managed-Speedtest dialog confirmation and
+  cancellation with proof that no Speedtest command is invoked. No package
+  installation, real Speedtest, or appliance mutation is permitted in beta.3
+  appliance QA. Existing provider, lifecycle, and system-action evidence remains
+  required.
 - [ ] Appliance evidence is included or linked; unchecked appliance
   verification remains a release blocker.
 

@@ -89,7 +89,14 @@ test("installation status rendering allowlists phase and step text", async () =>
   assert.match(source, /textContent = speedtestErrorText/);
   assert.match(source, /speedtestPollTimer/);
   assert.match(source, /refreshSpeedtestInstallation\(\{ poll: true \}\)/);
-  assert.match(source, /snapshot\.supported_runtime !== false/);
+  assert.match(source, /supported_runtime !== false/);
+});
+
+test("validated CLI stays runnable on an unsupported managed-install runtime and pending is rendered", async () => {
+  const source = await readFile(new URL("../backend/exitlane/static/js/diagnostics.js", import.meta.url), "utf8");
+  assert.match(source, /SPEEDTEST_STATUSES = new Set\(\["pending"/);
+  assert.match(source, /if \(snapshot\.available === true\) \{/);
+  assert.doesNotMatch(source, /snapshot\.available === true && snapshot\.supported_runtime !== false/);
 });
 
 test("reduced motion disables the diagnostics installation pulse", async () => {

@@ -236,17 +236,10 @@ async def status() -> dict:
         line in {"ActiveState=active", "ActiveState=activating"}
         for line in unit_output.splitlines()
     )
-    if active or _starting:
-        return _response(
-            status="running",
-            phase=phase if phase in PHASES else "checking_system",
-            error_code=None,
-            supported_runtime=True,
-            can_install=False,
-            installation_in_progress=True,
-        )
-    _starting = False
+    # A completed failure must win over the optimistic accepted-start marker.
+    # systemd may finish before the browser's first status poll.
     if phase == "failed" or (rc == 0 and "ActiveState=failed" in unit_output.splitlines()):
+        _starting = False
         return _response(
             status="failed",
             phase="failed",
@@ -255,6 +248,25 @@ async def status() -> dict:
             can_install=cli_error == "speedtest_tool_unavailable",
             failed_phase=failed_phase or "installing_package",
         )
+    if active:
+        return _response(
+            status="running",
+            phase=phase if phase in PHASES else "checking_system",
+            error_code=None,
+            supported_runtime=True,
+            can_install=False,
+            installation_in_progress=True,
+        )
+    if _starting:
+        return _response(
+            status="pending",
+            phase=phase if phase in PHASES else "checking_system",
+            error_code=None,
+            supported_runtime=True,
+            can_install=False,
+            installation_in_progress=True,
+        )
+    _starting = False
     return _response(
         status="warning",
         phase="unavailable",
@@ -298,7 +310,7 @@ async def start_installation() -> dict:
         if _monitor_task is None or _monitor_task.done():
             _monitor_task = asyncio.create_task(_monitor())
         return _response(
-            status="running",
+            status="pending",
             phase="checking_system",
             supported_runtime=True,
             can_install=False,

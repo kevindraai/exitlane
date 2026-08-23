@@ -64,6 +64,51 @@ unless the operator has suitable separate permission from Ookla. See
 [ADR-001](architecture/adr-001-managed-ookla-speedtest-installation.md) for the rationale and
 reviewed artifact source.
 
+### Safe operator recovery
+
+The browser receives only the stable phase and error code. It intentionally never receives helper,
+download, package-manager, or journal output. On the appliance, use the following fixed commands
+to decide the next safe step; do not remove the shared lock or invoke `/usr/bin/speedtest`.
+
+1. Inspect the dedicated installation unit and its recent local journal:
+
+   ```bash
+   sudo systemctl status exitlane-speedtest-install.service --no-pager --full
+   sudo journalctl -u exitlane-speedtest-install.service -n 100 --no-pager
+   ```
+
+2. For `package_operation_in_progress`, inspect the fixed lock. Wait for the owner to finish, then
+   retry through the authenticated UI; never delete or bypass this lock.
+
+   ```bash
+   sudo ls -l /run/lock/exitlane-package-operation.lock
+   ```
+
+3. For download or checksum failures, confirm the pinned helper values before retrying. This is a
+   local inspection only: it does not download, install, or run the CLI.
+
+   ```bash
+   sudo grep -E '^readonly PACKAGE_(URL|SHA256)=' /usr/local/libexec/exitlane-install-speedtest
+   ```
+
+4. For a partial package state, inspect it first. If `dpkg --audit` reports an interrupted
+   configuration, a local administrator may run the fixed Debian repair command, then re-check the
+   package and retry in the UI.
+
+   ```bash
+   sudo dpkg --audit
+   sudo dpkg-query --show --showformat='${Package}|${Version}|${Status}\n' speedtest
+   sudo dpkg --configure -a
+   sudo dpkg-query --listfiles speedtest
+   sudo test -x /usr/bin/speedtest
+   ```
+
+5. Treat missing ownership, a wrong version, a missing executable, or a failed validation as a
+   partial state. Do not manually copy a binary, add a Packagecloud repository or signing key, or
+   use Debian's unrelated `speedtest-cli` package. Correct the local package state and use the UI's
+   explicit retry; each future measurement still requires its own confirmation and is never part of
+   this recovery procedure.
+
 ## API
 
 The normal authenticated API and same-origin write protections apply:
