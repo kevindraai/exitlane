@@ -51,3 +51,49 @@ test("speed test is POST-only and only bound to an explicit button action", asyn
   assert.match(source, /postJson\(\s*`\/api\/diagnostics\/actions\/\$\{action\}`/);
   assert.doesNotMatch(source.slice(0, source.indexOf("async function runAction")), /speedtest\(/);
 });
+
+test("Speedtest installation UI is explicit, translated, and safe for external links", async () => {
+  const [markup, english, dutch] = await Promise.all([
+    readFile(new URL("../backend/exitlane/static/partials/views/diagnostics.html", import.meta.url), "utf8"),
+    readFile(new URL("../backend/exitlane/static/locales/en.json", import.meta.url), "utf8"),
+    readFile(new URL("../backend/exitlane/static/locales/nl.json", import.meta.url), "utf8"),
+  ]);
+  const en = JSON.parse(english);
+  const nl = JSON.parse(dutch);
+  assert.match(markup, /class="speedtest-management"[^>]+hidden[^>]+id="speedtest-management"/);
+  assert.match(markup, /id="speedtest-install-dialog"/);
+  assert.match(markup, /id="speedtest-run-dialog"/);
+  assert.match(markup, /official Ookla/);
+  assert.match(markup, /repository or signing key/);
+  assert.match(markup, /rel="noopener noreferrer" target="_blank"/);
+  for (const key of ["install", "install_description", "confirm_package_change", "accept_license", "accept_gdpr", "run_description", "confirm_bandwidth"]) {
+    assert.equal(typeof en.diagnostics.speedtest[key], "string");
+    assert.equal(typeof nl.diagnostics.speedtest[key], "string");
+  }
+});
+
+test("installation and action contracts require every explicit confirmation", async () => {
+  const source = await readFile(new URL("../backend/exitlane/static/js/diagnostics.js", import.meta.url), "utf8");
+  assert.match(source, /postJson\(SPEEDTEST_INSTALLATION_PATH, \{[\s\S]*confirm_package_change: true,[\s\S]*confirm_personal_noncommercial: true,[\s\S]*accept_license: true,[\s\S]*accept_gdpr: true/);
+  assert.match(source, /postJson\("\/api\/diagnostics\/actions\/speedtest", \{[\s\S]*confirm_personal_noncommercial: true,[\s\S]*accept_license: true,[\s\S]*accept_gdpr: true,[\s\S]*confirm_bandwidth: true/);
+  assert.match(source, /if \(speedtestActionFlight\) return/);
+  assert.match(source, /if \(speedtestInstallationFlight\) return/);
+  assert.match(source, /speedtestSelected = true/);
+  assert.doesNotMatch(source, /runSpeedtest\(\);\s*\/\/ automatic/);
+});
+
+test("installation status rendering allowlists phase and step text", async () => {
+  const source = await readFile(new URL("../backend/exitlane/static/js/diagnostics.js", import.meta.url), "utf8");
+  assert.match(source, /SPEEDTEST_PHASES = new Set/);
+  assert.match(source, /SPEEDTEST_STEP_STATUSES = new Set/);
+  assert.match(source, /textContent = speedtestErrorText/);
+  assert.match(source, /speedtestPollTimer/);
+  assert.match(source, /refreshSpeedtestInstallation\(\{ poll: true \}\)/);
+  assert.match(source, /snapshot\.supported_runtime !== false/);
+});
+
+test("reduced motion disables the diagnostics installation pulse", async () => {
+  const css = await readFile(new URL("../backend/exitlane/static/style.css", import.meta.url), "utf8");
+  assert.match(css, /prefers-reduced-motion: reduce/);
+  assert.match(css, /diagnostics-link\[data-status="running"\][^}]+animation: none/);
+});

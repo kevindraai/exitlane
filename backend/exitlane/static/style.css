@@ -1731,6 +1731,112 @@ pre {
   min-height: 24px;
 }
 
+.speedtest-management {
+  display: grid;
+  gap: 14px;
+  margin-top: 22px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-translucent-soft);
+}
+
+.speedtest-management[hidden] { display: none; }
+.speedtest-management-copy h3,
+.speedtest-management-copy p { margin-top: 0; }
+.speedtest-management-copy p:last-child { margin-bottom: 0; }
+
+.speedtest-management-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.speedtest-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.speedtest-confirmations,
+#speedtest-install-dialog form,
+#speedtest-run-dialog form {
+  display: grid;
+  gap: 10px;
+}
+
+.speedtest-confirmations label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+}
+
+.speedtest-confirmations input {
+  width: auto;
+  min-height: auto;
+  margin-top: 0.25rem;
+}
+
+#speedtest-install-dialog,
+#speedtest-run-dialog {
+  width: min(42rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+}
+
+#speedtest-install-dialog h2,
+#speedtest-install-dialog p,
+#speedtest-run-dialog h2,
+#speedtest-run-dialog p { margin-top: 0; }
+
+.speedtest-install-steps {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.speedtest-install-step {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.speedtest-install-step small {
+  grid-column: 2;
+  color: var(--danger-text);
+}
+
+.speedtest-install-marker {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--muted);
+  border-radius: 50%;
+}
+
+.speedtest-install-step[data-status="active"] .speedtest-install-marker {
+  border-color: var(--text);
+  background: var(--text);
+}
+
+.speedtest-install-step[data-status="completed"] .speedtest-install-marker {
+  border-color: var(--success);
+  background: var(--success);
+}
+
+.speedtest-install-step[data-status="failed"] .speedtest-install-marker {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diagnostics-link[data-status="running"] .diagnostics-link-icon { animation: none; }
+}
+
 @media (max-width: 900px) {
   .diagnostics-flow {
     grid-template-columns: 1fr;
@@ -2031,7 +2137,9 @@ pre {
 #settings-provider-sign-out-dialog,
 #wireguard-regenerate-dialog,
 #wireguard-qr-dialog,
-#killswitch-dialog {
+#killswitch-dialog,
+#speedtest-install-dialog,
+#speedtest-run-dialog {
   width: min(32rem, calc(100vw - 2rem));
   border: 1px solid var(--border);
   border-radius: 1rem;
@@ -2043,7 +2151,14 @@ pre {
 #settings-provider-sign-out-dialog::backdrop,
 #wireguard-regenerate-dialog::backdrop,
 #wireguard-qr-dialog::backdrop,
-#killswitch-dialog::backdrop { background: rgb(15 23 42 / 55%); }
+#killswitch-dialog::backdrop,
+#speedtest-install-dialog::backdrop,
+#speedtest-run-dialog::backdrop { background: rgb(15 23 42 / 55%); }
+
+#speedtest-install-dialog,
+#speedtest-run-dialog {
+  width: min(42rem, calc(100vw - 2rem));
+}
 
 #killswitch-dialog {
   padding: 1.25rem;
