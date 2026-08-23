@@ -64,7 +64,7 @@ be visible before an installed CLI is invoked with `--accept-license` and `--acc
 
 - Ookla Speedtest CLI and Debian installation options: <https://www.speedtest.net/apps/cli>
 - Pinned Debian 13 amd64 package and checksum:
-  <https://packagecloud.io/ookla/speedtest-cli/packages/debian/trixie/speedtest_1.2.0.84-1.ea6b6773cf_amd64.deb?distro_version_id=221>
+  <https://packagecloud.io/ookla/speedtest-cli/packages/debian/trixie/speedtest_1.2.0.84-1.ea6b6773cf_amd64.deb/download.deb?distro_version_id=221>
 - Ookla EULA: <https://www.speedtest.net/about/eula>
 - Ookla Terms of Use: <https://www.speedtest.net/about/terms>
 - Ookla Privacy Policy: <https://www.speedtest.net/about/privacy>

@@ -24,6 +24,7 @@ PROBE_DEFINITIONS = (
 )
 MAX_RUNS = 20
 _runs: dict[str, dict] = {}
+_speedtest_action_lock: asyncio.Lock | None = None
 
 
 def _now() -> str:
@@ -188,6 +189,7 @@ async def speedtest(
     accept_gdpr: bool = False,
     confirm_bandwidth: bool = False,
 ) -> dict:
+    global _speedtest_action_lock
     available, _error = await speedtest_installation._official_cli_state()
     if not available:
         snapshot = await speedtest_installation.status()
@@ -207,13 +209,18 @@ async def speedtest(
             "speedtest_terms_confirmation_required",
             {"requires_terms_confirmation": True},
         )
-    rc, output, _error = await command(
-        speedtest_installation.OFFICIAL_EXECUTABLE,
-        "--accept-license",
-        "--accept-gdpr",
-        "--format=json",
-        timeout=120,
-    )
+    if _speedtest_action_lock is None:
+        _speedtest_action_lock = asyncio.Lock()
+    if _speedtest_action_lock.locked():
+        return _result("warning", "speedtest_action_in_progress")
+    async with _speedtest_action_lock:
+        rc, output, _error = await command(
+            speedtest_installation.OFFICIAL_EXECUTABLE,
+            "--accept-license",
+            "--accept-gdpr",
+            "--format=json",
+            timeout=120,
+        )
     if rc != 0:
         return _result("failed", "speedtest_failed")
     try:
@@ -331,4 +338,6 @@ async def action(
 
 
 def reset_for_tests() -> None:
+    global _speedtest_action_lock
     _runs.clear()
+    _speedtest_action_lock = None

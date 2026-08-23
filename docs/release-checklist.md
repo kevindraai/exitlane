@@ -12,7 +12,7 @@ responses, or a recorded verification checklist.
 ## Release identity and source
 
 - [ ] The final implementation pull request is approved and merged, not merely
-  closed. For `v0.2.0-beta.2`, this is PR #42.
+  closed. For `v0.2.0-beta.3`, record the implementation and integration-review pull requests.
 - [ ] Local `main` is clean and exactly matches the current `origin/main`.
 - [ ] The exact final `origin/main` release SHA is recorded as runtime release
   evidence: `<release-sha>`.
@@ -69,10 +69,11 @@ not merge a release pull request unless explicitly instructed.
   fail-closed tunnel-unavailable behavior, recovery, and preservation of
   non-ExitLane nftables tables.
 - [ ] Release-specific appliance behavior is verified and linked. For
-  `v0.2.0-beta.2`, this includes automatic quick-choice latency, exact
-  active-server latency, real-world invalid-token feedback, successful token
-  feedback, password-recovery disclosure, ExitLane service restart, reboot and
-  service recovery, and shutdown with host recovery available.
+  `v0.2.0-beta.3`, this includes managed Speedtest installation only after every
+  confirmation, page-reload status reconciliation, failed-install recovery,
+  exact official-package ownership validation, and a separately confirmed
+  measurement that never starts automatically. Existing provider, lifecycle,
+  and system-action evidence remains required.
 - [ ] Appliance evidence is included or linked; unchecked appliance
   verification remains a release blocker.
 

@@ -276,12 +276,55 @@ def test_speedtest_action_requires_visible_terms_and_bandwidth_before_fixed_argv
     ]
 
 
+def test_speedtest_action_serializes_measurements(monkeypatch):
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    calls = []
+
+    async def available():
+        return True, ""
+
+    async def fake_command(*arguments, **_options):
+        calls.append(arguments)
+        entered.set()
+        await release.wait()
+        return 1, "", ""
+
+    monkeypatch.setattr(speedtest_installation, "_official_cli_state", available)
+    monkeypatch.setattr(connection_diagnostics, "command", fake_command)
+
+    async def exercise():
+        first = asyncio.create_task(
+            connection_diagnostics.speedtest(
+                confirm_personal_noncommercial=True,
+                accept_license=True,
+                accept_gdpr=True,
+                confirm_bandwidth=True,
+            )
+        )
+        await entered.wait()
+        second = await connection_diagnostics.speedtest(
+            confirm_personal_noncommercial=True,
+            accept_license=True,
+            accept_gdpr=True,
+            confirm_bandwidth=True,
+        )
+        release.set()
+        return await first, second
+
+    first, second = asyncio.run(exercise())
+    assert first["code"] == "speedtest_failed"
+    assert second == {"status": "warning", "code": "speedtest_action_in_progress", "detail": {}}
+    assert len(calls) == 1
+
+
 def test_installer_and_helpers_have_pinned_artifact_shared_lock_and_recovery_contract():
     installer = (ROOT / "installer/install-debian.sh").read_text(encoding="utf-8")
     helper = (ROOT / "installer/install-speedtest.sh").read_text(encoding="utf-8")
     nordvpn_helper = (ROOT / "installer/install-nordvpn.sh").read_text(encoding="utf-8")
     unit = (ROOT / "systemd/exitlane-speedtest-install.service").read_text(encoding="utf-8")
     assert "speedtest_1.2.0.84-1.ea6b6773cf_amd64.deb" in helper
+    assert ".deb/download.deb?distro_version_id=221" in helper
     assert "35e084567a6388631fb10cf01e5e0d6b57a67d34ede2b72ba111b3d9164c8b94" in helper
     assert "curl --fail --silent --show-error --location" in helper
     assert "--proto '=https' --tlsv1.2" in helper
