@@ -70,6 +70,7 @@ from exitlane.services import (
     connection_diagnostics,
     killswitch,
     network_security,
+    speedtest_installation,
     vpn_operations,
 )
 from exitlane.services import wireguard as wireguard_service
@@ -212,6 +213,17 @@ class ProviderReconnect(BaseModel):
 
 class DiagnosticAction(BaseModel):
     target: str | None = Field(default=None, max_length=253)
+    confirm_personal_noncommercial: bool = False
+    accept_license: bool = False
+    accept_gdpr: bool = False
+    confirm_bandwidth: bool = False
+
+
+class SpeedtestInstallationConfirmation(BaseModel):
+    confirm_package_change: bool = False
+    confirm_personal_noncommercial: bool = False
+    accept_license: bool = False
+    accept_gdpr: bool = False
 
 
 class WireGuard(BaseModel):
@@ -1275,11 +1287,42 @@ async def connection_diagnostic_run(run_id: uuid.UUID) -> dict:
 @app.post("/api/diagnostics/actions/{action}")
 async def run_diagnostic_action(action: str, request: DiagnosticAction) -> dict:
     try:
-        return await connection_diagnostics.action(action, request.target)
+        return await connection_diagnostics.action(
+            action,
+            request.target,
+            confirm_personal_noncommercial=request.confirm_personal_noncommercial,
+            accept_license=request.accept_license,
+            accept_gdpr=request.accept_gdpr,
+            confirm_bandwidth=request.confirm_bandwidth,
+        )
     except KeyError:
         raise HTTPException(status_code=404, detail="diagnostic_action_unsupported") from None
     except ValueError:
         raise HTTPException(status_code=422, detail="invalid_diagnostic_target") from None
+
+
+@app.get("/api/diagnostics/speedtest/installation")
+async def speedtest_installation_status() -> dict:
+    return await speedtest_installation.status()
+
+
+@app.post("/api/diagnostics/speedtest/installation", status_code=202)
+async def install_speedtest(
+    confirmation: SpeedtestInstallationConfirmation,
+) -> dict:
+    if not all(
+        (
+            confirmation.confirm_package_change,
+            confirmation.confirm_personal_noncommercial,
+            confirmation.accept_license,
+            confirmation.accept_gdpr,
+        )
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="speedtest_installation_confirmation_required",
+        )
+    return await speedtest_installation.start_installation()
 
 
 @app.post("/api/providers/nordvpn/login/token")

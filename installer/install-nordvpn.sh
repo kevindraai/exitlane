@@ -5,12 +5,14 @@ IFS=$'\n\t'
 
 readonly RELEASE_URL="https://repo.nordvpn.com/deb/nordvpn/debian/pool/main/n/nordvpn-release/nordvpn-release_1.0.0_all.deb"
 readonly RELEASE_SHA256="16a05919b7259e679e4483aa39f61ef9bc9c07cbe040276e04884b5f9d7f933d"
+readonly PACKAGE_OPERATION_LOCK="/run/lock/exitlane-package-operation.lock"
 readonly PHASE_FILE="/run/exitlane-provider-install/nordvpn.phase"
 readonly PROVIDER_READY_TIMEOUT_SECONDS=45
 readonly PROVIDER_CLI_TIMEOUT_SECONDS=2
 
 work_dir=""
 current_phase="checking_system"
+PACKAGE_LOCK_FD=""
 
 cleanup() {
   local exit_code=$?
@@ -54,6 +56,12 @@ require_debian_13() {
   source /etc/os-release
   [[ "${ID:-}" == "debian" && "${VERSION_ID:-}" == "13" ]] ||
     die 64 "unsupported_platform"
+}
+
+acquire_package_lock() {
+  install -d -m 0755 /run/lock
+  exec {PACKAGE_LOCK_FD}>"${PACKAGE_OPERATION_LOCK}"
+  flock -n "${PACKAGE_LOCK_FD}" || die 75 "package_operation_in_progress"
 }
 
 provider_ready() {
@@ -106,6 +114,7 @@ main() {
   [[ "${EUID}" -eq 0 ]] || die 77 "insufficient_privileges"
   [[ "$#" -eq 0 ]] || die 64 "arguments_not_allowed"
   require_debian_13
+  acquire_package_lock
 
   if command -v nordvpn >/dev/null 2>&1; then
     set_phase "starting_daemon"

@@ -1,0 +1,26 @@
+[Unit]
+Description=Install the official Ookla Speedtest CLI for ExitLane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/exitlane-install-speedtest
+TimeoutStartSec=5min
+UMask=0077
+Environment=HOME=/run/exitlane-speedtest-install
+Environment=USER=root
+Environment=LOGNAME=root
+RuntimeDirectory=exitlane-speedtest-install
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+SystemCallArchitectures=native

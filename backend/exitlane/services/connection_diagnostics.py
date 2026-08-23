@@ -4,12 +4,12 @@ import asyncio
 import ipaddress
 import json
 import re
-import shutil
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 from exitlane.core import command
+from exitlane.services import speedtest_installation
 
 STATUSES = frozenset({"pending", "running", "passed", "warning", "failed"})
 TERMINAL_STATUSES = frozenset({"passed", "warning", "failed"})
@@ -181,12 +181,34 @@ async def external_ip() -> dict:
     return _result("passed", "public_ip_available", {"address": address})
 
 
-async def speedtest() -> dict:
-    executable = shutil.which("speedtest")
-    if not executable:
-        return _result("warning", "speedtest_tool_unavailable")
+async def speedtest(
+    *,
+    confirm_personal_noncommercial: bool = False,
+    accept_license: bool = False,
+    accept_gdpr: bool = False,
+    confirm_bandwidth: bool = False,
+) -> dict:
+    available, _error = await speedtest_installation._official_cli_state()
+    if not available:
+        snapshot = await speedtest_installation.status()
+        return _result(
+            "warning",
+            "speedtest_tool_unavailable",
+            {
+                "available": False,
+                "supported_runtime": snapshot["supported_runtime"],
+                "can_install": snapshot["can_install"],
+                "requires_terms_confirmation": snapshot["requires_terms_confirmation"],
+            },
+        )
+    if not all((confirm_personal_noncommercial, accept_license, accept_gdpr, confirm_bandwidth)):
+        return _result(
+            "warning",
+            "speedtest_terms_confirmation_required",
+            {"requires_terms_confirmation": True},
+        )
     rc, output, _error = await command(
-        executable,
+        speedtest_installation.OFFICIAL_EXECUTABLE,
         "--accept-license",
         "--accept-gdpr",
         "--format=json",
@@ -283,7 +305,15 @@ def start(status_loader: Callable[[], Awaitable[dict]]) -> dict:
     return snapshot(run_id) or {}
 
 
-async def action(name: str, target: str | None = None) -> dict:
+async def action(
+    name: str,
+    target: str | None = None,
+    *,
+    confirm_personal_noncommercial: bool = False,
+    accept_license: bool = False,
+    accept_gdpr: bool = False,
+    confirm_bandwidth: bool = False,
+) -> dict:
     if name == "ping":
         return await ping(target or "1.1.1.1")
     if name == "dns":
@@ -291,7 +321,12 @@ async def action(name: str, target: str | None = None) -> dict:
     if name == "external-ip":
         return await external_ip()
     if name == "speedtest":
-        return await speedtest()
+        return await speedtest(
+            confirm_personal_noncommercial=confirm_personal_noncommercial,
+            accept_license=accept_license,
+            accept_gdpr=accept_gdpr,
+            confirm_bandwidth=confirm_bandwidth,
+        )
     raise KeyError(name)
 
 

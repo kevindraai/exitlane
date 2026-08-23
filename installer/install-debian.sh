@@ -26,6 +26,8 @@ readonly VENV_DIR="${TARGET}/venv"
 readonly CLI_TARGET="/usr/local/sbin/exitlane-cli"
 readonly NORDVPN_HELPER_SOURCE="${SOURCE_DIR}/installer/install-nordvpn.sh"
 readonly NORDVPN_HELPER_TARGET="/usr/local/libexec/exitlane-install-nordvpn"
+readonly SPEEDTEST_HELPER_SOURCE="${SOURCE_DIR}/installer/install-speedtest.sh"
+readonly SPEEDTEST_HELPER_TARGET="/usr/local/libexec/exitlane-install-speedtest"
 
 readonly CONFIG_DIR="${EXITLANE_CONFIG_DIR:-/etc/exitlane}"
 readonly DATA_DIR="${EXITLANE_DATA_DIR:-/var/lib/exitlane}"
@@ -39,6 +41,8 @@ readonly KILLSWITCH_SERVICE_SOURCE="${SOURCE_DIR}/systemd/exitlane-killswitch.se
 readonly KILLSWITCH_SERVICE_TARGET="/etc/systemd/system/exitlane-killswitch.service"
 readonly PROVIDER_INSTALL_SERVICE_SOURCE="${SOURCE_DIR}/systemd/exitlane-provider-install-nordvpn.service"
 readonly PROVIDER_INSTALL_SERVICE_TARGET="/etc/systemd/system/exitlane-provider-install-nordvpn.service"
+readonly SPEEDTEST_INSTALL_SERVICE_SOURCE="${SOURCE_DIR}/systemd/exitlane-speedtest-install.service"
+readonly SPEEDTEST_INSTALL_SERVICE_TARGET="/etc/systemd/system/exitlane-speedtest-install.service"
 
 readonly DEFAULTS_SOURCE="${SOURCE_DIR}/installer/exitlane.default"
 readonly DEFAULTS_TARGET="/etc/default/exitlane"
@@ -164,6 +168,8 @@ prepare_upgrade_recovery() {
     "${SERVICE_TARGET}" \
     "${KILLSWITCH_SERVICE_TARGET}" \
     "${PROVIDER_INSTALL_SERVICE_TARGET}" \
+    "${SPEEDTEST_INSTALL_SERVICE_TARGET}" \
+    "${SPEEDTEST_HELPER_TARGET}" \
     "${DEFAULTS_TARGET}"; do
     if [[ -e "${path}" ]]; then
       cp -a --parents "${path}" "${RECOVERY_DIR}/files"
@@ -264,8 +270,12 @@ check_source_layout() {
     fail "${DEFAULTS_SOURCE} is missing."
   [[ -f "${NORDVPN_HELPER_SOURCE}" ]] ||
     fail "${NORDVPN_HELPER_SOURCE} is missing."
+  [[ -f "${SPEEDTEST_HELPER_SOURCE}" ]] ||
+    fail "${SPEEDTEST_HELPER_SOURCE} is missing."
   [[ -f "${PROVIDER_INSTALL_SERVICE_SOURCE}" ]] ||
     fail "${PROVIDER_INSTALL_SERVICE_SOURCE} is missing."
+  [[ -f "${SPEEDTEST_INSTALL_SERVICE_SOURCE}" ]] ||
+    fail "${SPEEDTEST_INSTALL_SERVICE_SOURCE} is missing."
 
   if [[ "$(realpath -m "${SOURCE_DIR}")" == "$(realpath -m "${TARGET}")" ]]; then
     fail "The Git repository and installation directory must not be the same directory.
@@ -451,6 +461,13 @@ install_provider_helper() {
   success "${NORDVPN_HELPER_TARGET} installed"
 }
 
+install_speedtest_helper() {
+  log "Installing fixed Speedtest installation helper"
+  install -d -m 0755 /usr/local/libexec
+  install -o root -g root -m 0755 "${SPEEDTEST_HELPER_SOURCE}" "${SPEEDTEST_HELPER_TARGET}"
+  success "${SPEEDTEST_HELPER_TARGET} installed"
+}
+
 install_defaults_file() {
   local source_path="$1"
   local target_path="$2"
@@ -475,6 +492,9 @@ install_service_files() {
   install -o root -g root -m 0644 \
     "${PROVIDER_INSTALL_SERVICE_SOURCE}" \
     "${PROVIDER_INSTALL_SERVICE_TARGET}"
+  install -o root -g root -m 0644 \
+    "${SPEEDTEST_INSTALL_SERVICE_SOURCE}" \
+    "${SPEEDTEST_INSTALL_SERVICE_TARGET}"
 
   install_defaults_file "${DEFAULTS_SOURCE}" "${DEFAULTS_TARGET}"
 
@@ -605,6 +625,7 @@ main() {
   create_virtual_environment
   install_cli
   install_provider_helper
+  install_speedtest_helper
   install_service_files
   configure_ip_forwarding
   start_service
