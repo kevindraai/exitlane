@@ -232,6 +232,7 @@ async function installSpeedtest() {
     renderSpeedtestInstallation();
   } finally {
     speedtestInstallationFlight = null;
+    renderSpeedtestInstallation();
     confirm.disabled = false;
     cancel.disabled = false;
   }

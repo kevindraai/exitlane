@@ -106,6 +106,22 @@ test("installable Speedtest can be opened again after the status GET settles", (
   assert.equal(speedtestInstallButtonDisabled({ ...unavailable, supported_runtime: false }, false), true);
 });
 
+test("a rejected install POST leaves the failed installation retryable after settlement", async () => {
+  const failed = {
+    status: "failed",
+    available: false,
+    supported_runtime: true,
+    can_install: true,
+    installation_in_progress: false,
+    error_code: "package_download_failed",
+  };
+  assert.equal(speedtestInstallButtonDisabled(failed, true), true, "single-flight keeps retry disabled while the POST is in flight");
+  assert.equal(speedtestInstallButtonDisabled(failed, false), false, "the failed snapshot exposes retry after rejection settles");
+  const source = await readFile(new URL("../backend/exitlane/static/js/diagnostics.js", import.meta.url), "utf8");
+  const installFlow = source.slice(source.indexOf("async function installSpeedtest"));
+  assert.match(installFlow, /speedtestInstallationFlight = null;\s+renderSpeedtestInstallation\(\);/);
+});
+
 test("validated CLI stays runnable on an unsupported managed-install runtime and pending is rendered", async () => {
   const source = await readFile(new URL("../backend/exitlane/static/js/diagnostics.js", import.meta.url), "utf8");
   assert.match(source, /SPEEDTEST_STATUSES = new Set\(\["pending"/);
