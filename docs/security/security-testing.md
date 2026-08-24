@@ -14,6 +14,11 @@ ShellCheck, downgrade rejection, recovery snapshot creation, and rollback
 contracts. The bounded malicious-archive corpus and failed-service rollback must
 also run on the Debian 13 test appliance before the candidate can leave draft.
 
+Integrated-documentation checks cover the authenticated route boundary, fixed source catalog,
+file-size limit, path confinement, raw-HTML non-interpretation, unsafe URL schemes, remote image
+suppression and the absence of browser HTML parsing sinks. Browser QA must also confirm that CSP
+and existing security headers remain unchanged on the help routes.
+
 Every PR runs backend/frontend regressions, Ruff, Bandit, pip-audit, secret scanning, dependency review, CodeQL and a passive ZAP baseline. Scheduled runs repeat CodeQL, dependency/secret audits and ZAP. Release/manual work adds disposable-target authenticated/active scanning, package inspection, test-LXC validation and systemd review.
 
 Local commands are the normal project checks plus `bandit -c backend/pyproject.toml -r backend/exitlane`, `pip-audit` in the installed backend environment, `gitleaks git .`, workflow SHA/permission inspection and the passive ZAP container command from its workflow. Findings are classified as fixed, accepted, deferred or false positive with severity, owner and evidence. Critical/high findings block publication and potentially exploitable details use private disclosure.

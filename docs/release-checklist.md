@@ -12,7 +12,7 @@ responses, or a recorded verification checklist.
 ## Release identity and source
 
 - [ ] The final implementation pull request is approved and merged, not merely
-  closed. For `v0.2.0-beta.3`, record the implementation and integration-review pull requests.
+  closed. For `v0.2.0-beta.4`, record the implementation and independent-review pull requests.
 - [ ] Local `main` is clean and exactly matches the current `origin/main`.
 - [ ] The exact final `origin/main` release SHA is recorded as runtime release
   evidence: `<release-sha>`.
@@ -69,13 +69,12 @@ not merge a release pull request unless explicitly instructed.
   fail-closed tunnel-unavailable behavior, recovery, and preservation of
   non-ExitLane nftables tables.
 - [ ] Release-specific appliance behavior is verified and linked. For
-  `v0.2.0-beta.3`, verify the missing-tool UI, then install the pinned Ookla
-  package on the designated test appliance `172.16.130.81` exclusively through
-  the managed confirmation flow and verify installation status and availability.
-  Perform this only after merge and all release gates pass. Prove that no
-  Speedtest measurement is invoked. No real Speedtest is permitted in beta.3
-  appliance QA. Existing provider, lifecycle, and system-action evidence remains
-  required.
+  `v0.2.0-beta.4`, upgrade the designated test appliance from beta.3 and verify
+  preserved database, secret key, users, sessions, MFA, WireGuard and settings.
+  Exercise Help & documentation, every contextual help link, light/dark/system
+  appearance, Diagnostics progressive disclosure, dialogs, focus states and the
+  existing Speedtest installation/run confirmation boundaries. Existing provider,
+  killswitch, lifecycle, rollback and system-action evidence remains required.
 - [ ] Appliance evidence is included or linked; unchecked appliance
   verification remains a release blocker.
 

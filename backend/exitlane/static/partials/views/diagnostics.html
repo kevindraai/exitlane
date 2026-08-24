@@ -2,7 +2,10 @@
       <section class="panel diagnostics-panel">
        <div class="panel-heading diagnostics-heading">
         <div><p class="eyebrow" data-i18n="diagnostics.eyebrow">CONNECTION TEST</p><h1 data-i18n="diagnostics.title">Diagnostics</h1><p class="lead" data-i18n="diagnostics.description">Follow the path from this device through Exitlane and the VPN to the internet.</p></div>
-        <button class="button button-primary" data-i18n="diagnostics.actions.run" id="diagnostics-run" type="button">Run connection test</button>
+        <div class="heading-actions">
+         <a class="context-help" data-help-document="diagnostics" data-i18n="help.context.diagnostics" href="#help/diagnostics">Open the diagnostics guide</a>
+         <button class="button button-primary" data-i18n="diagnostics.actions.run" id="diagnostics-run" type="button">Run connection test</button>
+        </div>
        </div>
        <p aria-live="polite" class="diagnostics-summary" id="connection-diagnostics-summary"></p>
        <div aria-label="Connection health" class="diagnostics-flow" data-i18n-aria-label="diagnostics.flow_label" id="diagnostics-flow">
@@ -15,8 +18,12 @@
         <article class="diagnostics-node" data-diagnostic-node="internet"><span aria-hidden="true" data-lucide-icon="globe-2"></span><strong data-i18n="diagnostics.nodes.internet">Internet</strong><span class="diagnostics-node-status"></span></article>
        </div>
        <div class="diagnostics-details" id="diagnostics-details"></div>
-       <section class="diagnostics-tools">
-        <div><p class="eyebrow" data-i18n="diagnostics.tools.eyebrow">INDIVIDUAL TESTS</p><h2 data-i18n="diagnostics.tools.title">Test one thing</h2><p data-i18n="diagnostics.tools.description">These tests run only when you choose them.</p></div>
+       <details class="diagnostics-tools">
+        <summary>
+         <span><span class="eyebrow" data-i18n="diagnostics.tools.eyebrow">INDIVIDUAL TESTS</span><strong data-i18n="diagnostics.tools.title">Test one thing</strong></span>
+         <span class="diagnostics-tools-summary" data-i18n="diagnostics.tools.description">These tests run only when you choose them.</span>
+        </summary>
+        <div class="diagnostics-tools-content">
         <div class="diagnostics-actions">
          <label><span data-i18n="diagnostics.tools.target">Host or IP address</span><input id="diagnostics-target" maxlength="253" type="text" value="api.nordvpn.com"/></label>
          <button class="button button-secondary" data-diagnostic-action="ping" data-i18n="diagnostics.actions.ping" type="button">Ping</button>
@@ -39,7 +46,8 @@
          <ol aria-label="Speedtest installation progress" class="speedtest-install-steps" data-i18n-aria-label="diagnostics.speedtest.progress_label" hidden="" id="speedtest-install-steps"></ol>
          <p aria-live="polite" class="sr-only" id="speedtest-install-live"></p>
         </section>
-       </section>
+        </div>
+       </details>
        <dialog aria-describedby="speedtest-install-description" aria-labelledby="speedtest-install-title" id="speedtest-install-dialog">
         <form id="speedtest-install-form" method="post">
          <h2 data-i18n="diagnostics.speedtest.install_title" id="speedtest-install-title">Install the official Ookla Speedtest CLI?</h2>

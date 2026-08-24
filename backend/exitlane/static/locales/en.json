@@ -561,9 +561,10 @@
     "vpn": "VPN",
     "vpn_overview": "Overview",
     "wireguard": "WireGuard",
-    "activity": "Activity",
-    "diagnostics": "Diagnostics",
-    "settings": "Settings",
+  "activity": "Activity",
+  "diagnostics": "Diagnostics",
+  "help": "Help & documentation",
+  "settings": "Settings",
     "settings_general": "General",
     "settings_security": "Security",
     "settings_network": "Network",
@@ -709,6 +710,55 @@
     "status": "Killswitch status is unavailable.",
     "firewall_apply_failed": "The firewall change failed and was rolled back.",
     "invalid_configuration": "The protected network configuration is invalid."
+  }
+},
+"help": {
+  "eyebrow": "SUPPORT",
+  "title": "Help & documentation",
+  "description": "Practical guidance for configuring, securing and maintaining ExitLane.",
+  "developer_note": "Developer and architecture documentation remains in the repository and is kept separate from these administrator guides.",
+  "github": "Browse source on GitHub",
+  "loading": "Loading documentation…",
+  "breadcrumb_label": "Documentation breadcrumb",
+  "back": "All documentation",
+  "source": "Source",
+  "categories": {
+    "getting_started": "Getting started",
+    "vpn": "VPN",
+    "wireguard": "WireGuard",
+    "diagnostics": "Diagnostics",
+    "security": "Security",
+    "appliance_management": "Appliance management",
+    "other": "Other"
+  },
+  "documents": {
+    "deployment": "Deployment",
+    "proxmox-lxc": "Proxmox LXC",
+    "router-integrations": "Router integrations",
+    "killswitch": "ExitLane killswitch",
+    "wireguard-configuration": "WireGuard configuration",
+    "diagnostics": "Connection diagnostics",
+    "authentication": "Authentication",
+    "mfa": "Multifactor authentication",
+    "hardening-guide": "Hardening guide",
+    "reverse-proxy": "HTTPS reverse proxy",
+    "backup-and-restore": "Backup and restore",
+    "upgrade-and-recovery": "Upgrade and recovery",
+    "activity-log": "Activity log"
+  },
+  "context": {
+    "diagnostics": "Open the diagnostics guide",
+    "wireguard": "Open the WireGuard configuration guide",
+    "reverse_proxy": "Open the reverse-proxy guide",
+    "authentication": "Open the authentication guide",
+    "mfa": "Open the MFA guide",
+    "backup": "Open the backup and restore guide",
+    "upgrade": "Open the upgrade and recovery guide",
+    "killswitch": "Open the killswitch guide"
+  },
+  "errors": {
+    "index": "Documentation could not be loaded.",
+    "document": "This document could not be loaded."
   }
 },
 "messages": {

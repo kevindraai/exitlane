@@ -27,6 +27,8 @@ test("sidebar uses the expected Lucide mapping without legacy emoji or inline SV
     "chart-no-axes-column",
     "key-round",
     "history",
+    "activity",
+    "book-open",
     "settings",
   ];
   for (const icon of expected) {
@@ -34,6 +36,20 @@ test("sidebar uses the expected Lucide mapping without legacy emoji or inline SV
   }
   assert.doesNotMatch(sidebar, /🏠|🌍|🔑|🔒|⚙|⌄/u);
   assert.doesNotMatch(sidebar, /<svg/i);
+});
+
+test("all fixed diagnostics and copy controls resolve to local icons", async () => {
+  const [diagnostics, settings] = await Promise.all([
+    read("../backend/exitlane/static/partials/views/diagnostics.html"),
+    read("../backend/exitlane/static/partials/views/settings.html"),
+  ]);
+  for (const icon of ["laptop", "router", "globe-2", "copy"]) {
+    assert.ok(LUCIDE_ICON_NAMES.includes(icon));
+  }
+  for (const icon of ["laptop", "router", "globe-2"]) {
+    assert.match(diagnostics, new RegExp(`data-lucide-icon="${icon}"`));
+  }
+  assert.match(settings, /data-lucide-icon="copy"/);
 });
 
 test("Settings registry uses only allowlisted local Lucide icons", async () => {

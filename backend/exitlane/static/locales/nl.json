@@ -561,9 +561,10 @@
     "vpn": "VPN",
     "vpn_overview": "Overzicht",
     "wireguard": "WireGuard",
-    "activity": "Activiteit",
-    "diagnostics": "Diagnostiek",
-    "settings": "Instellingen",
+  "activity": "Activiteit",
+  "diagnostics": "Diagnostiek",
+  "help": "Hulp & documentatie",
+  "settings": "Instellingen",
     "settings_general": "Algemeen",
     "settings_security": "Beveiliging",
     "settings_network": "Netwerk",
@@ -709,6 +710,55 @@
     "status": "Killswitch-status is niet beschikbaar.",
     "firewall_apply_failed": "De firewallwijziging mislukte en is teruggedraaid.",
     "invalid_configuration": "De beveiligde netwerkconfiguratie is ongeldig."
+  }
+},
+"help": {
+  "eyebrow": "ONDERSTEUNING",
+  "title": "Hulp & documentatie",
+  "description": "Praktische uitleg voor het configureren, beveiligen en beheren van ExitLane.",
+  "developer_note": "Documentatie voor ontwikkelaars en architectuur blijft in de repository en staat los van deze beheerhandleidingen.",
+  "github": "Bekijk de bron op GitHub",
+  "loading": "Documentatie laden…",
+  "breadcrumb_label": "Documentatiekruimelpad",
+  "back": "Alle documentatie",
+  "source": "Bron",
+  "categories": {
+    "getting_started": "Aan de slag",
+    "vpn": "VPN",
+    "wireguard": "WireGuard",
+    "diagnostics": "Diagnostiek",
+    "security": "Beveiliging",
+    "appliance_management": "Appliancebeheer",
+    "other": "Overig"
+  },
+  "documents": {
+    "deployment": "Implementatie",
+    "proxmox-lxc": "Proxmox LXC",
+    "router-integrations": "Routerintegraties",
+    "killswitch": "ExitLane-killswitch",
+    "wireguard-configuration": "WireGuard-configuratie",
+    "diagnostics": "Verbindingsdiagnostiek",
+    "authentication": "Authenticatie",
+    "mfa": "Multifactorauthenticatie",
+    "hardening-guide": "Beveiligingsrichtlijnen",
+    "reverse-proxy": "HTTPS-reverse-proxy",
+    "backup-and-restore": "Back-up en herstel",
+    "upgrade-and-recovery": "Upgrade en herstel",
+    "activity-log": "Activiteitenlog"
+  },
+  "context": {
+    "diagnostics": "Open de diagnostiekhandleiding",
+    "wireguard": "Open de WireGuard-configuratiehandleiding",
+    "reverse_proxy": "Open de reverse-proxyhandleiding",
+    "authentication": "Open de authenticatiehandleiding",
+    "mfa": "Open de MFA-handleiding",
+    "backup": "Open de handleiding voor back-up en herstel",
+    "upgrade": "Open de handleiding voor upgrade en herstel",
+    "killswitch": "Open de killswitchhandleiding"
+  },
+  "errors": {
+    "index": "De documentatie kon niet worden geladen.",
+    "document": "Dit document kon niet worden geladen."
   }
 },
 "messages": {

@@ -114,6 +114,8 @@ Important authentication, setup, VPN, WireGuard, settings, notification, and sys
 - Integrate through the REST API.
 - Trace Device -> ExitLane -> VPN -> Internet with structured connection diagnostics and explicit
   ping, DNS, external-IP, and speed-test actions.
+- Open version-matched administrator documentation inside the WebUI and follow contextual guide
+  links from the relevant operational screens.
 
 ## Architecture
 
@@ -122,6 +124,9 @@ ExitLane uses a FastAPI backend that serves both its API and a single-page front
 The VPN core is provider-neutral. NordVPN is the first provider implementation, and WireGuard provides independent ingress from routers and other clients.
 
 See [Architecture](docs/architecture.md), [Authentication](docs/authentication.md), [WireGuard configuration management](docs/wireguard-configuration.md), [Connection diagnostics](docs/diagnostics.md), [Application state](docs/application-state.md), and [Startup lifecycle](docs/startup-lifecycle.md) for the design rationale.
+
+The WebUI's semantic theme adoption is recorded in the
+[ExitLane design-system mapping](docs/design-system.md).
 
 ## Installation
 

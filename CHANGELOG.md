@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.2.0-beta.4] - 2026-08-24
+
+### Added
+
+- Integrated, authenticated Help & documentation navigation backed directly by the existing
+  repository Markdown guides.
+- Contextual documentation links for Diagnostics, WireGuard, reverse proxy, authentication, MFA,
+  backup/restore, upgrade/recovery and killswitch management.
+
+### Changed
+
+- Adopted the N/L Foundry Cobalt / Slate technical theme through a thin semantic token mapping for
+  deliberate light and dark modes.
+- Reduced page-heading scale, expanded focus-visible coverage and made optional Diagnostics tools
+  secondary to the primary connection flow.
+- Updated the roadmap to distinguish existing provider and diagnostics foundations from planned
+  hardening and operational depth.
+
+### Fixed
+
+- Replaced self-referential dark-mode code, progress-track and toast properties with usable theme
+  values.
+- Added the missing local Diagnostics icon definitions instead of silently showing generic
+  fallbacks.
+
+### Security
+
+- Project Markdown is exposed as a fixed allowlisted catalog and projected into typed content
+  blocks. The browser creates elements with `textContent`; raw HTML, unsafe URL schemes, external
+  scripts and CDN dependencies are not accepted.
+
 ## [0.2.0-beta.3] - 2026-08-24
 
 ### Added
