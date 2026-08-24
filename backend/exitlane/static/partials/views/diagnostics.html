@@ -26,6 +26,50 @@
         </div>
         <p aria-live="polite" class="diagnostics-action-result" id="diagnostics-action-result"></p>
         <p class="form-help" data-i18n="diagnostics.tools.speedtest_notice">Speed test can use significant bandwidth and is never started automatically.</p>
+        <section aria-live="polite" class="speedtest-management" hidden="" id="speedtest-management" aria-atomic="true">
+         <div class="speedtest-management-copy">
+          <p class="eyebrow" data-i18n="diagnostics.speedtest.eyebrow">SPEEDTEST CLI</p>
+          <h3 data-i18n="diagnostics.speedtest.title">Managed Speedtest</h3>
+          <p id="speedtest-management-description"></p>
+         </div>
+         <div class="speedtest-management-actions">
+          <button class="button button-primary" data-i18n="diagnostics.speedtest.install" hidden="" id="speedtest-install" type="button">Install Speedtest</button>
+          <span class="status-pill status-neutral" hidden="" id="speedtest-install-status"></span>
+         </div>
+         <ol aria-label="Speedtest installation progress" class="speedtest-install-steps" data-i18n-aria-label="diagnostics.speedtest.progress_label" hidden="" id="speedtest-install-steps"></ol>
+         <p aria-live="polite" class="sr-only" id="speedtest-install-live"></p>
+        </section>
        </section>
+       <dialog aria-describedby="speedtest-install-description" aria-labelledby="speedtest-install-title" id="speedtest-install-dialog">
+        <form id="speedtest-install-form" method="post">
+         <h2 data-i18n="diagnostics.speedtest.install_title" id="speedtest-install-title">Install the official Ookla Speedtest CLI?</h2>
+         <p data-i18n="diagnostics.speedtest.install_description" id="speedtest-install-description">ExitLane will install the official Ookla CLI using a Debian package. This can change packages on this appliance; no repository or signing key is retained.</p>
+         <p class="form-help" data-i18n="diagnostics.speedtest.install_terms">Confirm that this appliance is eligible for personal, non-commercial use and accept the Ookla license, EULA, Terms of Use, Privacy Policy and GDPR terms.</p>
+         <p class="speedtest-links"><a data-i18n="diagnostics.speedtest.eula" href="https://www.speedtest.net/about/eula" rel="noopener noreferrer" target="_blank">Ookla EULA</a><a data-i18n="diagnostics.speedtest.terms" href="https://www.speedtest.net/about/terms" rel="noopener noreferrer" target="_blank">Terms of Use</a><a data-i18n="diagnostics.speedtest.privacy" href="https://www.speedtest.net/about/privacy" rel="noopener noreferrer" target="_blank">Privacy Policy</a></p>
+         <div class="speedtest-confirmations">
+          <label><input id="speedtest-confirm-package-change" required="" type="checkbox"/><span data-i18n="diagnostics.speedtest.confirm_package_change">I confirm the Debian package change.</span></label>
+          <label><input id="speedtest-confirm-personal" required="" type="checkbox"/><span data-i18n="diagnostics.speedtest.confirm_personal">I confirm personal, non-commercial eligibility.</span></label>
+          <label><input id="speedtest-accept-license" required="" type="checkbox"/><span data-i18n="diagnostics.speedtest.accept_license">I accept the Ookla license and EULA.</span></label>
+          <label><input id="speedtest-accept-gdpr" required="" type="checkbox"/><span data-i18n="diagnostics.speedtest.accept_gdpr">I accept the applicable Terms, Privacy Policy and GDPR terms.</span></label>
+         </div>
+         <p class="inline-error" hidden="" id="speedtest-install-error" role="alert"></p>
+         <div class="view-actions"><button class="button button-secondary" data-i18n="common.cancel" id="speedtest-install-cancel" type="button">Cancel</button><button class="button button-primary" data-i18n="diagnostics.speedtest.install_confirm" id="speedtest-install-confirm" type="submit">Install Speedtest</button></div>
+        </form>
+       </dialog>
+       <dialog aria-describedby="speedtest-run-description" aria-labelledby="speedtest-run-title" id="speedtest-run-dialog">
+        <form id="speedtest-run-form" method="post">
+         <h2 data-i18n="diagnostics.speedtest.run_title" id="speedtest-run-title">Run Speedtest?</h2>
+         <p data-i18n="diagnostics.speedtest.run_description" id="speedtest-run-description">This explicit action can use significant bandwidth and sends measurement data to Ookla.</p>
+         <p class="speedtest-links"><a data-i18n="diagnostics.speedtest.eula" href="https://www.speedtest.net/about/eula" rel="noopener noreferrer" target="_blank">Ookla EULA</a><a data-i18n="diagnostics.speedtest.terms" href="https://www.speedtest.net/about/terms" rel="noopener noreferrer" target="_blank">Terms of Use</a><a data-i18n="diagnostics.speedtest.privacy" href="https://www.speedtest.net/about/privacy" rel="noopener noreferrer" target="_blank">Privacy Policy</a></p>
+         <div class="speedtest-confirmations">
+          <label><input id="speedtest-run-confirm-personal" required="" type="checkbox"/><span data-i18n="diagnostics.speedtest.confirm_personal">I confirm personal, non-commercial eligibility.</span></label>
+          <label><input id="speedtest-run-accept-license" required="" type="checkbox"/><span data-i18n="diagnostics.speedtest.accept_license">I accept the Ookla license and EULA.</span></label>
+          <label><input id="speedtest-run-accept-gdpr" required="" type="checkbox"/><span data-i18n="diagnostics.speedtest.accept_gdpr">I accept the applicable Terms, Privacy Policy and GDPR terms.</span></label>
+          <label><input id="speedtest-run-confirm-bandwidth" required="" type="checkbox"/><span data-i18n="diagnostics.speedtest.confirm_bandwidth">I understand this action uses bandwidth.</span></label>
+         </div>
+         <p class="inline-error" hidden="" id="speedtest-run-error" role="alert"></p>
+         <div class="view-actions"><button class="button button-secondary" data-i18n="common.cancel" id="speedtest-run-cancel" type="button">Cancel</button><button class="button button-primary" data-i18n="diagnostics.speedtest.run_confirm" id="speedtest-run-confirm" type="submit">Run Speedtest</button></div>
+        </form>
+       </dialog>
       </section>
      </section>

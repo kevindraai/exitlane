@@ -1,7 +1,7 @@
 # Upgrade and recovery
 
 ExitLane supports an in-place Debian appliance upgrade from the accepted alpha
-baseline to `0.2.0-beta.2`. Run the installer from a trusted, reviewed checkout
+baseline to `0.2.0-beta.3`. Run the installer from a trusted, reviewed checkout
 of the target release:
 
 ```bash

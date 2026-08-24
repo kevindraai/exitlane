@@ -3,8 +3,8 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-readonly INSTALLER_VERSION="0.2.0-beta.2"
-readonly PACKAGE_VERSION="0.2.0b2"
+readonly INSTALLER_VERSION="0.2.0-beta.3"
+readonly PACKAGE_VERSION="0.2.0b3"
 readonly LIFECYCLE_LOCK="${EXITLANE_LIFECYCLE_LOCK:-/run/lock/exitlane-lifecycle.lock}"
 readonly RECOVERY_ROOT="${EXITLANE_RECOVERY_ROOT:-/var/lib/exitlane/recovery}"
 UPGRADE_MODE=0
@@ -26,6 +26,8 @@ readonly VENV_DIR="${TARGET}/venv"
 readonly CLI_TARGET="/usr/local/sbin/exitlane-cli"
 readonly NORDVPN_HELPER_SOURCE="${SOURCE_DIR}/installer/install-nordvpn.sh"
 readonly NORDVPN_HELPER_TARGET="/usr/local/libexec/exitlane-install-nordvpn"
+readonly SPEEDTEST_HELPER_SOURCE="${SOURCE_DIR}/installer/install-speedtest.sh"
+readonly SPEEDTEST_HELPER_TARGET="/usr/local/libexec/exitlane-install-speedtest"
 
 readonly CONFIG_DIR="${EXITLANE_CONFIG_DIR:-/etc/exitlane}"
 readonly DATA_DIR="${EXITLANE_DATA_DIR:-/var/lib/exitlane}"
@@ -39,9 +41,12 @@ readonly KILLSWITCH_SERVICE_SOURCE="${SOURCE_DIR}/systemd/exitlane-killswitch.se
 readonly KILLSWITCH_SERVICE_TARGET="/etc/systemd/system/exitlane-killswitch.service"
 readonly PROVIDER_INSTALL_SERVICE_SOURCE="${SOURCE_DIR}/systemd/exitlane-provider-install-nordvpn.service"
 readonly PROVIDER_INSTALL_SERVICE_TARGET="/etc/systemd/system/exitlane-provider-install-nordvpn.service"
+readonly SPEEDTEST_INSTALL_SERVICE_SOURCE="${SOURCE_DIR}/systemd/exitlane-speedtest-install.service"
+readonly SPEEDTEST_INSTALL_SERVICE_TARGET="/etc/systemd/system/exitlane-speedtest-install.service"
 
 readonly DEFAULTS_SOURCE="${SOURCE_DIR}/installer/exitlane.default"
 readonly DEFAULTS_TARGET="/etc/default/exitlane"
+readonly IP_FORWARDING_TARGET="/etc/sysctl.d/99-exitlane.conf"
 
 on_error() {
   local exit_code=$?
@@ -152,6 +157,8 @@ prepare_upgrade_recovery() {
   RECOVERY_DIR="$(mktemp -d "${RECOVERY_ROOT}/pre-upgrade.XXXXXXXX")"
   chmod 0700 "${RECOVERY_DIR}"
   install -d -m 0700 "${RECOVERY_DIR}/files"
+  : > "${RECOVERY_DIR}/path-state"
+  chmod 0600 "${RECOVERY_DIR}/path-state"
 
   if [[ -f "${DATA_DIR}/exitlane.db" ]]; then
     snapshot_sqlite_database \
@@ -161,13 +168,16 @@ prepare_upgrade_recovery() {
   for path in \
     "${TARGET}" \
     "${CONFIG_DIR}" \
+    "${CLI_TARGET}" \
     "${SERVICE_TARGET}" \
     "${KILLSWITCH_SERVICE_TARGET}" \
     "${PROVIDER_INSTALL_SERVICE_TARGET}" \
-    "${DEFAULTS_TARGET}"; do
-    if [[ -e "${path}" ]]; then
-      cp -a --parents "${path}" "${RECOVERY_DIR}/files"
-    fi
+    "${SPEEDTEST_INSTALL_SERVICE_TARGET}" \
+    "${NORDVPN_HELPER_TARGET}" \
+    "${SPEEDTEST_HELPER_TARGET}" \
+    "${DEFAULTS_TARGET}" \
+    "${IP_FORWARDING_TARGET}"; do
+    snapshot_recovery_path "${path}"
   done
   printf '%s\n' "${INSTALLER_VERSION}" > "${RECOVERY_DIR}/target-version"
   chmod -R go-rwx "${RECOVERY_DIR}"
@@ -178,7 +188,7 @@ rollback_upgrade() {
   warning "Upgrade failed; restoring the previous ExitLane installation"
   systemctl stop "${SERVICE_NAME}" >/dev/null 2>&1 || true
   if [[ -d "${RECOVERY_DIR}/files" ]]; then
-    restore_recovery_files "${RECOVERY_DIR}/files" /
+    restore_recovery_files "${RECOVERY_DIR}/files" "${RECOVERY_DIR}/path-state" /
   fi
   if [[ -f "${RECOVERY_DIR}/exitlane.db" ]]; then
     install -o root -g root -m 0600 \
@@ -192,23 +202,39 @@ rollback_upgrade() {
 
 restore_recovery_files() {
   local recovery_files="$1"
-  local destination_root="${2:-/}"
-  local top_level
+  local path_state="$2"
+  local destination_root="${3:-/}"
+  local state
+  local source_path
   local destination
-  local saved
-  local -a saved_entries=()
 
-  for top_level in "${recovery_files}"/*; do
-    [[ -d "${top_level}" ]] || continue
-    destination="${destination_root%/}/$(basename "${top_level}")"
-    install -d -m 0755 "${destination}"
-    shopt -s dotglob nullglob
-    saved_entries=("${top_level}"/*)
-    shopt -u dotglob nullglob
-    for saved in "${saved_entries[@]}"; do
-      cp -a "${saved}" "${destination}/"
-    done
-  done
+  [[ -f "${path_state}" ]] || return 1
+  while IFS='|' read -r state source_path; do
+    [[ -n "${state}" ]] || continue
+    case "${state}" in present|absent) ;; *) return 1 ;; esac
+    case "${source_path}" in
+      "${TARGET}"|"${CONFIG_DIR}"|"${CLI_TARGET}"|"${SERVICE_TARGET}"|"${KILLSWITCH_SERVICE_TARGET}"|"${PROVIDER_INSTALL_SERVICE_TARGET}"|"${SPEEDTEST_INSTALL_SERVICE_TARGET}"|"${NORDVPN_HELPER_TARGET}"|"${SPEEDTEST_HELPER_TARGET}"|"${DEFAULTS_TARGET}"|"${IP_FORWARDING_TARGET}") ;;
+      *) return 1 ;;
+    esac
+    destination="${destination_root%/}${source_path}"
+    [[ -n "${destination}" && "${destination}" != "${destination_root%/}" ]] || return 1
+    rm -rf -- "${destination}"
+    [[ "${state}" == "absent" ]] && continue
+    source_path="${recovery_files}${source_path}"
+    [[ -e "${source_path}" || -L "${source_path}" ]] || return 1
+    install -d -m 0755 "$(dirname "${destination}")"
+    cp -a "${source_path}" "$(dirname "${destination}")/"
+  done < "${path_state}"
+}
+
+snapshot_recovery_path() {
+  local path="$1"
+  if [[ -e "${path}" || -L "${path}" ]]; then
+    printf 'present|%s\n' "${path}" >> "${RECOVERY_DIR}/path-state"
+    cp -a --parents "${path}" "${RECOVERY_DIR}/files"
+  else
+    printf 'absent|%s\n' "${path}" >> "${RECOVERY_DIR}/path-state"
+  fi
 }
 
 commit_upgrade() {
@@ -264,8 +290,12 @@ check_source_layout() {
     fail "${DEFAULTS_SOURCE} is missing."
   [[ -f "${NORDVPN_HELPER_SOURCE}" ]] ||
     fail "${NORDVPN_HELPER_SOURCE} is missing."
+  [[ -f "${SPEEDTEST_HELPER_SOURCE}" ]] ||
+    fail "${SPEEDTEST_HELPER_SOURCE} is missing."
   [[ -f "${PROVIDER_INSTALL_SERVICE_SOURCE}" ]] ||
     fail "${PROVIDER_INSTALL_SERVICE_SOURCE} is missing."
+  [[ -f "${SPEEDTEST_INSTALL_SERVICE_SOURCE}" ]] ||
+    fail "${SPEEDTEST_INSTALL_SERVICE_SOURCE} is missing."
 
   if [[ "$(realpath -m "${SOURCE_DIR}")" == "$(realpath -m "${TARGET}")" ]]; then
     fail "The Git repository and installation directory must not be the same directory.
@@ -451,6 +481,13 @@ install_provider_helper() {
   success "${NORDVPN_HELPER_TARGET} installed"
 }
 
+install_speedtest_helper() {
+  log "Installing fixed Speedtest installation helper"
+  install -d -m 0755 /usr/local/libexec
+  install -o root -g root -m 0755 "${SPEEDTEST_HELPER_SOURCE}" "${SPEEDTEST_HELPER_TARGET}"
+  success "${SPEEDTEST_HELPER_TARGET} installed"
+}
+
 install_defaults_file() {
   local source_path="$1"
   local target_path="$2"
@@ -475,6 +512,9 @@ install_service_files() {
   install -o root -g root -m 0644 \
     "${PROVIDER_INSTALL_SERVICE_SOURCE}" \
     "${PROVIDER_INSTALL_SERVICE_TARGET}"
+  install -o root -g root -m 0644 \
+    "${SPEEDTEST_INSTALL_SERVICE_SOURCE}" \
+    "${SPEEDTEST_INSTALL_SERVICE_TARGET}"
 
   install_defaults_file "${DEFAULTS_SOURCE}" "${DEFAULTS_TARGET}"
 
@@ -485,7 +525,7 @@ install_service_files() {
 configure_ip_forwarding() {
   log "Configuring IPv4 forwarding"
 
-  cat > /etc/sysctl.d/99-exitlane.conf <<'EOF'
+  cat > "${IP_FORWARDING_TARGET}" <<'EOF'
 # Required by ExitLane to forward ingress traffic through a VPN provider.
 net.ipv4.ip_forward=1
 EOF
@@ -605,6 +645,7 @@ main() {
   create_virtual_environment
   install_cli
   install_provider_helper
+  install_speedtest_helper
   install_service_files
   configure_ip_forwarding
   start_service

@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.0-beta.3] - 2026-08-24
+
+### Added
+
+- Managed, explicitly confirmed installation of the digest-pinned official Ookla Speedtest CLI on
+  Debian 13 `amd64`, with package ownership validation, status polling, and no retained repository
+  or signing key.
+- Separate, explicitly confirmed Speedtest measurements with visible bandwidth and terms notices.
+
+### Security
+
+- Serialize Speedtest measurements, share the package-operation lock with provider installation,
+  redact installer output to stable allowlisted status/error codes, and use the Packagecloud Debian
+  artifact endpoint rather than its HTML package page.
+
+### Release notes and follow-up
+
+- Reviewed release notes live at `docs/release-notes/0.2.0-beta.3.md`.
+- Integrated, versioned in-app documentation and error-to-document deep links remain a follow-up.
+
 ## [0.2.0-beta.2] - 2026-07-27
 
 ### Fixed

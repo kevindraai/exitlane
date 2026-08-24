@@ -4,12 +4,12 @@ import asyncio
 import ipaddress
 import json
 import re
-import shutil
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 from exitlane.core import command
+from exitlane.services import speedtest_installation
 
 STATUSES = frozenset({"pending", "running", "passed", "warning", "failed"})
 TERMINAL_STATUSES = frozenset({"passed", "warning", "failed"})
@@ -24,6 +24,7 @@ PROBE_DEFINITIONS = (
 )
 MAX_RUNS = 20
 _runs: dict[str, dict] = {}
+_speedtest_action_lock: asyncio.Lock | None = None
 
 
 def _now() -> str:
@@ -181,17 +182,45 @@ async def external_ip() -> dict:
     return _result("passed", "public_ip_available", {"address": address})
 
 
-async def speedtest() -> dict:
-    executable = shutil.which("speedtest")
-    if not executable:
-        return _result("warning", "speedtest_tool_unavailable")
-    rc, output, _error = await command(
-        executable,
-        "--accept-license",
-        "--accept-gdpr",
-        "--format=json",
-        timeout=120,
-    )
+async def speedtest(
+    *,
+    confirm_personal_noncommercial: bool = False,
+    accept_license: bool = False,
+    accept_gdpr: bool = False,
+    confirm_bandwidth: bool = False,
+) -> dict:
+    global _speedtest_action_lock
+    available, _error = await speedtest_installation._official_cli_state()
+    if not available:
+        snapshot = await speedtest_installation.status()
+        return _result(
+            "warning",
+            "speedtest_tool_unavailable",
+            {
+                "available": False,
+                "supported_runtime": snapshot["supported_runtime"],
+                "can_install": snapshot["can_install"],
+                "requires_terms_confirmation": snapshot["requires_terms_confirmation"],
+            },
+        )
+    if not all((confirm_personal_noncommercial, accept_license, accept_gdpr, confirm_bandwidth)):
+        return _result(
+            "warning",
+            "speedtest_terms_confirmation_required",
+            {"requires_terms_confirmation": True},
+        )
+    if _speedtest_action_lock is None:
+        _speedtest_action_lock = asyncio.Lock()
+    if _speedtest_action_lock.locked():
+        return _result("warning", "speedtest_action_in_progress")
+    async with _speedtest_action_lock:
+        rc, output, _error = await command(
+            speedtest_installation.OFFICIAL_EXECUTABLE,
+            "--accept-license",
+            "--accept-gdpr",
+            "--format=json",
+            timeout=120,
+        )
     if rc != 0:
         return _result("failed", "speedtest_failed")
     try:
@@ -283,7 +312,15 @@ def start(status_loader: Callable[[], Awaitable[dict]]) -> dict:
     return snapshot(run_id) or {}
 
 
-async def action(name: str, target: str | None = None) -> dict:
+async def action(
+    name: str,
+    target: str | None = None,
+    *,
+    confirm_personal_noncommercial: bool = False,
+    accept_license: bool = False,
+    accept_gdpr: bool = False,
+    confirm_bandwidth: bool = False,
+) -> dict:
     if name == "ping":
         return await ping(target or "1.1.1.1")
     if name == "dns":
@@ -291,9 +328,16 @@ async def action(name: str, target: str | None = None) -> dict:
     if name == "external-ip":
         return await external_ip()
     if name == "speedtest":
-        return await speedtest()
+        return await speedtest(
+            confirm_personal_noncommercial=confirm_personal_noncommercial,
+            accept_license=accept_license,
+            accept_gdpr=accept_gdpr,
+            confirm_bandwidth=confirm_bandwidth,
+        )
     raise KeyError(name)
 
 
 def reset_for_tests() -> None:
+    global _speedtest_action_lock
     _runs.clear()
+    _speedtest_action_lock = None

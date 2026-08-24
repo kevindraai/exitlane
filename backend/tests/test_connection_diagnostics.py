@@ -97,7 +97,7 @@ def test_connection_run_exposes_pending_running_and_terminal_states(monkeypatch)
 def test_speedtest_is_only_an_explicit_action(monkeypatch):
     calls = []
 
-    async def explicit():
+    async def explicit(**_confirmations):
         calls.append("speedtest")
         return diagnostics._result("warning", "speedtest_tool_unavailable")
 

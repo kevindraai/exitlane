@@ -39,9 +39,13 @@ def test_installer_has_locked_upgrade_snapshot_and_rollback_contract():
     assert "rollback_upgrade" in installer
     assert 'cp -a "${RECOVERY_DIR}/files/." /' not in installer
     assert 'cp -a "${top_level}/." "/$(basename "${top_level}")/"' not in installer
-    assert 'restore_recovery_files "${RECOVERY_DIR}/files" /' in installer
+    assert (
+        'restore_recovery_files "${RECOVERY_DIR}/files" "${RECOVERY_DIR}/path-state" /' in installer
+    )
+    assert "snapshot_recovery_path" in installer
+    assert 'rm -rf -- "${destination}"' in installer
     assert "commit_upgrade" in installer
-    assert 'readonly PACKAGE_VERSION="0.2.0b2"' in installer
+    assert 'readonly PACKAGE_VERSION="0.2.0b3"' in installer
     assert 'dpkg --compare-versions "${CURRENT_VERSION}" gt "${PACKAGE_VERSION}"' in installer
     assert installer.index("prepare_upgrade_recovery") < installer.index("stop_existing_service")
     assert installer.index("stop_existing_service") < installer.index("copy_application")
@@ -108,7 +112,7 @@ def test_deploy_script_fails_closed_on_unexpected_lxc_identity():
     assert "Refusing deployment" in deploy
 
 
-def test_recovery_file_restore_preserves_top_level_directory_modes(tmp_path):
+def test_recovery_file_restore_preserves_parent_directory_modes(tmp_path):
     recovery = tmp_path / "recovery"
     target = tmp_path / "target"
     (recovery / "etc" / "exitlane").mkdir(parents=True, mode=0o700)
@@ -119,7 +123,9 @@ def test_recovery_file_restore_preserves_top_level_directory_modes(tmp_path):
     (recovery / "opt" / "exitlane" / "version").write_text("beta", encoding="utf-8")
     (target / "etc").mkdir(parents=True, mode=0o755)
     (target / "opt").mkdir(parents=True, mode=0o755)
-    command = f"source {INSTALLER}; restore_recovery_files {recovery} {target}"
+    state = tmp_path / "path-state"
+    state.write_text("present|/etc/exitlane\npresent|/opt/exitlane\n", encoding="utf-8")
+    command = f"source {INSTALLER}; restore_recovery_files {recovery} {state} {target}"
 
     subprocess.run(["bash", "-c", command], check=True)
 
@@ -127,3 +133,73 @@ def test_recovery_file_restore_preserves_top_level_directory_modes(tmp_path):
     assert (target / "opt").stat().st_mode & 0o777 == 0o755
     assert (target / "etc" / "exitlane" / "setting").read_text(encoding="utf-8") == "preserved"
     assert (target / "opt" / "exitlane" / "version").read_text(encoding="utf-8") == "beta"
+
+
+def test_rollback_restores_exact_prior_paths_and_removes_candidate_only_paths(tmp_path):
+    recovery = tmp_path / "recovery"
+    files = recovery / "files"
+    target = tmp_path / "target"
+    state = recovery / "path-state"
+
+    saved_paths = {
+        "/opt/exitlane": ("version", "previous"),
+        "/etc/exitlane": ("setting", "preserved"),
+        "/etc/default/exitlane": (None, "EXISTING_CONFIGURATION=preserved\n"),
+        "/usr/local/libexec/exitlane-install-nordvpn": (None, "previous provider helper\n"),
+        "/etc/systemd/system/exitlane-provider-install-nordvpn.service": (None, "previous unit\n"),
+    }
+    for absolute_path, (child, contents) in saved_paths.items():
+        saved = files / absolute_path.lstrip("/")
+        if child is None:
+            saved.parent.mkdir(parents=True, exist_ok=True)
+            saved.write_text(contents, encoding="utf-8")
+        else:
+            saved.mkdir(parents=True, exist_ok=True)
+            (saved / child).write_text(contents, encoding="utf-8")
+
+    state.write_text(
+        "present|/opt/exitlane\n"
+        "present|/etc/exitlane\n"
+        "present|/etc/default/exitlane\n"
+        "present|/usr/local/libexec/exitlane-install-nordvpn\n"
+        "present|/etc/systemd/system/exitlane-provider-install-nordvpn.service\n"
+        "absent|/usr/local/libexec/exitlane-install-speedtest\n"
+        "absent|/etc/systemd/system/exitlane-speedtest-install.service\n",
+        encoding="utf-8",
+    )
+
+    for relative_path, contents in {
+        "opt/exitlane/version": "candidate",
+        "opt/exitlane/candidate-only": "remove",
+        "etc/exitlane/setting": "candidate",
+        "etc/default/exitlane": "candidate\n",
+        "usr/local/libexec/exitlane-install-nordvpn": "candidate provider helper\n",
+        "usr/local/libexec/exitlane-install-speedtest": "candidate speedtest helper\n",
+        "etc/systemd/system/exitlane-provider-install-nordvpn.service": "candidate unit\n",
+        "etc/systemd/system/exitlane-speedtest-install.service": "candidate speedtest unit\n",
+        "var/lib/exitlane/exitlane.db": "preserve data",
+        "etc/wireguard/wg0.conf": "preserve wireguard",
+    }.items():
+        live = target / relative_path
+        live.parent.mkdir(parents=True, exist_ok=True)
+        live.write_text(contents, encoding="utf-8")
+
+    command = f"source {INSTALLER}; restore_recovery_files {files} {state} {target}"
+    subprocess.run(["bash", "-c", command], check=True)
+
+    assert (target / "opt/exitlane/version").read_text(encoding="utf-8") == "previous"
+    assert not (target / "opt/exitlane/candidate-only").exists()
+    assert (target / "etc/exitlane/setting").read_text(encoding="utf-8") == "preserved"
+    assert (target / "etc/default/exitlane").read_text(
+        encoding="utf-8"
+    ) == "EXISTING_CONFIGURATION=preserved\n"
+    assert (target / "usr/local/libexec/exitlane-install-nordvpn").read_text(
+        encoding="utf-8"
+    ) == "previous provider helper\n"
+    assert not (target / "usr/local/libexec/exitlane-install-speedtest").exists()
+    assert (target / "etc/systemd/system/exitlane-provider-install-nordvpn.service").read_text(
+        encoding="utf-8"
+    ) == "previous unit\n"
+    assert not (target / "etc/systemd/system/exitlane-speedtest-install.service").exists()
+    assert (target / "var/lib/exitlane/exitlane.db").read_text(encoding="utf-8") == "preserve data"
+    assert (target / "etc/wireguard/wg0.conf").read_text(encoding="utf-8") == "preserve wireguard"

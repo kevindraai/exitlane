@@ -81,8 +81,13 @@ provider country when no measured server is reachable.
 Authenticated connection diagnostics use transient, in-process runs. Each probe owns a fixed
 segment and progresses through pending, running, passed, warning, or failed. Automatic probes use
 fixed command arguments and endpoints; raw subprocess output is reduced to allowlisted fields
-before it crosses the API boundary. Speed test is an explicit action and never part of an automatic
-run. See [Connection diagnostics](diagnostics.md).
+before it crosses the API boundary. Speedtest is an explicit, single-flight action and never part of
+an automatic run. On Debian 13 `amd64`, separately confirmed administrators may ask a fixed-purpose
+systemd helper to install one digest-pinned official Ookla package; it owns the shared package lock,
+and its allowlisted status can be reconciled after a browser reload. The helper adds neither a
+repository nor signing key, and installation never starts a measurement. See
+[Connection diagnostics](diagnostics.md) and
+[ADR-001](architecture/adr-001-managed-ookla-speedtest-installation.md).
 
 ## Design boundaries
 
