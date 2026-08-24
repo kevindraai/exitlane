@@ -149,7 +149,7 @@ def test_navigation_wizard_and_accessibility_references_are_complete():
         for attribute in ("aria-labelledby", "aria-describedby"):
             for target in (attrs.get(attribute) or "").split():
                 assert target in ids
-    assert len(values(parser, "aria-live")) == 17
+    assert len(values(parser, "aria-live")) == 19
 
 
 def test_javascript_static_id_selectors_exist_in_composed_markup():
@@ -163,7 +163,7 @@ def test_javascript_static_id_selectors_exist_in_composed_markup():
 
 
 def test_partials_are_passive_markup_fragments():
-    assert len(PARTIALS) == 16
+    assert len(PARTIALS) == 17
     for relative_path in PARTIALS.values():
         html = (STATIC_DIR / relative_path).read_text(encoding="utf-8")
         lowered = html.lower()
@@ -214,3 +214,34 @@ def test_static_assets_and_passive_partials_remain_available(client):
         "/assets/partials/header.html",
     ):
         assert client.get(path).status_code == 200
+
+
+def test_integrated_documentation_api_is_not_part_of_the_public_setup_surface(client):
+    assert client.get("/api/help/documents").status_code == 401
+    assert client.get("/api/help/documents/diagnostics").status_code == 401
+
+
+def test_authenticated_documentation_api_keeps_security_headers_and_structured_content(
+    client, monkeypatch
+):
+    monkeypatch.setattr(main, "session_user", lambda token: {"id": 1} if token else None)
+    client.cookies.set(main.SESSION_COOKIE, "test-session")
+
+    index = client.get("/api/help/documents")
+    document = client.get("/api/help/documents/diagnostics")
+    missing = client.get("/api/help/documents/not-allowlisted")
+
+    assert index.status_code == document.status_code == 200
+    assert missing.status_code == 404
+    assert document.json()["source"] == "docs/diagnostics.md"
+    assert {block["type"] for block in document.json()["blocks"]} <= {
+        "code",
+        "heading",
+        "list",
+        "notice",
+        "paragraph",
+        "table",
+    }
+    assert "<script" not in document.text.lower()
+    assert document.headers["cache-control"] == "no-store"
+    assert document.headers["content-security-policy"] == main.CONTENT_SECURITY_POLICY

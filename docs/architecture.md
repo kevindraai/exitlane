@@ -21,6 +21,13 @@ ownership boundaries rather than runtime components and never require client-sid
 application views belong in their own view partial, new wizard steps in their own wizard partial,
 and global shell changes remain in `index.html`, `header.html`, or `sidebar.html`.
 
+Integrated Help uses the repository Markdown under `docs/` as its only content source. The backend
+exposes a fixed allowlisted catalog and projects selected documents into typed headings,
+paragraphs, lists, notices, tables and code blocks. It does not render or return trusted HTML. The
+browser constructs the document view with DOM methods and `textContent`, validates links again,
+and never loads remote scripts, styles, fonts or images. Documentation routes remain behind the
+normal administrator session boundary.
+
 SQLite stores local durable state. It fits the single-appliance model, avoids a separate database
 service, and supports transactional updates. The database is not intended as a coordination layer
 for multiple active Exitlane nodes.

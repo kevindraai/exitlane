@@ -45,7 +45,7 @@ def test_installer_has_locked_upgrade_snapshot_and_rollback_contract():
     assert "snapshot_recovery_path" in installer
     assert 'rm -rf -- "${destination}"' in installer
     assert "commit_upgrade" in installer
-    assert 'readonly PACKAGE_VERSION="0.2.0b3"' in installer
+    assert 'readonly PACKAGE_VERSION="0.2.0b4"' in installer
     assert 'dpkg --compare-versions "${CURRENT_VERSION}" gt "${PACKAGE_VERSION}"' in installer
     assert installer.index("prepare_upgrade_recovery") < installer.index("stop_existing_service")
     assert installer.index("stop_existing_service") < installer.index("copy_application")
@@ -105,8 +105,13 @@ def test_deploy_script_fails_closed_on_unexpected_lxc_identity():
     assert 'EXPECTED_TEST_IP="${EXITLANE_TEST_IP:-172.16.130.81}"' in deploy
     assert 'REMOTE_IPS="$(ssh "$HOST" hostname -I)"' in deploy
     assert 'grep -Fx -- "$EXPECTED_TEST_IP"' in deploy
+    assert 'mktemp -d "${REMOTE_BASE}/exitlane-candidate.XXXXXXXX"' in deploy
+    assert '[[ ! "$REMOTE_DIR" =~ ^/home/exitlane-test/exitlane-candidate\\.' in deploy
+    assert 'ssh "$HOST" rm -rf -- "$REMOTE_DIR"' in deploy
+    assert "chown -R" not in deploy
+    assert '--exclude ".codex/"' in deploy
     assert "'hostname -I" not in deploy
-    assert 'sudo bash "${REMOTE_DIR}installer/install-debian.sh"' in deploy
+    assert 'sudo bash "${REMOTE_DIR}/installer/install-debian.sh"' in deploy
     assert "install-exitlane-candidate" not in deploy
     assert deploy.index("EXPECTED_TEST_IP") < deploy.index("rsync -az")
     assert "Refusing deployment" in deploy

@@ -1,0 +1,30 @@
+     <section class="app-view" data-view-panel="help" hidden="" id="view-help">
+      <section class="panel help-panel">
+       <div class="panel-heading help-heading">
+        <div>
+         <p class="eyebrow" data-i18n="help.eyebrow">SUPPORT</p>
+         <h1 data-i18n="help.title">Help &amp; documentation</h1>
+         <p class="lead" data-i18n="help.description">Practical guidance for configuring, securing and maintaining ExitLane.</p>
+        </div>
+        <a class="button button-secondary" data-i18n="help.github" href="https://github.com/kevindraai/exitlane/tree/main/docs" rel="noopener noreferrer" target="_blank">Browse source on GitHub</a>
+       </div>
+       <p class="help-developer-note" data-i18n="help.developer_note">Developer and architecture documentation remains in the repository and is kept separate from these administrator guides.</p>
+       <p aria-live="polite" class="inline-error" hidden="" id="help-error" role="alert"></p>
+       <div id="help-index">
+        <div aria-live="polite" class="help-loading" data-i18n="help.loading" id="help-loading">Loading documentation…</div>
+        <div class="help-category-grid" id="help-categories"></div>
+       </div>
+       <article aria-labelledby="help-document-title" class="help-document" hidden="" id="help-document" tabindex="-1">
+        <nav aria-label="Documentation breadcrumb" class="help-breadcrumb" data-i18n-aria-label="help.breadcrumb_label">
+         <button class="button button-secondary" data-i18n="help.back" id="help-back" type="button">All documentation</button>
+         <span aria-hidden="true">/</span>
+         <span id="help-document-category"></span>
+        </nav>
+        <header class="help-document-header">
+         <h2 id="help-document-title"></h2>
+         <p><span data-i18n="help.source">Source</span>: <code id="help-document-source"></code></p>
+        </header>
+        <div class="documentation-content" id="help-document-content"></div>
+       </article>
+      </section>
+     </section>

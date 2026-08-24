@@ -21,6 +21,7 @@ PARTIALS = {
     "views/activity": "partials/views/activity.html",
     "views/diagnostics": "partials/views/diagnostics.html",
     "views/settings": "partials/views/settings.html",
+    "views/help": "partials/views/help.html",
 }
 
 

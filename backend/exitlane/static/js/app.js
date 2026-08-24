@@ -61,6 +61,7 @@ import { initialiseActivity } from "./activity.js";
 import { initialiseProviders, loadProviders } from "./providers.js";
 import { initialiseIcons } from "./icons.js";
 import { initialiseDiagnostics } from "./diagnostics.js";
+import { initialiseDocumentation } from "./documentation.js";
 
 let apiState = "checking";
 const dashboardIsActive = () =>
@@ -179,6 +180,7 @@ async function initialise() {
     initialiseDashboard();
     initialiseActivity();
     initialiseDiagnostics();
+    initialiseDocumentation();
     initialiseNavigation();
     initialiseProviders();
     initialiseProviderControls();

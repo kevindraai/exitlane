@@ -52,6 +52,11 @@ from exitlane.core import (
     setting,
     verify_password,
 )
+from exitlane.documentation import (
+    DocumentationError,
+    documentation_document,
+    documentation_index,
+)
 from exitlane.events import (
     EVENT_DEFINITIONS,
     FILTER_CATEGORIES,
@@ -539,6 +544,24 @@ async def health() -> dict:
         "service": "exitlane",
         "version": __version__,
     }
+
+
+@app.get("/api/help/documents")
+async def help_documents() -> dict:
+    try:
+        return documentation_index()
+    except DocumentationError as error:
+        raise HTTPException(status_code=503, detail="documentation_unavailable") from error
+
+
+@app.get("/api/help/documents/{slug}")
+async def help_document(slug: str) -> dict:
+    try:
+        return documentation_document(slug)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="documentation_not_found") from error
+    except DocumentationError as error:
+        raise HTTPException(status_code=503, detail="documentation_unavailable") from error
 
 
 @app.get("/api/dashboard", response_model=DashboardResponse)

@@ -12,6 +12,15 @@ beta is tested in real networks.
 - Automatic data, code, configuration, and systemd-unit rollback on installer failure
 - Internal security-assurance matrix for lifecycle and existing application boundaries
 
+## Completed foundations in v0.2.0-beta.2 and beta.3
+
+- Provider-neutral VPN registry, navigation, status and capability boundaries
+- Connection diagnostics with the Device -> ExitLane -> VPN -> Internet flow
+- Explicit ping, DNS, external-IP and Speedtest actions
+- Managed, digest-pinned Ookla Speedtest CLI installation with separate legal and package-change
+  confirmations
+- Protected restart, reboot and shutdown actions
+
 ## Completed in v0.2.0-alpha.1
 
 - Authentication with local administrator sessions
@@ -35,11 +44,13 @@ beta is tested in real networks.
 
 ## Next
 
+- UX and visual consistency polish
+- Integrated and contextual documentation
 - Provider abstraction hardening
 - Additional VPN providers
-- Better notification management
-- Extended system logs and diagnostics
+- Notification management improvements
 - Appliance and installation polish
+- Extended operational logging and diagnostic depth
 
 ## Later
 
