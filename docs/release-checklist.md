@@ -70,9 +70,10 @@ not merge a release pull request unless explicitly instructed.
   non-ExitLane nftables tables.
 - [ ] Release-specific appliance behavior is verified and linked. For
   `v0.2.0-beta.3`, verify the missing-tool UI, then install the pinned Ookla
-  package on the designated test appliance exclusively through the managed
-  confirmation flow and verify installation status and availability. Prove that
-  no Speedtest measurement is invoked. No real Speedtest is permitted in beta.3
+  package on the designated test appliance `172.16.130.81` exclusively through
+  the managed confirmation flow and verify installation status and availability.
+  Perform this only after merge and all release gates pass. Prove that no
+  Speedtest measurement is invoked. No real Speedtest is permitted in beta.3
   appliance QA. Existing provider, lifecycle, and system-action evidence remains
   required.
 - [ ] Appliance evidence is included or linked; unchecked appliance
