@@ -12,7 +12,7 @@ responses, or a recorded verification checklist.
 ## Release identity and source
 
 - [ ] The final implementation pull request is approved and merged, not merely
-  closed. For `v0.2.0-beta.4`, record the implementation and independent-review pull requests.
+  closed. Record an independent pre-merge `APPROVE` on the exact final pull-request head.
 - [ ] Local `main` is clean and exactly matches the current `origin/main`.
 - [ ] The exact final `origin/main` release SHA is recorded as runtime release
   evidence: `<release-sha>`.
@@ -68,13 +68,11 @@ not merge a release pull request unless explicitly instructed.
 - [ ] IPv4, IPv6, DNS UDP/TCP, and tunnel-present leak tests pass, including
   fail-closed tunnel-unavailable behavior, recovery, and preservation of
   non-ExitLane nftables tables.
-- [ ] Release-specific appliance behavior is verified and linked. For
-  `v0.2.0-beta.4`, upgrade the designated test appliance from beta.3 and verify
-  preserved database, secret key, users, sessions, MFA, WireGuard and settings.
-  Exercise Help & documentation, every contextual help link, light/dark/system
-  appearance, Diagnostics progressive disclosure, dialogs, focus states and the
-  existing Speedtest installation/run confirmation boundaries. Existing provider,
-  killswitch, lifecycle, rollback and system-action evidence remains required.
+- [ ] Release-specific appliance behavior is verified and linked on the exact merged-main SHA.
+  Verify preservation of database, secret key, users, sessions, MFA, recovery codes, WireGuard,
+  settings and contractually retained provider/cache state. Existing provider, killswitch,
+  lifecycle, rollback and system-action evidence remains required unless the release record cites
+  an explicit checklist allowance for unchanged code.
 - [ ] Appliance evidence is included or linked; unchecked appliance
   verification remains a release blocker.
 
@@ -107,8 +105,8 @@ not merge a release pull request unless explicitly instructed.
 - [ ] Every checked item has included or linked evidence; the release
   description does not claim completion based only on unchecked or unlinked
   assertions.
-- [ ] A maintainer has performed any required manual approval or merge step;
-  Codex has not merged a release pull request without explicit instruction.
+- [ ] A maintainer or explicitly authorized release agent has performed the merge only after the
+  independent pre-merge approval and every required gate passed on the final pull-request head.
 
 ## Tag and prerelease publication
 

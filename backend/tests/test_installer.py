@@ -45,7 +45,7 @@ def test_installer_has_locked_upgrade_snapshot_and_rollback_contract():
     assert "snapshot_recovery_path" in installer
     assert 'rm -rf -- "${destination}"' in installer
     assert "commit_upgrade" in installer
-    assert 'readonly PACKAGE_VERSION="0.2.0b4"' in installer
+    assert 'readonly PACKAGE_VERSION="0.2.0b5"' in installer
     assert 'dpkg --compare-versions "${CURRENT_VERSION}" gt "${PACKAGE_VERSION}"' in installer
     assert installer.index("prepare_upgrade_recovery") < installer.index("stop_existing_service")
     assert installer.index("stop_existing_service") < installer.index("copy_application")
