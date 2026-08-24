@@ -16,9 +16,15 @@
 
 ### Security
 
-- CodeQL now runs automatically for pull requests and pushes to `main`.
-- A deterministic CI check rejects non-SHA-pinned Action references and removal of the CodeQL
+- CI, CodeQL, supply-chain and ZAP validation now run automatically for pull requests and pushes
+  to `main`.
+- A deterministic CI check rejects unpinned Action references and removal of any required
   `push: main` trigger.
+
+### Fixed
+
+- Made minimal Debian clean installation self-contained by installing `procps` and creating the
+  `sysctl.d` parent before configuring IPv4 forwarding.
 
 ### Inherited baseline
 

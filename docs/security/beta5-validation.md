@@ -64,13 +64,25 @@ pre-merge approval. Beta.4 was intentionally not published. Beta.5 requires a fr
 - Debian 12 clean install: pending
 - Debian 13 clean install: pending
 
+### Clean-install finding and correction
+
+A supplemental, explicitly non-authoritative Docker diagnostic reproduced a clean-install failure
+on minimal Debian 12 and Debian 13 roots: neither environment guaranteed `procps`, so `sysctl` and
+its configuration directory were absent when IPv4 forwarding was configured. Docker remains an
+unsupported appliance runtime and is not counted as release evidence, but the missing declared
+system prerequisite was a valid installer defect. The candidate now installs `procps`, creates the
+fixed `sysctl.d` parent and has a regression assertion for both contracts. The complete local gate
+set passed again after this change. Real supported Debian 12 and Debian 13 clean-install evidence
+remains mandatory.
+
 ## Final-main qualification
 
 - Exact merged-main local suites: pending
 - Automatic final-main CI, CodeQL, supply-chain and ZAP run IDs: pending
 - Transactional appliance validation and preserved-state evidence: pending
-- Rollback/failure injection: installer/lifecycle logic is unchanged; the existing beta.4 evidence
-  may be cited only where the release checklist permits and is not represented as a new beta.5 run
+- Rollback/failure injection: mandatory on the final appliance because beta.5 now changes the
+  installer prerequisite path; beta.4 evidence is background only and is not represented as a new
+  beta.5 run
 - Residual browser limitation: real Safari/WebKit remains unavailable; no known compatibility defect
 
 Any pending required item is a hard release blocker. The final immutable commit, tag object and

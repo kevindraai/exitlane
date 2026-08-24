@@ -383,6 +383,7 @@ install_system_packages() {
     python3 \
     python3-pip \
     python3-venv \
+    procps \
     rsync \
     wireguard-tools
 
@@ -525,6 +526,7 @@ install_service_files() {
 configure_ip_forwarding() {
   log "Configuring IPv4 forwarding"
 
+  install -d -m 0755 "$(dirname "${IP_FORWARDING_TARGET}")"
   cat > "${IP_FORWARDING_TARGET}" <<'EOF'
 # Required by ExitLane to forward ingress traffic through a VPN provider.
 net.ipv4.ip_forward=1

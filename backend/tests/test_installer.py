@@ -56,6 +56,8 @@ def test_installer_includes_wireguard_firewall_runtime():
 
     assert "    iptables \\\n" in installer
     assert "    nftables \\\n" in installer
+    assert "    procps \\\n" in installer
+    assert 'install -d -m 0755 "$(dirname "${IP_FORWARDING_TARGET}")"' in installer
 
 
 def test_installer_user_visible_output_is_english():
