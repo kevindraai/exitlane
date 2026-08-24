@@ -69,9 +69,10 @@ not merge a release pull request unless explicitly instructed.
   fail-closed tunnel-unavailable behavior, recovery, and preservation of
   non-ExitLane nftables tables.
 - [ ] Release-specific appliance behavior is verified and linked. For
-  `v0.2.0-beta.3`, this is limited to managed-Speedtest dialog confirmation and
-  cancellation with proof that no Speedtest command is invoked. No package
-  installation, real Speedtest, or appliance mutation is permitted in beta.3
+  `v0.2.0-beta.3`, verify the missing-tool UI, then install the pinned Ookla
+  package on the designated test appliance exclusively through the managed
+  confirmation flow and verify installation status and availability. Prove that
+  no Speedtest measurement is invoked. No real Speedtest is permitted in beta.3
   appliance QA. Existing provider, lifecycle, and system-action evidence remains
   required.
 - [ ] Appliance evidence is included or linked; unchecked appliance
