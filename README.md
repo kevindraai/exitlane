@@ -130,7 +130,9 @@ The WebUI's semantic theme adoption is recorded in the
 
 ## Installation
 
-The installer supports Debian 12 and 13. ExitLane is tested primarily in a Debian-based Proxmox LXC. An LXC must have `/dev/net/tun` and permission to create WireGuard interfaces.
+The supported beta.5 appliance baseline is Debian 13 on `amd64`. ExitLane is tested primarily in a
+Debian 13 Proxmox LXC. Other Debian releases and architectures are not supported release targets.
+An LXC must have `/dev/net/tun` and permission to create WireGuard interfaces.
 
 ```bash
 git clone https://github.com/kevindraai/exitlane.git

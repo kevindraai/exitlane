@@ -1,7 +1,7 @@
 # Upgrade and recovery
 
-ExitLane supports an in-place Debian appliance upgrade from `0.2.0-beta.3` to
-`0.2.0-beta.4`. Run the installer from a trusted, reviewed checkout
+ExitLane supports an in-place Debian appliance upgrade from `0.2.0-beta.4` to
+`0.2.0-beta.5`. Run the installer from a trusted, reviewed checkout
 of the target release:
 
 ```bash
@@ -17,7 +17,7 @@ without changing the installation.
 
 The installer:
 
-1. verifies root, Debian 12/13, systemd, source layout, TUN, network
+1. verifies root, the supported Debian 13 `amd64` baseline, systemd, source layout, TUN, network
    administration, connectivity, and at least 512 MiB free space;
 2. distinguishes a clean install from an existing database or package;
 3. detects the installed and target versions and rejects a downgrade;

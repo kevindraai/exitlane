@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.2.0-beta.5] - 2026-08-24
+
+### Changed
+
+- Restored the release-assurance chain after the beta.4 governance deviation: required hosted
+  checks and an independent approval now precede merge, with final qualification repeated on the
+  exact merged `main` commit.
+- Required the existing CI, CodeQL, supply-chain and ZAP job contexts through the active `main`
+  ruleset and enabled strict up-to-date status checking.
+- Restricted GitHub Actions to GitHub-owned actions plus the explicitly allowlisted Gitleaks
+  action, with repository-level full-SHA pin enforcement.
+- Defined Debian 13 `amd64` as the supported beta.5 appliance baseline and added exact-candidate
+  clean-install qualification to the release evidence contract.
+
+### Security
+
+- CI, CodeQL, supply-chain and ZAP validation now run automatically for pull requests and pushes
+  to `main`.
+- A deterministic CI check rejects unpinned Action references and removal of any required
+  `push: main` trigger.
+
+### Fixed
+
+- Made minimal Debian clean installation self-contained by installing `procps` and creating the
+  `sysctl.d` parent before configuring IPv4 forwarding.
+
+### Inherited baseline
+
+- Includes the complete beta.4 UX, accessibility, design-system and integrated-documentation
+  baseline without presenting those features as new beta.5 work.
+
 ## [0.2.0-beta.4] - 2026-08-24
 
 ### Added

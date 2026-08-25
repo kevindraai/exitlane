@@ -3,8 +3,8 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-readonly INSTALLER_VERSION="0.2.0-beta.4"
-readonly PACKAGE_VERSION="0.2.0b4"
+readonly INSTALLER_VERSION="0.2.0-beta.5"
+readonly PACKAGE_VERSION="0.2.0b5"
 readonly LIFECYCLE_LOCK="${EXITLANE_LIFECYCLE_LOCK:-/run/lock/exitlane-lifecycle.lock}"
 readonly RECOVERY_ROOT="${EXITLANE_RECOVERY_ROOT:-/var/lib/exitlane/recovery}"
 UPGRADE_MODE=0
@@ -265,18 +265,15 @@ detect_operating_system() {
   # shellcheck disable=SC1091
   source /etc/os-release
 
-  if [[ "${ID:-}" != "debian" ]]; then
-    fail "This installer currently supports Debian only."
+  if [[ "${ID:-}" != "debian" || "${VERSION_ID:-}" != "13" ]]; then
+    fail "This release supports Debian 13 on amd64 only."
   fi
 
-  case "${VERSION_ID:-}" in
-    12|13)
-      success "Debian ${VERSION_ID} detected"
-      ;;
-    *)
-      fail "Debian ${VERSION_ID:-unknown} is not supported yet. Use Debian 12 or 13."
-      ;;
-  esac
+  if [[ "$(dpkg --print-architecture)" != "amd64" ]]; then
+    fail "This release supports Debian 13 on amd64 only."
+  fi
+
+  success "Debian 13 amd64 detected"
 }
 
 check_source_layout() {
@@ -383,6 +380,7 @@ install_system_packages() {
     python3 \
     python3-pip \
     python3-venv \
+    procps \
     rsync \
     wireguard-tools
 
@@ -525,6 +523,7 @@ install_service_files() {
 configure_ip_forwarding() {
   log "Configuring IPv4 forwarding"
 
+  install -d -m 0755 "$(dirname "${IP_FORWARDING_TARGET}")"
   cat > "${IP_FORWARDING_TARGET}" <<'EOF'
 # Required by ExitLane to forward ingress traffic through a VPN provider.
 net.ipv4.ip_forward=1

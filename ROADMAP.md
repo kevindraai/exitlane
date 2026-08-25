@@ -3,6 +3,20 @@
 The roadmap describes direction rather than a release commitment. Priorities may change as the
 beta is tested in real networks.
 
+## Completed in v0.2.0-beta.5
+
+- Restored the complete pre-merge review and final-main release-assurance chain.
+- Required the existing CI, CodeQL, supply-chain and ZAP checks for `main`.
+- Added automatic CodeQL validation on pushes to `main` and policy-level Action SHA enforcement.
+- Added clean-install qualification for the supported Debian 13 `amd64` appliance baseline.
+
+Beta.5 inherits the beta.4 UX, accessibility, design-system and integrated-documentation baseline.
+
+## Completed in v0.2.0-beta.4
+
+- Cobalt / Slate design-system adoption and bounded UX/accessibility polish.
+- Integrated authenticated documentation and contextual help links.
+
 ## Completed in v0.2.0-beta.1
 
 - Encrypted, authenticated appliance backup

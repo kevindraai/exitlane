@@ -1,6 +1,8 @@
 name: Security ZAP passive baseline
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
   schedule:

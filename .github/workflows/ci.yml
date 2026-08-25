@@ -45,6 +45,9 @@ jobs:
             -print0 |
             xargs -0 -r shellcheck
 
+      - name: Validate workflow security policy
+        run: python3 scripts/check_workflow_security.py
+
   backend:
     name: Python backend
     runs-on: ubuntu-latest

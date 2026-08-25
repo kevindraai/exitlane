@@ -113,3 +113,15 @@ recovery steps 1–5 across code blocks, and constructs no script elements.
 - A clean install on every supported Debian release and final merged-`main` SHA validation remain
   release blockers unless separately linked evidence closes them. No merge, tag or release was
   performed.
+
+## Governance deviation and publication decision
+
+Pull request #56 was merged before the required independent review occurred. The later review
+result was `Approve with follow-up`, not a pre-merge `APPROVE`. The final PR head
+`c3e118a9bd60a99af957f15958e0387e87a7450c` and squash-merged `main`
+`832851e65c90e4c5c4beb8936cc4c66b23bf123b` share exact tree
+`3e92c0c53fcfad55cefdeee7b623b1f19ccc0b8b`, and the hosted final-main gates were green. Those
+facts prove content equivalence and final validation, but they do not compensate for the missing
+pre-merge approval. Beta.4 was therefore deliberately not tagged or published. Beta.5 restores
+the assurance chain through a new branch, required hosted checks, clean-install evidence and an
+independent `APPROVE` on the exact final PR head before merge.

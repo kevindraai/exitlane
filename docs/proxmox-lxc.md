@@ -1,6 +1,7 @@
 # Proxmox LXC
 
-Supported baseline: Debian 12 or 13, privileged LXC and `/dev/net/tun`. Add to
+Supported beta.5 baseline: Debian 13 on `amd64`, privileged LXC and `/dev/net/tun`. Other Debian
+releases and architectures are not supported release targets. Add to
 `/etc/pve/lxc/<CTID>.conf`:
 
 ```ini

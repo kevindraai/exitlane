@@ -7,7 +7,8 @@ pre-release.
 
 | Version | Supported |
 | --- | --- |
-| v0.2.0-beta.4 | Yes |
+| v0.2.0-beta.5 | Yes |
+| v0.2.0-beta.4 | No |
 | v0.2.0-beta.3 | No |
 | v0.2.0-beta.2 | No |
 | v0.2.0-beta.1 | No |
