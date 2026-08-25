@@ -110,6 +110,23 @@ def test_timezone_service_uses_fixed_timedatectl_argv_and_verifies_result():
     assert result.changed is True
 
 
+def test_timezone_service_maps_unavailable_native_command_to_stable_failure():
+    async def unavailable(*_arguments, **_options):
+        raise PermissionError("injected inaccessible path")
+
+    with pytest.raises(
+        timezone_service.TimezoneOperationError,
+        match="system_timezone_change_failed",
+    ):
+        asyncio.run(
+            timezone_service.set_system_timezone(
+                "Europe/London",
+                command_runner=unavailable,
+                timezone_reader=lambda: "Europe/Amsterdam",
+            )
+        )
+
+
 @pytest.mark.parametrize(
     "value",
     ["../../etc/passwd", "/etc/localtime", "Europe/Amsterdam;id", "Not/A_Zone"],

@@ -17,9 +17,10 @@ test("technical values use single-line truncation with keyboard and touch disclo
 });
 
 test("dashboard sizing does not apply arbitrary wrapping to normal technical values", async () => {
-  const [css, dashboard, wireguard, provider] = await Promise.all([
+  const [css, dashboard, dashboardHtml, wireguard, provider] = await Promise.all([
     read("../backend/exitlane/static/style.css"),
     read("../backend/exitlane/static/js/dashboard.js"),
+    read("../backend/exitlane/static/partials/views/dashboard.html"),
     read("../backend/exitlane/static/js/wireguard-management.js"),
     read("../backend/exitlane/static/js/provider.js"),
   ]);
@@ -27,7 +28,11 @@ test("dashboard sizing does not apply arbitrary wrapping to normal technical val
   assert.match(dashboardRule, /overflow-wrap:\s*normal/);
   assert.match(dashboardRule, /word-break:\s*normal/);
   assert.doesNotMatch(dashboardRule, /anywhere|break-all/);
-  assert.match(css, /\.dashboard-metrics\s*\{[\s\S]*?minmax\(min\(100%, 13rem\), 1fr\)/);
+  assert.match(css, /\.dashboard-metrics\s*\{[\s\S]*?minmax\(min\(100%, 10rem\), 1fr\)/);
+  assert.match(css, /\.metric-technical-wide\s*\{[\s\S]*?grid-column:\s*span 2/);
+  assert.match(css, /\.metric strong\.technical-value\s*\{[\s\S]*?overflow-wrap:\s*normal;[\s\S]*?word-break:\s*normal;/);
+  assert.match(dashboardHtml, /metric metric-technical-wide[^>]*>[\s\S]*?dashboard-vpn-server/);
+  assert.match(dashboardHtml, /metric metric-technical-wide[^>]*>[\s\S]*?dashboard-wg-endpoint/);
   assert.match(dashboard, /setTechnicalValue\(select\("#dashboard-vpn-server"\)/);
   assert.match(dashboard, /setTechnicalValue\(select\("#dashboard-wg-endpoint"\)/);
   assert.match(wireguard, /setTechnicalValue\(select\("#management-wireguard-endpoint"\)/);

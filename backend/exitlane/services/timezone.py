@@ -70,12 +70,15 @@ async def set_system_timezone(
     if previous == timezone:
         return TimezoneChange(previous=previous, current=timezone, changed=False)
 
-    return_code, _output, _error = await command_runner(
-        TIMEDATECTL,
-        "set-timezone",
-        timezone,
-        timeout=30,
-    )
+    try:
+        return_code, _output, _error = await command_runner(
+            TIMEDATECTL,
+            "set-timezone",
+            timezone,
+            timeout=30,
+        )
+    except OSError as error:
+        raise TimezoneOperationError("system_timezone_change_failed") from error
     if return_code != 0:
         raise TimezoneOperationError("system_timezone_change_failed")
 

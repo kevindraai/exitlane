@@ -3054,10 +3054,6 @@ pre {
   gap: 20px;
 }
 
-.dashboard-system-card {
-  grid-column: 1 / -1;
-}
-
 .dashboard-card,
 .dashboard-card .metric,
 .dashboard-card strong {
@@ -3070,7 +3066,16 @@ pre {
 }
 
 .dashboard-metrics {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+}
+
+.dashboard-card .metric {
+  min-height: 84px;
+  padding: 13px;
+}
+
+.metric-technical-wide {
+  grid-column: span 2;
 }
 
 .technical-value {
@@ -3086,6 +3091,11 @@ pre {
   overflow: visible;
   text-overflow: clip;
   white-space: normal;
+}
+
+.metric strong.technical-value {
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .dashboard-statusline {
@@ -3106,9 +3116,6 @@ pre {
     grid-template-columns: 1fr;
   }
 
-  .dashboard-system-card {
-    grid-column: auto;
-  }
 }
 
 @media (max-width: 560px) {
@@ -3122,6 +3129,10 @@ pre {
 
   .dashboard-metrics {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-metrics .metric-technical-wide {
+    grid-column: 1 / -1;
   }
 
   .dashboard-statusline .button {
