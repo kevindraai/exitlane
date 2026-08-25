@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.2.0-rc.1] - 2026-08-25
+
+### Fixed
+
+- Made the explicitly configured ExitLane timezone authoritative for the Debian appliance, with
+  strict IANA validation, verified native application, transactional persistence and rollback,
+  visible failure states, startup reconciliation, and Activity audit events.
+- Show all structured Speedtest results—download, upload, then ping—in one responsive and atomic
+  Diagnostics result instead of reducing a successful measurement to latency alone.
+- Prevent normal hostnames, endpoints, IP addresses, and other technical identifiers from leaving
+  one or two orphaned characters in compact cards; full values remain available to keyboard and
+  touch users.
+
+### Changed
+
+- Replaced the legacy README screenshots with a reproducible English dark-mode set captured from
+  the healthy Debian 13 reference appliance, plus a curated promotional asset set.
+- Clarified that the Settings timezone controls the appliance timezone and documented the upgrade,
+  rollback, startup, and service-hardening contracts.
+
+### Security
+
+- Invoke only the fixed `/usr/bin/timedatectl set-timezone <validated-IANA-zone>` operation without
+  shell interpolation and fail closed when the native operation cannot start, returns an error, or
+  cannot be verified.
+- Keep WireGuard secret configuration and QR output closed during public capture, scan visible UI
+  for secret markers, and record the provenance/privacy category of every generated screenshot.
+
 ## [0.2.0-beta.5] - 2026-08-24
 
 ### Changed

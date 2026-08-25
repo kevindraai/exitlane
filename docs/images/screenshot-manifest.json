@@ -1,0 +1,168 @@
+{
+  "generated_at": "2026-08-25T18:56:58.742Z",
+  "source_appliance": "172.16.130.81",
+  "language": "en",
+  "appearance": "dark",
+  "network_mocking": false,
+  "speedtest_started": false,
+  "screenshots": [
+    {
+      "id": "dashboard",
+      "profile": "readme",
+      "file": "docs/images/exitlane-dashboard.png",
+      "dimensions": "1440x1200",
+      "state": "live-runtime",
+      "sensitive_ui": "not present"
+    },
+    {
+      "id": "vpn",
+      "profile": "readme",
+      "file": "docs/images/exitlane-vpn-selection.png",
+      "dimensions": "1440x1200",
+      "state": "live-runtime",
+      "sensitive_ui": "not present"
+    },
+    {
+      "id": "diagnostics",
+      "profile": "readme",
+      "file": "docs/images/exitlane-diagnostics.png",
+      "dimensions": "1440x1200",
+      "state": "live-runtime",
+      "sensitive_ui": "not present"
+    },
+    {
+      "id": "wireguard",
+      "profile": "readme",
+      "file": "docs/images/exitlane-wireguard.png",
+      "dimensions": "1440x1200",
+      "state": "live-runtime-sensitive-ui-hidden",
+      "sensitive_ui": "configuration and QR kept closed"
+    },
+    {
+      "id": "documentation",
+      "profile": "readme",
+      "file": "docs/images/exitlane-documentation.png",
+      "dimensions": "1440x1200",
+      "state": "live-application-content",
+      "sensitive_ui": "not present"
+    },
+    {
+      "id": "dashboard",
+      "profile": "promo",
+      "file": "docs/images/promo/exitlane-dashboard-hero.png",
+      "dimensions": "1600x1000",
+      "state": "live-runtime",
+      "sensitive_ui": "not present"
+    },
+    {
+      "id": "vpn",
+      "profile": "promo",
+      "file": "docs/images/promo/exitlane-vpn-selection.png",
+      "dimensions": "1600x1000",
+      "state": "live-runtime",
+      "sensitive_ui": "not present"
+    },
+    {
+      "id": "diagnostics",
+      "profile": "promo",
+      "file": "docs/images/promo/exitlane-diagnostics.png",
+      "dimensions": "1600x1000",
+      "state": "live-runtime",
+      "sensitive_ui": "not present"
+    },
+    {
+      "id": "documentation",
+      "profile": "promo",
+      "file": "docs/images/promo/exitlane-documentation.png",
+      "dimensions": "1600x1000",
+      "state": "live-application-content",
+      "sensitive_ui": "not present"
+    }
+  ],
+  "responsive_qa": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 1000
+      },
+      "values": {
+        "#dashboard-vpn-server": {
+          "text": "nl1076.nordvpn.com",
+          "lines": 1,
+          "lineLengths": [
+            18
+          ],
+          "withinCard": true,
+          "titleMatches": true
+        },
+        "#dashboard-wg-endpoint": {
+          "text": "172.16.130.1:37227",
+          "lines": 1,
+          "lineLengths": [
+            18
+          ],
+          "withinCard": true,
+          "titleMatches": true
+        }
+      },
+      "card_overlap": false
+    },
+    {
+      "viewport": {
+        "name": "small-desktop",
+        "width": 900,
+        "height": 1000
+      },
+      "values": {
+        "#dashboard-vpn-server": {
+          "text": "nl1076.nordvpn.com",
+          "lines": 1,
+          "lineLengths": [
+            18
+          ],
+          "withinCard": true,
+          "titleMatches": true
+        },
+        "#dashboard-wg-endpoint": {
+          "text": "172.16.130.1:37227",
+          "lines": 1,
+          "lineLengths": [
+            18
+          ],
+          "withinCard": true,
+          "titleMatches": true
+        }
+      },
+      "card_overlap": false
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844
+      },
+      "values": {
+        "#dashboard-vpn-server": {
+          "text": "nl1076.nordvpn.com",
+          "lines": 1,
+          "lineLengths": [
+            18
+          ],
+          "withinCard": true,
+          "titleMatches": true
+        },
+        "#dashboard-wg-endpoint": {
+          "text": "172.16.130.1:37227",
+          "lines": 1,
+          "lineLengths": [
+            18
+          ],
+          "withinCard": true,
+          "titleMatches": true
+        }
+      },
+      "card_overlap": false
+    }
+  ]
+}
