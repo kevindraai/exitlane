@@ -310,9 +310,9 @@ try {
     for (const capture of captures.filter((item) => item.files[profileName])) {
       await navigate(page, capture.route);
       await capture.wait(page);
-      const redactions = await redactSensitiveRuntimeData(page, capture.id);
       await page.waitForTimeout(1_000);
       await page.evaluate(() => document.activeElement?.blur());
+      const redactions = await redactSensitiveRuntimeData(page, capture.id);
       await assertSafeVisibleState(page, capture.id);
       const filename = capture.files[profileName];
       const output = path.join(profile.directory, filename);
