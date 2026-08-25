@@ -265,18 +265,15 @@ detect_operating_system() {
   # shellcheck disable=SC1091
   source /etc/os-release
 
-  if [[ "${ID:-}" != "debian" ]]; then
-    fail "This installer currently supports Debian only."
+  if [[ "${ID:-}" != "debian" || "${VERSION_ID:-}" != "13" ]]; then
+    fail "This release supports Debian 13 on amd64 only."
   fi
 
-  case "${VERSION_ID:-}" in
-    12|13)
-      success "Debian ${VERSION_ID} detected"
-      ;;
-    *)
-      fail "Debian ${VERSION_ID:-unknown} is not supported yet. Use Debian 12 or 13."
-      ;;
-  esac
+  if [[ "$(dpkg --print-architecture)" != "amd64" ]]; then
+    fail "This release supports Debian 13 on amd64 only."
+  fi
+
+  success "Debian 13 amd64 detected"
 }
 
 check_source_layout() {

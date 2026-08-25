@@ -30,9 +30,10 @@ sudo exitlane-cli reset-network-security
 The reset requires explicit confirmation and revokes every browser session. Environment
 overrides retain precedence and must be corrected in the service configuration.
 
-Exitlane is currently designed as a single service on a dedicated Debian 12 or 13 host or LXC.
-The supported installer creates an isolated Python environment, installs the systemd unit, and
-prepares configuration, data, and log locations.
+Exitlane is currently designed as a single service on a dedicated Debian 13 `amd64` host or LXC.
+That is the supported beta.5 appliance baseline; other Debian releases and architectures are not
+supported release targets. The installer creates an isolated Python environment, installs the
+systemd unit, and prepares configuration, data, and log locations.
 
 ExitLane must run natively in the same VM or LXC as the NordVPN CLI and `nordvpnd`. The Docker
 image is for UI/API development and is not a supported VPN gateway: a container cannot see or

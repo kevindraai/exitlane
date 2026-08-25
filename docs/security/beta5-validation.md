@@ -1,15 +1,16 @@
 # Beta.5 release validation record
 
-Validation date: 2026-08-24 UTC. Release character: `Release assurance and installation
-hardening`.
+Validation dates: 2026-08-24 through 2026-08-25 UTC. Release character:
+`Release assurance and installation hardening`.
 
 ## Source identity
 
 - Base and initial `origin/main`: `832851e65c90e4c5c4beb8936cc4c66b23bf123b`
 - Base tree: `3e92c0c53fcfad55cefdeee7b623b1f19ccc0b8b`
 - Branch: `feat/beta5-release-governance-hardening`
-- Final PR head/tree: pending final candidate commit
-- Pull request: pending
+- Final PR head/tree: recorded in pull request evidence after this record is committed because a
+  commit cannot contain its own resulting SHA
+- Pull request: [#57](https://github.com/kevindraai/exitlane/pull/57)
 - Merged-main SHA/tree and squash merge: pending pre-merge qualification
 - Annotated tag and GitHub prerelease: prohibited until every final-main gate passes
 
@@ -38,8 +39,10 @@ read-only and workflows scope their required writes explicitly.
 ## CodeQL and workflow regression
 
 `security-codeql.yml` runs for pull requests to `main`, pushes to `main`, the weekly schedule and
-manual dispatch. `scripts/check_workflow_security.py` checks the main-push trigger and rejects every
-Action reference that is not pinned to a full 40-character commit SHA. CI executes this check.
+manual dispatch. CI, supply-chain and ZAP validation also run automatically on `main`.
+`scripts/check_workflow_security.py` checks all four required main-push triggers and rejects every
+Action reference that is not pinned to a full commit SHA or container digest. CI executes this
+check.
 
 ## Beta.4 deviation
 
@@ -59,21 +62,27 @@ pre-merge approval. Beta.4 was intentionally not published. Beta.5 requires a fr
   recovery-code path.
 - Workflow Action references: all 19 references are full 40-character SHAs; CodeQL main-push
   regression check passed
-- Hosted PR runs and exact head SHA: pending
+- Hosted PR runs and exact final head SHA: recorded in pull request evidence after every required
+  check reruns on the final evidence commit
 - Independent pre-merge review: pending; `APPROVE` is mandatory
-- Debian 12 clean install: pending
-- Debian 13 clean install: pending
+- Supported clean-install target: Debian 13 `amd64` only for beta.5. This explicit support decision
+  supersedes the earlier work-order assumption that Debian 12 was also a release target.
+- Debian 13 clean install: passed on candidate `7f1588203c86bf40e8ce6a11d208547309b68990`,
+  tree `3644c28675d97f935692bc72956f5478d65699e3`; detailed machine-verifiable evidence is recorded
+  in [PR #57](https://github.com/kevindraai/exitlane/pull/57#issuecomment-5411588883)
 
 ### Clean-install finding and correction
 
-A supplemental, explicitly non-authoritative Docker diagnostic reproduced a clean-install failure
-on minimal Debian 12 and Debian 13 roots: neither environment guaranteed `procps`, so `sysctl` and
-its configuration directory were absent when IPv4 forwarding was configured. Docker remains an
-unsupported appliance runtime and is not counted as release evidence, but the missing declared
-system prerequisite was a valid installer defect. The candidate now installs `procps`, creates the
-fixed `sysctl.d` parent and has a regression assertion for both contracts. The complete local gate
-set passed again after this change. Real supported Debian 12 and Debian 13 clean-install evidence
-remains mandatory.
+A supplemental, explicitly non-authoritative Docker diagnostic reproduced a minimal-root failure
+on Debian 12 and Debian 13: neither environment guaranteed `procps`, so `sysctl` and its
+configuration directory were absent when IPv4 forwarding was configured. Docker remains an
+unsupported appliance runtime and Debian 12 is not a supported beta.5 target; neither diagnostic
+is counted as release evidence. The missing declared system prerequisite was nevertheless a valid
+installer defect. The candidate now installs `procps`, creates the fixed `sysctl.d` parent and has
+a regression assertion for both contracts. The supported Debian 13 `amd64` clean-install gate then
+passed on the real LXC, including first boot, health, first-run routing, database initialization,
+permissions, systemd, WireGuard, onboarding entry, stop/start resume, injected rollback and an
+idempotent rerun.
 
 ## Final-main qualification
 

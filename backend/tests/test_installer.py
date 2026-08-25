@@ -60,6 +60,16 @@ def test_installer_includes_wireguard_firewall_runtime():
     assert 'install -d -m 0755 "$(dirname "${IP_FORWARDING_TARGET}")"' in installer
 
 
+def test_installer_supports_only_debian_13_amd64():
+    installer = INSTALLER.read_text(encoding="utf-8")
+
+    assert '"${VERSION_ID:-}" != "13"' in installer
+    assert '"$(dpkg --print-architecture)" != "amd64"' in installer
+    assert installer.count("This release supports Debian 13 on amd64 only.") == 2
+    assert "12|13" not in installer
+    assert "Use Debian 12 or 13" not in installer
+
+
 def test_installer_user_visible_output_is_english():
     installer = INSTALLER.read_text(encoding="utf-8")
 

@@ -8,7 +8,7 @@ beta is tested in real networks.
 - Restored the complete pre-merge review and final-main release-assurance chain.
 - Required the existing CI, CodeQL, supply-chain and ZAP checks for `main`.
 - Added automatic CodeQL validation on pushes to `main` and policy-level Action SHA enforcement.
-- Added clean-install qualification for both supported Debian releases.
+- Added clean-install qualification for the supported Debian 13 `amd64` appliance baseline.
 
 Beta.5 inherits the beta.4 UX, accessibility, design-system and integrated-documentation baseline.
 

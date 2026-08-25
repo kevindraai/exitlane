@@ -11,8 +11,8 @@
   ruleset and enabled strict up-to-date status checking.
 - Restricted GitHub Actions to GitHub-owned actions plus the explicitly allowlisted Gitleaks
   action, with repository-level full-SHA pin enforcement.
-- Added supported clean-install qualification for Debian 12 and Debian 13 to the release evidence
-  contract.
+- Defined Debian 13 `amd64` as the supported beta.5 appliance baseline and added exact-candidate
+  clean-install qualification to the release evidence contract.
 
 ### Security
 
