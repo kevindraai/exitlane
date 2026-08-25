@@ -196,10 +196,11 @@
        </div>
        <form class="form-grid" id="settings-general-form" method="post">
         <div class="alert" hidden="" id="settings-general-error"></div>
+        <div class="alert" hidden="" id="settings-timezone-warning" role="status"></div>
         <label>
          <span data-i18n="settings.general.timezone">Timezone</span>
          <select id="settings-timezone" required=""></select>
-         <small data-i18n="settings.general.timezone_help">Valid IANA timezone. A service restart may be needed for all consumers.</small>
+         <small data-i18n="settings.general.timezone_help">Controls the timezone used by this ExitLane appliance.</small>
         </label>
         <label>
          <span data-i18n="settings.general.polling_interval">Provider polling interval (seconds)</span>

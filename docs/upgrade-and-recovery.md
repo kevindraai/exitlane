@@ -1,7 +1,7 @@
 # Upgrade and recovery
 
-ExitLane supports an in-place Debian appliance upgrade from `0.2.0-beta.4` to
-`0.2.0-beta.5`. Run the installer from a trusted, reviewed checkout
+ExitLane supports an in-place Debian appliance upgrade from `0.2.0-beta.5` to
+`0.2.0-rc.1`. Run the installer from a trusted, reviewed checkout
 of the target release:
 
 ```bash
@@ -25,7 +25,7 @@ The installer:
 5. creates a root-only recovery directory below
    `/var/lib/exitlane/recovery`;
 6. snapshots SQLite with its backup API and preserves the previous application,
-   config, defaults, and ExitLane systemd units;
+   config, defaults, ExitLane systemd units, and the validated Debian system timezone;
 7. stops the application, installs the candidate, preserves operator defaults,
    reapplies permissions and units, and reloads systemd;
 8. starts the service and checks that systemd reports it active;
@@ -45,6 +45,9 @@ code, database, configuration, defaults, and systemd units, reloads systemd, and
 attempts to restart the previous service. The snapshot is retained and its path
 is printed. Provider packages and host-wide provider state are outside the
 ExitLane ownership boundary and are not rolled back.
+The Debian timezone is the exception: it is part of the ExitLane settings contract and is restored
+from the root-only recovery snapshot before the previous service starts. A failed timezone restore
+is reported as requiring manual recovery rather than being hidden.
 
 If automatic service recovery cannot complete, inspect:
 
@@ -57,7 +60,7 @@ sudo ls -ld /var/lib/exitlane/recovery/pre-upgrade.*
 Do not delete the most recent recovery directory until login, MFA, WireGuard,
 reverse proxy, killswitch, Activity, and provider status have been validated.
 The recovery directory is host-bound; for disaster recovery use an encrypted
-`.elb` backup on a clean beta installation.
+`.elb` backup on a clean supported installation.
 
 ## Schema compatibility
 

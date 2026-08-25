@@ -48,6 +48,28 @@ export function selectAll(selector) {
   return [...document.querySelectorAll(selector)];
 }
 
+export function setTechnicalValue(element, value) {
+  const displayed = value == null || value === "" ? "—" : String(value);
+  element.classList.add("technical-value");
+  element.replaceChildren();
+  const parts = displayed.split(/([.:[\]/_-])/);
+  for (const part of parts) {
+    if (!part) continue;
+    element.append(document.createTextNode(part));
+    if (/^[.:[\]/_-]$/.test(part)) element.append(document.createElement("wbr"));
+  }
+  if (displayed === "—") {
+    element.removeAttribute("aria-label");
+    element.removeAttribute("title");
+    element.removeAttribute("tabindex");
+    return element;
+  }
+  element.setAttribute("aria-label", displayed);
+  element.title = displayed;
+  element.tabIndex = 0;
+  return element;
+}
+
 export function setBusy(
   element,
   busy,

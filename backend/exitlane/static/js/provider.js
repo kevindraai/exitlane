@@ -9,6 +9,7 @@ import {
   select,
   setBusy,
   setStatusPill,
+  setTechnicalValue,
   showInlineError,
   showMessage,
 } from "./ui.js";
@@ -210,8 +211,8 @@ function renderVpnView(status) {
 
   select("#metric-country").textContent = localisedCountryName(status.country_code, status.country) || "—";
   select("#metric-city").textContent = status.city || "—";
-  select("#metric-server").textContent = status.server || "—";
-  select("#metric-ip").textContent = status.external_ip || "—";
+  setTechnicalValue(select("#metric-server"), status.server);
+  setTechnicalValue(select("#metric-ip"), status.external_ip);
   select("#metric-latency").textContent = formatActiveLatency(status);
 }
 

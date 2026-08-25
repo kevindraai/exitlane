@@ -4,9 +4,37 @@ import test from "node:test";
 
 import {
   aggregateDiagnosticStatus,
+  formatSpeedtestMetrics,
   segmentStatuses,
   speedtestInstallButtonDisabled,
 } from "../backend/exitlane/static/js/diagnostics.js";
+
+test("successful Speedtest metrics include download, upload and latency", () => {
+  assert.deepEqual(
+    formatSpeedtestMetrics({
+      download_mbps: 312.4,
+      upload_mbps: 96.8,
+      latency_ms: 10.8,
+    }),
+    {
+      download: "312.4 Mbps",
+      upload: "96.8 Mbps",
+      ping: "10.8 ms",
+    },
+  );
+});
+
+test("Speedtest metrics fail closed when a required result is missing or invalid", () => {
+  assert.equal(formatSpeedtestMetrics({ download_mbps: 10, upload_mbps: 5 }), null);
+  assert.equal(
+    formatSpeedtestMetrics({ download_mbps: "10", upload_mbps: 5, latency_ms: 2 }),
+    null,
+  );
+  assert.equal(
+    formatSpeedtestMetrics({ download_mbps: 10, upload_mbps: -1, latency_ms: 2 }),
+    null,
+  );
+});
 
 test("diagnostic segment aggregation preserves the most actionable state", () => {
   assert.equal(aggregateDiagnosticStatus([]), "pending");
@@ -67,7 +95,8 @@ test("Speedtest installation UI is explicit, translated, and safe for external l
   assert.match(markup, /official Ookla/);
   assert.match(markup, /repository or signing key/);
   assert.match(markup, /rel="noopener noreferrer" target="_blank"/);
-  for (const key of ["install", "install_description", "confirm_package_change", "accept_license", "accept_gdpr", "run_description", "confirm_bandwidth"]) {
+  assert.match(markup, /aria-atomic="true" aria-live="polite"[^>]+id="diagnostics-action-result"/);
+  for (const key of ["install", "install_description", "confirm_package_change", "accept_license", "accept_gdpr", "run_description", "confirm_bandwidth", "download", "upload", "ping", "result_summary"]) {
     assert.equal(typeof en.diagnostics.speedtest[key], "string");
     assert.equal(typeof nl.diagnostics.speedtest[key], "string");
   }
@@ -81,6 +110,9 @@ test("installation and action contracts require every explicit confirmation", as
   assert.match(source, /if \(speedtestInstallationFlight\) return/);
   assert.match(source, /speedtestSelected = true/);
   assert.doesNotMatch(source, /runSpeedtest\(\);\s*\/\/ automatic/);
+  assert.match(source, /\["download", "diagnostics\.speedtest\.download"\]/);
+  assert.match(source, /\["upload", "diagnostics\.speedtest\.upload"\]/);
+  assert.match(source, /\["ping", "diagnostics\.speedtest\.ping"\]/);
 });
 
 test("installation status rendering allowlists phase and step text", async () => {

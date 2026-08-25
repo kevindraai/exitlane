@@ -6,10 +6,10 @@ ExitLane is a self-hosted egress appliance for routers, VLANs, and selected devi
 
 The result is an experience closer to a native VPN app, but for an entire network: switch countries, reconnect, use the fastest available server, and keep provider-specific configuration away from your router.
 
-![Traditional VPN setup compared with ExitLane](docs/images/Infographic_1.png)
+![ExitLane appliance dashboard](docs/images/promo/exitlane-dashboard-hero.png)
 
 > [!WARNING]
-> ExitLane is beta software. The management interface is intended for a trusted network and must not be exposed directly to the internet.
+> The management interface is intended for a trusted network and must not be exposed directly to the internet.
 
 The trusted management network is a deployment assumption, not a substitute for application security. See the [hardening guide](docs/security/hardening-guide.md), [threat model](docs/security/threat-model.md), and [security policy](SECURITY.md).
 
@@ -41,36 +41,36 @@ ExitLane does not replace UniFi, OPNsense, pfSense, or OpenWrt. It complements t
 
 ### Appliance dashboard
 
-Monitor appliance health, the active VPN exit, and killswitch protection from one overview.
+Monitor appliance health, the active VPN exit, WireGuard ingress, killswitch protection, and system
+resources from one overview.
 
-![ExitLane dashboard](docs/images/Dashboard_2.png)
+![ExitLane dashboard](docs/images/exitlane-dashboard.png)
 
 ### NordVPN control
 
 Choose a VPN country from the browser, compare measured latency, reconnect, or let the official client select the server. No new provider configuration has to be imported into the router.
 
-![ExitLane NordVPN country selection](docs/images/VPN_3.png)
+![ExitLane NordVPN country selection](docs/images/exitlane-vpn-selection.png)
+
+### Connection diagnostics
+
+Trace the live path from the client through ExitLane and the VPN to the internet. Individual ping,
+DNS, external-IP, and bandwidth-aware Speedtest actions remain explicit administrator choices.
+
+![ExitLane connection diagnostics](docs/images/exitlane-diagnostics.png)
 
 ### WireGuard router tunnel
 
 View the connected router peer and manage the current client configuration. The configuration can be viewed, copied, downloaded, shown as a QR code, or regenerated.
 
-![ExitLane WireGuard configuration management](docs/images/Wireguard_4.png)
+![ExitLane WireGuard configuration management](docs/images/exitlane-wireguard.png)
 
-### Guided first-run setup
+### Integrated documentation
 
-The first-run wizard checks the system, creates the administrator, and generates the WireGuard
-router configuration. Installing and authenticating a commercial VPN provider is recommended but
-optional: you can defer it and initially use ExitLane as a regular WireGuard VPN with direct
-internet egress, then configure a provider later from VPN management.
+Open version-matched administrator guides in the WebUI and follow contextual links directly from
+the relevant operational screen.
 
-![ExitLane first-run wizard](docs/images/Wizard_finish.png)
-
-### Activity log
-
-Important authentication, setup, VPN, WireGuard, settings, notification, and system events are recorded in a translated and filterable activity view.
-
-![ExitLane activity log](docs/images/Activity_6.png)
+![ExitLane integrated documentation](docs/images/exitlane-documentation.png)
 
 ## Features
 
@@ -107,7 +107,8 @@ Important authentication, setup, VPN, WireGuard, settings, notification, and sys
 
 ### Operations
 
-- Configure timezone, dashboard refresh interval, language, and light, dark, or system appearance.
+- Configure the Debian appliance timezone, dashboard refresh interval, language, and light, dark,
+  or system appearance.
 - Configure generic webhook notifications.
 - Keep structured activity events for up to 90 days and 5,000 records by default.
 - Use the interface in English or Dutch.
@@ -130,7 +131,7 @@ The WebUI's semantic theme adoption is recorded in the
 
 ## Installation
 
-The supported beta.5 appliance baseline is Debian 13 on `amd64`. ExitLane is tested primarily in a
+The supported appliance baseline is Debian 13 on `amd64`. ExitLane is tested primarily in a
 Debian 13 Proxmox LXC. Other Debian releases and architectures are not supported release targets.
 An LXC must have `/dev/net/tun` and permission to create WireGuard interfaces.
 

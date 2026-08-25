@@ -2045,6 +2045,26 @@ pre {
   min-height: 24px;
 }
 
+.speedtest-result-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+}
+
+.speedtest-result-metrics > span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.speedtest-result-metrics > span > span {
+  color: var(--muted);
+}
+
+.speedtest-result-metrics strong {
+  white-space: nowrap;
+}
+
 .speedtest-management {
   display: grid;
   gap: 14px;
@@ -3034,10 +3054,6 @@ pre {
   gap: 20px;
 }
 
-.dashboard-system-card {
-  grid-column: 1 / -1;
-}
-
 .dashboard-card,
 .dashboard-card .metric,
 .dashboard-card strong {
@@ -3045,11 +3061,41 @@ pre {
 }
 
 .dashboard-card .metric strong {
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .dashboard-metrics {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+}
+
+.dashboard-card .metric {
+  min-height: 84px;
+  padding: 13px;
+}
+
+.metric-technical-wide {
+  grid-column: span 2;
+}
+
+.technical-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.technical-value:focus {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.metric strong.technical-value {
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .dashboard-statusline {
@@ -3070,9 +3116,6 @@ pre {
     grid-template-columns: 1fr;
   }
 
-  .dashboard-system-card {
-    grid-column: auto;
-  }
 }
 
 @media (max-width: 560px) {
@@ -3086,6 +3129,10 @@ pre {
 
   .dashboard-metrics {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-metrics .metric-technical-wide {
+    grid-column: 1 / -1;
   }
 
   .dashboard-statusline .button {

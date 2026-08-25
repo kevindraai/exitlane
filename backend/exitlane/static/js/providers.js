@@ -11,6 +11,7 @@ import {
   select,
   setBusy,
   setStatusPill,
+  setTechnicalValue,
   showInlineError,
   showMessage,
 } from "./ui.js";
@@ -339,7 +340,11 @@ function createOverviewCard(provider) {
       document.createTextNode(overviewFieldLabel(field.key)),
     );
     const value = document.createElement("dd");
-    value.textContent = field.value;
+    if (["server", "external_ip"].includes(field.key)) {
+      setTechnicalValue(value, field.value);
+    } else {
+      value.textContent = field.value;
+    }
     item.append(label, value);
     grid.append(item);
   }

@@ -31,7 +31,7 @@
          <button class="button button-secondary" data-diagnostic-action="external-ip" data-i18n="diagnostics.actions.external_ip" type="button">External IP</button>
          <button class="button button-secondary" data-diagnostic-action="speedtest" data-i18n="diagnostics.actions.speedtest" type="button">Speed test</button>
         </div>
-        <p aria-live="polite" class="diagnostics-action-result" id="diagnostics-action-result"></p>
+        <p aria-atomic="true" aria-live="polite" class="diagnostics-action-result" id="diagnostics-action-result"></p>
         <p class="form-help" data-i18n="diagnostics.tools.speedtest_notice">Speed test can use significant bandwidth and is never started automatically.</p>
         <section aria-live="polite" class="speedtest-management" hidden="" id="speedtest-management" aria-atomic="true">
          <div class="speedtest-management-copy">

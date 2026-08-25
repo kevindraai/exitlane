@@ -29,11 +29,25 @@ def test_installer_creates_new_defaults_and_preserves_existing_installation(tmp_
     assert target.read_text(encoding="utf-8") == "EXISTING_CONFIGURATION=preserved\n"
 
 
+def test_installer_database_snapshot_path_matches_application_runtime_default():
+    installer = INSTALLER.read_text(encoding="utf-8")
+    defaults = DEFAULTS.read_text(encoding="utf-8")
+
+    assert 'readonly DATA_DIR="${EXITLANE_DATA_DIR:-/etc/exitlane}"' in installer
+    assert "EXITLANE_DATA_DIR=/etc/exitlane" in defaults
+
+
 def test_installer_has_locked_upgrade_snapshot_and_rollback_contract():
     installer = INSTALLER.read_text(encoding="utf-8")
 
     assert 'flock -n "${LOCK_FD}"' in installer
     assert "snapshot_sqlite_database" in installer
+    assert "snapshot_system_timezone" in installer
+    assert "timedatectl show --property=Timezone --value" in installer
+    assert "restore_system_timezone" in installer
+    assert 'timedatectl set-timezone "${timezone}"' in installer
+    assert 'restored_timezone="$(timedatectl show --property=Timezone --value' in installer
+    assert '[[ "${restored_timezone}" != "${timezone}" ]]' in installer
     assert "source.backup(destination)" in installer
     assert "prepare_upgrade_recovery" in installer
     assert "rollback_upgrade" in installer
@@ -45,7 +59,7 @@ def test_installer_has_locked_upgrade_snapshot_and_rollback_contract():
     assert "snapshot_recovery_path" in installer
     assert 'rm -rf -- "${destination}"' in installer
     assert "commit_upgrade" in installer
-    assert 'readonly PACKAGE_VERSION="0.2.0b5"' in installer
+    assert 'readonly PACKAGE_VERSION="0.2.0rc1"' in installer
     assert 'dpkg --compare-versions "${CURRENT_VERSION}" gt "${PACKAGE_VERSION}"' in installer
     assert installer.index("prepare_upgrade_recovery") < installer.index("stop_existing_service")
     assert installer.index("stop_existing_service") < installer.index("copy_application")
@@ -108,6 +122,79 @@ def test_explicit_installer_failure_invokes_upgrade_rollback(tmp_path):
 
     assert result.returncode == 1
     assert marker.read_text(encoding="utf-8") == "rolled-back"
+
+
+def test_injected_upgrade_failure_restores_database_timezone_and_service(tmp_path):
+    recovery = tmp_path / "recovery"
+    data = tmp_path / "data"
+    recovery.mkdir()
+    data.mkdir()
+    (recovery / "files").mkdir()
+    (recovery / "exitlane.db").write_text("previous database", encoding="utf-8")
+    (data / "exitlane.db").write_text("candidate database", encoding="utf-8")
+    (recovery / "system-timezone").write_text("Europe/Amsterdam\n", encoding="utf-8")
+    timezone_state = tmp_path / "timezone-state"
+    timezone_state.write_text("Europe/London\n", encoding="utf-8")
+    service_state = tmp_path / "service-state"
+    restore_marker = tmp_path / "files-restored"
+    command = f"""
+set -Eeuo pipefail
+export TARGET={tmp_path / "target"}
+export EXITLANE_CONFIG_DIR={tmp_path / "config"}
+export EXITLANE_DATA_DIR={data}
+source {INSTALLER}
+timedatectl() {{
+  case "$1" in
+    list-timezones) printf '%s\\n' Europe/Amsterdam Europe/London ;;
+    set-timezone) printf '%s\\n' "$2" > {timezone_state} ;;
+    show) cat {timezone_state} ;;
+    *) return 1 ;;
+  esac
+}}
+systemctl() {{
+  [[ "$1" == restart ]] && printf '%s\\n' restarted > {service_state}
+  return 0
+}}
+restore_recovery_files() {{ printf '%s\\n' restored > {restore_marker}; }}
+UPGRADE_MODE=1
+UPGRADE_COMMITTED=0
+RECOVERY_DIR={recovery}
+fail injected-upgrade-failure
+"""
+
+    result = subprocess.run(["bash", "-c", command], check=False, capture_output=True, text=True)
+
+    assert result.returncode == 1
+    assert "injected-upgrade-failure" in result.stderr
+    assert (data / "exitlane.db").read_text(encoding="utf-8") == "previous database"
+    assert timezone_state.read_text(encoding="utf-8") == "Europe/Amsterdam\n"
+    assert service_state.read_text(encoding="utf-8") == "restarted\n"
+    assert restore_marker.read_text(encoding="utf-8") == "restored\n"
+
+
+def test_timezone_rollback_fails_closed_when_restoration_is_not_verified(tmp_path):
+    recovery = tmp_path / "recovery"
+    recovery.mkdir()
+    (recovery / "system-timezone").write_text("Europe/Amsterdam\n", encoding="utf-8")
+    command = f"""
+set -Eeuo pipefail
+source {INSTALLER}
+timedatectl() {{
+  case "$1" in
+    list-timezones) printf '%s\\n' Europe/Amsterdam Europe/London ;;
+    set-timezone) return 0 ;;
+    show) printf '%s\\n' Europe/London ;;
+    *) return 1 ;;
+  esac
+}}
+RECOVERY_DIR={recovery}
+restore_system_timezone
+"""
+
+    result = subprocess.run(["bash", "-c", command], check=False, capture_output=True, text=True)
+
+    assert result.returncode == 1
+    assert "could not be verified" in result.stdout
 
 
 def test_deploy_script_fails_closed_on_unexpected_lxc_identity():

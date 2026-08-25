@@ -36,6 +36,18 @@ EVENT_DEFINITIONS = {
     "auth.recovery_code_used": ("auth", "warning", set()),
     "auth.other_sessions_revoked": ("auth", "warning", set()),
     "settings.updated": ("settings", "info", {"fields"}),
+    "settings.timezone_changed": (
+        "settings",
+        "info",
+        {"from_timezone", "to_timezone"},
+    ),
+    "settings.timezone_reconciled": (
+        "settings",
+        "warning",
+        {"from_timezone", "to_timezone"},
+    ),
+    "settings.timezone_change_failed": ("settings", "error", {"reason"}),
+    "settings.timezone_rolled_back": ("settings", "warning", set()),
     "network.security_settings_updated": (
         "settings",
         "warning",
@@ -102,6 +114,14 @@ SAFE_REASONS = frozenset(
         "firewall_apply_failed",
         "firewall_rules_missing",
         "invalid_configuration",
+        "invalid_stored_timezone",
+        "invalid_timezone",
+        "settings_storage_failed",
+        "system_timezone_change_failed",
+        "system_timezone_rollback_failed",
+        "system_timezone_unreadable",
+        "system_timezone_verification_failed",
+        "timezone_mismatch",
     }
 )
 MAX_STRING = 160

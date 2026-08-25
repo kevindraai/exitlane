@@ -31,7 +31,7 @@ The reset requires explicit confirmation and revokes every browser session. Envi
 overrides retain precedence and must be corrected in the service configuration.
 
 Exitlane is currently designed as a single service on a dedicated Debian 13 `amd64` host or LXC.
-That is the supported beta.5 appliance baseline; other Debian releases and architectures are not
+That is the supported 0.2.0 appliance baseline; other Debian releases and architectures are not
 supported release targets. The installer creates an isolated Python environment, installs the
 systemd unit, and prepares configuration, data, and log locations.
 

@@ -1,6 +1,6 @@
 import { t } from "./i18n.js";
 import { renderIcon } from "./icons.js";
-import { select, setBusy, setStatusPill } from "./ui.js";
+import { select, setBusy, setStatusPill, setTechnicalValue } from "./ui.js";
 import {
   formatBytes,
   formatCpuPercent,
@@ -45,8 +45,8 @@ export function renderDashboard(data, { successfulRefresh = true } = {}) {
   setStatusPill(select("#dashboard-vpn-pill"), t(`dashboard.${vpnState}`, {}, vpnState), data.vpn.connected ? "success" : data.vpn.available ? "neutral" : "danger");
   text("#dashboard-vpn-country", data.vpn.country);
   text("#dashboard-vpn-city", data.vpn.city);
-  text("#dashboard-vpn-server", data.vpn.server);
-  text("#dashboard-external-ip", data.vpn.external_ip);
+  setTechnicalValue(select("#dashboard-vpn-server"), data.vpn.server);
+  setTechnicalValue(select("#dashboard-external-ip"), data.vpn.external_ip);
   text("#dashboard-vpn-target", data.vpn.target);
   text("#dashboard-vpn-updated", data.vpn.updated_at ? formatRelativeTime(data.vpn.updated_at) : t("dashboard.unavailable", {}, "Unavailable"));
   text("#dashboard-vpn-error", data.vpn.error ? t("dashboard.vpn_unavailable", {}, "VPN status is unavailable.") : "");
@@ -88,14 +88,14 @@ export function renderDashboard(data, { successfulRefresh = true } = {}) {
   );
 
   setStatusPill(select("#dashboard-wg-pill"), t(`dashboard.${data.wireguard.active ? (data.wireguard.connected ? "connected" : "waiting") : "inactive"}`, {}, data.wireguard.active ? "Waiting" : "Inactive"), data.wireguard.connected ? "success" : data.wireguard.active ? "neutral" : "danger");
-  text("#dashboard-wg-client", data.wireguard.client);
+  setTechnicalValue(select("#dashboard-wg-client"), data.wireguard.client);
   text("#dashboard-wg-peers", data.wireguard.peer_count);
   text("#dashboard-wg-handshake", formatRelativeTime(data.wireguard.latest_handshake_at));
   text("#dashboard-wg-received", formatBytes(data.wireguard.received_bytes));
   text("#dashboard-wg-sent", formatBytes(data.wireguard.sent_bytes));
-  text("#dashboard-wg-endpoint", data.wireguard.endpoint);
+  setTechnicalValue(select("#dashboard-wg-endpoint"), data.wireguard.endpoint);
 
-  text("#dashboard-hostname", data.system.hostname);
+  setTechnicalValue(select("#dashboard-hostname"), data.system.hostname);
   text("#dashboard-cpu", formatCpuPercent(data.system.cpu_percent));
   text("#dashboard-memory", data.system.memory_percent == null ? "—" : `${bytesOrUnknown(data.system.memory_used_bytes)} / ${bytesOrUnknown(data.system.memory_total_bytes)} (${data.system.memory_percent}%)`);
   text("#dashboard-disk", data.system.disk_percent == null ? "—" : `${bytesOrUnknown(data.system.disk_used_bytes)} / ${bytesOrUnknown(data.system.disk_total_bytes)} (${data.system.disk_percent}%)`);
@@ -107,7 +107,7 @@ export function renderDashboard(data, { successfulRefresh = true } = {}) {
   const systemError = select("#dashboard-system-error");
   systemError.textContent = data.system.available ? "" : t("dashboard.system_unavailable", {}, "System status is unavailable.");
   systemError.hidden = data.system.available;
-  text("#dashboard-version", `v${data.version}`);
+  setTechnicalValue(select("#dashboard-version"), `v${data.version}`);
   renderLastSuccessfulRefresh();
   if (successfulRefresh) select("#dashboard-refresh-error").hidden = true;
 
