@@ -30,7 +30,7 @@ readonly SPEEDTEST_HELPER_SOURCE="${SOURCE_DIR}/installer/install-speedtest.sh"
 readonly SPEEDTEST_HELPER_TARGET="/usr/local/libexec/exitlane-install-speedtest"
 
 readonly CONFIG_DIR="${EXITLANE_CONFIG_DIR:-/etc/exitlane}"
-readonly DATA_DIR="${EXITLANE_DATA_DIR:-/var/lib/exitlane}"
+readonly DATA_DIR="${EXITLANE_DATA_DIR:-/etc/exitlane}"
 readonly LOG_DIR="${EXITLANE_LOG_DIR:-/var/log/exitlane}"
 readonly MASTER_KEY="${CONFIG_DIR}/secret.key"
 

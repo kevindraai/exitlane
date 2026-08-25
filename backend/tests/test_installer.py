@@ -29,6 +29,14 @@ def test_installer_creates_new_defaults_and_preserves_existing_installation(tmp_
     assert target.read_text(encoding="utf-8") == "EXISTING_CONFIGURATION=preserved\n"
 
 
+def test_installer_database_snapshot_path_matches_application_runtime_default():
+    installer = INSTALLER.read_text(encoding="utf-8")
+    defaults = DEFAULTS.read_text(encoding="utf-8")
+
+    assert 'readonly DATA_DIR="${EXITLANE_DATA_DIR:-/etc/exitlane}"' in installer
+    assert "EXITLANE_DATA_DIR=/etc/exitlane" in defaults
+
+
 def test_installer_has_locked_upgrade_snapshot_and_rollback_contract():
     installer = INSTALLER.read_text(encoding="utf-8")
 

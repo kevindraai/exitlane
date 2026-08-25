@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
@@ -33,7 +34,36 @@ test("screenshot workflow covers current routes and declares every output", asyn
   }
   assert.equal(manifest.network_mocking, false);
   assert.equal(manifest.speedtest_started, false);
+  assert.match(manifest.source_commit, /^[0-9a-f]{40}$/);
+  assert.match(manifest.source_tree, /^[0-9a-f]{40}$/);
+  assert.equal(manifest.source_worktree_clean, true);
+  assert.equal(
+    execFileSync("git", ["rev-parse", `${manifest.source_commit}^{tree}`], {
+      cwd: repositoryRoot,
+      encoding: "utf8",
+    }).trim(),
+    manifest.source_tree,
+  );
+  execFileSync("git", ["merge-base", "--is-ancestor", manifest.source_commit, "HEAD"], {
+    cwd: repositoryRoot,
+  });
   assert.equal(manifest.screenshots.length, 9);
+  const redacted = manifest.screenshots.filter((screenshot) => screenshot.redactions.length);
+  assert.deepEqual(
+    redacted.map(({ id, profile, state }) => ({ id, profile, state })),
+    [
+      { id: "dashboard", profile: "readme", state: "live-runtime-controlled-redaction" },
+      { id: "vpn", profile: "readme", state: "live-runtime-controlled-redaction" },
+      { id: "dashboard", profile: "promo", state: "live-runtime-controlled-redaction" },
+      { id: "vpn", profile: "promo", state: "live-runtime-controlled-redaction" },
+    ],
+  );
+  assert.ok(redacted.every((screenshot) => (
+    screenshot.redactions.length === 1
+    && screenshot.redactions[0].field === "external IP"
+  )));
+  assert.match(automation, /visible content contains an unredacted public IP address/);
+  assert.doesNotMatch(automation, /(?:page|context)\.route\s*\(/);
   await Promise.all(manifest.screenshots.map((screenshot) => (
     access(path.join(repositoryRoot, screenshot.file))
   )));

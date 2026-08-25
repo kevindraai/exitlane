@@ -1,7 +1,10 @@
 {
-  "generated_at": "2026-08-25T19:12:56.608Z",
+  "generated_at": "2026-08-25T19:36:59.806Z",
   "source_appliance": "172.16.130.81",
   "source_version": "0.2.0-rc.1",
+  "source_commit": "5148c75c2b3d9ec8c1ae326e0f7e99447295a7f1",
+  "source_tree": "4917aac08df364d14cb151ce622701f44fcabd26",
+  "source_worktree_clean": true,
   "language": "en",
   "appearance": "dark",
   "network_mocking": false,
@@ -12,7 +15,14 @@
       "profile": "readme",
       "file": "docs/images/exitlane-dashboard.png",
       "dimensions": "1440x1200",
-      "state": "live-runtime",
+      "state": "live-runtime-controlled-redaction",
+      "redactions": [
+        {
+          "selector": "#dashboard-external-ip",
+          "field": "external IP",
+          "strategy": "visible value replaced after live runtime verification"
+        }
+      ],
       "sensitive_ui": "not present"
     },
     {
@@ -20,7 +30,14 @@
       "profile": "readme",
       "file": "docs/images/exitlane-vpn-selection.png",
       "dimensions": "1440x1200",
-      "state": "live-runtime",
+      "state": "live-runtime-controlled-redaction",
+      "redactions": [
+        {
+          "selector": "#metric-ip",
+          "field": "external IP",
+          "strategy": "visible value replaced after live runtime verification"
+        }
+      ],
       "sensitive_ui": "not present"
     },
     {
@@ -29,6 +46,7 @@
       "file": "docs/images/exitlane-diagnostics.png",
       "dimensions": "1440x1200",
       "state": "live-runtime",
+      "redactions": [],
       "sensitive_ui": "not present"
     },
     {
@@ -37,6 +55,7 @@
       "file": "docs/images/exitlane-wireguard.png",
       "dimensions": "1440x1200",
       "state": "live-runtime-sensitive-ui-hidden",
+      "redactions": [],
       "sensitive_ui": "configuration and QR kept closed"
     },
     {
@@ -45,6 +64,7 @@
       "file": "docs/images/exitlane-documentation.png",
       "dimensions": "1440x1200",
       "state": "live-application-content",
+      "redactions": [],
       "sensitive_ui": "not present"
     },
     {
@@ -52,7 +72,14 @@
       "profile": "promo",
       "file": "docs/images/promo/exitlane-dashboard-hero.png",
       "dimensions": "1600x1000",
-      "state": "live-runtime",
+      "state": "live-runtime-controlled-redaction",
+      "redactions": [
+        {
+          "selector": "#dashboard-external-ip",
+          "field": "external IP",
+          "strategy": "visible value replaced after live runtime verification"
+        }
+      ],
       "sensitive_ui": "not present"
     },
     {
@@ -60,7 +87,14 @@
       "profile": "promo",
       "file": "docs/images/promo/exitlane-vpn-selection.png",
       "dimensions": "1600x1000",
-      "state": "live-runtime",
+      "state": "live-runtime-controlled-redaction",
+      "redactions": [
+        {
+          "selector": "#metric-ip",
+          "field": "external IP",
+          "strategy": "visible value replaced after live runtime verification"
+        }
+      ],
       "sensitive_ui": "not present"
     },
     {
@@ -69,6 +103,7 @@
       "file": "docs/images/promo/exitlane-diagnostics.png",
       "dimensions": "1600x1000",
       "state": "live-runtime",
+      "redactions": [],
       "sensitive_ui": "not present"
     },
     {
@@ -77,6 +112,7 @@
       "file": "docs/images/promo/exitlane-documentation.png",
       "dimensions": "1600x1000",
       "state": "live-application-content",
+      "redactions": [],
       "sensitive_ui": "not present"
     }
   ],
