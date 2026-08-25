@@ -12,6 +12,7 @@ import {
   renderAlert,
   select,
   setBusy,
+  setTechnicalValue,
   showMessage,
 } from "./ui.js";
 import { getSlice, resetAuthenticatedState } from "./state.js";
@@ -323,7 +324,7 @@ function fillTimezones(timezones, selected) {
 
 export function renderAbout(about) {
   select("#settings-product").textContent = about.product;
-  select("#settings-version").textContent = about.version;
+  setTechnicalValue(select("#settings-version"), about.version);
   select("#settings-release-channel").textContent = about.release_channel;
   select("#settings-setup-status").textContent = about.setup_complete
     ? t("settings.about.setup_complete", {}, "Complete")
@@ -338,8 +339,23 @@ export function renderSettings(data) {
   fillTimezones(data.timezones, data.general.timezone);
   select("#settings-polling-interval").value =
     data.general.provider_refresh_interval_seconds;
-  select("#settings-hostname").textContent = data.system.hostname;
-  select("#settings-system-timezone").textContent = data.system.system_timezone;
+  setTechnicalValue(select("#settings-hostname"), data.system.hostname);
+  setTechnicalValue(select("#settings-system-timezone"), data.system.system_timezone);
+  const timezoneWarning = select("#settings-timezone-warning");
+  const consistency = data.system.timezone_consistency;
+  if (consistency?.consistent === false) {
+    renderAlert(
+      timezoneWarning,
+      t(
+        `settings.errors.${consistency.error || "timezone_mismatch"}`,
+        {},
+        t("settings.errors.timezone_mismatch"),
+      ),
+      ALERT_TYPES.WARNING,
+    );
+  } else {
+    clearAlert(timezoneWarning);
+  }
   select("#settings-session-duration-display").textContent =
     data.system.session_duration_seconds;
   select("#settings-language").value = getCurrentLanguage();
@@ -550,9 +566,12 @@ export async function saveGeneralSettings(event) {
     );
   } catch (error) {
     renderSettings(savedSettings);
+    const code = error.payload?.detail?.code;
     renderAlert(
       select("#settings-general-error"),
-      t("settings.errors.save", { message: error.message }, `Could not save: ${error.message}`),
+      code
+        ? t(`settings.errors.${code}`, {}, t("settings.errors.save", { message: error.message }))
+        : t("settings.errors.save", { message: error.message }, `Could not save: ${error.message}`),
       ALERT_TYPES.ERROR,
     );
   } finally {

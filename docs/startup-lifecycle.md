@@ -14,6 +14,12 @@ loads data for that mode.
 If session discovery fails, startup does not guess a mode or continue with protected loading. This
 favors a visible startup failure over an inconsistent or partially authorized interface.
 
+Backend startup also reconciles the appliance timezone before serving normal operations. When an
+explicit valid ExitLane timezone exists, it is authoritative and Debian is converged to that IANA
+timezone. A match is a no-op. An invalid stored value, unreadable system timezone, or failed native
+change is recorded as a stable Activity error and surfaced in Settings; the service remains
+available for an administrator to recover the configuration.
+
 ## Wizard
 
 An incomplete setup selects wizard mode. Only setup data and public configuration needed for the

@@ -74,6 +74,57 @@ function detailText(probe) {
   return base;
 }
 
+export function formatSpeedtestMetrics(detail) {
+  const values = [detail?.download_mbps, detail?.upload_mbps, detail?.latency_ms];
+  if (!values.every((value) => typeof value === "number" && Number.isFinite(value) && value >= 0)) {
+    return null;
+  }
+  return {
+    download: `${detail.download_mbps} Mbps`,
+    upload: `${detail.upload_mbps} Mbps`,
+    ping: `${detail.latency_ms} ms`,
+  };
+}
+
+function renderActionResult(element, result) {
+  element.classList.remove("speedtest-result");
+  element.removeAttribute("aria-label");
+  element.dataset.status = result.status;
+  if (result.code !== "speedtest_passed") {
+    element.textContent = detailText(result);
+    return;
+  }
+  const metrics = formatSpeedtestMetrics(result.detail);
+  if (!metrics) {
+    element.dataset.status = "failed";
+    element.textContent = t("diagnostics.actions.failed", {}, "The test could not be completed.");
+    return;
+  }
+  element.classList.add("speedtest-result");
+  element.setAttribute(
+    "aria-label",
+    t("diagnostics.speedtest.result_summary", metrics),
+  );
+  const labels = [
+    ["download", "diagnostics.speedtest.download"],
+    ["upload", "diagnostics.speedtest.upload"],
+    ["ping", "diagnostics.speedtest.ping"],
+  ];
+  const visual = document.createElement("span");
+  visual.className = "speedtest-result-metrics";
+  visual.setAttribute("aria-hidden", "true");
+  for (const [key, translation] of labels) {
+    const metric = document.createElement("span");
+    const label = document.createElement("span");
+    const value = document.createElement("strong");
+    label.textContent = t(translation);
+    value.textContent = metrics[key];
+    metric.append(label, value);
+    visual.append(metric);
+  }
+  element.replaceChildren(visual);
+}
+
 function speedtestStatusText(status) {
   return t(`diagnostics.speedtest.status.${status}`, {}, status);
 }
@@ -249,6 +300,8 @@ async function runSpeedtest() {
   closeSpeedtestDialog(document.querySelector("#speedtest-run-dialog"));
   const resultElement = document.querySelector("#diagnostics-action-result");
   document.querySelectorAll("[data-diagnostic-action]").forEach((item) => { item.disabled = true; });
+  resultElement.classList.remove("speedtest-result");
+  resultElement.removeAttribute("aria-label");
   resultElement.textContent = t("diagnostics.actions.running", {}, "Running test…");
   const request = postJson("/api/diagnostics/actions/speedtest", {
     confirm_personal_noncommercial: true,
@@ -259,8 +312,7 @@ async function runSpeedtest() {
   speedtestActionFlight = request;
   try {
     const result = await request;
-    resultElement.dataset.status = result.status;
-    resultElement.textContent = detailText(result);
+    renderActionResult(resultElement, result);
   } catch {
     resultElement.dataset.status = "failed";
     resultElement.textContent = t("diagnostics.actions.failed", {}, "The test could not be completed.");
@@ -352,6 +404,8 @@ async function runAction(button) {
     : null;
   const resultElement = document.querySelector("#diagnostics-action-result");
   document.querySelectorAll("[data-diagnostic-action]").forEach((item) => { item.disabled = true; });
+  resultElement.classList.remove("speedtest-result");
+  resultElement.removeAttribute("aria-label");
   resultElement.textContent = t("diagnostics.actions.running", {}, "Running test…");
   try {
     const result = await postJson(
@@ -359,8 +413,7 @@ async function runAction(button) {
       { target },
       { timeoutMilliseconds: action === "speedtest" ? 130000 : 15000 },
     );
-    resultElement.dataset.status = result.status;
-    resultElement.textContent = detailText(result);
+    renderActionResult(resultElement, result);
   } catch {
     resultElement.dataset.status = "failed";
     resultElement.textContent = t("diagnostics.actions.failed", {}, "The test could not be completed.");

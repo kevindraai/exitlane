@@ -3,49 +3,61 @@ from __future__ import annotations
 import json
 import platform
 import socket
-from datetime import datetime
-from pathlib import Path
-from zoneinfo import available_timezones
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from exitlane import __version__
 from exitlane.config import APP_NAME, PROVIDER_REFRESH_INTERVAL_SECONDS, SESSION_MAX_AGE_SECONDS
-from exitlane.core import set_settings, setting
+from exitlane.core import SettingsStorageError, set_settings, setting
+from exitlane.services import timezone as timezone_service
 
 TIMEZONE_KEY = "timezone"
 POLLING_INTERVAL_KEY = "provider_refresh_interval_seconds"
 REPOSITORY_URL = "https://github.com/kevindraai/exitlane"
-VALID_TIMEZONES = frozenset(available_timezones() - {"Factory", "localtime"})
+VALID_TIMEZONES = timezone_service.VALID_TIMEZONES
+
+
+class TimezoneUpdatePersistenceError(RuntimeError):
+    def __init__(self, *, rollback_performed: bool) -> None:
+        super().__init__("settings_storage_failed")
+        self.rollback_performed = rollback_performed
 
 
 def system_hostname() -> str:
     return socket.gethostname() or "Exitlane"
 
 
-def system_timezone(
-    timezone_file: Path = Path("/etc/timezone"),
-    localtime_file: Path = Path("/etc/localtime"),
-) -> str:
-    try:
-        candidate = timezone_file.read_text(encoding="utf-8").strip()
-    except OSError:
-        candidate = ""
-    if candidate in VALID_TIMEZONES:
-        return candidate
+def system_timezone() -> str:
+    return timezone_service.read_system_timezone() or "UTC"
 
-    try:
-        localtime = localtime_file.resolve()
-        marker = "zoneinfo/"
-        candidate = str(localtime).split(marker, 1)[1]
-    except (OSError, IndexError):
-        candidate = ""
-    if candidate in VALID_TIMEZONES:
-        return candidate
 
-    local_timezone = datetime.now().astimezone().tzinfo
-    candidate = getattr(local_timezone, "key", "")
-    return candidate if candidate in VALID_TIMEZONES else "UTC"
+def timezone_consistency() -> dict[str, object]:
+    actual = timezone_service.read_system_timezone()
+    try:
+        configured = setting(TIMEZONE_KEY, None)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        configured = None
+        stored_invalid = True
+    else:
+        stored_invalid = configured is not None and configured not in VALID_TIMEZONES
+
+    if stored_invalid:
+        return {
+            "configured": True,
+            "consistent": False,
+            "error": "invalid_stored_timezone",
+        }
+    if actual is None:
+        return {
+            "configured": configured is not None,
+            "consistent": False,
+            "error": "system_timezone_unreadable",
+        }
+    return {
+        "configured": configured is not None,
+        "consistent": configured is None or configured == actual,
+        "error": None if configured is None or configured == actual else "timezone_mismatch",
+    }
 
 
 class GeneralSettings(BaseModel):
@@ -141,6 +153,7 @@ def settings_response() -> dict:
         "system": {
             "hostname": hostname,
             "system_timezone": system_timezone(),
+            "timezone_consistency": timezone_consistency(),
             "session_duration_seconds": SESSION_MAX_AGE_SECONDS,
         },
         "about": {
@@ -160,14 +173,14 @@ def settings_response() -> dict:
                 "general.provider_refresh_interval_seconds",
             ],
             "environment_only": ["system.session_duration_seconds"],
-            "restart_required": ["general.timezone"],
+            "restart_required": [],
         },
         "timezones": sorted(VALID_TIMEZONES),
         "languages": ["en", "nl"],
     }
 
 
-def update_settings(update: SettingsUpdate) -> dict:
+async def update_settings(update: SettingsUpdate) -> dict:
     current = current_general_settings().model_dump()
     changes = update.general.model_dump(exclude_unset=True)
     validated = GeneralSettings(**(current | changes))
@@ -175,5 +188,35 @@ def update_settings(update: SettingsUpdate) -> dict:
         "timezone": TIMEZONE_KEY,
         "provider_refresh_interval_seconds": POLLING_INTERVAL_KEY,
     }
-    set_settings({keys[field]: getattr(validated, field) for field in changes})
+    timezone_change = None
+    if "timezone" in changes:
+        timezone_change = await timezone_service.set_system_timezone(validated.timezone)
+    try:
+        set_settings({keys[field]: getattr(validated, field) for field in changes})
+    except SettingsStorageError:
+        if "timezone" not in changes:
+            raise
+        rollback_performed = bool(timezone_change and timezone_change.changed)
+        if rollback_performed:
+            try:
+                await timezone_service.set_system_timezone(timezone_change.previous)
+            except timezone_service.TimezoneOperationError as error:
+                raise timezone_service.TimezoneOperationError(
+                    "system_timezone_rollback_failed"
+                ) from error
+        raise TimezoneUpdatePersistenceError(rollback_performed=rollback_performed) from None
     return settings_response()
+
+
+async def reconcile_timezone() -> timezone_service.TimezoneChange | None:
+    status = timezone_consistency()
+    if not status["configured"]:
+        return None
+    if status["consistent"]:
+        return None
+    if status["error"] != "timezone_mismatch":
+        raise timezone_service.TimezoneOperationError(str(status["error"]))
+    configured = validated_stored_value(TIMEZONE_KEY, None, "timezone")
+    if not isinstance(configured, str):
+        raise timezone_service.TimezoneOperationError("invalid_stored_timezone")
+    return await timezone_service.set_system_timezone(configured)

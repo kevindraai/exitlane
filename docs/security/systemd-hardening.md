@@ -13,6 +13,11 @@ Compatibility takes priority over a cosmetic score. Exitlane currently remains `
 | `DeviceAllow=/dev/net/tun` / closed device policy | not enabled | NordVPN daemon/device ownership crosses the service boundary |
 | private network namespace | not enabled | would break the gateway's core routing role |
 
+Timezone changes do not add a shell, sudoers rule, or generic helper. The existing root service
+uses one validated IANA value with a fixed absolute `timedatectl` argument vector; Debian's native
+timedated boundary performs the host mutation and ExitLane verifies the resulting timezone before
+persisting the application setting.
+
 Validate the installed unit with `systemd-analyze verify`, `systemd-analyze security exitlane.service`, service/login/provider/WireGuard flows and journal review. The score is diagnostic, not a universal pass threshold.
 
 The 2026-07-22 test-LXC baseline scored 7.7 ("exposed"), dominated by the accepted root,

@@ -1,3 +1,4 @@
+import asyncio
 import sqlite3
 from pathlib import Path
 
@@ -6,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from exitlane import core, main, settings
 from exitlane.html import render_index
+from exitlane.services import timezone as timezone_service
 
 PASSWORD = "correct horse battery staple"
 STATIC_DIR = Path(__file__).parents[1] / "exitlane" / "static"
@@ -21,7 +23,22 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "DB", database)
     monkeypatch.setattr(main, "WG_DIR", data / "wireguard")
     monkeypatch.setattr(settings, "system_hostname", lambda: "exitlane-host")
-    monkeypatch.setattr(settings, "system_timezone", lambda: "Europe/Amsterdam")
+    timezone_state = {"value": "Europe/Amsterdam"}
+
+    def read_timezone():
+        return timezone_state["value"]
+
+    async def set_timezone(value):
+        previous = timezone_state["value"]
+        timezone_state["value"] = value
+        return timezone_service.TimezoneChange(
+            previous=previous,
+            current=value,
+            changed=previous != value,
+        )
+
+    monkeypatch.setattr(timezone_service, "read_system_timezone", read_timezone)
+    monkeypatch.setattr(timezone_service, "set_system_timezone", set_timezone)
 
     with TestClient(main.app) as test_client:
         digest, salt = core.hash_password(PASSWORD)
@@ -31,6 +48,7 @@ def client(tmp_path, monkeypatch):
                 ("admin", digest, salt),
             )
         core.set_setting("setup_complete", True)
+        test_client.app.state.test_timezone_state = timezone_state
         yield test_client
 
 
@@ -51,7 +69,10 @@ def valid_update(**overrides):
 def test_system_timezone_prefers_etc_timezone(tmp_path):
     timezone_file = tmp_path / "timezone"
     timezone_file.write_text("Europe/London\n", encoding="utf-8")
-    assert settings.system_timezone(timezone_file, tmp_path / "missing") == "Europe/London"
+    assert (
+        timezone_service.read_system_timezone(timezone_file, tmp_path / "missing")
+        == "Europe/London"
+    )
 
 
 def test_system_timezone_falls_back_to_localtime_symlink(tmp_path):
@@ -62,7 +83,49 @@ def test_system_timezone_falls_back_to_localtime_symlink(tmp_path):
     zone.touch()
     localtime = tmp_path / "localtime"
     localtime.symlink_to(zone)
-    assert settings.system_timezone(timezone_file, localtime) == "Europe/Amsterdam"
+    assert timezone_service.read_system_timezone(timezone_file, localtime) == "Europe/Amsterdam"
+
+
+def test_timezone_service_uses_fixed_timedatectl_argv_and_verifies_result():
+    observed = []
+    values = iter(["Europe/Amsterdam", "Europe/London"])
+
+    async def command(*arguments, **options):
+        observed.append((arguments, options))
+        return 0, "", ""
+
+    result = asyncio.run(
+        timezone_service.set_system_timezone(
+            "Europe/London",
+            command_runner=command,
+            timezone_reader=lambda: next(values),
+        )
+    )
+    assert observed == [
+        (
+            ("/usr/bin/timedatectl", "set-timezone", "Europe/London"),
+            {"timeout": 30},
+        )
+    ]
+    assert result.changed is True
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["../../etc/passwd", "/etc/localtime", "Europe/Amsterdam;id", "Not/A_Zone"],
+)
+def test_timezone_service_rejects_paths_and_shell_input_without_command(value):
+    async def command(*_arguments, **_options):
+        raise AssertionError("invalid input reached timedatectl")
+
+    with pytest.raises(timezone_service.TimezoneOperationError, match="invalid_timezone"):
+        asyncio.run(
+            timezone_service.set_system_timezone(
+                value,
+                command_runner=command,
+                timezone_reader=lambda: "UTC",
+            )
+        )
 
 
 def test_product_name_is_fixed_and_header_has_no_preferences_or_instance_name():
@@ -87,7 +150,7 @@ def test_get_settings_as_authenticated_user(client):
     }
     assert body["system"]["hostname"] == "exitlane-host"
     assert body["about"]["product"] == "Exitlane"
-    assert body["about"]["release_channel"] == "alpha"
+    assert body["about"]["release_channel"] == "release candidate"
     assert "Europe/London" in body["timezones"]
     assert body["timezones"] == sorted(body["timezones"])
     assert len(body["timezones"]) == len(set(body["timezones"]))
@@ -188,6 +251,87 @@ def test_successful_update_is_persistent_after_reinitialisation(client):
 
     core.init()
     assert client.get("/api/settings").json()["general"] == valid_update()["general"]
+    assert client.app.state.test_timezone_state["value"] == "Europe/London"
+
+
+def test_timezone_change_failure_does_not_persist_setting(client, monkeypatch):
+    login(client)
+
+    async def fail(_value):
+        raise timezone_service.TimezoneOperationError("system_timezone_change_failed")
+
+    monkeypatch.setattr(timezone_service, "set_system_timezone", fail)
+    response = client.put(
+        "/api/settings",
+        json={"general": {"timezone": "Europe/London"}},
+    )
+    assert response.status_code == 503
+    assert response.json()["detail"] == {
+        "code": "system_timezone_change_failed",
+        "field": "timezone",
+    }
+    assert core.setting(settings.TIMEZONE_KEY, None) is None
+
+
+def test_storage_failure_rolls_system_timezone_back_without_partial_settings(client):
+    login(client)
+    with sqlite3.connect(main.DB) as connection:
+        connection.executescript(
+            f"""
+            CREATE TRIGGER reject_timezone_api_update
+            BEFORE INSERT ON settings
+            WHEN NEW.key = '{settings.TIMEZONE_KEY}'
+            BEGIN
+                SELECT RAISE(ABORT, 'test failure');
+            END;
+            """
+        )
+
+    response = client.put(
+        "/api/settings",
+        json={
+            "general": {
+                "timezone": "Europe/London",
+                "provider_refresh_interval_seconds": 20,
+            }
+        },
+    )
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "settings_storage_failed"
+    assert client.app.state.test_timezone_state["value"] == "Europe/Amsterdam"
+    assert core.setting(settings.TIMEZONE_KEY, None) is None
+    assert core.setting(settings.POLLING_INTERVAL_KEY, None) is None
+
+
+def test_startup_reconciliation_converges_valid_explicit_setting(client):
+    core.set_setting(settings.TIMEZONE_KEY, "Europe/London")
+    change = asyncio.run(settings.reconcile_timezone())
+    assert change == timezone_service.TimezoneChange(
+        previous="Europe/Amsterdam",
+        current="Europe/London",
+        changed=True,
+    )
+    assert client.app.state.test_timezone_state["value"] == "Europe/London"
+    assert settings.timezone_consistency()["consistent"] is True
+
+
+def test_startup_reconciliation_is_noop_when_timezones_match(client):
+    core.set_setting(settings.TIMEZONE_KEY, "Europe/Amsterdam")
+    assert asyncio.run(settings.reconcile_timezone()) is None
+
+
+def test_startup_reconciliation_reports_invalid_stored_timezone(client):
+    core.set_setting(settings.TIMEZONE_KEY, "Moon/Sea_of_Tranquility")
+    with pytest.raises(
+        timezone_service.TimezoneOperationError,
+        match="invalid_stored_timezone",
+    ):
+        asyncio.run(settings.reconcile_timezone())
+    assert settings.timezone_consistency() == {
+        "configured": True,
+        "consistent": False,
+        "error": "invalid_stored_timezone",
+    }
 
 
 def test_missing_database_values_use_existing_defaults(client):
@@ -308,7 +452,7 @@ def test_response_has_expected_changeability_metadata(client):
             "general.provider_refresh_interval_seconds",
         ],
         "environment_only": ["system.session_duration_seconds"],
-        "restart_required": ["general.timezone"],
+        "restart_required": [],
     }
 
 

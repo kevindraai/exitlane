@@ -43,6 +43,13 @@ per-code metadata allowlists are stored in SQLite; the browser translates them a
 Event writes are best-effort so audit storage cannot break the primary action. This Activity log
 is intentionally distinct from systemd/journald operational logs.
 
+The explicitly stored ExitLane timezone is the source of truth for a managed appliance. Settings
+applies a validated IANA identifier through one fixed `/usr/bin/timedatectl set-timezone` argument
+vector, verifies the observed Debian timezone, and persists SQLite only after that verification.
+If persistence fails, the system timezone is restored and verified. Startup reconciles a valid
+explicit setting before normal operation; invalid or unreadable state remains visible in Settings
+and Activity rather than being silently treated as UTC.
+
 Dashboard system metrics are collected directly from Linux interfaces available on both bare-metal
 hosts and LXC containers. Memory comes from `/proc/meminfo`, uptime from `/proc/uptime`, CPU time
 from the aggregate line in `/proc/stat`, and filesystem usage from the configured dashboard path.

@@ -3,8 +3,8 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-readonly INSTALLER_VERSION="0.2.0-beta.5"
-readonly PACKAGE_VERSION="0.2.0b5"
+readonly INSTALLER_VERSION="0.2.0-rc.1"
+readonly PACKAGE_VERSION="0.2.0rc1"
 readonly LIFECYCLE_LOCK="${EXITLANE_LIFECYCLE_LOCK:-/run/lock/exitlane-lifecycle.lock}"
 readonly RECOVERY_ROOT="${EXITLANE_RECOVERY_ROOT:-/var/lib/exitlane/recovery}"
 UPGRADE_MODE=0
@@ -151,6 +151,33 @@ with sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True) as source:
   chmod 0600 "${destination}"
 }
 
+snapshot_system_timezone() {
+  local timezone=""
+  timezone="$(timedatectl show --property=Timezone --value 2>/dev/null || true)"
+  if [[ -z "${timezone}" ]] ||
+    ! timedatectl list-timezones 2>/dev/null | grep -Fx -- "${timezone}" >/dev/null; then
+    fail "The current system timezone could not be recorded safely."
+  fi
+  printf '%s\n' "${timezone}" > "${RECOVERY_DIR}/system-timezone"
+  chmod 0600 "${RECOVERY_DIR}/system-timezone"
+}
+
+restore_system_timezone() {
+  local timezone_file="${RECOVERY_DIR}/system-timezone"
+  local timezone=""
+  [[ -f "${timezone_file}" ]] || return 0
+  timezone="$(head -n 1 "${timezone_file}")"
+  if [[ -z "${timezone}" ]] ||
+    ! timedatectl list-timezones 2>/dev/null | grep -Fx -- "${timezone}" >/dev/null; then
+    warning "Saved system timezone is invalid; manual recovery is required"
+    return 1
+  fi
+  if ! timedatectl set-timezone "${timezone}"; then
+    warning "System timezone rollback failed; manual recovery is required"
+    return 1
+  fi
+}
+
 prepare_upgrade_recovery() {
   [[ "${UPGRADE_MODE}" -eq 1 ]] || return 0
   install -d -o root -g root -m 0700 "${RECOVERY_ROOT}"
@@ -165,6 +192,7 @@ prepare_upgrade_recovery() {
       "${DATA_DIR}/exitlane.db" \
       "${RECOVERY_DIR}/exitlane.db"
   fi
+  snapshot_system_timezone
   for path in \
     "${TARGET}" \
     "${CONFIG_DIR}" \
@@ -185,6 +213,7 @@ prepare_upgrade_recovery() {
 }
 
 rollback_upgrade() {
+  local timezone_rollback_failed=0
   warning "Upgrade failed; restoring the previous ExitLane installation"
   systemctl stop "${SERVICE_NAME}" >/dev/null 2>&1 || true
   if [[ -d "${RECOVERY_DIR}/files" ]]; then
@@ -195,9 +224,11 @@ rollback_upgrade() {
       "${RECOVERY_DIR}/exitlane.db" \
       "${DATA_DIR}/exitlane.db"
   fi
+  restore_system_timezone || timezone_rollback_failed=1
   systemctl daemon-reload >/dev/null 2>&1 || true
   systemctl restart "${SERVICE_NAME}" >/dev/null 2>&1 || true
   warning "Rollback completed; recovery snapshot retained at ${RECOVERY_DIR}"
+  [[ "${timezone_rollback_failed}" -eq 0 ]]
 }
 
 restore_recovery_files() {

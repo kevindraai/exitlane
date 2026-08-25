@@ -1,6 +1,6 @@
 import { formatBytes } from "./dashboard-format.js";
 import { api, postJson } from "./api.js";
-import { select, setBusy, setStatusPill, showMessage } from "./ui.js";
+import { select, setBusy, setStatusPill, setTechnicalValue, showMessage } from "./ui.js";
 import { t } from "./i18n.js";
 import { getSlice, subscribe } from "./state.js";
 import { refreshWireGuardState } from "./lifecycle.js";
@@ -26,8 +26,8 @@ function renderStatus(status) {
   const peer = status.peers?.[0] || {};
   setStatusPill(state, t("dashboard.connected", {}, "Connected"), "success");
   message.textContent = t("dashboard.wireguard_active", {}, "The router tunnel is active.");
-  select("#management-wireguard-client").textContent = status.client || "router";
-  select("#management-wireguard-endpoint").textContent = peer.endpoint || "—";
+  setTechnicalValue(select("#management-wireguard-client"), status.client || "router");
+  setTechnicalValue(select("#management-wireguard-endpoint"), peer.endpoint);
   select("#management-wireguard-received").textContent = formatBytes(peer.received_bytes);
   select("#management-wireguard-sent").textContent = formatBytes(peer.sent_bytes);
   details.hidden = false;

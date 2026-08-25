@@ -82,6 +82,7 @@ from exitlane.services import wireguard as wireguard_service
 from exitlane.services.credentials import CredentialError, change_password
 from exitlane.services.dashboard import DashboardResponse, build_dashboard, system_status
 from exitlane.services.diagnostics import run as diagnostics
+from exitlane.services.timezone import TimezoneOperationError
 from exitlane.services.vpn_selection import (
     QUICK_COUNTRIES,
     country_summary,
@@ -94,7 +95,9 @@ from exitlane.services.vpn_selection import (
 )
 from exitlane.settings import (
     SettingsUpdate,
+    TimezoneUpdatePersistenceError,
     current_general_settings,
+    reconcile_timezone,
     settings_response,
     update_settings,
 )
@@ -273,6 +276,20 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     validate_config()
     init()
     auth_security.ensure_master_key()
+    try:
+        timezone_change = await reconcile_timezone()
+    except TimezoneOperationError as error:
+        logger.error("Timezone startup reconciliation failed: %s", error.code)
+        record_event("settings.timezone_change_failed", metadata={"reason": error.code})
+    else:
+        if timezone_change and timezone_change.changed:
+            record_event(
+                "settings.timezone_reconciled",
+                metadata={
+                    "from_timezone": timezone_change.previous,
+                    "to_timezone": timezone_change.current,
+                },
+            )
     database = DB.resolve()
     if database not in _system_started_databases:
         record_event("system.started")
@@ -584,7 +601,32 @@ async def get_settings() -> dict:
 async def put_settings(req: SettingsUpdate, request: Request) -> dict:
     before = current_general_settings().model_dump()
     try:
-        result = update_settings(req)
+        result = await update_settings(req)
+    except TimezoneUpdatePersistenceError as error:
+        record_event(
+            "settings.timezone_change_failed",
+            actor=request.state.user,
+            metadata={"reason": "settings_storage_failed"},
+        )
+        if error.rollback_performed:
+            record_event(
+                "settings.timezone_rolled_back",
+                actor=request.state.user,
+            )
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "settings_storage_failed", "field": "timezone"},
+        ) from error
+    except TimezoneOperationError as error:
+        record_event(
+            "settings.timezone_change_failed",
+            actor=request.state.user,
+            metadata={"reason": error.code},
+        )
+        raise HTTPException(
+            status_code=503,
+            detail={"code": error.code, "field": "timezone"},
+        ) from error
     except SettingsStorageError as error:
         raise HTTPException(
             status_code=503, detail="Settings storage is temporarily unavailable"
@@ -593,6 +635,15 @@ async def put_settings(req: SettingsUpdate, request: Request) -> dict:
     changed = [field for field in req.general.model_fields_set if before[field] != after[field]]
     if changed:
         record_event("settings.updated", actor=request.state.user, metadata={"fields": changed})
+    if "timezone" in changed:
+        record_event(
+            "settings.timezone_changed",
+            actor=request.state.user,
+            metadata={
+                "from_timezone": before["timezone"],
+                "to_timezone": after["timezone"],
+            },
+        )
     return result
 
 

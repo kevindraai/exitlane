@@ -4,6 +4,7 @@ import { refreshWireGuardState } from "./lifecycle.js";
 import {
   select,
   setStatusPill,
+  setTechnicalValue,
   showMessage,
 } from "./ui.js";
 
@@ -200,11 +201,9 @@ function renderWireGuardStatus(status) {
     "The router has connected successfully.",
   );
 
-  select("#wireguard-status-client").textContent =
-    status.client || "router";
+  setTechnicalValue(select("#wireguard-status-client"), status.client || "router");
 
-  select("#wireguard-status-endpoint").textContent =
-    peer.endpoint || "—";
+  setTechnicalValue(select("#wireguard-status-endpoint"), peer.endpoint);
 
   select("#wireguard-status-received").textContent =
     formatBytes(peer.received_bytes);
