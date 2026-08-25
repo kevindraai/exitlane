@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import platform
 import socket
@@ -15,6 +16,7 @@ TIMEZONE_KEY = "timezone"
 POLLING_INTERVAL_KEY = "provider_refresh_interval_seconds"
 REPOSITORY_URL = "https://github.com/kevindraai/exitlane"
 VALID_TIMEZONES = timezone_service.VALID_TIMEZONES
+_SETTINGS_UPDATE_LOCK = asyncio.Lock()
 
 
 class TimezoneUpdatePersistenceError(RuntimeError):
@@ -181,42 +183,44 @@ def settings_response() -> dict:
 
 
 async def update_settings(update: SettingsUpdate) -> dict:
-    current = current_general_settings().model_dump()
-    changes = update.general.model_dump(exclude_unset=True)
-    validated = GeneralSettings(**(current | changes))
-    keys = {
-        "timezone": TIMEZONE_KEY,
-        "provider_refresh_interval_seconds": POLLING_INTERVAL_KEY,
-    }
-    timezone_change = None
-    if "timezone" in changes:
-        timezone_change = await timezone_service.set_system_timezone(validated.timezone)
-    try:
-        set_settings({keys[field]: getattr(validated, field) for field in changes})
-    except SettingsStorageError:
-        if "timezone" not in changes:
-            raise
-        rollback_performed = bool(timezone_change and timezone_change.changed)
-        if rollback_performed:
-            try:
-                await timezone_service.set_system_timezone(timezone_change.previous)
-            except timezone_service.TimezoneOperationError as error:
-                raise timezone_service.TimezoneOperationError(
-                    "system_timezone_rollback_failed"
-                ) from error
-        raise TimezoneUpdatePersistenceError(rollback_performed=rollback_performed) from None
-    return settings_response()
+    async with _SETTINGS_UPDATE_LOCK:
+        current = current_general_settings().model_dump()
+        changes = update.general.model_dump(exclude_unset=True)
+        validated = GeneralSettings(**(current | changes))
+        keys = {
+            "timezone": TIMEZONE_KEY,
+            "provider_refresh_interval_seconds": POLLING_INTERVAL_KEY,
+        }
+        timezone_change = None
+        if "timezone" in changes:
+            timezone_change = await timezone_service.set_system_timezone(validated.timezone)
+        try:
+            set_settings({keys[field]: getattr(validated, field) for field in changes})
+        except SettingsStorageError:
+            if "timezone" not in changes:
+                raise
+            rollback_performed = bool(timezone_change and timezone_change.changed)
+            if rollback_performed:
+                try:
+                    await timezone_service.set_system_timezone(timezone_change.previous)
+                except timezone_service.TimezoneOperationError as error:
+                    raise timezone_service.TimezoneOperationError(
+                        "system_timezone_rollback_failed"
+                    ) from error
+            raise TimezoneUpdatePersistenceError(rollback_performed=rollback_performed) from None
+        return settings_response()
 
 
 async def reconcile_timezone() -> timezone_service.TimezoneChange | None:
-    status = timezone_consistency()
-    if not status["configured"]:
-        return None
-    if status["consistent"]:
-        return None
-    if status["error"] != "timezone_mismatch":
-        raise timezone_service.TimezoneOperationError(str(status["error"]))
-    configured = validated_stored_value(TIMEZONE_KEY, None, "timezone")
-    if not isinstance(configured, str):
-        raise timezone_service.TimezoneOperationError("invalid_stored_timezone")
-    return await timezone_service.set_system_timezone(configured)
+    async with _SETTINGS_UPDATE_LOCK:
+        status = timezone_consistency()
+        if not status["configured"]:
+            return None
+        if status["consistent"]:
+            return None
+        if status["error"] != "timezone_mismatch":
+            raise timezone_service.TimezoneOperationError(str(status["error"]))
+        configured = validated_stored_value(TIMEZONE_KEY, None, "timezone")
+        if not isinstance(configured, str):
+            raise timezone_service.TimezoneOperationError("invalid_stored_timezone")
+        return await timezone_service.set_system_timezone(configured)

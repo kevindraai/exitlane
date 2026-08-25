@@ -11,6 +11,7 @@ from exitlane.services import timezone as timezone_service
 
 PASSWORD = "correct horse battery staple"
 STATIC_DIR = Path(__file__).parents[1] / "exitlane" / "static"
+REAL_SET_SYSTEM_TIMEZONE = timezone_service.set_system_timezone
 
 
 @pytest.fixture
@@ -382,6 +383,52 @@ def test_storage_failure_rolls_system_timezone_back_without_partial_settings(cli
     assert client.app.state.test_timezone_state["value"] == "Europe/Amsterdam"
     assert core.setting(settings.TIMEZONE_KEY, None) is None
     assert core.setting(settings.POLLING_INTERVAL_KEY, None) is None
+
+
+def test_concurrent_timezone_updates_serialize_native_and_database_transaction(client, monkeypatch):
+    timezone_state = client.app.state.test_timezone_state
+    command_calls = []
+
+    async def scenario():
+        first_command_started = asyncio.Event()
+        release_first_command = asyncio.Event()
+        monkeypatch.setattr(settings, "_SETTINGS_UPDATE_LOCK", asyncio.Lock())
+
+        async def command(*arguments, **_options):
+            requested = arguments[-1]
+            command_calls.append(requested)
+            if requested == "Europe/London":
+                first_command_started.set()
+                await release_first_command.wait()
+            timezone_state["value"] = requested
+            return 0, "", ""
+
+        async def set_timezone(value):
+            return await REAL_SET_SYSTEM_TIMEZONE(
+                value,
+                command_runner=command,
+                timezone_reader=lambda: timezone_state["value"],
+            )
+
+        monkeypatch.setattr(timezone_service, "set_system_timezone", set_timezone)
+        london = asyncio.create_task(
+            settings.update_settings(settings.SettingsUpdate(general={"timezone": "Europe/London"}))
+        )
+        await first_command_started.wait()
+        paris = asyncio.create_task(
+            settings.update_settings(settings.SettingsUpdate(general={"timezone": "Europe/Paris"}))
+        )
+        await asyncio.sleep(0)
+        assert command_calls == ["Europe/London"]
+        release_first_command.set()
+        await asyncio.gather(london, paris)
+
+    asyncio.run(scenario())
+
+    assert command_calls == ["Europe/London", "Europe/Paris"]
+    assert timezone_state["value"] == "Europe/Paris"
+    assert core.setting(settings.TIMEZONE_KEY, None) == "Europe/Paris"
+    assert settings.timezone_consistency()["consistent"] is True
 
 
 def test_startup_reconciliation_converges_valid_explicit_setting(client):

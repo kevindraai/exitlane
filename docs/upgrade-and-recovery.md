@@ -1,7 +1,7 @@
 # Upgrade and recovery
 
-ExitLane supports an in-place Debian appliance upgrade from `0.2.0-beta.4` to
-`0.2.0-beta.5`. Run the installer from a trusted, reviewed checkout
+ExitLane supports an in-place Debian appliance upgrade from `0.2.0-beta.5` to
+`0.2.0-rc.1`. Run the installer from a trusted, reviewed checkout
 of the target release:
 
 ```bash
@@ -60,7 +60,7 @@ sudo ls -ld /var/lib/exitlane/recovery/pre-upgrade.*
 Do not delete the most recent recovery directory until login, MFA, WireGuard,
 reverse proxy, killswitch, Activity, and provider status have been validated.
 The recovery directory is host-bound; for disaster recovery use an encrypted
-`.elb` backup on a clean beta installation.
+`.elb` backup on a clean supported installation.
 
 ## Schema compatibility
 
