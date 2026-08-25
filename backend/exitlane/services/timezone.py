@@ -84,5 +84,16 @@ async def set_system_timezone(
 
     confirmed = timezone_reader()
     if confirmed != timezone:
+        try:
+            rollback_code, _rollback_output, _rollback_error = await command_runner(
+                TIMEDATECTL,
+                "set-timezone",
+                previous,
+                timeout=30,
+            )
+        except OSError as error:
+            raise TimezoneOperationError("system_timezone_rollback_failed") from error
+        if rollback_code != 0 or timezone_reader() != previous:
+            raise TimezoneOperationError("system_timezone_rollback_failed")
         raise TimezoneOperationError("system_timezone_verification_failed")
     return TimezoneChange(previous=previous, current=confirmed, changed=True)

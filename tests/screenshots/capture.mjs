@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 
 import { chromium } from "playwright";
 
@@ -15,6 +16,16 @@ const password = process.env.EXITLANE_SCREENSHOT_PASSWORD;
 
 if (!password) {
   throw new Error("EXITLANE_SCREENSHOT_PASSWORD is required");
+}
+
+function gitOutput(arguments_) {
+  return execFileSync("git", arguments_, { cwd: repositoryRoot, encoding: "utf8" }).trim();
+}
+
+const sourceCommit = gitOutput(["rev-parse", "HEAD"]);
+const sourceTree = gitOutput(["rev-parse", `${sourceCommit}^{tree}`]);
+if (gitOutput(["status", "--porcelain", "--untracked-files=no"])) {
+  throw new Error("Screenshot capture requires a clean tracked worktree for exact provenance");
 }
 
 const profiles = Object.freeze({
@@ -144,6 +155,54 @@ async function assertSafeVisibleState(page, captureId) {
   if (sensitivePatterns.some((pattern) => pattern.test(state.visibleText))) {
     throw new Error(`${captureId}: visible content matched a sensitive-data marker`);
   }
+  const publicAddresses = (state.visibleText.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g) || [])
+    .filter(isPublishableAddressViolation);
+  if (publicAddresses.length) {
+    throw new Error(`${captureId}: visible content contains an unredacted public IP address`);
+  }
+}
+
+function isPublishableAddressViolation(value) {
+  const octets = value.split(".").map(Number);
+  if (octets.length !== 4 || octets.some((octet) => octet < 0 || octet > 255)) return false;
+  const [first, second, third] = octets;
+  if (first === 0 || first === 10 || first === 127 || first >= 224) return false;
+  if (first === 169 && second === 254) return false;
+  if (first === 172 && second >= 16 && second <= 31) return false;
+  if (first === 192 && second === 168) return false;
+  if (first === 100 && second >= 64 && second <= 127) return false;
+  if (first === 192 && second === 0 && third === 2) return false;
+  if (first === 198 && second === 51 && third === 100) return false;
+  if (first === 203 && second === 0 && third === 113) return false;
+  return true;
+}
+
+async function redactSensitiveRuntimeData(page, captureId) {
+  const selectors = {
+    dashboard: ["#dashboard-external-ip"],
+    vpn: ["#metric-ip"],
+  }[captureId] || [];
+  if (!selectors.length) return [];
+
+  const redactions = [];
+  for (const selector of selectors) {
+    const original = await page.locator(selector).getAttribute("aria-label")
+      || await page.locator(selector).innerText();
+    if (!isPublishableAddressViolation(original.trim())) {
+      throw new Error(`${captureId}: expected a live public IP before controlled redaction`);
+    }
+    await page.locator(selector).evaluate((element) => {
+      element.replaceChildren(document.createTextNode("Redacted"));
+      element.setAttribute("aria-label", "External IP redacted for publication");
+      element.setAttribute("title", "External IP redacted for publication");
+    });
+    redactions.push({
+      selector,
+      field: "external IP",
+      strategy: "visible value replaced after live runtime verification",
+    });
+  }
+  return redactions;
 }
 
 async function assertTechnicalValueLayout(page) {
@@ -210,6 +269,9 @@ const manifest = {
   generated_at: new Date().toISOString(),
   source_appliance: "172.16.130.81",
   source_version: null,
+  source_commit: sourceCommit,
+  source_tree: sourceTree,
+  source_worktree_clean: true,
   language: "en",
   appearance: "dark",
   network_mocking: false,
@@ -248,6 +310,7 @@ try {
     for (const capture of captures.filter((item) => item.files[profileName])) {
       await navigate(page, capture.route);
       await capture.wait(page);
+      const redactions = await redactSensitiveRuntimeData(page, capture.id);
       await page.waitForTimeout(1_000);
       await page.evaluate(() => document.activeElement?.blur());
       await assertSafeVisibleState(page, capture.id);
@@ -259,7 +322,8 @@ try {
         profile: profileName,
         file: path.relative(repositoryRoot, output),
         dimensions: `${profile.width}x${profile.height}`,
-        state: capture.state,
+        state: redactions.length ? "live-runtime-controlled-redaction" : capture.state,
+        redactions,
         sensitive_ui: capture.id === "wireguard" ? "configuration and QR kept closed" : "not present",
       });
     }

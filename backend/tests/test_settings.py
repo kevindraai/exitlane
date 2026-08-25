@@ -127,6 +127,70 @@ def test_timezone_service_maps_unavailable_native_command_to_stable_failure():
         )
 
 
+def test_timezone_service_rolls_back_mutation_when_verification_fails():
+    observed = []
+    timezone_state = {"value": "Europe/Amsterdam"}
+
+    async def command(*arguments, **options):
+        observed.append((arguments, options))
+        requested_timezone = arguments[-1]
+        timezone_state["value"] = (
+            "Europe/Paris" if requested_timezone == "Europe/London" else requested_timezone
+        )
+        return 0, "", ""
+
+    with pytest.raises(
+        timezone_service.TimezoneOperationError,
+        match="system_timezone_verification_failed",
+    ):
+        asyncio.run(
+            timezone_service.set_system_timezone(
+                "Europe/London",
+                command_runner=command,
+                timezone_reader=lambda: timezone_state["value"],
+            )
+        )
+
+    assert observed == [
+        (
+            ("/usr/bin/timedatectl", "set-timezone", "Europe/London"),
+            {"timeout": 30},
+        ),
+        (
+            ("/usr/bin/timedatectl", "set-timezone", "Europe/Amsterdam"),
+            {"timeout": 30},
+        ),
+    ]
+    assert timezone_state["value"] == "Europe/Amsterdam"
+
+
+@pytest.mark.parametrize("rollback_result", [(1, "", "failed"), PermissionError("denied")])
+def test_timezone_service_reports_failed_verification_rollback(rollback_result):
+    reported_timezones = iter(["Europe/Amsterdam", "Europe/Paris"])
+    calls = 0
+
+    async def command(*_arguments, **_options):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return 0, "", ""
+        if isinstance(rollback_result, Exception):
+            raise rollback_result
+        return rollback_result
+
+    with pytest.raises(
+        timezone_service.TimezoneOperationError,
+        match="system_timezone_rollback_failed",
+    ):
+        asyncio.run(
+            timezone_service.set_system_timezone(
+                "Europe/London",
+                command_runner=command,
+                timezone_reader=lambda: next(reported_timezones),
+            )
+        )
+
+
 @pytest.mark.parametrize(
     "value",
     ["../../etc/passwd", "/etc/localtime", "Europe/Amsterdam;id", "Not/A_Zone"],

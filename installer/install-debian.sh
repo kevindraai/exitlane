@@ -165,6 +165,7 @@ snapshot_system_timezone() {
 restore_system_timezone() {
   local timezone_file="${RECOVERY_DIR}/system-timezone"
   local timezone=""
+  local restored_timezone=""
   [[ -f "${timezone_file}" ]] || return 0
   timezone="$(head -n 1 "${timezone_file}")"
   if [[ -z "${timezone}" ]] ||
@@ -174,6 +175,11 @@ restore_system_timezone() {
   fi
   if ! timedatectl set-timezone "${timezone}"; then
     warning "System timezone rollback failed; manual recovery is required"
+    return 1
+  fi
+  restored_timezone="$(timedatectl show --property=Timezone --value 2>/dev/null || true)"
+  if [[ "${restored_timezone}" != "${timezone}" ]]; then
+    warning "System timezone rollback could not be verified; manual recovery is required"
     return 1
   fi
 }
