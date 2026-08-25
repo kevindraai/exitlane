@@ -1,6 +1,7 @@
 {
-  "generated_at": "2026-08-25T18:56:58.742Z",
+  "generated_at": "2026-08-25T19:12:56.608Z",
   "source_appliance": "172.16.130.81",
+  "source_version": "0.2.0-rc.1",
   "language": "en",
   "appearance": "dark",
   "network_mocking": false,
@@ -88,10 +89,10 @@
       },
       "values": {
         "#dashboard-vpn-server": {
-          "text": "nl1076.nordvpn.com",
+          "text": "nl817.nordvpn.com",
           "lines": 1,
           "lineLengths": [
-            18
+            17
           ],
           "withinCard": true,
           "titleMatches": true
@@ -116,10 +117,10 @@
       },
       "values": {
         "#dashboard-vpn-server": {
-          "text": "nl1076.nordvpn.com",
+          "text": "nl817.nordvpn.com",
           "lines": 1,
           "lineLengths": [
-            18
+            17
           ],
           "withinCard": true,
           "titleMatches": true
@@ -144,10 +145,10 @@
       },
       "values": {
         "#dashboard-vpn-server": {
-          "text": "nl1076.nordvpn.com",
+          "text": "nl817.nordvpn.com",
           "lines": 1,
           "lineLengths": [
-            18
+            17
           ],
           "withinCard": true,
           "titleMatches": true
