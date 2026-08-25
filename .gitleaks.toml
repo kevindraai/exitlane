@@ -2,7 +2,3 @@ title = "Exitlane secret scanning"
 
 [extend]
 useDefault = true
-
-[[allowlists]]
-description = "IANA timezone fixture values are not credentials"
-stopwords = ["Europe/Amsterdam"]
