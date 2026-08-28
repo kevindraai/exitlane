@@ -1,5 +1,34 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Added Mullvad VPN as a managed Debian 13 provider with signed stable-repository installation,
+  safe stdin-only account-number authentication, relay selection, status, gateway defaults,
+  network facts, local artwork, and provider-specific diagnostics.
+- Added none/NordVPN/Mullvad/both first-run selection and post-install provider activation.
+
+### Changed
+
+- Made provider installation, authentication, country selection, latency, lifecycle, dashboard,
+  WireGuard forwarding, and killswitch integration provider-neutral while preserving NordVPN API
+  aliases and the backward-compatible NordVPN default.
+- Enforced one active commercial provider across connect, reconnect, and switch races; conflicting
+  externally connected tunnels now fail closed for the ExitLane killswitch.
+
+### Security
+
+- Fixed clean Debian installations to create the root-only service home required by the hardened
+  systemd mount namespace before starting ExitLane.
+- Keep Mullvad account numbers out of argv, logs, events, files, and responses; bounded mutable
+  input/output buffers are wiped after safe classification.
+- Pin and verify the official Mullvad stable APT signing key and `InRelease` metadata before
+  installing `mullvad-vpn` through a root-owned fixed systemd helper.
+- Suppress all Mullvad package-time service starts with systemd offline mode, permanently condition
+  its early-boot firewall initializer, and gate daemon reboot startup on a verified disconnected
+  gateway baseline with no stale provider firewall table.
+
 ## [0.2.0-rc.1] - 2026-08-25
 
 ### Fixed

@@ -24,8 +24,10 @@ available for an administrator to recover the configuration.
 
 An incomplete setup selects wizard mode. Only setup data and public configuration needed for the
 guided flow are loaded. The wizard owns the progression through system checks, administrator
-creation, provider choice, WireGuard setup, and completion. Provider choice is explicit: a provider
-may be authenticated during onboarding or deferred. Deferred mode keeps the normal host route as
+creation, provider choice, WireGuard setup, and completion. Provider choice is an independent
+multi-select: none, NordVPN, Mullvad VPN, or both. Selected providers can be installed,
+authenticated, or individually skipped. One ready provider becomes active automatically; multiple
+ready providers require an explicit active choice. Deferred mode keeps the normal host route as
 egress for WireGuard clients and leaves provider installation/authentication available in the
 authenticated VPN management view after setup.
 

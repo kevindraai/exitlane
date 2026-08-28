@@ -5,11 +5,10 @@
           Stap 3
          </p>
          <h2 data-i18n="step3.title">
-          VPN-provider
+          VPN-providers
          </h2>
          <p data-i18n="step3.description">
-          NordVPN is de eerste providerimplementatie. Exitlane houdt de
-              onderliggende architectuur provideronafhankelijk.
+          Kies geen, één of meerdere VPN-providers. Je kunt providers ook later configureren.
          </p>
         </div>
         <span class="status-pill status-neutral" data-i18n="common.loading_status" id="provider-state">
@@ -17,35 +16,38 @@
         </span>
        </div>
        <div aria-label="VPN providers" class="provider-choice-list" id="wizard-provider-choices" role="list"></div>
-       <section class="provider-card">
+       <section class="provider-card" id="wizard-provider-configuration">
         <div class="provider-header">
          <span aria-hidden="true" class="provider-logo" data-provider-logo="" id="wizard-provider-logo"></span>
          <div>
           <strong id="wizard-provider-name">
-           NordVPN
+           VPN-provider
           </strong>
           <p data-i18n="provider.not_checked" id="provider-description">
            Linux-client nog niet gecontroleerd.
          </p>
          </div>
         </div>
+        <div class="provider-card-actions">
+         <button class="button button-secondary" id="provider-skip" type="button">Deze provider overslaan</button>
+        </div>
         <div class="provider-install-start" id="provider-install-start">
-         <p data-i18n="provider.installation.intro">
-          ExitLane installeert de officiële NordVPN Linux-client en past de veilige gatewayinstellingen toe.
+         <p id="provider-install-intro">
+          ExitLane installeert de officiële Linux-client en past veilige gatewayinstellingen toe.
          </p>
-         <button class="button button-primary" data-i18n="provider.installation.start" id="provider-install" type="button">
-          NordVPN installeren
+         <button class="button button-primary" id="provider-install" type="button">
+          Provider installeren
          </button>
         </div>
         <details aria-expanded="false" class="long-task" hidden="" id="provider-install-disclosure">
          <summary>
           <span aria-hidden="true" class="provider-logo provider-logo--compact" data-provider-logo="" id="install-provider-logo"></span>
           <span aria-hidden="true" class="long-task-icon" data-status="active"></span>
-          <strong data-i18n="provider.installation.title" id="provider-install-summary">NordVPN installeren</strong>
+          <strong id="provider-install-summary">Provider installeren</strong>
           <span class="long-task-detail-label" data-i18n="provider.installation.hide_details" id="provider-install-detail-label">Details verbergen</span>
          </summary>
          <div class="long-task-content">
-          <ol aria-label="NordVPN installation progress" class="long-task-list" data-i18n-aria-label="provider.installation.progress_label" id="provider-install-steps"></ol>
+          <ol aria-label="Provider installation progress" class="long-task-list" id="provider-install-steps"></ol>
           <p class="long-task-guidance" data-i18n="provider.installation.wait_hint">
            Dit kan op een schone installatie enkele minuten duren. Je hoeft niets te doen.
           </p>
@@ -60,13 +62,14 @@
          </div>
         </details>
         <section class="login-methods" id="provider-login-methods">
+         <div id="provider-auth-nordvpn">
          <div class="login-method-heading">
           <span aria-hidden="true" class="provider-logo" data-provider-logo="" id="provider-login-logo"></span>
           <div>
-           <strong data-i18n="provider.sign_in_title">
+           <strong id="provider-sign-in-title">
             Aanmelden bij NordVPN
            </strong>
-           <p data-i18n="provider.sign_in_description">
+           <p id="provider-sign-in-description">
             Kies een aanmeldmethode. Voor een permanente gateway is een
         access token het eenvoudigst.
            </p>
@@ -200,6 +203,35 @@
            </button>
           </form>
          </section>
+         </div>
+         <section hidden="" id="provider-auth-mullvad">
+          <div class="login-method-heading">
+           <span aria-hidden="true" class="provider-logo" data-provider-logo=""></span>
+           <div>
+            <strong data-i18n="provider.mullvad.sign_in_title">Aanmelden bij Mullvad</strong>
+            <p data-i18n="provider.mullvad.sign_in_description">Voer het accountnummer van je Mullvad-account in.</p>
+           </div>
+          </div>
+          <div class="notice-card">
+           <strong data-i18n="provider.mullvad.account_number_title">Mullvad-accountnummer</strong>
+           <p data-i18n="provider.mullvad.account_number_help">ExitLane gebruikt het accountnummer alleen om de lokale Mullvad-client aan te melden en bewaart het niet zelf.</p>
+           <p data-i18n="provider.mullvad.device_limit">Een Mullvad-account ondersteunt maximaal vijf geregistreerde apparaten.</p>
+          </div>
+          <a class="button button-secondary" data-i18n="provider.mullvad.open_account" href="https://mullvad.net/account/" rel="noopener noreferrer" target="_blank">Mullvad-account beheren &nearrow;</a>
+          <form class="form-card form-compact" id="mullvad-form" method="post">
+           <label>
+            <span data-i18n="provider.mullvad.account_number">Mullvad-accountnummer</span>
+            <input autocomplete="off" id="mullvad-account-number" inputmode="numeric" maxlength="19" minlength="16" pattern="[0-9 ]{16,19}" placeholder="1234 1234 1234 1234" required="" type="password"/>
+            <small data-i18n="provider.mullvad.account_number_privacy">Het accountnummer wordt na versturen direct uit dit formulier verwijderd.</small>
+           </label>
+           <button class="button button-primary" data-i18n="provider.mullvad.sign_in" type="submit">Aanmelden bij Mullvad</button>
+          </form>
+         </section>
+        </section>
+        <section class="notice-card" hidden="" id="wizard-active-provider-selection">
+         <strong data-i18n="step3.active_provider_title">Kies de actieve provider</strong>
+         <p data-i18n="step3.active_provider_description">Beide providers zijn aangemeld. Kies welke provider de VPN-egress beheert.</p>
+         <div class="provider-choice-list" id="wizard-active-provider-choices"></div>
         </section>
         <section class="notice-card provider-defer-card">
          <div id="provider-defer-choice">

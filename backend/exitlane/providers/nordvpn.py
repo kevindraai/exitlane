@@ -269,6 +269,7 @@ def _installation_error_code(unit: dict[str, str]) -> str:
         "68": "provider_installation_validation_failed",
         "69": "provider_readiness_timeout",
         "77": "insufficient_privileges",
+        "75": "package_operation_in_progress",
     }.get(unit.get("ExecMainStatus", ""), "installation_failed")
 
 
@@ -301,6 +302,7 @@ INSTALL_ERROR_CODES = frozenset(
         "installation_start_failed",
         "installation_failed",
         "insufficient_privileges",
+        "package_operation_in_progress",
     }
 )
 INSTALL_HELPER_ERROR_MAP = {
@@ -314,6 +316,7 @@ INSTALL_HELPER_ERROR_MAP = {
     "provider_readiness_timeout": "provider_readiness_timeout",
     "unsupported_platform": "unsupported_platform",
     "insufficient_privileges": "insufficient_privileges",
+    "package_operation_in_progress": "package_operation_in_progress",
 }
 GATEWAY_SETTINGS = (
     ("technology", "NordLynx", "Technology", "nordlynx"),
@@ -447,6 +450,9 @@ def _supports_managed_installation() -> bool:
 class NordVPN(Provider):
     id = "nordvpn"
     display_name = "NordVPN"
+    authentication_error_codes = TOKEN_ERROR_CODES
+    sign_out_error_codes = SIGN_OUT_ERROR_CODES
+    supports_timeout_recovery = True
     metadata = ProviderMetadata(
         id=id,
         display_name=display_name,
@@ -799,7 +805,13 @@ class NordVPN(Provider):
             supports_ipv4=connected,
             supports_ipv6=False,
             protected_egress=connected and interface is not None,
-            reason="tunnel_unavailable" if not connected else "tunnel_interface_unknown",
+            reason=(
+                "tunnel_available"
+                if connected and interface is not None
+                else "tunnel_unavailable"
+                if not connected
+                else "tunnel_interface_unknown"
+            ),
         )
 
     async def status(self, *, timeout: float = 8):
@@ -884,6 +896,10 @@ class NordVPN(Provider):
         else:
             connection_state = "unknown"
         connected = connection_state == "connected"
+        hostname = values.get("Hostname", values.get("Server", ""))
+        hostname_match = SERVER_HOSTNAME_PATTERN.fullmatch(hostname.casefold())
+        hostname_code = hostname_match.group(1)[:2].upper() if hostname_match else None
+        country_code = {"UK": "GB"}.get(hostname_code, hostname_code)
         if authentication_error:
             status_error = authentication_error
         elif status_rc == 124:
@@ -904,11 +920,12 @@ class NordVPN(Provider):
             "state": values.get("Status", "error").lower() if status_rc == 0 else "error",
             "error_code": status_error,
             "country": values.get("Country", ""),
+            "country_code": country_code,
             "city": values.get("City", ""),
-            "server": values.get(
-                "Hostname",
-                values.get("Server", ""),
-            ),
+            "server": hostname,
+            "tunnel_interface": "nordlynx" if connected and "nordlynx" in values.get(
+                "Current technology", ""
+            ).casefold() else None,
             "external_ip": values.get("IP", ""),
             "technology": values.get(
                 "Current technology",
@@ -1155,9 +1172,15 @@ class NordVPN(Provider):
             ),
         }
 
-    async def connect_country(self, country_code: str, *, timeout: float = 40) -> dict:
+    async def connect_country(
+        self,
+        country_code: str,
+        *,
+        server_hostname: str | None = None,
+        timeout: float = 40,
+    ) -> dict:
         try:
-            target = build_connect_target(country_code)
+            target = build_connect_target(country_code, server_hostname)
         except ValueError:
             return {
                 "ok": False,

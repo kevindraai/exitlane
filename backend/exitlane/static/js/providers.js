@@ -174,6 +174,17 @@ function providerMetadata() {
   return getSlice("providers").data?.items?.find((item) => item.id === id) || null;
 }
 
+function providerCredentialErrorMessage(code, metadata = providerMetadata()) {
+  const prefix = metadata?.authentication_method === "account_number"
+    ? "provider.mullvad.errors"
+    : "provider.authentication.errors";
+  return t(
+    `${prefix}.${code}`,
+    {},
+    t("provider.authentication.errors.provider_error", {}, "The provider could not complete the action."),
+  );
+}
+
 const KNOWN_OVERVIEW_STATES = new Set([
   "connected",
   "disconnected",
@@ -245,6 +256,10 @@ export function providerOverviewView(provider = {}) {
     fields,
     observedAt: status.observed_at || null,
     canOpen: Boolean(provider.id) && provider.enabled !== false,
+    canActivate: provider.active !== true
+      && management.installationState === "available"
+      && management.authenticationState === "signed_in"
+      && status.available === true,
   };
 }
 
@@ -307,7 +322,11 @@ function createOverviewCard(provider) {
   const badgeText = document.createElement("span");
   badgeText.textContent = overviewStatusLabel(view.connectionDisplayState);
   badge.append(badgeIcon, badgeText);
-  header.append(icon, identity, badge);
+  const activeBadge = document.createElement("span");
+  activeBadge.className = "provider-active-badge status-pill status-success";
+  activeBadge.textContent = t("provider.active", {}, "Active");
+  activeBadge.hidden = !view.active;
+  header.append(icon, identity, activeBadge, badge);
 
   const authentication = document.createElement("div");
   authentication.className = "provider-overview-authentication";
@@ -366,7 +385,17 @@ function createOverviewCard(provider) {
   );
   action.disabled = !view.canOpen;
   action.addEventListener("click", () => showProviderView(view.id));
-  footer.append(action);
+  const activate = document.createElement("button");
+  activate.type = "button";
+  activate.className = "button button-secondary";
+  activate.textContent = t(
+    "provider.make_active",
+    { provider: view.displayName },
+    `Make ${view.displayName} active`,
+  );
+  activate.hidden = !view.canActivate;
+  activate.addEventListener("click", () => activateProvider(view.id, activate));
+  footer.append(action, activate);
   card.append(header, authentication, grid, footer);
   return card;
 }
@@ -416,6 +445,7 @@ export function renderProviderManagement(status = {}) {
   select("#vpn-provider-title").textContent = name;
   select("#vpn-provider-description").textContent = metadata.description || "";
   const view = providerManagementView(status);
+  const active = metadata.active === true && status.is_active !== false;
   const signedIn = view.authenticationState === "signed_in";
   const signedOut = view.authenticationState === "signed_out";
   setStatusPill(
@@ -424,8 +454,49 @@ export function renderProviderManagement(status = {}) {
     signedIn ? "success" : signedOut ? "neutral" : "danger",
   );
   select("#provider-status-message").textContent = providerStatusText(view, name);
+  setStatusPill(
+    select("#provider-active-state"),
+    active
+      ? t("provider.active", {}, "Active")
+      : t("provider.inactive", {}, "Inactive"),
+    active ? "success" : "neutral",
+  );
+  const activate = select("#provider-activate");
+  activate.hidden = active || !(signedIn && status.available === true);
+  activate.disabled = signingOut;
+  activate.textContent = t(
+    "provider.make_active",
+    { provider: name },
+    `Make ${name} active`,
+  );
   select("#provider-signed-in").hidden = !signedIn;
-  select("#provider-token-form").hidden = !(signedOut && view.canSignIn);
+  select("#provider-signed-in-limitation").textContent = t(
+    "provider.management.signed_in_limitation",
+    { provider: name },
+    `${name} is signed in. End the current session before supplying another credential.`,
+  );
+  const credentialForm = select("#provider-credential-form");
+  credentialForm.hidden = !(signedOut && view.canSignIn);
+  const accountNumber = metadata.authentication_method === "account_number";
+  const credential = select("#provider-credential");
+  select("#provider-credential-label").textContent = accountNumber
+    ? t("provider.mullvad.account_number", {}, "Mullvad account number")
+    : t("provider.management.token", {}, "Access token");
+  select("#provider-credential-hint").textContent = accountNumber
+    ? t("provider.mullvad.account_number_help", {}, "ExitLane does not store this account number.")
+    : t("provider.management.token_hidden", {}, "The token is used only for local provider sign-in and is never displayed.");
+  select("#provider-credential-save").textContent = accountNumber
+    ? t("provider.mullvad.sign_in", {}, "Sign in to Mullvad")
+    : t("provider.management.sign_in", {}, "Sign in with token");
+  credential.inputMode = accountNumber ? "numeric" : "text";
+  credential.minLength = accountNumber ? 16 : 20;
+  credential.maxLength = accountNumber ? 19 : 512;
+  if (accountNumber) {
+    credential.setAttribute("pattern", "[0-9 ]{16,19}");
+  } else {
+    credential.removeAttribute("pattern");
+  }
+  credential.placeholder = accountNumber ? "1234 1234 1234 1234" : "";
   select("#provider-unavailable").hidden = signedIn || signedOut;
   const installation = select("#provider-management-installation");
   const installButton = select("#provider-management-install");
@@ -460,6 +531,7 @@ function managementInstallationError(error) {
 }
 
 function renderManagementInstallationProgress(status) {
+  const providerName = providerMetadata()?.display_name || "VPN provider";
   const progress = select("#provider-management-install-status");
   const inProgress = status.installation_in_progress === true;
   progress.hidden = false;
@@ -470,7 +542,11 @@ function renderManagementInstallationProgress(status) {
       t("provider.installation.status.installing", {}, "Installing"),
     )
     : status.phase === "completed" || status.state === "available"
-      ? t("provider.installation.success", {}, "The VPN provider is installed and available.")
+      ? t(
+        "provider.installation.success",
+        { provider: providerName },
+        "The VPN provider is installed and available.",
+      )
       : managementInstallationError({ payload: { detail: status.error_code } });
 }
 
@@ -499,8 +575,14 @@ async function pollManagementProviderInstallation(providerId) {
     providerInstallationActive = false;
     setBusy(select("#provider-management-install"), false);
     if (status.phase === "completed" || status.state === "available") {
-      showMessage(t("provider.installation.success", {}, "The VPN provider is installed and available."), "success");
-      await Promise.all([loadProviders(), refreshProviderState({ deduplicate: false })]);
+      const providerName = providerMetadata()?.display_name || "VPN provider";
+      showMessage(t(
+        "provider.installation.success",
+        { provider: providerName },
+        "The VPN provider is installed and available.",
+      ), "success");
+      await loadProviders();
+      await refreshProviderState({ deduplicate: false });
       return;
     }
 
@@ -542,7 +624,7 @@ async function installProviderFromManagement() {
   if (!providerId || !metadata) return;
   if (!window.confirm(t(
     "provider.installation.confirm",
-    {},
+    { provider: metadata.display_name },
     "Install this VPN provider on this Debian 13 system?",
   ))) return;
 
@@ -610,22 +692,52 @@ function renderProviderNavigation(slice = getSlice("providers")) {
 async function authenticateProvider(event) {
   event.preventDefault();
   const providerId = activeProviderId();
-  const field = select("#provider-token");
-  const button = select("#provider-token-save");
-  clearInlineError("#provider-token-error");
+  const field = select("#provider-credential");
+  const button = select("#provider-credential-save");
+  clearInlineError("#provider-credential-error");
   setBusy(button, true, t("settings.vpn.updating", {}, "Validating…"));
   try {
-    await api(`/api/vpn/providers/${encodeURIComponent(providerId)}/authenticate`, {
+    const request = api(`/api/vpn/providers/${encodeURIComponent(providerId)}/authenticate`, {
       method: "POST",
-      body: JSON.stringify({ token: field.value }),
+      body: JSON.stringify({ credential: field.value }),
     });
-    await Promise.all([loadProviders(), refreshProviderState({ deduplicate: false })]);
-    showMessage(t("settings.vpn.updated", {}, "Provider signed in."), "success");
+    field.value = "";
+    await request;
+    await loadProviders();
+    await refreshProviderState({ deduplicate: false });
+    showMessage(t(
+      "provider.authentication.success",
+      { provider: providerMetadata()?.display_name || "VPN provider" },
+      "Provider signed in.",
+    ), "success");
   } catch (error) {
     const code = error.payload?.detail || error.code || "provider_error";
-    showInlineError(t(`settings.vpn.errors.${code}`, {}, code), "#provider-token-error");
+    showInlineError(providerCredentialErrorMessage(code), "#provider-credential-error");
   } finally {
     field.value = "";
+    setBusy(button, false);
+  }
+}
+
+async function activateProvider(providerId, button = select("#provider-activate")) {
+  if (!providerId) return;
+  setBusy(button, true, t("step3.activating_provider", {}, "Activating…"));
+  clearInlineError("#provider-management-error");
+  try {
+    await api(`/api/vpn/providers/${encodeURIComponent(providerId)}/activate`, {
+      method: "POST",
+    });
+    await loadProviders();
+    await refreshProviderState({ deduplicate: false });
+    showMessage(t(
+      "provider.activated",
+      { provider: providerMetadata()?.display_name || "VPN provider" },
+      "Active provider changed.",
+    ), "success");
+  } catch (error) {
+    const code = error.payload?.detail || error.code || "provider_switch_failed";
+    showInlineError(t(`provider.errors.${code}`, {}, code), "#provider-management-error");
+  } finally {
     setBusy(button, false);
   }
 }
@@ -644,7 +756,7 @@ async function signOutProvider() {
     showMessage(t("settings.vpn.signed_out", {}, "Provider session ended."), "success");
   } catch (error) {
     const code = error.payload?.detail || error.code || "provider_error";
-    showInlineError(t(`settings.vpn.errors.${code}`, {}, code), "#provider-sign-out-error");
+    showInlineError(providerCredentialErrorMessage(code), "#provider-sign-out-error");
   } finally {
     signingOut = false;
     setBusy(button, false);
@@ -665,7 +777,10 @@ export function initialiseProviders() {
       expanded ? "chevron-down" : "chevron-right",
     );
   });
-  select("#provider-token-form").addEventListener("submit", authenticateProvider);
+  select("#provider-credential-form").addEventListener("submit", authenticateProvider);
+  select("#provider-activate").addEventListener("click", () => (
+    activateProvider(activeProviderId())
+  ));
   select("#provider-end-session").addEventListener("click", () => {
     select("#provider-sign-out-dialog").showModal();
   });

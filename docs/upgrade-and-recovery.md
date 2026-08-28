@@ -25,7 +25,8 @@ The installer:
 5. creates a root-only recovery directory below
    `/var/lib/exitlane/recovery`;
 6. snapshots SQLite with its backup API and preserves the previous application,
-   config, defaults, ExitLane systemd units, and the validated Debian system timezone;
+   config, defaults, ExitLane systemd units, fixed provider-install helpers/units, and the validated
+   Debian system timezone;
 7. stops the application, installs the candidate, preserves operator defaults,
    reapplies permissions and units, and reloads systemd;
 8. starts the service and checks that systemd reports it active;
@@ -41,13 +42,20 @@ the application master key, SQLite data, and operator settings.
 ## Automatic rollback
 
 An error after the recovery snapshot stops the candidate, restores the previous
-code, database, configuration, defaults, and systemd units, reloads systemd, and
+code, database, configuration, defaults, systemd units, and provider-install helper/unit files,
+removes candidate-only managed files, reloads systemd, and
 attempts to restart the previous service. The snapshot is retained and its path
 is printed. Provider packages and host-wide provider state are outside the
 ExitLane ownership boundary and are not rolled back.
 The Debian timezone is the exception: it is part of the ExitLane settings contract and is restored
 from the root-only recovery snapshot before the previous service starts. A failed timezone restore
 is reported as requiring manual recovery rather than being hidden.
+
+The Mullvad daemon and early-boot drop-ins are exact recovery-snapshot paths as well. This preserves
+or removes ExitLane's package-time firewall suppression together with the candidate. The Mullvad
+package and provider-owned settings remain outside application rollback, but an ExitLane-managed
+package transaction is offline with respect to PID 1 and cannot write the durable daemon completion
+marker until the disconnected network baseline is proven.
 
 If automatic service recovery cannot complete, inspect:
 

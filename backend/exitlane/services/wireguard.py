@@ -16,7 +16,6 @@ from exitlane.config import (
     DEFAULT_WIREGUARD_KEEPALIVE,
     DEFAULT_WIREGUARD_PORT,
     DEFAULT_WIREGUARD_SUBNET,
-    DEFAULT_WIREGUARD_VPN_INTERFACE,
 )
 from exitlane.core import WG_DIR, command
 
@@ -58,6 +57,38 @@ def _restore(path: Path, content: str | None) -> None:
         path.unlink(missing_ok=True)
     else:
         _atomic_write(path, content)
+
+
+def _forwarding_rules(
+    interface: str,
+    subnet: str,
+    vpn_interface: str | None,
+) -> str:
+    if vpn_interface is not None:
+        return "\n".join(
+            (
+                f"PostUp = iptables -A FORWARD -i {interface} -o {vpn_interface} -j ACCEPT",
+                f"PostUp = iptables -A FORWARD -i {vpn_interface} -o {interface} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT",
+                f"PostUp = iptables -t nat -A POSTROUTING -o {vpn_interface} -j MASQUERADE",
+                f"PostDown = iptables -D FORWARD -i {interface} -o {vpn_interface} -j ACCEPT",
+                f"PostDown = iptables -D FORWARD -i {vpn_interface} -o {interface} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT",
+                f"PostDown = iptables -t nat -D POSTROUTING -o {vpn_interface} -j MASQUERADE",
+            )
+        )
+    # Routing decides whether the active path is direct, NordVPN, or Mullvad.
+    # Restrict NAT to this WireGuard subnet and never reflect traffic back into
+    # the ingress interface. The optional ExitLane nftables killswitch remains
+    # the fail-closed policy layer above these baseline forwarding rules.
+    return "\n".join(
+        (
+            f"PostUp = iptables -A FORWARD -i {interface} ! -o {interface} -j ACCEPT",
+            f"PostUp = iptables -A FORWARD ! -i {interface} -o {interface} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT",
+            f"PostUp = iptables -t nat -A POSTROUTING -s {subnet} ! -o {interface} -j MASQUERADE",
+            f"PostDown = iptables -D FORWARD -i {interface} ! -o {interface} -j ACCEPT",
+            f"PostDown = iptables -D FORWARD ! -i {interface} -o {interface} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT",
+            f"PostDown = iptables -t nat -D POSTROUTING -s {subnet} ! -o {interface} -j MASQUERADE",
+        )
+    )
 
 
 def _value(configuration: str, key: str, *, section: str) -> str | None:
@@ -141,7 +172,7 @@ async def parameters_from_current(interface: str, client: str) -> dict:
         "port": port,
         "interface": interface,
         "client": client,
-        "vpn_interface": vpn_match.group(1) if vpn_match else DEFAULT_WIREGUARD_VPN_INTERFACE,
+        "vpn_interface": vpn_match.group(1) if vpn_match else None,
         "allowed_ips": allowed_ips,
         "keepalive": keepalive_value,
     }
@@ -177,7 +208,7 @@ async def create(
     port: int = DEFAULT_WIREGUARD_PORT,
     interface: str = DEFAULT_WIREGUARD_INTERFACE,
     client: str = DEFAULT_WIREGUARD_CLIENT,
-    vpn_interface: str = DEFAULT_WIREGUARD_VPN_INTERFACE,
+    vpn_interface: str | None = None,
     allowed_ips: str = DEFAULT_WIREGUARD_ALLOWED_IPS,
     keepalive: int = DEFAULT_WIREGUARD_KEEPALIVE,
 ) -> dict:
@@ -206,9 +237,8 @@ async def create(
     ):
         raise ValueError("De WireGuard-clientnaam is ongeldig.")
 
-    if not re.fullmatch(
-        r"[A-Za-z0-9_.-]{1,15}",
-        vpn_interface,
+    if vpn_interface is not None and not re.fullmatch(
+        r"[A-Za-z0-9_.-]{1,15}", vpn_interface
     ):
         raise ValueError("De VPN-interfacenaam is ongeldig.")
 
@@ -229,17 +259,13 @@ async def create(
     server_address = f"{hosts[0]}/{network.prefixlen}"
     client_address = f"{hosts[1]}/32"
 
+    forwarding_rules = _forwarding_rules(interface, str(network), vpn_interface)
     server_config = f"""[Interface]
 Address = {server_address}
 ListenPort = {port}
 PrivateKey = {server_private_key}
 PostUp = sysctl -w net.ipv4.ip_forward=1
-PostUp = iptables -A FORWARD -i {interface} -o {vpn_interface} -j ACCEPT
-PostUp = iptables -A FORWARD -i {vpn_interface} -o {interface} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-PostUp = iptables -t nat -A POSTROUTING -o {vpn_interface} -j MASQUERADE
-PostDown = iptables -D FORWARD -i {interface} -o {vpn_interface} -j ACCEPT
-PostDown = iptables -D FORWARD -i {vpn_interface} -o {interface} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-PostDown = iptables -t nat -D POSTROUTING -o {vpn_interface} -j MASQUERADE
+{forwarding_rules}
 
 [Peer]
 PublicKey = {client_public_key}
@@ -289,7 +315,7 @@ async def provision(
     port: int = DEFAULT_WIREGUARD_PORT,
     interface: str = DEFAULT_WIREGUARD_INTERFACE,
     client: str = DEFAULT_WIREGUARD_CLIENT,
-    vpn_interface: str = DEFAULT_WIREGUARD_VPN_INTERFACE,
+    vpn_interface: str | None = None,
     allowed_ips: str = DEFAULT_WIREGUARD_ALLOWED_IPS,
     keepalive: int = DEFAULT_WIREGUARD_KEEPALIVE,
 ) -> dict:
@@ -329,3 +355,44 @@ async def provision(
             with suppress(Exception):
                 await activate(interface)
         raise WireGuardConfigurationError("wireguard_reload_failed") from error
+
+
+async def migrate_legacy_provider_egress(
+    interface: str,
+    client: str,
+    *,
+    activate: Callable[[str], Awaitable[None]],
+) -> bool:
+    """Replace an exact ExitLane legacy provider-bound rule block in place."""
+    server_path = _configuration_path(interface)
+    if not server_path.exists() or not _configuration_path(client).exists():
+        return False
+    try:
+        original = server_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        raise WireGuardConfigurationError("wireguard_configuration_invalid") from error
+    vpn_match = re.search(
+        rf"^PostUp\s*= iptables -A FORWARD -i {re.escape(interface)} -o ([A-Za-z0-9_.-]{{1,15}}) -j ACCEPT$",
+        original,
+        re.MULTILINE,
+    )
+    address = _value(original, "Address", section="Interface")
+    if vpn_match is None or address is None:
+        return False
+    try:
+        subnet = str(ipaddress.ip_interface(address).network)
+    except ValueError as error:
+        raise WireGuardConfigurationError("wireguard_configuration_invalid") from error
+    legacy = _forwarding_rules(interface, subnet, vpn_match.group(1))
+    if original.count(legacy) != 1:
+        return False
+    migrated = original.replace(legacy, _forwarding_rules(interface, subnet, None), 1)
+    _atomic_write(server_path, migrated)
+    try:
+        await activate(interface)
+    except Exception as error:
+        _atomic_write(server_path, original)
+        with suppress(Exception):
+            await activate(interface)
+        raise WireGuardConfigurationError("wireguard_reload_failed") from error
+    return True

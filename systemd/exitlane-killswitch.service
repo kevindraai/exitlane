@@ -2,7 +2,7 @@
 Description=ExitLane fail-closed client traffic killswitch
 DefaultDependencies=no
 After=local-fs.target
-Before=network-pre.target network.target network-online.target exitlane.service wg-quick@wg0.service nordvpnd.service
+Before=network-pre.target network.target network-online.target exitlane.service wg-quick@wg0.service nordvpnd.service mullvad-daemon.service
 Wants=network-pre.target
 
 [Service]

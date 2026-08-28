@@ -16,7 +16,10 @@ PROVIDER = "nordvpn"
 CACHE_TTL = timedelta(minutes=5)
 QUICK_COUNTRIES = ("NL", "BE", "DE", "FR", "GB")
 NORDVPN_SERVER_PATTERN = re.compile(r"^(?P<country>[a-z]{2})[0-9]+\.nordvpn\.com$")
-_active_server_measurements: dict[tuple[str, str], asyncio.Task[dict]] = {}
+SAFE_SERVER_PATTERN = re.compile(
+    r"^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$"
+)
+_active_server_measurements: dict[tuple[str, str, str], asyncio.Task[dict]] = {}
 COUNTRY_NAMES = {
     "AT": "Oostenrijk",
     "AU": "Australië",
@@ -112,11 +115,15 @@ def country_summary(
         "latency_measured_at": (best or newest or {}).get("measured_at"),
         "latency_status": (best or newest or {}).get("status", "unknown"),
         "is_connected": code == connected_code,
-        "is_recent": code == setting("vpn.last_country"),
+        "is_recent": code
+        == setting(
+            f"vpn.last_country.{provider_id}",
+            setting("vpn.last_country") if provider_id == PROVIDER else None,
+        ),
     }
 
 
-def server_latency(server: str | None) -> dict:
+def server_latency(server: str | None, *, provider_id: str = PROVIDER) -> dict:
     normalized = normalize_server_hostname(server)
     if not normalized:
         return {"latency_ms": None, "latency_measured_at": None}
@@ -127,7 +134,7 @@ def server_latency(server: str | None) -> dict:
                  AND lower(rtrim(trim(server), '.'))=?
                  AND measured_at>=?
                ORDER BY measured_at DESC LIMIT 1""",
-            (PROVIDER, normalized, (_now() - CACHE_TTL).isoformat()),
+            (provider_id, normalized, (_now() - CACHE_TTL).isoformat()),
         ).fetchone()
     return {
         "latency_ms": row[0] if row else None,
@@ -159,12 +166,16 @@ async def tcp_latency(hostname: str, *, attempts: int = 3, timeout: float = 1.5)
 async def _measure_active_server(
     hostname: str,
     *,
+    country_code: str,
+    provider_id: str,
+    endpoint: str,
     measurer: Callable[[str], Awaitable[dict]],
 ) -> dict:
-    match = NORDVPN_SERVER_PATTERN.fullmatch(hostname)
-    if not match:
+    if not SAFE_SERVER_PATTERN.fullmatch(hostname) or not re.fullmatch(
+        r"[A-Z]{2}", country_code
+    ):
         return {"latency_ms": None, "latency_measured_at": None}
-    result = await measurer(hostname)
+    result = await measurer(endpoint)
     measured_at = _now().isoformat()
     with sqlite3.connect(core.DB) as connection:
         connection.execute(
@@ -175,8 +186,8 @@ async def _measure_active_server(
                  country_code=excluded.country_code, latency_ms=excluded.latency_ms,
                  status=excluded.status, measured_at=excluded.measured_at""",
             (
-                PROVIDER,
-                match.group("country").upper(),
+                provider_id,
+                country_code,
                 hostname,
                 result.get("latency_ms"),
                 result.get("status", "unknown"),
@@ -192,21 +203,39 @@ async def _measure_active_server(
 async def ensure_active_server_latency(
     server: str | None,
     *,
+    provider_id: str = PROVIDER,
+    country_code: str | None = None,
+    endpoint: str | None = None,
     measurer: Callable[[str], Awaitable[dict]] | None = None,
 ) -> dict:
     """Return or measure fresh RTT telemetry for the exact connected server."""
     hostname = normalize_server_hostname(server)
-    cached = server_latency(hostname)
+    cached = server_latency(hostname, provider_id=provider_id)
     if cached["latency_measured_at"] is not None or hostname is None:
         return cached
-    if not NORDVPN_SERVER_PATTERN.fullmatch(hostname):
+    derived_country = country_code
+    if derived_country is None and provider_id == PROVIDER:
+        match = NORDVPN_SERVER_PATTERN.fullmatch(hostname)
+        derived_country = match.group("country").upper() if match else None
+    if (
+        not SAFE_SERVER_PATTERN.fullmatch(hostname)
+        or not isinstance(derived_country, str)
+        or not re.fullmatch(r"[A-Z]{2}", derived_country)
+    ):
         return cached
 
-    key = (str(core.DB.resolve()), hostname)
+    measurement_endpoint = endpoint or hostname
+    key = (str(core.DB.resolve()), provider_id, hostname)
     task = _active_server_measurements.get(key)
     if task is None:
         task = asyncio.create_task(
-            _measure_active_server(hostname, measurer=measurer or tcp_latency)
+            _measure_active_server(
+                hostname,
+                country_code=derived_country,
+                provider_id=provider_id,
+                endpoint=measurement_endpoint,
+                measurer=measurer or tcp_latency,
+            )
         )
         _active_server_measurements[key] = task
 
@@ -256,11 +285,12 @@ async def measure_servers(
     servers: list[dict],
     *,
     force: bool = False,
+    provider_id: str = PROVIDER,
     measurer: Callable[[str], Awaitable[dict]] | None = None,
 ) -> list[dict]:
     code = country_code.upper()
     if not force:
-        cached = _cached(code)
+        cached = _cached(code, provider_id=provider_id)
         if cached:
             return cached
 
@@ -287,15 +317,27 @@ async def measure_servers(
                  country_code=excluded.country_code, latency_ms=excluded.latency_ms,
                  status=excluded.status, measured_at=excluded.measured_at""",
             [
-                (PROVIDER, code, row["server"], row["latency_ms"], row["status"], measured_at)
+                (
+                    provider_id,
+                    code,
+                    row["server"],
+                    row["latency_ms"],
+                    row["status"],
+                    measured_at,
+                )
                 for row in rows
             ],
         )
     return sorted(rows, key=lambda item: (item["latency_ms"] is None, item["latency_ms"] or 0))
 
 
-async def select_server(country_code: str, servers: list[dict]) -> dict | None:
-    measured = await measure_servers(country_code, servers)
+async def select_server(
+    country_code: str,
+    servers: list[dict],
+    *,
+    provider_id: str = PROVIDER,
+) -> dict | None:
+    measured = await measure_servers(country_code, servers, provider_id=provider_id)
     best = next((item for item in measured if item["latency_ms"] is not None), None)
     if best:
         return best
@@ -305,5 +347,8 @@ async def select_server(country_code: str, servers: list[dict]) -> dict | None:
     return None
 
 
-def remember_country(country_code: str) -> None:
-    set_setting("vpn.last_country", country_code.upper())
+def remember_country(country_code: str, *, provider_id: str = PROVIDER) -> None:
+    code = country_code.upper()
+    set_setting(f"vpn.last_country.{provider_id}", code)
+    if provider_id == PROVIDER:
+        set_setting("vpn.last_country", code)

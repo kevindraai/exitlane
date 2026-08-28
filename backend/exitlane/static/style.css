@@ -2268,6 +2268,20 @@ pre {
   text-align: left;
 }
 
+.provider-choice--selected {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--accent-border-soft);
+}
+
+.provider-card-actions,
+.provider-activity-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
 .vpn-overview-summary {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -2304,7 +2318,7 @@ pre {
 
 .provider-overview-card__header {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   gap: 0.8rem;
   align-items: start;
 }
@@ -2402,6 +2416,8 @@ pre {
 
 .provider-overview-card__footer {
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
   justify-content: flex-end;
   margin-top: auto;
 }
@@ -2429,7 +2445,21 @@ pre {
     justify-self: start;
   }
 
-  .provider-overview-card__footer .button {
+  .provider-active-badge {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .provider-overview-card__footer,
+  .provider-card-actions,
+  .provider-activity-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .provider-overview-card__footer .button,
+  .provider-card-actions .button,
+  .provider-activity-controls .button {
     width: 100%;
   }
 }
