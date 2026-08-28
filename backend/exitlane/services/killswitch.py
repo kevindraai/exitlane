@@ -23,6 +23,7 @@ SAFE_REASONS = {
     "tunnel_unavailable",
     "tunnel_interface_unknown",
     "provider_unavailable",
+    "provider_conflict",
     "firewall_unavailable",
     "firewall_apply_failed",
     "firewall_rules_missing",

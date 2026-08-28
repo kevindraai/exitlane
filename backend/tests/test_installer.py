@@ -37,6 +37,13 @@ def test_installer_database_snapshot_path_matches_application_runtime_default():
     assert "EXITLANE_DATA_DIR=/etc/exitlane" in defaults
 
 
+def test_clean_installer_creates_the_systemd_service_home():
+    installer = INSTALLER.read_text(encoding="utf-8")
+
+    assert 'readonly SERVICE_HOME="/var/lib/exitlane"' in installer
+    assert 'install -d -o root -g root -m 0700 "${SERVICE_HOME}"' in installer
+
+
 def test_installer_has_locked_upgrade_snapshot_and_rollback_contract():
     installer = INSTALLER.read_text(encoding="utf-8")
 
@@ -250,7 +257,16 @@ def test_rollback_restores_exact_prior_paths_and_removes_candidate_only_paths(tm
         "/etc/exitlane": ("setting", "preserved"),
         "/etc/default/exitlane": (None, "EXISTING_CONFIGURATION=preserved\n"),
         "/usr/local/libexec/exitlane-install-nordvpn": (None, "previous provider helper\n"),
+        "/usr/local/libexec/exitlane-install-mullvad": (None, "previous Mullvad helper\n"),
         "/etc/systemd/system/exitlane-provider-install-nordvpn.service": (None, "previous unit\n"),
+        "/etc/systemd/system/exitlane-provider-install-mullvad.service": (
+            None,
+            "previous Mullvad unit\n",
+        ),
+        "/etc/systemd/system/mullvad-early-boot-blocking.service.d/exitlane.conf": (
+            None,
+            "previous early-boot policy\n",
+        ),
     }
     for absolute_path, (child, contents) in saved_paths.items():
         saved = files / absolute_path.lstrip("/")
@@ -266,7 +282,11 @@ def test_rollback_restores_exact_prior_paths_and_removes_candidate_only_paths(tm
         "present|/etc/exitlane\n"
         "present|/etc/default/exitlane\n"
         "present|/usr/local/libexec/exitlane-install-nordvpn\n"
+        "present|/usr/local/libexec/exitlane-install-mullvad\n"
         "present|/etc/systemd/system/exitlane-provider-install-nordvpn.service\n"
+        "present|/etc/systemd/system/exitlane-provider-install-mullvad.service\n"
+        "present|/etc/systemd/system/mullvad-early-boot-blocking.service.d/exitlane.conf\n"
+        "absent|/etc/systemd/system/mullvad-daemon.service.d/exitlane.conf\n"
         "absent|/usr/local/libexec/exitlane-install-speedtest\n"
         "absent|/etc/systemd/system/exitlane-speedtest-install.service\n",
         encoding="utf-8",
@@ -278,8 +298,16 @@ def test_rollback_restores_exact_prior_paths_and_removes_candidate_only_paths(tm
         "etc/exitlane/setting": "candidate",
         "etc/default/exitlane": "candidate\n",
         "usr/local/libexec/exitlane-install-nordvpn": "candidate provider helper\n",
+        "usr/local/libexec/exitlane-install-mullvad": "candidate Mullvad helper\n",
         "usr/local/libexec/exitlane-install-speedtest": "candidate speedtest helper\n",
         "etc/systemd/system/exitlane-provider-install-nordvpn.service": "candidate unit\n",
+        "etc/systemd/system/exitlane-provider-install-mullvad.service": "candidate Mullvad unit\n",
+        "etc/systemd/system/mullvad-early-boot-blocking.service.d/exitlane.conf": (
+            "candidate early-boot policy\n"
+        ),
+        "etc/systemd/system/mullvad-daemon.service.d/exitlane.conf": (
+            "candidate daemon policy\n"
+        ),
         "etc/systemd/system/exitlane-speedtest-install.service": "candidate speedtest unit\n",
         "var/lib/exitlane/exitlane.db": "preserve data",
         "etc/wireguard/wg0.conf": "preserve wireguard",
@@ -300,10 +328,20 @@ def test_rollback_restores_exact_prior_paths_and_removes_candidate_only_paths(tm
     assert (target / "usr/local/libexec/exitlane-install-nordvpn").read_text(
         encoding="utf-8"
     ) == "previous provider helper\n"
+    assert (target / "usr/local/libexec/exitlane-install-mullvad").read_text(
+        encoding="utf-8"
+    ) == "previous Mullvad helper\n"
     assert not (target / "usr/local/libexec/exitlane-install-speedtest").exists()
     assert (target / "etc/systemd/system/exitlane-provider-install-nordvpn.service").read_text(
         encoding="utf-8"
     ) == "previous unit\n"
+    assert (target / "etc/systemd/system/exitlane-provider-install-mullvad.service").read_text(
+        encoding="utf-8"
+    ) == "previous Mullvad unit\n"
+    assert (
+        target / "etc/systemd/system/mullvad-early-boot-blocking.service.d/exitlane.conf"
+    ).read_text(encoding="utf-8") == "previous early-boot policy\n"
+    assert not (target / "etc/systemd/system/mullvad-daemon.service.d/exitlane.conf").exists()
     assert not (target / "etc/systemd/system/exitlane-speedtest-install.service").exists()
     assert (target / "var/lib/exitlane/exitlane.db").read_text(encoding="utf-8") == "preserve data"
     assert (target / "etc/wireguard/wg0.conf").read_text(encoding="utf-8") == "preserve wireguard"

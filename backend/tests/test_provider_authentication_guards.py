@@ -48,7 +48,7 @@ def test_signed_in_provider_passes_authentication_guard(monkeypatch):
 def test_provider_dependent_endpoints_stop_before_work_when_signed_out(
     monkeypatch, action, arguments
 ):
-    async def reject():
+    async def reject(_provider=None):
         raise HTTPException(409, "provider_authentication_required")
 
     monkeypatch.setattr(main, "_require_provider_authentication", reject)

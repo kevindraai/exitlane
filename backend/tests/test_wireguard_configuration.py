@@ -251,7 +251,7 @@ def test_wizard_and_management_share_provisioning_service(client, monkeypatch):
     assert response.json()["client_config"].endswith("synthetic-wizard-secret\n")
 
 
-def test_deferred_provider_routes_wireguard_through_default_interface(client, monkeypatch):
+def test_deferred_provider_uses_provider_neutral_default_route(client, monkeypatch):
     calls = []
 
     async def provision(**kwargs):
@@ -284,17 +284,17 @@ def test_deferred_provider_routes_wireguard_through_default_interface(client, mo
     )
 
     assert response.status_code == 200
-    assert calls[0]["vpn_interface"] == "eth0"
+    assert calls[0]["vpn_interface"] is None
 
 
-def test_provider_mode_keeps_provider_wireguard_egress(client, monkeypatch):
+def test_provider_mode_does_not_hardcode_provider_tunnel_interface(client, monkeypatch):
     core.set_setting("setup_provider_deferred", False)
 
     async def unexpected_network():
         raise AssertionError("direct route must not be selected in provider mode")
 
     monkeypatch.setattr(main, "system_network", unexpected_network)
-    assert asyncio.run(main.wireguard_egress_interface()) == "nordlynx"
+    assert asyncio.run(main.wireguard_egress_interface()) is None
 
 
 def test_reload_failure_returns_only_stable_error_code(client, monkeypatch):
@@ -478,3 +478,54 @@ def test_configuration_path_stays_below_canonical_wireguard_root(tmp_path, monke
     wireguard_root.mkdir()
     monkeypatch.setattr(wireguard, "WG_DIR", wireguard_root / ".." / "wireguard")
     assert wireguard._configuration_path("router") == wireguard_root / "router.conf"
+
+
+def test_legacy_provider_bound_forwarding_is_migrated_atomically(tmp_path, monkeypatch):
+    monkeypatch.setattr(wireguard, "WG_DIR", tmp_path)
+    subnet = "10.90.0.0/24"
+    legacy = wireguard._forwarding_rules("wg0", subnet, "nordlynx")
+    server = tmp_path / "wg0.conf"
+    server.write_text(
+        f"[Interface]\nAddress = 10.90.0.1/24\n{legacy}\n\n[Peer]\nPublicKey = test\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "router.conf").write_text("[Interface]\n", encoding="utf-8")
+    activations = []
+
+    async def activate(interface):
+        activations.append(interface)
+
+    migrated = asyncio.run(
+        wireguard.migrate_legacy_provider_egress("wg0", "router", activate=activate)
+    )
+    result = server.read_text(encoding="utf-8")
+    assert migrated is True
+    assert activations == ["wg0"]
+    assert "nordlynx" not in result
+    assert wireguard._forwarding_rules("wg0", subnet, None) in result
+    assert server.stat().st_mode & 0o777 == 0o600
+
+
+def test_legacy_forwarding_migration_restores_original_after_reload_failure(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(wireguard, "WG_DIR", tmp_path)
+    legacy = wireguard._forwarding_rules("wg0", "10.90.0.0/24", "nordlynx")
+    original = f"[Interface]\nAddress = 10.90.0.1/24\n{legacy}\n"
+    server = tmp_path / "wg0.conf"
+    server.write_text(original, encoding="utf-8")
+    (tmp_path / "router.conf").write_text("[Interface]\n", encoding="utf-8")
+    attempts = []
+
+    async def activate(interface):
+        attempts.append(interface)
+        if len(attempts) == 1:
+            raise RuntimeError("synthetic reload failure")
+
+    with pytest.raises(wireguard.WireGuardConfigurationError) as error:
+        asyncio.run(
+            wireguard.migrate_legacy_provider_egress("wg0", "router", activate=activate)
+        )
+    assert error.value.code == "wireguard_reload_failed"
+    assert server.read_text(encoding="utf-8") == original
+    assert attempts == ["wg0", "wg0"]

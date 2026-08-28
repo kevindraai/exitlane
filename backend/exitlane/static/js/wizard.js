@@ -1,6 +1,7 @@
 import { api, postJson } from "./api.js";
 import { showLogin } from "./auth.js";
 import { t } from "./i18n.js";
+import { refreshProviderState } from "./lifecycle.js";
 import { setApplicationMode } from "./navigation.js";
 import { renderProviderLogo } from "./provider-logo.js";
 import { appState, getSlice, stepNames, updateSlice } from "./state.js";
@@ -15,6 +16,8 @@ import {
 } from "./ui.js";
 
 let navigationInitialised = false;
+let renderedWizardProviderId = null;
+let providerSelectionInFlight = false;
 
 function isStepComplete(stepNumber, setup = appState.setup) {
   if (!setup) {
@@ -126,9 +129,50 @@ export function renderSetupState(setup) {
   showStep(requestedStep, { force: true });
 }
 
-function renderWizardProviders(setup) {
+async function saveProviderSelection(providerIds) {
+  if (providerSelectionInFlight) return;
+  providerSelectionInFlight = true;
+  const container = select("#wizard-provider-choices");
+  container.setAttribute("aria-busy", "true");
+  container.querySelectorAll("button").forEach((button) => {
+    button.disabled = true;
+  });
+  clearInlineError();
+  try {
+    await postJson("/api/setup/providers", { provider_ids: providerIds });
+    await refreshSetup();
+  } catch (error) {
+    showInlineError(error.message);
+  } finally {
+    providerSelectionInFlight = false;
+    container.removeAttribute("aria-busy");
+    container.querySelectorAll("button").forEach((button) => {
+      button.disabled = false;
+    });
+  }
+}
+
+async function activateSetupProvider(providerId, button) {
+  setBusy(button, true, t("step3.activating_provider", {}, "Activating…"));
+  clearInlineError();
+  try {
+    await postJson(`/api/vpn/providers/${encodeURIComponent(providerId)}/activate`);
+    await refreshSetup();
+  } catch (error) {
+    showInlineError(t(
+      `provider.errors.${error.payload?.detail || error.code}`,
+      {},
+      t("provider.errors.provider_switch_failed", {}, "The active provider could not be changed."),
+    ));
+  } finally {
+    setBusy(button, false);
+  }
+}
+
+export function renderWizardProviders(setup) {
   const providers = setup.providers || [];
-  const selectedId = setup.selected_provider_id || providers[0]?.id;
+  const selectedIds = setup.selected_provider_ids || [];
+  const selectedId = selectedIds.length ? setup.selected_provider_id : null;
   const container = select("#wizard-provider-choices");
   container.replaceChildren();
   for (const provider of providers) {
@@ -136,17 +180,69 @@ function renderWizardProviders(setup) {
     item.type = "button";
     item.className = "provider-choice";
     item.dataset.providerId = provider.id;
-    item.setAttribute("aria-pressed", String(provider.id === selectedId));
-    item.disabled = provider.id !== selectedId;
-    item.textContent = provider.display_name;
+    const selected = selectedIds.includes(provider.id);
+    item.classList.toggle("provider-choice--selected", selected);
+    item.setAttribute("role", "checkbox");
+    item.setAttribute("aria-checked", String(selected));
+    item.setAttribute("aria-pressed", String(selected));
+    const status = provider.status?.authenticated
+      ? t("vpn.overview.states.signed_in", {}, "Signed in")
+      : provider.status?.installed
+        ? t("vpn.overview.states.signed_out", {}, "Signed out")
+        : t("provider.status.not_installed", {}, "Not installed");
+    item.textContent = `${selected ? "✓ " : ""}${provider.display_name} · ${status}`;
+    item.addEventListener("click", () => {
+      const next = selected
+        ? selectedIds.filter((id) => id !== provider.id)
+        : [...selectedIds, provider.id];
+      void saveProviderSelection(next);
+    });
     container.append(item);
   }
   const selected = providers.find((provider) => provider.id === selectedId);
+  select("#wizard-provider-configuration").hidden = !selected;
   if (selected) {
     select("#wizard-provider-name").textContent = selected.display_name;
     selectAll("[data-provider-logo]").forEach((container) => {
       renderProviderLogo(container, selected);
     });
+    const pending = (setup.pending_provider_ids || []).includes(selected.id);
+    select("#provider-skip").hidden = !pending;
+    select("#provider-skip").textContent = t(
+      "step3.skip_provider",
+      { provider: selected.display_name },
+      `Skip ${selected.display_name}`,
+    );
+  }
+
+  if (selectedId !== renderedWizardProviderId) {
+    renderedWizardProviderId = selectedId;
+    updateSlice("application", { providerId: selectedId });
+    window.dispatchEvent(new CustomEvent("exitlane:wizardproviderchange", {
+      detail: { providerId: selectedId },
+    }));
+    if (selectedId) refreshProviderState({ deduplicate: false }).catch(() => {});
+  }
+
+  const activeSelection = select("#wizard-active-provider-selection");
+  activeSelection.hidden = !setup.active_provider_selection_required;
+  const activeChoices = select("#wizard-active-provider-choices");
+  activeChoices.replaceChildren();
+  if (setup.active_provider_selection_required) {
+    for (const provider of providers.filter((item) => (
+      selectedIds.includes(item.id) && item.status?.authenticated
+    ))) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "button button-primary";
+      button.textContent = t(
+        "step3.make_provider_active",
+        { provider: provider.display_name },
+        `Use ${provider.display_name}`,
+      );
+      button.addEventListener("click", () => activateSetupProvider(provider.id, button));
+      activeChoices.append(button);
+    }
   }
 }
 
@@ -448,6 +544,22 @@ export async function deferProviderSetup() {
   }
 }
 
+export async function skipCurrentProvider() {
+  const providerId = appState.setup?.selected_provider_id;
+  if (!providerId) return;
+  const button = select("#provider-skip");
+  setBusy(button, true, t("step3.skipping_provider", {}, "Skipping…"));
+  clearInlineError();
+  try {
+    await postJson(`/api/setup/providers/${encodeURIComponent(providerId)}/skip`);
+    await refreshSetup();
+  } catch (error) {
+    showInlineError(error.message);
+  } finally {
+    setBusy(button, false);
+  }
+}
+
 function updatePasswordMatchState() {
   const password = select("#admin-password");
   const confirmation = select("#admin-password-confirm");
@@ -513,6 +625,7 @@ export function initialiseWizardNavigation() {
   select("#diagnostics-button").addEventListener("click", runDiagnostics);
   select("#admin-form").addEventListener("submit", createAdmin);
   select("#provider-defer").addEventListener("click", deferProviderSetup);
+  select("#provider-skip").addEventListener("click", skipCurrentProvider);
   select("#complete-button").addEventListener("click", completeSetup);
 
   const password = select("#admin-password");

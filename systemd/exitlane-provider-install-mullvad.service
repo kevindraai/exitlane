@@ -1,0 +1,28 @@
+[Unit]
+Description=Install the Mullvad VPN provider for ExitLane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/exitlane-install-mullvad
+TimeoutStartSec=5min
+UMask=0077
+Environment=HOME=/run/exitlane-provider-install
+Environment=USER=root
+Environment=LOGNAME=root
+RuntimeDirectory=exitlane-provider-install
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+# The official package post-install script sets the required setuid bit on
+# /usr/bin/mullvad-exclude. This fixed root package-installer unit must permit it.
+RestrictSUIDSGID=false
+LockPersonality=true
+RestrictRealtime=true
+SystemCallArchitectures=native

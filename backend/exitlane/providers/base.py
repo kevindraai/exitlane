@@ -38,6 +38,9 @@ class Provider(ABC):
     id: str
     display_name: str
     metadata: ProviderMetadata
+    authentication_error_codes = frozenset({"provider_error"})
+    sign_out_error_codes = frozenset({"provider_error"})
+    supports_timeout_recovery = False
 
     @abstractmethod
     async def status(self): ...
@@ -88,14 +91,31 @@ class Provider(ABC):
     async def sign_out(self) -> dict:
         raise ProviderActionUnsupported("provider_action_unsupported")
 
-    async def reconnect(self, target: str | None = None) -> dict:
-        return await self.connect(target)
+    async def reconnect(self, target: str | None = None, *, timeout: float = 40) -> dict:
+        return await self.connect(target, timeout=timeout)
+
+    async def connect_country(
+        self,
+        country_code: str,
+        *,
+        server_hostname: str | None = None,
+        timeout: float = 40,
+    ) -> dict:
+        """Connect to a validated provider country or selected relay."""
+        return await self.connect(server_hostname or country_code, timeout=timeout)
 
     async def countries(self) -> list[dict]:
         raise ProviderActionUnsupported("provider_action_unsupported")
 
-    async def servers(self, location_id: int) -> list[dict]:
+    async def servers(self, location_id: int | str) -> list[dict]:
         raise ProviderActionUnsupported("provider_action_unsupported")
+
+    async def recover_daemon(self) -> dict:
+        return {"ok": False, "error_code": "provider_recovery_unsupported"}
+
+    async def prepare_activation(self) -> dict:
+        """Validate provider-owned gateway prerequisites before authentication or activation."""
+        return {"ok": True, "error_code": None}
 
     def management_status(
         self,

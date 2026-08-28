@@ -4,7 +4,7 @@ from collections import deque
 from datetime import UTC, datetime, timedelta
 
 DEFAULT_CONNECTION_ID = "provider:nordvpn"
-ACTIVE_STATES = frozenset({"connecting", "disconnecting", "recovering"})
+ACTIVE_STATES = frozenset({"connecting", "disconnecting", "recovering", "switching"})
 CONNECT_TIMEOUT_SECONDS = 40
 STATUS_TIMEOUT_SECONDS = 6
 RECOVERY_WINDOW = timedelta(minutes=10)
@@ -65,8 +65,22 @@ def begin(
     connection_id: str = DEFAULT_CONNECTION_ID,
 ) -> dict:
     current = _connection(connection_id)
-    if current["state"] in ACTIVE_STATES:
-        raise VPNActionInProgress(current["state"])
+    serializes_providers = connection_id.startswith("provider:") or connection_id == "provider-switch"
+    active = next(
+        (
+            item
+            for item in _connections.values()
+            if item["state"] in ACTIVE_STATES
+            and serializes_providers
+            and (
+                item["connection_id"].startswith("provider:")
+                or item["connection_id"] == "provider-switch"
+            )
+        ),
+        None,
+    )
+    if active is not None:
+        raise VPNActionInProgress(active["state"])
     now = _now()
     current.update(
         state=state,
@@ -76,6 +90,16 @@ def begin(
         last_error_code=None,
     )
     return snapshot(connection_id)
+
+
+def active_snapshot() -> dict | None:
+    active = next(
+        (item for item in _connections.values() if item["state"] in ACTIVE_STATES),
+        None,
+    )
+    if active is None:
+        return None
+    return snapshot(active["connection_id"])
 
 
 def transition(state: str, *, connection_id: str = DEFAULT_CONNECTION_ID) -> dict:

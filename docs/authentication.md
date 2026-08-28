@@ -57,8 +57,8 @@ Exitlane uses a short timeout and restricted non-secret environment, discards
 all provider terminal output for this operation, and never logs, persists,
 reflects or adds the token to Activity metadata. This PTY adapter is specific to
 the verified NordVPN interface. If NordVPN presents its first-run analytics
-consent before the token prompt, Exitlane explicitly answers no. Future
-providers must define and test their own secret-input boundary.
+consent before the token prompt, Exitlane explicitly answers no. Every provider
+must define and test its own secret-input boundary.
 
 The CLI also offers no supported, non-destructive way to validate a replacement token while an
 account session is active. Exitlane therefore never logs out automatically or claims that it
@@ -72,3 +72,18 @@ NordVPN authentication sign-out and VPN disconnect are different operations. Dis
 the tunnel, while sign-out runs the supported `nordvpn logout` action, ends the authentication
 session, and consequently ends any active tunnel. A valid token is required to sign in again.
 Activity events record only the provider identifier and a safe failure code.
+
+## Mullvad account-number subprocess boundary
+
+The supported Mullvad CLI accepts an omitted account argument and then reads the account number
+from stdin. ExitLane invokes only `mullvad account login`, with `shell=False`, `LC_ALL=C`, and a
+short timeout. The normalized 16-digit account number is written to the subprocess pipe rather
+than argv or the environment. Mullvad's success output can contain that number, so ExitLane
+captures it into a bounded mutable buffer, never logs or reflects it, and overwrites both input and
+output buffers after classification.
+
+The browser uses a masked numeric field and removes its value immediately after starting the
+request. ExitLane does not persist the account number in SQLite, files, events, telemetry, or API
+responses. Safe errors distinguish invalid format/account, five-device exhaustion, expired account,
+daemon/command unavailability, timeout, and already-signed-in state without exposing raw output.
+See the [Mullvad provider guide](mullvad.md) for operational details.

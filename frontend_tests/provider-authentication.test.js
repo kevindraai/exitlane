@@ -83,17 +83,17 @@ test("invalid, expired, revoked, generic, and success messages exist in EN and N
   );
   assert.equal(
     english.provider.authentication.success,
-    "Signed in to NordVPN successfully.",
+    "Signed in to {provider} successfully.",
   );
   assert.equal(
     dutch.provider.authentication.success,
-    "Aanmelden bij NordVPN is geslaagd.",
+    "Aanmelden bij {provider} is geslaagd.",
   );
 });
 
 test("token and callback flows never render provider output and use fixed feedback", async () => {
   const source = await readFile(providerUrl, "utf8");
-  const tokenStart = source.indexOf("async function loginWithToken");
+  const tokenStart = source.indexOf("async function loginWithCredential");
   const callbackStart = source.indexOf("async function loginWithCallback");
   const disconnectStart = source.indexOf("async function disconnectProvider");
   const tokenFlow = source.slice(tokenStart, callbackStart);
@@ -101,11 +101,11 @@ test("token and callback flows never render provider output and use fixed feedba
 
   assert.doesNotMatch(tokenFlow, /result\.(?:stdout|stderr|message)/);
   assert.doesNotMatch(callbackFlow, /result\.(?:stdout|stderr|message)/);
-  assert.match(tokenFlow, /showInlineError\(providerAuthenticationErrorMessage\(error\)\)/);
+  assert.match(tokenFlow, /showInlineError\(providerAuthenticationErrorMessage\(error, metadata\)\)/);
   assert.match(tokenFlow, /provider\.authentication\.success[\s\S]+?,\s*"success"/);
   assert.match(callbackFlow, /provider\.authentication\.success[\s\S]+?,\s*"success"/);
 
   const failureCheck = tokenFlow.indexOf("if (!result.ok)");
   const clearInput = tokenFlow.indexOf('input.value = ""');
-  assert.ok(failureCheck >= 0 && clearInput > failureCheck);
+  assert.ok(clearInput >= 0 && failureCheck > clearInput);
 });

@@ -2,7 +2,7 @@
 
 **Smart egress for every network.**
 
-ExitLane is a self-hosted egress appliance for routers, VLANs, and selected devices. Your router maintains one permanent WireGuard tunnel to ExitLane, while ExitLane uses the official NordVPN Linux client to manage the outbound VPN connection.
+ExitLane is a self-hosted egress appliance for routers, VLANs, and selected devices. Your router maintains one permanent WireGuard tunnel to ExitLane, while ExitLane manages the outbound connection through the official NordVPN or Mullvad VPN Linux client.
 
 The result is an experience closer to a native VPN app, but for an entire network: switch countries, reconnect, use the fastest available server, and keep provider-specific configuration away from your router.
 
@@ -28,7 +28,7 @@ Selected clients or VLANs
           |
        ExitLane
           |
- official NordVPN Linux client
+ active commercial VPN provider
           |
        Internet
 ```
@@ -46,9 +46,9 @@ resources from one overview.
 
 ![ExitLane dashboard](docs/images/exitlane-dashboard.png)
 
-### NordVPN control
+### VPN provider control
 
-Choose a VPN country from the browser, compare measured latency, reconnect, or let the official client select the server. No new provider configuration has to be imported into the router.
+Install and sign in to NordVPN, Mullvad VPN, or both. Choose one active provider, select a country, compare measured latency, and reconnect without importing new provider configuration into the router.
 
 ![ExitLane NordVPN country selection](docs/images/exitlane-vpn-selection.png)
 
@@ -76,7 +76,8 @@ the relevant operational screen.
 
 ### VPN management
 
-- Install, authenticate, configure, connect, and disconnect the official NordVPN Linux client.
+- Install, authenticate, configure, connect, and disconnect the official NordVPN and Mullvad VPN Linux clients.
+- Keep multiple providers installed and signed in while enforcing exactly one active egress provider.
 - Switch VPN countries from the WebUI and compare measured latency for quick choices.
 - Discover registered VPN providers and view provider authentication and tunnel status separately.
 - Protect routed client traffic with a configurable killswitch when no usable VPN tunnel is active.
@@ -122,7 +123,7 @@ the relevant operational screen.
 
 ExitLane uses a FastAPI backend that serves both its API and a single-page frontend. The frontend coordinates shared data through central application state, while SQLite stores durable settings, users, sessions, and generated configuration metadata.
 
-The VPN core is provider-neutral. NordVPN is the first provider implementation, and WireGuard provides independent ingress from routers and other clients.
+The VPN core is provider-neutral. NordVPN and Mullvad VPN are the shipped commercial-provider implementations, and WireGuard provides independent ingress from routers and other clients. A provider is optional; direct internet egress remains a supported setup choice.
 
 See [Architecture](docs/architecture.md), [Authentication](docs/authentication.md), [WireGuard configuration management](docs/wireguard-configuration.md), [Connection diagnostics](docs/diagnostics.md), [Application state](docs/application-state.md), and [Startup lifecycle](docs/startup-lifecycle.md) for the design rationale.
 
@@ -143,7 +144,7 @@ sudo ./installer/install-debian.sh
 
 Open `http://<host>:8787` and complete the first-run wizard.
 
-Read the [deployment guide](docs/deployment.md), [backup and restore guide](docs/backup-and-restore.md), [upgrade and recovery guide](docs/upgrade-and-recovery.md), and [Proxmox LXC notes](docs/proxmox-lxc.md) before using ExitLane outside a development environment.
+Read the [deployment guide](docs/deployment.md), [Mullvad provider guide](docs/mullvad.md), [backup and restore guide](docs/backup-and-restore.md), [upgrade and recovery guide](docs/upgrade-and-recovery.md), and [Proxmox LXC notes](docs/proxmox-lxc.md) before using ExitLane outside a development environment.
 
 Direct HTTP remains available on a trusted local network. For HTTPS termination, follow the [reverse-proxy guide](docs/deployment/reverse-proxy.md); ExitLane does not terminate TLS itself.
 
@@ -157,7 +158,7 @@ See [Development](docs/development.md) and [Contributing](CONTRIBUTING.md) for c
 
 ## Roadmap
 
-Planned work, including additional VPN-provider implementations and deployment options, is tracked in the [roadmap](ROADMAP.md).
+Planned work, including further VPN-provider implementations and deployment options, is tracked in the [roadmap](ROADMAP.md).
 
 ## AI involvement
 

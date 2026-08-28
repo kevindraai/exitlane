@@ -20,6 +20,10 @@ const asset = fs.readFileSync(
   new URL("../backend/exitlane/static/providers/nordvpn.svg", import.meta.url),
   "utf8",
 );
+const mullvadAsset = fs.readFileSync(
+  new URL("../backend/exitlane/static/providers/mullvad.svg", import.meta.url),
+  "utf8",
+);
 
 test("NordVPN uses a repository-local provider asset without runtime CDN requests", () => {
   const view = providerLogoView({
@@ -31,6 +35,18 @@ test("NordVPN uses a repository-local provider asset without runtime CDN request
   assert.match(asset, /^<svg /);
   assert.doesNotMatch(markup, /cdn\.jsdelivr\.net|https?:\/\/[^"]+nordvpn\.svg/);
   assert.doesNotMatch(wizard, /cdn\.jsdelivr\.net|https?:\/\/[^"]+nordvpn\.svg/);
+});
+
+test("Mullvad uses a repository-local provider asset without runtime CDN requests", () => {
+  const view = providerLogoView({
+    display_name: "Mullvad VPN",
+    logo: "/assets/providers/mullvad.svg",
+  });
+
+  assert.equal(view.src, "/assets/providers/mullvad.svg");
+  assert.match(mullvadAsset, /^<svg /);
+  assert.doesNotMatch(markup, /cdn\.jsdelivr\.net|https?:\/\/[^\"]+mullvad\.svg/);
+  assert.doesNotMatch(wizard, /cdn\.jsdelivr\.net|https?:\/\/[^\"]+mullvad\.svg/);
 });
 
 test("remote and missing logos receive a neutral local fallback", () => {

@@ -1,6 +1,6 @@
 # Optional provider onboarding
 
-Status: implementation issue
+Status: implemented; extended by multi-provider onboarding on 2026-08-28
 
 Branch: `feat/optional-provider-onboarding`
 
@@ -33,10 +33,10 @@ the wizard requirement is stricter than the runtime architecture.
 6. Completion renders the provider item as `Deferred`, not `Ready`. The next button and step marker
    accept the deliberate deferred state while provider installation/authentication controls remain
    usable when the user navigates back.
-7. WireGuard ingress uses the appliance's main default-route interface while provider setup is
-   deferred. The installer includes the iptables compatibility frontend used by `wg-quick`; on
-   current Debian it applies these rules through the nftables backend. Provider mode retains its
-   provider-owned egress interface.
+7. WireGuard ingress uses the appliance's main default-route interface. Provider clients change
+   that route when connected; provider-specific interface names do not belong in generated
+   WireGuard rules. The installer includes the iptables compatibility frontend used by `wg-quick`;
+   on current Debian it applies these rules through the nftables backend.
 
 ## Acceptance and regression coverage
 
@@ -50,7 +50,9 @@ the wizard requirement is stricter than the runtime architecture.
 - Run the full backend/frontend, lint, security, i18n, syntax and package suites, followed by the
   Debian 13 test-appliance wizard/API smoke path.
 
-## Follow-up boundary
+## Multi-provider extension
 
-Provider catalog expansion (Mullvad, Privado and others), automatic policy selection, multiple
-simultaneous egress providers and migration between provider modes remain separate iterations.
+The provider catalog now includes NordVPN and Mullvad VPN. The wizard stores independently selected
+and skipped provider IDs, configures them deterministically, activates one ready provider
+automatically, and requires an explicit active choice when both are ready. Multiple providers may
+be installed and authenticated, but simultaneous commercial egress remains prohibited.

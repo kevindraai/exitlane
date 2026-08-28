@@ -13,7 +13,8 @@ export function providerManagementView(status = {}) {
           : "unknown";
   }
   return {
-    providerId: provider.id || "nordvpn",
+    providerId: provider.id || null,
+    isActive: status.is_active !== false,
     installationState: provider.installation_state
       || (status.installed === false ? "not_installed" : status.installed === true ? "installed" : "unknown"),
     authenticationState,
@@ -40,10 +41,11 @@ export function vpnProviderAccess(status = {}) {
     state = "unknown";
   }
   const inconsistent = state === "signed_out" && view.connectionState === "connected";
+  const inactive = view.isActive === false;
   return {
     ...view,
-    state: inconsistent ? "unknown" : state,
-    blocked: state !== "signed_in" || inconsistent,
+    state: inconsistent ? "unknown" : inactive && state === "signed_in" ? "inactive" : state,
+    blocked: state !== "signed_in" || inconsistent || inactive,
     busy: transient.has(state),
   };
 }

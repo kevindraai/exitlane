@@ -364,7 +364,7 @@ test("provider page has state regions and no killswitch control", async () => {
   const markup = await readFile(providerMarkupUrl, "utf8");
   const source = await readFile(providerSourceUrl, "utf8");
   assert.match(markup, /<div hidden="" id="provider-signed-in"/);
-  assert.match(markup, /id="provider-token-form"/);
+  assert.match(markup, /id="provider-credential-form"/);
   assert.match(markup, /<div hidden="" id="provider-unavailable"/);
   assert.match(markup, /class="button button-primary"[^>]+id="provider-management-install"/);
   assert.match(markup, /id="provider-management-install-status" role="status"/);
@@ -372,10 +372,10 @@ test("provider page has state regions and no killswitch control", async () => {
   assert.doesNotMatch(markup, /killswitch/i);
   const statusRegion = markup.indexOf('class="provider-management-status-region"');
   const signedInRegion = markup.indexOf('id="provider-signed-in"');
-  const tokenForm = markup.indexOf('id="provider-token-form"');
+  const tokenForm = markup.indexOf('id="provider-credential-form"');
   assert.ok(statusRegion > -1 && statusRegion < signedInRegion && signedInRegion < tokenForm);
   assert.match(source, /provider-signed-in"\)\.hidden = !signedIn/);
-  assert.match(source, /provider-token-form"\)\.hidden = !\(signedOut && view\.canSignIn\)/);
+  assert.match(source, /credentialForm\.hidden = !\(signedOut && view\.canSignIn\)/);
   assert.match(source, /provider-end-session"\)\.hidden = !view\.canSignOut/);
   assert.match(source, /provider-management-install"\)\.addEventListener[\s\S]+installProviderFromManagement/);
   assert.match(source, /\/api\/vpn\/providers\/\$\{encodeURIComponent\(providerId\)\}\/installation/);
