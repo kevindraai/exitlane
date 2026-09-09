@@ -1,7 +1,8 @@
 [Unit]
 Description=Exitlane egress gateway
-After=exitlane-killswitch.service network-online.target
-Wants=exitlane-killswitch.service network-online.target
+After=exitlane-killswitch.service exitlane-provider-egress.service exitlane-management-routing.service network-online.target
+Wants=exitlane-killswitch.service exitlane-provider-egress.service exitlane-management-routing.service network-online.target
+Requires=exitlane-provider-egress.service
 
 [Service]
 Type=simple

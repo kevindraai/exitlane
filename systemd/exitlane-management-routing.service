@@ -1,0 +1,24 @@
+[Unit]
+Description=ExitLane management-plane policy routing protection
+# Debian's networking.service configures the main-table management route before
+# this oneshot records and protects it.
+After=networking.service
+Wants=networking.service
+Before=exitlane.service nordvpnd.service
+
+[Service]
+Type=oneshot
+User=root
+Environment=HOME=/var/lib/exitlane
+EnvironmentFile=-/etc/default/exitlane
+ExecStart=/usr/local/sbin/exitlane-cli prepare-management-routes
+RemainAfterExit=yes
+UMask=0077
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/etc/exitlane
+ProtectKernelTunables=false
+
+[Install]
+WantedBy=multi-user.target

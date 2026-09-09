@@ -237,9 +237,7 @@ async def create(
     ):
         raise ValueError("De WireGuard-clientnaam is ongeldig.")
 
-    if vpn_interface is not None and not re.fullmatch(
-        r"[A-Za-z0-9_.-]{1,15}", vpn_interface
-    ):
+    if vpn_interface is not None and not re.fullmatch(r"[A-Za-z0-9_.-]{1,15}", vpn_interface):
         raise ValueError("De VPN-interfacenaam is ongeldig.")
 
     try:

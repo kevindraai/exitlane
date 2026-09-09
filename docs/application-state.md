@@ -41,6 +41,10 @@ the outcome.
   are independent gates. Central provider status may be refreshed while a provider is signed out
   or inactive, but countries, servers, latency checks, and VPN mutations start only after explicit
   provider capabilities permit them. Only the active provider receives connection mutations.
+- A provider switch remains one backend-owned operation through local preflight, protected handoff,
+  target verification and commit or rollback. The frontend may show it as pending, but must not
+  infer a new canonical provider until the successful response names it. A rollback failure keeps
+  the previous canonical provider while the backend reports a failed/degraded operation.
 
 Not every form field belongs in central state. Short-lived input and purely presentational state
 can remain local. Central state is reserved for information that crosses views, participates in

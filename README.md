@@ -2,7 +2,7 @@
 
 **Smart egress for every network.**
 
-ExitLane is a self-hosted egress appliance for routers, VLANs, and selected devices. Your router maintains one permanent WireGuard tunnel to ExitLane, while ExitLane manages the outbound connection through the official NordVPN or Mullvad VPN Linux client.
+ExitLane is a self-hosted egress appliance for routers, VLANs, and selected devices. Your router maintains one permanent WireGuard tunnel to ExitLane, while ExitLane manages outbound connection through NordVPN or a direct Mullvad WireGuard tunnel.
 
 The result is an experience closer to a native VPN app, but for an entire network: switch countries, reconnect, use the fastest available server, and keep provider-specific configuration away from your router.
 
@@ -48,7 +48,7 @@ resources from one overview.
 
 ### VPN provider control
 
-Install and sign in to NordVPN, Mullvad VPN, or both. Choose one active provider, select a country, compare measured latency, and reconnect without importing new provider configuration into the router.
+Configure and sign in to NordVPN, Mullvad VPN, or both. Choose one active provider, select a country, compare measured latency, and reconnect without importing new provider configuration into the router.
 
 ![ExitLane NordVPN country selection](docs/images/exitlane-vpn-selection.png)
 
@@ -76,7 +76,7 @@ the relevant operational screen.
 
 ### VPN management
 
-- Install, authenticate, configure, connect, and disconnect the official NordVPN and Mullvad VPN Linux clients.
+- Manage the NordVPN Linux client and ExitLane-owned direct Mullvad WireGuard egress.
 - Keep multiple providers installed and signed in while enforcing exactly one active egress provider.
 - Switch VPN countries from the WebUI and compare measured latency for quick choices.
 - Discover registered VPN providers and view provider authentication and tunnel status separately.

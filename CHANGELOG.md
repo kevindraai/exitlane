@@ -4,9 +4,8 @@
 
 ### Added
 
-- Added Mullvad VPN as a managed Debian 13 provider with signed stable-repository installation,
-  safe stdin-only account-number authentication, relay selection, status, gateway defaults,
-  network facts, local artwork, and provider-specific diagnostics.
+- Added Mullvad VPN as direct ExitLane-owned WireGuard egress with encrypted account/device/key
+  state, relay selection, exact-peer readiness, guarded policy routing and boot restoration.
 - Added none/NordVPN/Mullvad/both first-run selection and post-install provider activation.
 
 ### Changed
@@ -16,18 +15,22 @@
   aliases and the backward-compatible NordVPN default.
 - Enforced one active commercial provider across connect, reconnect, and switch races; conflicting
   externally connected tunnels now fail closed for the ExitLane killswitch.
+- Retry only structured transient Mullvad API-readiness timeouts during a protected provider
+  switch, with bounded attempts/backoff, late-connect reconciliation and unchanged rollback rules.
+- Extend exact management policy-route protection to the configured WireGuard ingress client
+  network, with dynamic main-table path discovery, provider-table reconciliation, stale cleanup,
+  and fail-closed handling while its local interface is unavailable.
+- Distinguish WireGuard peer bootstrap from steady state in live QA: a bounded active dataplane
+  probe may establish the demand-driven session, but only a separate lossless probe passes.
 
 ### Security
 
 - Fixed clean Debian installations to create the root-only service home required by the hardened
   systemd mount namespace before starting ExitLane.
-- Keep Mullvad account numbers out of argv, logs, events, files, and responses; bounded mutable
-  input/output buffers are wiped after safe classification.
-- Pin and verify the official Mullvad stable APT signing key and `InRelease` metadata before
-  installing `mullvad-vpn` through a root-owned fixed systemd helper.
-- Suppress all Mullvad package-time service starts with systemd offline mode, permanently condition
-  its early-boot firewall initializer, and gate daemon reboot startup on a verified disconnected
-  gateway baseline with no stale provider firewall table.
+- Encrypt Mullvad account, device and private-key state with the appliance master key; keep API
+  tokens memory-only and all secret values out of argv, logs, events and responses.
+- Reject active legacy Mullvad daemon/firewall ownership without automatically deleting foreign
+  nftables state, and restore an unreachable provider-egress route guard before networking at boot.
 
 ## [0.2.0-rc.1] - 2026-08-25
 

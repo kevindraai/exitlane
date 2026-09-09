@@ -9,21 +9,33 @@ from typing import Literal
 from urllib.parse import urlsplit, urlunsplit
 
 from exitlane import core
+from exitlane.services import management_routing
 
 PUBLIC_URL_KEY = "network.public_url"
 TRUSTED_PROXIES_KEY = "network.trusted_proxies"
 COOKIE_POLICY_KEY = "network.secure_cookie_policy"
 COOKIE_POLICIES = {"auto", "always", "never"}
-CONFIGURATION_KEYS = (PUBLIC_URL_KEY, TRUSTED_PROXIES_KEY, COOKIE_POLICY_KEY)
+MANAGEMENT_PREFIXES_KEY = management_routing.SETTING_KEY
+PROXY_CONFIGURATION_KEYS = (
+    PUBLIC_URL_KEY,
+    TRUSTED_PROXIES_KEY,
+    COOKIE_POLICY_KEY,
+)
+CONFIGURATION_KEYS = (
+    *PROXY_CONFIGURATION_KEYS,
+    MANAGEMENT_PREFIXES_KEY,
+)
 FIELD_KEYS = {
     "public_url": PUBLIC_URL_KEY,
     "trusted_proxies": TRUSTED_PROXIES_KEY,
     "secure_cookie_policy": COOKIE_POLICY_KEY,
+    "management_prefixes": MANAGEMENT_PREFIXES_KEY,
 }
 DEFAULT_VALUES = {
     "public_url": "",
     "trusted_proxies": [],
     "secure_cookie_policy": "auto",
+    "management_prefixes": [],
 }
 MAX_PUBLIC_URL_LENGTH = 2048
 MAX_PROXY_ENTRIES = 64
@@ -31,6 +43,7 @@ ENVIRONMENT_KEYS = {
     "public_url": "EXITLANE_PUBLIC_URL",
     "trusted_proxies": "EXITLANE_TRUSTED_PROXIES",
     "secure_cookie_policy": "EXITLANE_SECURE_COOKIES",
+    "management_prefixes": "EXITLANE_MANAGEMENT_PREFIXES",
 }
 LEGACY_SECURE_COOKIE_ENVIRONMENT = "EXITLANE_SESSION_COOKIE_SECURE"
 BROAD_PRIVATE_NETWORKS = {
@@ -65,12 +78,14 @@ class NetworkSecurityConfig:
     sources: dict[str, Literal["environment", "database", "default"]] = dataclass_field(
         default_factory=lambda: {field: "default" for field in ENVIRONMENT_KEYS}
     )
+    management_prefixes: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = ()
 
     def as_public_dict(self) -> dict:
         return {
             "public_url": self.public_url,
             "trusted_proxies": [str(network) for network in self.trusted_proxies],
             "secure_cookie_policy": self.secure_cookie_policy,
+            "management_prefixes": [str(network) for network in self.management_prefixes],
             "environment_overrides": {field: field in self.overrides for field in ENVIRONMENT_KEYS},
             "sources": dict(self.sources),
             "restart_required": {
@@ -155,7 +170,14 @@ def validate_configuration(
     secure_cookie_policy: str,
     *,
     confirm_broad_trust: bool = False,
-) -> tuple[str, tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...], str]:
+    management_prefixes: str | list[str] | tuple[str, ...] = (),
+    confirm_broad_management: bool = False,
+) -> tuple[
+    str,
+    tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...],
+    str,
+    tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...],
+]:
     normalized_url = normalize_public_url(public_url.strip())
     networks = parse_trusted_proxies(trusted_proxies)
     policy = secure_cookie_policy.strip().casefold()
@@ -167,7 +189,18 @@ def validate_configuration(
     scheme = urlsplit(normalized_url).scheme if normalized_url else ""
     if scheme == "https" and not networks:
         raise NetworkSecurityError("trusted_proxy_required", field="trusted_proxies")
-    return normalized_url, networks, policy
+    try:
+        management = management_routing.parse_management_prefixes(
+            management_prefixes, confirm_broad=confirm_broad_management
+        )
+    except management_routing.ManagementRoutingError as error:
+        raise NetworkSecurityError(
+            error.code,
+            field=error.field,
+            line=error.line,
+            value=error.value,
+        ) from error
+    return normalized_url, networks, policy, management
 
 
 def current_config() -> NetworkSecurityConfig:
@@ -204,12 +237,31 @@ def current_config() -> NetworkSecurityConfig:
     public_value = values["public_url"]
     proxy_value = values["trusted_proxies"]
     cookie_value = values["secure_cookie_policy"]
+    management_value = values["management_prefixes"]
     public_url = normalize_public_url(str(public_value).strip())
     proxies = parse_trusted_proxies(proxy_value)
     policy = str(cookie_value).strip().casefold()
     if policy not in COOKIE_POLICIES:
         raise NetworkSecurityError("invalid_cookie_policy", field="secure_cookie_policy")
-    return NetworkSecurityConfig(public_url, proxies, policy, overrides, sources)
+    try:
+        management = management_routing.parse_management_prefixes(
+            management_value, confirm_broad=True
+        )
+    except management_routing.ManagementRoutingError as error:
+        raise NetworkSecurityError(
+            error.code,
+            field=error.field,
+            line=error.line,
+            value=error.value,
+        ) from error
+    return NetworkSecurityConfig(
+        public_url,
+        proxies,
+        policy,
+        overrides,
+        sources,
+        management,
+    )
 
 
 def settings_updated_event_metadata(
@@ -221,6 +273,7 @@ def settings_updated_event_metadata(
         if configuration.public_url
         else "none",
         "trusted_proxy_count": str(len(configuration.trusted_proxies)),
+        "management_prefix_count": str(len(configuration.management_prefixes)),
     }
 
 
@@ -230,12 +283,19 @@ def validate_update(
     trusted_proxies: str | list[str],
     secure_cookie_policy: str,
     confirm_broad_trust: bool = False,
+    management_prefixes: str | list[str] | None = None,
+    confirm_broad_management: bool = False,
 ) -> NetworkSecurityConfig:
     current = current_config()
     supplied = {
         "public_url": public_url,
         "trusted_proxies": trusted_proxies,
         "secure_cookie_policy": secure_cookie_policy,
+        "management_prefixes": (
+            [str(network) for network in current.management_prefixes]
+            if management_prefixes is None
+            else management_prefixes
+        ),
     }
     effective = current.as_public_dict()
     for field in current.overrides:
@@ -244,11 +304,18 @@ def validate_update(
             candidate = normalize_public_url(str(candidate).strip())
         elif field == "trusted_proxies":
             candidate = [str(network) for network in parse_trusted_proxies(candidate)]
+        elif field == "management_prefixes":
+            candidate = [
+                str(network)
+                for network in management_routing.parse_management_prefixes(
+                    candidate, confirm_broad=True
+                )
+            ]
         else:
             candidate = str(candidate).strip().casefold()
         if candidate != effective[field]:
             raise NetworkSecurityError("environment_override", field=field)
-    normalized_url, networks, policy = validate_configuration(
+    normalized_url, networks, policy, management = validate_configuration(
         str(effective["public_url"])
         if "public_url" in current.overrides
         else str(supplied["public_url"]),
@@ -259,12 +326,25 @@ def validate_update(
         if "secure_cookie_policy" in current.overrides
         else str(supplied["secure_cookie_policy"]),
         confirm_broad_trust=confirm_broad_trust,
+        management_prefixes=(
+            effective["management_prefixes"]
+            if "management_prefixes" in current.overrides
+            else supplied["management_prefixes"]
+        ),
+        confirm_broad_management=confirm_broad_management,
     )
     sources = {
         field: "environment" if field in current.overrides else "database"
         for field in ENVIRONMENT_KEYS
     }
-    return NetworkSecurityConfig(normalized_url, networks, policy, current.overrides, sources)
+    return NetworkSecurityConfig(
+        normalized_url,
+        networks,
+        policy,
+        current.overrides,
+        sources,
+        management,
+    )
 
 
 def update_config(
@@ -273,6 +353,8 @@ def update_config(
     trusted_proxies: str | list[str],
     secure_cookie_policy: str,
     confirm_broad_trust: bool = False,
+    management_prefixes: str | list[str] | None = None,
+    confirm_broad_management: bool = False,
     fields: set[str] | None = None,
 ) -> tuple[NetworkSecurityConfig, list[str]]:
     current = current_config()
@@ -281,11 +363,14 @@ def update_config(
         trusted_proxies=trusted_proxies,
         secure_cookie_policy=secure_cookie_policy,
         confirm_broad_trust=confirm_broad_trust,
+        management_prefixes=management_prefixes,
+        confirm_broad_management=confirm_broad_management,
     )
     values = {
         PUBLIC_URL_KEY: validated.public_url,
         TRUSTED_PROXIES_KEY: [str(network) for network in validated.trusted_proxies],
         COOKIE_POLICY_KEY: validated.secure_cookie_policy,
+        MANAGEMENT_PREFIXES_KEY: [str(network) for network in validated.management_prefixes],
     }
     stored = core.stored_settings(CONFIGURATION_KEYS)
     selected_fields = set(FIELD_KEYS) if fields is None else fields & set(FIELD_KEYS)
@@ -307,4 +392,6 @@ def update_config(
 
 
 def reset_database_config() -> None:
-    core.delete_settings(CONFIGURATION_KEYS)
+    # This recovery command predates management routing and is exposed as
+    # `proxy reset`; it must never silently remove administrator routes.
+    core.delete_settings(PROXY_CONFIGURATION_KEYS)

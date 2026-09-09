@@ -107,6 +107,36 @@ Current technology: NORDLYNX""",
     }
 
 
+def test_local_preflight_uses_only_daemon_and_status_not_account(monkeypatch):
+    calls = []
+
+    async def command(*args, **kwargs):
+        calls.append(args)
+        if args == ("systemctl", "is-active", "nordvpnd"):
+            return 0, "active", ""
+        if args == ("nordvpn", "status"):
+            return 0, "Status: Disconnected", ""
+        raise AssertionError(f"unexpected network-dependent preflight command: {args}")
+
+    monkeypatch.setattr(nordvpn, "command", command)
+    monkeypatch.setattr(nordvpn.shutil, "which", lambda _name: "/usr/bin/nordvpn")
+
+    status = asyncio.run(nordvpn.NordVPN().local_status())
+
+    assert status == {
+        "installed": True,
+        "daemon_active": True,
+        "local_control_available": True,
+        "connected": False,
+        "connection_state": "disconnected",
+        "error_code": None,
+    }
+    assert calls == [
+        ("systemctl", "is-active", "nordvpnd"),
+        ("nordvpn", "status"),
+    ]
+
+
 def test_connected_interface_does_not_imply_authentication(monkeypatch):
     async def command(*args, **kwargs):
         if args == ("systemctl", "is-active", "nordvpnd"):

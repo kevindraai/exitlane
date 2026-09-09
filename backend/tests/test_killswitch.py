@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from exitlane import core
+from exitlane import cli, core
 from exitlane.providers import nordvpn
 from exitlane.services import killswitch
 
@@ -72,6 +72,9 @@ def test_rules_cover_ipv4_ipv6_dns_management_and_provider_control():
     assert 'iifname @protected_ingress drop comment "ExitLane fail closed"' in rules
     assert "hook input" not in rules and "hook output" not in rules
     assert "192.168.1.0/24" in rules and "fd00::/64" in rules
+    assert rules.index('iifname @protected_ingress drop comment "ExitLane fail closed"') < (
+        rules.index('ct state established,related accept comment "ExitLane return traffic"')
+    )
 
 
 def test_unknown_tunnel_is_fail_closed_and_effective():
@@ -148,6 +151,144 @@ def test_disconnected_tunnel_waits_without_claiming_unknown_interface():
     assert result.state == "enabled_waiting_for_tunnel"
     assert result.reason == "tunnel_unavailable"
     assert result.effective is True
+
+
+def test_provider_transition_is_persisted_and_blocks_only_forwarded_ingress():
+    runner = FakeNft()
+    result = asyncio.run(killswitch.arm_provider_transition(killswitch.NftBackend(runner)))
+
+    assert core.setting(killswitch.SETTING_TRANSITION) is True
+    assert core.setting(killswitch.SETTING_CONFIGURED, False) is False
+    assert result.state == "enabled_transition"
+    assert result.effective is True
+    assert 'iifname @protected_ingress drop comment "ExitLane fail closed"' in runner.ruleset
+    assert "hook input" not in runner.ruleset
+    assert "hook output" not in runner.ruleset
+    assert "masquerade" not in runner.ruleset
+
+
+def test_provider_transition_cannot_be_released_by_normal_reconcile():
+    runner = FakeNft()
+    backend = killswitch.NftBackend(runner)
+    asyncio.run(killswitch.arm_provider_transition(backend))
+
+    result = asyncio.run(killswitch.reconcile(facts(), backend))
+
+    assert result.state == "enabled_transition"
+    assert core.setting(killswitch.SETTING_TRANSITION) is True
+    assert 'oifname "vpn0"' not in runner.ruleset
+    assert "masquerade" not in runner.ruleset
+
+    enabled = asyncio.run(killswitch.enable(facts(), backend))
+    assert enabled.state == "enabled_transition"
+    assert core.setting(killswitch.SETTING_CONFIGURED) is True
+    assert 'oifname "vpn0"' not in runner.ruleset
+    assert "masquerade" not in runner.ruleset
+
+
+@pytest.mark.parametrize("configured", [False, True])
+def test_completed_provider_transition_converges_to_operator_killswitch_policy(configured):
+    runner = FakeNft()
+    backend = killswitch.NftBackend(runner)
+    core.set_setting(killswitch.SETTING_CONFIGURED, configured)
+    asyncio.run(killswitch.arm_provider_transition(backend))
+
+    result = asyncio.run(killswitch.complete_provider_transition(facts(), backend))
+
+    assert core.setting(killswitch.SETTING_TRANSITION) is False
+    if configured:
+        assert result.state == "enabled_protected"
+        assert runner.installed is True
+        assert 'oifname "vpn0"' in runner.ruleset
+    else:
+        assert result.state == "disabled"
+        assert runner.installed is False
+
+
+def test_failed_transition_arm_remains_persisted_for_fail_closed_boot_restore():
+    runner = FakeNft(fail_apply=True)
+
+    with pytest.raises(killswitch.KillswitchError):
+        asyncio.run(killswitch.arm_provider_transition(killswitch.NftBackend(runner)))
+
+    assert core.setting(killswitch.SETTING_TRANSITION) is True
+
+
+class InterleavingFirewall:
+    def __init__(self):
+        self.first_apply_started = asyncio.Event()
+        self.release_first_apply = asyncio.Event()
+        self.apply_count = 0
+        self.installed_value = True
+        self.last_ruleset = ""
+
+    async def apply(self, ruleset):
+        self.apply_count += 1
+        if self.apply_count == 1:
+            self.first_apply_started.set()
+            await self.release_first_apply.wait()
+        self.installed_value = True
+        self.last_ruleset = ruleset
+
+    async def remove(self):
+        self.installed_value = False
+        self.last_ruleset = ""
+
+    async def installed(self):
+        return self.installed_value
+
+
+def test_late_reconcile_cannot_overwrite_newer_transition_arm():
+    async def scenario():
+        core.set_setting(killswitch.SETTING_CONFIGURED, True)
+        firewall = InterleavingFirewall()
+        reconcile = asyncio.create_task(killswitch.reconcile(facts(), firewall))
+        await firewall.first_apply_started.wait()
+        arm = asyncio.create_task(killswitch.arm_provider_transition(firewall))
+        await asyncio.sleep(0)
+        firewall.release_first_apply.set()
+        await asyncio.gather(reconcile, arm)
+        return firewall
+
+    firewall = asyncio.run(scenario())
+
+    assert core.setting(killswitch.SETTING_TRANSITION) is True
+    assert "masquerade" not in firewall.last_ruleset
+    assert 'iifname @protected_ingress drop comment "ExitLane fail closed"' in (
+        firewall.last_ruleset
+    )
+
+
+def test_late_reconcile_cannot_overwrite_newer_transition_completion():
+    async def scenario():
+        core.set_setting(killswitch.SETTING_TRANSITION, True)
+        firewall = InterleavingFirewall()
+        reconcile = asyncio.create_task(killswitch.reconcile(facts(), firewall))
+        await firewall.first_apply_started.wait()
+        complete = asyncio.create_task(killswitch.complete_provider_transition(facts(), firewall))
+        await asyncio.sleep(0)
+        firewall.release_first_apply.set()
+        await asyncio.gather(reconcile, complete)
+        return firewall
+
+    firewall = asyncio.run(scenario())
+
+    assert core.setting(killswitch.SETTING_TRANSITION) is False
+    assert firewall.installed_value is False
+    assert firewall.last_ruleset == ""
+
+
+def test_boot_restore_rearms_persisted_provider_transition(monkeypatch):
+    calls = []
+    core.set_setting(killswitch.SETTING_TRANSITION, True)
+
+    async def arm_provider_transition():
+        calls.append("armed")
+
+    monkeypatch.setattr(killswitch, "arm_provider_transition", arm_provider_transition)
+
+    assert cli.restore_killswitch(effective_user_id=0) == 0
+    assert calls == ["armed"]
 
 
 def test_nordvpn_fails_closed_when_official_status_omits_technology(monkeypatch):

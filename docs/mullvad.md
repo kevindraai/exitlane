@@ -1,136 +1,110 @@
 # Mullvad VPN provider
 
-ExitLane supports Mullvad VPN as an optional commercial egress provider alongside NordVPN. Both
-clients may be installed and signed in, but only the provider marked **Active** can connect through
-ExitLane. Selecting no provider remains valid and routes WireGuard clients through the appliance's
-normal internet route.
+ExitLane integrates Mullvad as a direct WireGuard egress provider. It does not install, start or
+control the Mullvad desktop app, CLI or `mullvad-daemon`. ExitLane owns the egress interface,
+policy-routing table and forwarded-traffic killswitch; WireGuard ingress remains a separate
+interface and responsibility.
 
-## Installation and onboarding
+The implementation follows Mullvad's official
+[WireGuard configuration guidance](https://mullvad.net/en/help/wireguard-and-mullvad-vpn) and the
+endpoint/field usage in Mullvad's official
+[`wg-tools`](https://github.com/mullvad/wg-tools). Those HTTP endpoints are implementation details,
+not a separately versioned public API contract, so schema validation and live qualification are
+required before release.
 
-The supported target is Debian 13 `amd64`. In first-run step 3, select Mullvad VPN alone or together
-with NordVPN. ExitLane's protected installer configures Mullvad's official stable HTTPS APT
-repository with a dedicated `signed-by` keyring, verifies primary fingerprint
-`A119 8702 FC3E 0A09 A9AE 5B75 D5A1 D4F2 66DE 8DDF`, installs `mullvad-vpn`, and starts
-`mullvad-daemon`. It does not use the beta repository, `apt-key`, `trusted=yes`, or a remote shell
-installer. The managed helper is idempotent and its progress can resume after a browser refresh.
-The helper resumes an interrupted `dpkg` configuration and runs the complete package transaction
-with `SYSTEMD_OFFLINE=1`. On the supported Debian
-13 systemd baseline this keeps package-time `start` and `restart` operations from communicating with
-PID 1 while client-side unit enablement still succeeds. ExitLane-owned systemd drop-ins are present
-before APT runs: the Mullvad early-boot firewall initializer has a permanently absent condition,
-and the normal daemon can start only with a short-lived controlled-start marker or a durable marker
-written after successful gateway validation. The helper then starts the daemon itself and always
-applies and verifies LAN sharing, Lockdown, auto-connect, and disconnected state. Mullvad 2026.4
-does not expose tunnel and split-tunnel readback before an account is present, so IPv6-off and an
-empty split-tunnel list are additionally applied and verified when an existing account is detected
-or immediately after a new stdin-only account login, before that login is reported as successful.
-Debian's `gpgv` package is installed explicitly for repository metadata verification.
+## Authentication and device ownership
 
-The package-time boundary is validated against Mullvad 2026.4 and Debian 13 systemd 257. systemd's
-[environment-variable reference](https://systemd.io/ENVIRONMENT/) documents `SYSTEMD_OFFLINE`, but
-does not promise the same stability as a normal command-line interface. Both the package scripts
-and this behavior must therefore be revalidated before a newer Mullvad or systemd release becomes
-the supported baseline.
+The WebUI accepts a 16-digit Mullvad account number over the authenticated same-origin API.
+ExitLane generates one X25519/WireGuard keypair and persists a `pending` registration record before
+the first remote device mutation. After a timeout it lists devices and reconciles only the exact
+public key; it never guesses, creates a second key automatically, deletes another device, or
+silently replaces a revoked device.
 
-The official package requires its root-owned `/usr/bin/mullvad-exclude` helper to have a setuid bit.
-The fixed Mullvad package-installer unit permits that one upstream package step; the ordinary
-ExitLane service retains `RestrictSUIDSGID=true`, and ExitLane clears all split-tunnel exclusions in
-its gateway baseline.
+The account number, private key and bound device metadata are encrypted in SQLite with the
+appliance master key. Access tokens exist only in process memory for a short bounded lifetime.
+The active root-only WireGuard configuration is mode `0600`; responses, Activity metadata and logs
+contain neither account number, token nor private key. Preserve `/etc/exitlane/secret.key` and the
+database together in backup and recovery.
 
-The validated client baseline for this integration is Mullvad VPN 2026.4. Current upstream usage
-and installation documentation is available in Mullvad's official
-[CLI guide](https://mullvad.net/en/help/how-use-mullvad-cli) and
-[Linux installation guide](https://mullvad.net/en/help/install-mullvad-app-linux).
+Ending the Mullvad session removes exactly ExitLane's recorded device remotely before deleting its
+local encrypted state. If the remote result is uncertain, local state is retained for a safe retry.
+An active connection must be disconnected first.
 
-## Authentication and management
+## Relay and tunnel model
 
-Mullvad authentication uses the 16-digit account number. Spaces in the UI are accepted and removed
-before validation. The masked field is cleared immediately after submit. ExitLane passes the number
-to the fixed local `mullvad account login` process over stdin and never stores, logs, displays, or
-adds it to process arguments. Mullvad supports at most five registered devices per account; remove
-an old device in [Mullvad account management](https://mullvad.net/account/) if ExitLane reports
-`too_many_devices`.
+Only active WireGuard relays with strictly validated identifiers, a public numeric IPv4 endpoint
+and a valid 32-byte public key are eligible. The first release scope is IPv4-only:
 
-After sign-in, choose a country from the same provider-neutral country and latency interface used
-by NordVPN. Relay catalog output is parsed and validated inside the Mullvad provider. Missing
-latency does not block connection. To change providers, open VPN Overview and choose **Make active**.
-ExitLane disconnects and verifies the old active provider before persisting the new selection. A
-disconnect failure leaves the old provider active.
+- provider interface: `wg-mullvad`;
+- provider policy table: `51820`;
+- ExitLane route protocol: `196`;
+- WireGuard UDP port: `51820`;
+- MTU: `1380` by default (`1280` is troubleshooting-only);
+- provider DNS address for live tests: `10.64.0.1`.
 
-ExitLane applies the unauthenticated appliance baseline during installation: auto-connect off, LAN
-sharing on, Lockdown Mode off, and disconnected. Once an account is present it also verifies empty
-split-tunnel exclusions, WireGuard egress, and IPv6 off before activation. Mullvad's normal
-connection kill switch remains client-owned. Lockdown Mode is different and stays off so an
-intentional disconnect does not take over appliance connectivity. The ExitLane killswitch remains
-the policy for forwarded WireGuard/LAN traffic.
+`Table = off` prevents `wg-quick` from changing the host default route. ExitLane adds policy rules
+only for configured protected ingress interfaces. The host continues to use `main` for SSH, WebUI,
+Mullvad API access and the relay underlay path. Table `51820` always has an ExitLane-owned
+unreachable default before it receives the live `wg-mullvad` default, so tunnel loss cannot fall
+through to plaintext egress.
 
-## Package lifecycle invariants
+Connect and relay-switch transactions save a generation and relay intent, arm the guard, replace
+the interface, verify the exact ingress/table/interface route, then require both an active
+dataplane probe and a handshake for exactly the configured peer. Only then is the generation
+committed. A failed switch restores the previous generation when it can be proven; otherwise the
+owned unreachable route remains fail closed.
 
-- Installing or upgrading Mullvad cannot independently activate a firewall policy that removes
-  ExitLane management connectivity.
-- `mullvad-early-boot-blocking.service` cannot apply appliance policy for an inactive or
-  disconnected provider, even when an upstream package enables it again.
-- A disconnected Mullvad provider must not leave `table inet mullvad` behind.
-- Before the first controlled daemon start, interruption or reboot leaves both Mullvad services
-  inactive. The durable daemon-start marker is created only after settings, firewall state, the
-  management/default route, and disconnected state have all been verified.
-- ExitLane never deletes or flushes Mullvad's nftables table during normal installation. An
-  unexpected table is a fail-closed installation error.
+At boot, `exitlane-provider-egress.service` restores the guarded table and ingress rules before
+normal networking whenever encrypted state records an active or pending Mullvad generation. Every
+systemd-managed `wg-quick` ingress directly requires this successful guard restoration. This
+applies even when the optional nftables killswitch setting is off. Normal status polling observes
+the exact peer without generating traffic and cannot release an interrupted transaction.
 
-## Troubleshooting without credentials
+## DNS and leak protection
 
-Run these read-only checks locally:
+ExitLane does not replace the appliance's `/etc/resolv.conf` as proof of client DNS behavior. Live
+acceptance sends DNS from the actual protected ingress namespace/client to `10.64.0.1` and proves
+that the query traverses `wg-mullvad`. The generic nftables policy allows protected IPv4 only via
+the reported provider interface and blocks IPv6 for this provider. No public DNS or physical-uplink
+exception exists for forwarded clients.
+
+## Legacy Mullvad app conflict
+
+An active `mullvad-daemon` or an existing `table inet mullvad` is a conflicting network owner.
+ExitLane reports `legacy_mullvad_runtime_conflict` and refuses activation. It never deletes or
+flushes that table automatically.
+
+Inspect before manual cleanup:
 
 ```console
-sudo systemctl status mullvad-daemon.service --no-pager --full
-sudo mullvad version
-sudo mullvad status --json
-sudo journalctl -u exitlane-provider-install-mullvad.service -n 100 --no-pager
-sudo journalctl -u exitlane.service -n 100 --no-pager
-```
-
-Do not paste an account number into a shell command, issue tracker, journal query, or support log.
-Installation errors exposed in the WebUI are stable ExitLane codes; raw Mullvad output is not
-returned. `account_expired` means the account needs time; `too_many_devices` requires removing a
-device; `provider_lockdown_enabled` requires disabling Mullvad Lockdown Mode before ExitLane can
-safely manage the gateway.
-
-An appliance upgraded from the pre-fix integration can contain the stale provider-owned firewall
-table described by the 2026.4 early-boot incident. Recovery is an explicit console-only operator
-procedure, not part of the managed installer:
-
-```console
-sudo systemctl stop mullvad-daemon.service mullvad-early-boot-blocking.service
+sudo systemctl is-active mullvad-daemon.service
 sudo nft list table inet mullvad
-sudo nft delete table inet mullvad
+sudo ip -4 rule show
+sudo ip -4 route show table 51820
+sudo wg show wg-mullvad
 ```
 
-Delete only the exact inspected `table inet mullvad`; never flush the ruleset. Re-run the managed
-installation immediately afterward so the ExitLane drop-ins and validated completion marker own
-future startup behavior.
+If this host previously used the Mullvad app, disconnect it, disable its daemon and uninstall it
+using Mullvad's documented procedure. Inspect the exact nftables table before removing any stale
+provider-owned state. Never flush the complete nftables ruleset. Old ExitLane package-helper units
+and drop-ins may be removed only after the app/package has been retired and the direct provider
+reports no legacy conflict.
 
-## Later live-account validation
+## Live acceptance
 
-Use only an authorized disposable Debian 13 appliance and an existing funded test account. Do not
-record the account number in notes or shell history.
+Run this on the disposable network runner/appliance with a test account:
 
-1. Confirm ExitLane is healthy, `mullvad-daemon` is active, auto-connect is off, Lockdown Mode is
-   off, and Mullvad is disconnected.
-2. Enter the account number only in ExitLane's masked WebUI field. Confirm it disappears immediately
-   and inspect Activity plus the ExitLane journal for safe codes only.
-3. Choose a country, connect, and confirm the WebUI's country/relay/interface and external IP agree
-   with sanitized `mullvad status --json` observations.
-4. Disconnect. Confirm normal host internet, local management, and WireGuard management remain
-   reachable and no stale ExitLane firewall rule remains.
-5. With both providers signed in, activate NordVPN and then Mullvad. Verify each switch disconnects
-   the old tunnel before the new provider can connect.
-6. Enable the ExitLane killswitch, repeat Mullvad up/down and reconnect, and confirm forwarded IPv4
-   and DNS fail closed while local recovery remains reachable. Reboot and confirm neither provider
-   connects unexpectedly.
-7. End the Mullvad session from ExitLane, confirm the account number never appears in API responses,
-   Activity, application logs, process argv, or temporary files, and remove the disposable Mullvad
-   device from account management if required.
+1. Sign in and confirm exactly one new device with the recorded public key.
+2. Perform at least three cold connects and verify route, exact-peer handshake and forwarded IPv4.
+3. Switch to a different relay and verify generation commit or proven rollback.
+4. Resolve through `10.64.0.1` from protected ingress; capture the physical uplink and prove zero
+   plaintext forwarded IPv4, IPv6 and DNS packets.
+5. Confirm SSH/WebUI/API management traffic continues over the host main route.
+6. Kill the tunnel interface and confirm table `51820` remains unreachable for protected ingress.
+7. Reconnect, reboot with an active generation, and confirm the boot guard is installed before
+   forwarded traffic can flow.
+8. Sign out and confirm only ExitLane's bound device is removed and no secret appears in logs,
+   process arguments, API responses or Activity.
 
-Never create or purchase an account as part of automated validation. Live authentication and
-connectivity require a separately authorized test credential; all automated fixtures remain fake
-and sanitized.
+Unit and namespace simulations are necessary evidence but do not replace these real-account,
+real-relay checks.

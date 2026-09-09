@@ -16,7 +16,7 @@ from pathlib import Path
 from exitlane import core, lifecycle
 from exitlane.events import record_event
 from exitlane.providers.nordvpn import provider
-from exitlane.services import killswitch, network_security
+from exitlane.services import killswitch, management_routing, network_security, provider_secrets
 from exitlane.services.auth_security import disable_mfa as disable_administrator_mfa
 from exitlane.services.credentials import CredentialError, reset_administrator_password
 from exitlane.services.network_security import (
@@ -26,6 +26,7 @@ from exitlane.services.network_security import (
     reset_database_config,
     update_config,
 )
+from exitlane.services.provider_wireguard import ProviderWireGuard, ProviderWireGuardError
 
 
 def reset_password(
@@ -274,15 +275,92 @@ def restore_killswitch(*, effective_user_id: int | None = None) -> int:
     """Boot-only idempotent restore; configured gateways are closed before networking."""
     if (os.geteuid() if effective_user_id is None else effective_user_id) != 0:
         return 77
-    if not core.setting(killswitch.SETTING_CONFIGURED, False):
+    transition = bool(core.setting(killswitch.SETTING_TRANSITION, False))
+    if not core.setting(killswitch.SETTING_CONFIGURED, False) and not transition:
         return 0
     try:
         # Deliberately start closed. The backend reconciles with live provider facts
         # after startup; provider control traffic is host output and remains allowed.
-        asyncio.run(killswitch.reconcile(killswitch.TunnelFacts(False)))
+        if transition:
+            asyncio.run(killswitch.arm_provider_transition())
+        else:
+            asyncio.run(killswitch.reconcile(killswitch.TunnelFacts(False)))
     except killswitch.KillswitchError:
         record_event("network.killswitch_error", metadata={"reason": "firewall_apply_failed"})
         return 1
+    return 0
+
+
+def restore_provider_egress_guard(*, effective_user_id: int | None = None) -> int:
+    """Restore fail-closed forwarding before networking after an active direct VPN."""
+    if (os.geteuid() if effective_user_id is None else effective_user_id) != 0:
+        return 77
+    try:
+        state = provider_secrets.load("mullvad")
+        if not state or not any(
+            isinstance(state.get(field), dict) for field in ("pending", "active")
+        ):
+            return 0
+        ingress, _ = killswitch.configuration()
+        asyncio.run(ProviderWireGuard().arm(ingress, "wg-mullvad"))
+    except (
+        provider_secrets.ProviderSecretError,
+        ProviderWireGuardError,
+        killswitch.KillswitchError,
+    ):
+        record_event("network.provider_egress_guard_error", metadata={"provider": "mullvad"})
+        try:
+            asyncio.run(killswitch.arm_provider_transition())
+        except killswitch.KillswitchError:
+            return 1
+        return 0
+    return 0
+
+
+def reconcile_management_routes(*, effective_user_id: int | None = None) -> int:
+    if (os.geteuid() if effective_user_id is None else effective_user_id) != 0:
+        print("This command must be run as root or with sudo.", file=sys.stderr)
+        return 77
+    try:
+        result = asyncio.run(management_routing.reconcile())
+    except management_routing.ManagementRoutingError as error:
+        if error.code == "protected_destination_route_unavailable":
+            # Systemd invokes this after a configured WireGuard interface
+            # stops and after it starts. The reconciler has already installed
+            # and verified exact unreachable routes; a later lifecycle pass
+            # replaces that safe temporary block.
+            print("Protected destination routing is fail-closed pending interface startup.")
+            return 0
+        print(
+            f"Management routing reconciliation failed: {error.code}.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"Management routing reconciled for {len(result.prefixes)} destination prefix(es).")
+    return 0
+
+
+def prepare_management_routes(*, effective_user_id: int | None = None) -> int:
+    """Pre-populate cached provider tables before provider daemons start at boot."""
+    if (os.geteuid() if effective_user_id is None else effective_user_id) != 0:
+        print("This command must be run as root or with sudo.", file=sys.stderr)
+        return 77
+    try:
+        result = asyncio.run(management_routing.prepare_provider_transition())
+    except management_routing.ManagementRoutingError as error:
+        if error.code == "protected_destination_route_unavailable":
+            # The reconciler installs and verifies explicit unreachable routes
+            # before returning this code. A configured WireGuard interface may
+            # legitimately appear later in boot; its wg-quick post hook and the
+            # runtime monitor will replace the temporary block.
+            print("Protected destination routing is fail-closed pending interface startup.")
+            return 0
+        print(
+            f"Management routing preparation failed: {error.code}.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"Management routing prepared for {len(result.prefixes)} destination prefix(es).")
     return 0
 
 
@@ -403,6 +481,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     subcommands.add_parser("killswitch-status", help="show the ExitLane killswitch status")
     subcommands.add_parser("disable-killswitch", help="remove only the ExitLane killswitch rules")
     subcommands.add_parser("restore-killswitch", help=argparse.SUPPRESS)
+    subcommands.add_parser("restore-provider-egress-guard", help=argparse.SUPPRESS)
+    subcommands.add_parser(
+        "reconcile-management-routes",
+        help="restore ExitLane-owned management routing rules",
+    )
+    subcommands.add_parser("prepare-management-routes", help=argparse.SUPPRESS)
     backup_parser = subcommands.add_parser("backup", help="create, inspect, verify, or restore")
     backup_commands = backup_parser.add_subparsers(dest="backup_command", required=True)
     for backup_action in ("create", "inspect", "verify", "restore"):
@@ -451,6 +535,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.command == "restore-killswitch":
         core.init()
         return restore_killswitch()
+    if arguments.command == "restore-provider-egress-guard":
+        core.init()
+        return restore_provider_egress_guard()
+    if arguments.command == "reconcile-management-routes":
+        core.init()
+        return reconcile_management_routes()
+    if arguments.command == "prepare-management-routes":
+        core.init()
+        return prepare_management_routes()
     if arguments.command == "backup":
         return backup_command(arguments)
     return 2

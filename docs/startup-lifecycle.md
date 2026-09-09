@@ -20,6 +20,24 @@ timezone. A match is a no-op. An invalid stored value, unreadable system timezon
 change is recorded as a stable Activity error and surfaced in Settings; the service remains
 available for an administrator to recover the configuration.
 
+Early boot also prepares exact non-provider policy routes before provider activation and the ExitLane
+application start. The set consists of discovered management networks, explicitly configured
+management prefixes, and—only when enabled—the WireGuard client network stored in canonical
+application settings. The route itself is derived from the kernel `main` table. If the configured
+WireGuard interface has not appeared yet, preparation installs an exact `unreachable` route and
+completes in a safe pending state instead of allowing default-route fallback. Every `wg-quick`
+interface stop and start runs an interface-neutral post hook: stop installs the temporary block and
+start replaces it after interface creation. Application startup and its periodic monitor also
+reconcile. Together these restore owned routes after provider-table reconstruction without
+assuming interface or table names.
+
+When encrypted Mullvad state records an active direct-WireGuard generation, a separate early-boot
+unit restores its ingress-selected provider table with an unreachable default. The application may
+later reconnect that generation, but protected forwarding cannot fall through to the host default
+route. Pending recovery generations receive the same guard, and every systemd-managed `wg-quick`
+ingress requires successful completion of this unit before it can start.
+route while the tunnel interface is absent.
+
 ## Wizard
 
 An incomplete setup selects wizard mode. Only setup data and public configuration needed for the

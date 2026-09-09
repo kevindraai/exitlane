@@ -1,4 +1,4 @@
-import { getSlice, updateSlice } from "./state.js";
+import { getSlice, resetProviderViewState, updateSlice } from "./state.js";
 import {
   renderSettingsNavigation,
   setSettingsGroupExpanded,
@@ -172,10 +172,12 @@ export function navigationTarget(button) {
 }
 
 export function showProviderView(providerId, options = {}) {
+  const previousProviderId = getSlice("application").providerId;
   const state = transitionApplication(
     { activeView: "vpn-provider", providerId },
     { persistView: options.persist !== false },
   );
+  if (providerId !== previousProviderId) resetProviderViewState(providerId);
   window.dispatchEvent(new CustomEvent("exitlane:viewchange", {
     detail: { view: state.activeView, providerId },
   }));

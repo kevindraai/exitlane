@@ -129,6 +129,11 @@ def init():
                 client_ip TEXT NOT NULL,
                 FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS provider_secrets(
+                provider_id TEXT PRIMARY KEY,
+                encrypted_payload BLOB NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
             """
         )
         user_columns = {row[1] for row in c.execute("PRAGMA table_info(users)")}

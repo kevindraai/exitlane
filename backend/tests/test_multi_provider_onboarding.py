@@ -43,6 +43,16 @@ def onboarding(tmp_path, monkeypatch):
     async def mullvad_status(*, timeout=8):
         return status(main.mullvad_provider, authenticated["mullvad"])
 
+    async def local_status(*, timeout=6):
+        return {
+            "installed": True,
+            "daemon_active": True,
+            "local_control_available": True,
+            "connected": False,
+            "connection_state": "disconnected",
+            "error_code": None,
+        }
+
     async def nord_authenticate(credential):
         assert credential == "n" * 24
         authenticated["nordvpn"] = True
@@ -58,6 +68,8 @@ def onboarding(tmp_path, monkeypatch):
 
     monkeypatch.setattr(main.provider, "status", nord_status)
     monkeypatch.setattr(main.mullvad_provider, "status", mullvad_status)
+    monkeypatch.setattr(main.provider, "local_status", local_status)
+    monkeypatch.setattr(main.mullvad_provider, "local_status", local_status)
     monkeypatch.setattr(main.provider, "authenticate", nord_authenticate)
     monkeypatch.setattr(main.mullvad_provider, "authenticate", mullvad_authenticate)
     monkeypatch.setattr(main.mullvad_provider, "prepare_activation", mullvad_gateway_ready)
@@ -150,9 +162,7 @@ def test_mullvad_rejects_the_legacy_nord_token_payload_alias(onboarding):
     assert authenticated["mullvad"] is False
 
 
-def test_provider_authentication_exception_is_sanitized(
-    onboarding, monkeypatch, caplog
-):
+def test_provider_authentication_exception_is_sanitized(onboarding, monkeypatch, caplog):
     client, _authenticated = onboarding
     assert select_providers(client, "mullvad").status_code == 200
 
@@ -174,10 +184,13 @@ def test_provider_authentication_exception_is_sanitized(
 def test_none_choice_is_rejected_after_a_provider_was_authenticated(onboarding):
     client, _authenticated = onboarding
     assert select_providers(client, "mullvad").status_code == 200
-    assert client.post(
-        "/api/vpn/providers/mullvad/authenticate",
-        json={"credential": ACCOUNT_SENTINEL},
-    ).status_code == 200
+    assert (
+        client.post(
+            "/api/vpn/providers/mullvad/authenticate",
+            json={"credential": ACCOUNT_SENTINEL},
+        ).status_code
+        == 200
+    )
 
     response = select_providers(client)
     assert response.status_code == 409

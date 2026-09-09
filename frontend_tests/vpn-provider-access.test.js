@@ -75,7 +75,7 @@ test("handlers and provider data loading use explicit provider capabilities", as
   assert.match(source, /canSelectLocation\) return/);
   assert.match(source, /canDisconnect\) return/);
   assert.match(source, /application\.activeView === "vpn-provider"/);
-  assert.match(source, /providerApiPath\("\/locations"\)/);
+  assert.match(source, /providerApiPath\("\/locations", providerId\)/);
   assert.doesNotMatch(source, /showView\("settings"/);
 });
 

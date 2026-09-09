@@ -3,7 +3,7 @@ import { localisedCountryName } from "./country-format.js";
 import { createIcon, renderIcon, resolveIconName, statusIconName } from "./icons.js";
 import { getCurrentLanguage, t } from "./i18n.js";
 import { showProviderView, showView } from "./navigation.js";
-import { providerManagementView } from "./provider-management.js";
+import { providerManagementView, providerViewContext } from "./provider-management.js";
 import { refreshProviderState, refreshProvidersState } from "./lifecycle.js";
 import { getSlice, subscribe, updateSlice } from "./state.js";
 import {
@@ -151,7 +151,7 @@ async function changeKillswitch(event) {
   }
 }
 
-export function activeProviderId() {
+export function viewedProviderId() {
   return getSlice("application").providerId
     || getSlice("providers").data?.activeProviderId
     || null;
@@ -170,8 +170,11 @@ export async function loadProviders() {
 }
 
 function providerMetadata() {
-  const id = activeProviderId();
-  return getSlice("providers").data?.items?.find((item) => item.id === id) || null;
+  return providerViewContext(
+    getSlice("application"),
+    getSlice("providers").data || {},
+    getSlice("provider").data || {},
+  ).metadata;
 }
 
 function providerCredentialErrorMessage(code, metadata = providerMetadata()) {
@@ -425,7 +428,7 @@ function providerStatusText(view, name) {
     return t(
       "provider.management.authentication_ready",
       { provider: name },
-      `${name} authentication is ready.`,
+      "Authenticated",
     );
   }
   if (view.authenticationState === "signed_out") {
@@ -438,9 +441,48 @@ function providerStatusText(view, name) {
   return t("settings.vpn.states.unknown", { provider: name }, `${name} authentication is unknown.`);
 }
 
+export function providerActivationFailure(error) {
+  const blockers = Array.isArray(error?.payload?.blockers)
+    ? error.payload.blockers
+    : [];
+  const blocker = blockers.find((item) => (
+    item && typeof item.code === "string" && typeof item.provider === "string"
+  )) || blockers.find((item) => item && typeof item.code === "string");
+  const detail = typeof error?.payload?.detail === "string"
+    ? error.payload.detail
+    : typeof error?.code === "string"
+      ? error.code
+      : "provider_switch_failed";
+  return {
+    code: blocker?.code || detail,
+    providerId: blocker?.provider || null,
+    detail,
+  };
+}
+
+function providerActivationErrorMessage(error) {
+  const failure = providerActivationFailure(error);
+  const providers = getSlice("providers").data?.items || [];
+  const provider = providers.find((item) => item.id === failure.providerId);
+  const providerName = provider?.display_name
+    || providerMetadata()?.display_name
+    || "VPN provider";
+  return t(
+    `provider.activation_errors.${failure.code}`,
+    { provider: providerName },
+    t(`provider.errors.${failure.detail}`, {}, failure.detail),
+  );
+}
+
 export function renderProviderManagement(status = {}) {
-  const metadata = providerMetadata();
+  const context = providerViewContext(
+    getSlice("application"),
+    getSlice("providers").data || {},
+    status,
+  );
+  const metadata = context.metadata;
   if (!metadata) return;
+  status = context.status || {};
   const name = metadata.display_name;
   select("#vpn-provider-title").textContent = name;
   select("#vpn-provider-description").textContent = metadata.description || "";
@@ -488,14 +530,7 @@ export function renderProviderManagement(status = {}) {
   select("#provider-credential-save").textContent = accountNumber
     ? t("provider.mullvad.sign_in", {}, "Sign in to Mullvad")
     : t("provider.management.sign_in", {}, "Sign in with token");
-  credential.inputMode = accountNumber ? "numeric" : "text";
-  credential.minLength = accountNumber ? 16 : 20;
-  credential.maxLength = accountNumber ? 19 : 512;
-  if (accountNumber) {
-    credential.setAttribute("pattern", "[0-9 ]{16,19}");
-  } else {
-    credential.removeAttribute("pattern");
-  }
+  applyProviderCredentialConstraints(credential, accountNumber);
   credential.placeholder = accountNumber ? "1234 1234 1234 1234" : "";
   select("#provider-unavailable").hidden = signedIn || signedOut;
   const installation = select("#provider-management-installation");
@@ -518,6 +553,19 @@ export function renderProviderManagement(status = {}) {
   select("#provider-end-session").disabled = !view.canSignOut || signingOut;
   if (view.installationState === "installing") {
     void restoreManagementProviderInstallation();
+  }
+}
+
+export function applyProviderCredentialConstraints(credential, accountNumber) {
+  credential.inputMode = accountNumber ? "numeric" : "text";
+  credential.removeAttribute("minlength");
+  credential.removeAttribute("maxlength");
+  credential.minLength = accountNumber ? 16 : 20;
+  credential.maxLength = accountNumber ? 19 : 512;
+  if (accountNumber) {
+    credential.setAttribute("pattern", "[0-9 ]{16,19}");
+  } else {
+    credential.removeAttribute("pattern");
   }
 }
 
@@ -599,7 +647,7 @@ async function pollManagementProviderInstallation(providerId) {
 }
 
 async function restoreManagementProviderInstallation() {
-  const providerId = activeProviderId();
+  const providerId = viewedProviderId();
   if (!providerId || providerInstallationStatusLoadedFor === providerId) return;
   providerInstallationStatusLoadedFor = providerId;
   try {
@@ -619,7 +667,7 @@ async function restoreManagementProviderInstallation() {
 
 async function installProviderFromManagement() {
   if (providerInstallationActive) return;
-  const providerId = activeProviderId();
+  const providerId = viewedProviderId();
   const metadata = providerMetadata();
   if (!providerId || !metadata) return;
   if (!window.confirm(t(
@@ -691,7 +739,7 @@ function renderProviderNavigation(slice = getSlice("providers")) {
 
 async function authenticateProvider(event) {
   event.preventDefault();
-  const providerId = activeProviderId();
+  const providerId = viewedProviderId();
   const field = select("#provider-credential");
   const button = select("#provider-credential-save");
   clearInlineError("#provider-credential-error");
@@ -735,8 +783,7 @@ async function activateProvider(providerId, button = select("#provider-activate"
       "Active provider changed.",
     ), "success");
   } catch (error) {
-    const code = error.payload?.detail || error.code || "provider_switch_failed";
-    showInlineError(t(`provider.errors.${code}`, {}, code), "#provider-management-error");
+    showInlineError(providerActivationErrorMessage(error), "#provider-management-error");
   } finally {
     setBusy(button, false);
   }
@@ -745,7 +792,7 @@ async function activateProvider(providerId, button = select("#provider-activate"
 async function signOutProvider() {
   if (signingOut) return;
   signingOut = true;
-  const id = activeProviderId();
+  const id = viewedProviderId();
   const button = select("#provider-sign-out-confirm");
   setBusy(button, true, t("settings.vpn.signing_out", {}, "Ending session…"));
   clearInlineError("#provider-sign-out-error");
@@ -779,7 +826,7 @@ export function initialiseProviders() {
   });
   select("#provider-credential-form").addEventListener("submit", authenticateProvider);
   select("#provider-activate").addEventListener("click", () => (
-    activateProvider(activeProviderId())
+    activateProvider(viewedProviderId())
   ));
   select("#provider-end-session").addEventListener("click", () => {
     select("#provider-sign-out-dialog").showModal();

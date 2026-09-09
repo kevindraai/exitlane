@@ -1,0 +1,23 @@
+[Unit]
+Description=ExitLane fail-closed provider egress routing guard
+DefaultDependencies=no
+After=local-fs.target exitlane-killswitch.service
+Before=network-pre.target network.target network-online.target exitlane.service
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+User=root
+Environment=HOME=/var/lib/exitlane
+EnvironmentFile=-/etc/default/exitlane
+ExecStart=/usr/local/sbin/exitlane-cli restore-provider-egress-guard
+RemainAfterExit=yes
+UMask=0077
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/etc/exitlane
+ProtectKernelTunables=false
+
+[Install]
+RequiredBy=network-pre.target

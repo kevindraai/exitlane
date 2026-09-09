@@ -3,16 +3,9 @@
 The ExitLane killswitch is a system-level, provider-independent protection for
 forwarded client traffic. It is distinct from any provider-client killswitch.
 
-Mullvad's built-in connection kill switch remains owned by the Mullvad client while connecting or
-connected. Mullvad **Lockdown Mode** is separate and is explicitly kept off by ExitLane's gateway
-baseline, because it would also block host traffic after an intentional disconnect. ExitLane does
-not advertise provider-killswitch management for Mullvad; its appliance killswitch remains the
-policy layer for forwarded WireGuard/LAN traffic.
-
-Mullvad's separate `mullvad-early-boot-blocking.service` is also not the ExitLane appliance
-killswitch. An ExitLane-owned systemd condition prevents that upstream unit from applying firewall
-state even if a package install or upgrade enables it again. A disconnected provider is accepted
-only when no provider-owned `table inet mullvad` remains.
+Direct Mullvad egress has no provider-app killswitch. ExitLane owns both the provider policy table's
+unreachable fallback and the optional nftables killswitch. An active legacy Mullvad daemon or
+`table inet mullvad` is a hard conflict, not a second protection layer.
 
 When enabled, ExitLane owns only `table inet exitlane_killswitch`. Its forward
 hook protects WireGuard ingress and explicitly configured routed LAN/VLAN
@@ -36,9 +29,22 @@ Mullvad remains IPv4-only in the current ExitLane contract. Multiple connected p
 an inactive connected provider are ambiguous egress and therefore produce a fail-closed provider
 conflict instead of silently choosing an interface.
 
-Boot restoration is performed by `exitlane-killswitch.service` before
-`network-pre.target`; configured systems start closed and are released only
-after verified provider facts. Recovery is available locally:
+During a connected-provider handoff, ExitLane persists a separate transition flag and temporarily
+installs the closed form of the same `exitlane_killswitch` table even when the operator killswitch
+setting is off. This protects forwarded WireGuard/LAN clients while leaving host input, output,
+SSH, HTTP, management routing and provider control traffic available. Normal reconcile and web
+killswitch mutations cannot release this state. It is cleared only after the target has connected
+and its egress and management postconditions are proven, or after rollback has proven the source
+provider restored. If the process or host restarts mid-transition, boot restoration re-arms the
+closed rules. The runtime monitor can only reconcile the closed form; it never releases a
+transaction guard. A subsequent explicit retry or disconnect may claim an inherited recovery
+guard, while an active provider-switch transaction retains sole ownership. This mechanism does not
+alter, bypass or add DNS exceptions to provider-owned firewall policy.
+
+Boot restoration is performed by `exitlane-killswitch.service` and
+`exitlane-provider-egress.service` before `network-pre.target`; configured, interrupted-transition
+or previously active direct-provider systems start closed and are released
+only after verified provider facts. Recovery is available locally:
 
 ```console
 sudo exitlane-cli killswitch-status

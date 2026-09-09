@@ -127,11 +127,13 @@ def test_sources_follow_environment_database_default_precedence(isolated_databas
         "public_url": "default",
         "trusted_proxies": "default",
         "secure_cookie_policy": "default",
+        "management_prefixes": "default",
     }
     assert defaults.as_public_dict()["environment_overrides"] == {
         "public_url": False,
         "trusted_proxies": False,
         "secure_cookie_policy": False,
+        "management_prefixes": False,
     }
     core.set_settings(
         {
@@ -148,6 +150,7 @@ def test_sources_follow_environment_database_default_precedence(isolated_databas
         "public_url": "database",
         "trusted_proxies": "database",
         "secure_cookie_policy": "environment",
+        "management_prefixes": "default",
     }
 
 
@@ -157,6 +160,7 @@ def test_sources_follow_environment_database_default_precedence(isolated_databas
         ("EXITLANE_PUBLIC_URL", "public_url"),
         ("EXITLANE_TRUSTED_PROXIES", "trusted_proxies"),
         ("EXITLANE_SECURE_COOKIES", "secure_cookie_policy"),
+        ("EXITLANE_MANAGEMENT_PREFIXES", "management_prefixes"),
     ],
 )
 def test_each_environment_override_locks_only_its_own_field(
@@ -166,6 +170,7 @@ def test_each_environment_override_locks_only_its_own_field(
         "EXITLANE_PUBLIC_URL": "http://environment.example",
         "EXITLANE_TRUSTED_PROXIES": "192.0.2.1",
         "EXITLANE_SECURE_COOKIES": "always",
+        "EXITLANE_MANAGEMENT_PREFIXES": "172.16.5.0/24",
     }
     monkeypatch.setenv(environment, values[environment])
     configuration = network_security.current_config().as_public_dict()
@@ -285,6 +290,7 @@ def test_cli_update_stores_event_with_real_validator(isolated_database, caplog):
         "fields": ["public_url", "trusted_proxies"],
         "public_scheme": "https",
         "trusted_proxy_count": "1",
+        "management_prefix_count": "0",
     }
     assert "Could not store application event" not in caplog.text
 
@@ -364,6 +370,7 @@ def test_proxy_cli_command_family_routes_status_set_clear_and_reset(
 
 def test_reset_cli_is_root_only_and_revokes_sessions(isolated_database, monkeypatch):
     core.set_setting(network_security.PUBLIC_URL_KEY, "http://old.example")
+    core.set_setting(network_security.MANAGEMENT_PREFIXES_KEY, ["172.16.5.0/24"])
     with sqlite3.connect(isolated_database) as connection:
         connection.execute(
             "INSERT INTO users(username,password_hash,salt) VALUES('admin','hash','salt')"
@@ -387,6 +394,9 @@ def test_reset_cli_is_root_only_and_revokes_sessions(isolated_database, monkeypa
         == 0
     )
     assert network_security.current_config().public_url == ""
+    assert network_security.current_config().management_prefixes == (
+        ipaddress.ip_network("172.16.5.0/24"),
+    )
     with sqlite3.connect(isolated_database) as connection:
         assert connection.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0
     assert recorded == ["network.security_settings_reset_locally"]
@@ -472,14 +482,108 @@ def test_authenticated_update_requires_reauthentication_and_records_safe_event(
         "public_url": "database",
         "trusted_proxies": "database",
         "secure_cookie_policy": "database",
+        "management_prefixes": "database",
     }
     event = next(item for item in recorded if item[0] == "network.security_settings_updated")
     assert event[1]["metadata"] == {
         "fields": ["trusted_proxies"],
         "public_scheme": "none",
         "trusted_proxy_count": "1",
+        "management_prefix_count": "0",
     }
     assert "password" not in str(event)
+
+
+def test_authenticated_api_persists_and_canonicalizes_management_networks(
+    isolated_database,
+):
+    password = "correct horse battery staple"
+    digest, salt = core.hash_password(password)
+    with sqlite3.connect(isolated_database) as connection:
+        connection.execute(
+            "INSERT INTO users(username,password_hash,salt) VALUES(?,?,?)",
+            ("admin", digest, salt),
+        )
+    core.set_setting("setup_complete", True)
+
+    with TestClient(main.app) as client:
+        assert (
+            client.post(
+                "/api/auth/login",
+                json={"username": "admin", "password": password},
+            ).status_code
+            == 200
+        )
+        response = client.put(
+            "/api/deployment/security",
+            json={
+                "public_url": "",
+                "trusted_proxies": [],
+                "management_prefixes": ["172.16.5.251/24"],
+                "secure_cookie_policy": "auto",
+                "current_password": password,
+            },
+        )
+        broad = client.put(
+            "/api/deployment/security",
+            json={
+                "public_url": "",
+                "trusted_proxies": [],
+                "management_prefixes": ["10.0.0.0/8"],
+                "secure_cookie_policy": "auto",
+                "current_password": password,
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["configuration"]["management_prefixes"] == ["172.16.5.0/24"]
+    assert core.setting(network_security.MANAGEMENT_PREFIXES_KEY) == ["172.16.5.0/24"]
+    assert broad.status_code == 409
+    assert broad.json()["detail"]["code"] == ("broad_management_prefix_confirmation_required")
+
+
+def test_management_reconcile_failure_returns_only_stable_api_diagnostics(
+    isolated_database, monkeypatch
+):
+    password = "correct horse battery staple"
+    digest, salt = core.hash_password(password)
+    with sqlite3.connect(isolated_database) as connection:
+        connection.execute(
+            "INSERT INTO users(username,password_hash,salt) VALUES(?,?,?)",
+            ("admin", digest, salt),
+        )
+    core.set_setting("setup_complete", True)
+
+    async def fail():
+        raise main.management_routing.ManagementRoutingError("management_rule_apply_failed")
+
+    monkeypatch.setattr(main.management_routing, "reconcile", fail)
+    with TestClient(main.app) as client:
+        assert (
+            client.post(
+                "/api/auth/login",
+                json={"username": "admin", "password": password},
+            ).status_code
+            == 200
+        )
+        response = client.put(
+            "/api/deployment/security",
+            json={
+                "public_url": "",
+                "trusted_proxies": [],
+                "management_prefixes": ["172.16.5.0/24"],
+                "secure_cookie_policy": "auto",
+                "current_password": password,
+            },
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": {
+            "code": "management_rule_apply_failed",
+            "field": "management_prefixes",
+        }
+    }
 
 
 def test_update_requires_totp_when_mfa_is_enabled(isolated_database, monkeypatch):

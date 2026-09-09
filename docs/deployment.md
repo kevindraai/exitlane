@@ -35,15 +35,13 @@ That is the supported 0.2.0 appliance baseline; other Debian releases and archit
 supported release targets. The installer creates an isolated Python environment, installs the
 systemd unit, and prepares configuration, data, and log locations.
 
-ExitLane must run natively in the same VM or LXC as the selected provider CLI/daemon: NordVPN uses
-`nordvpn`/`nordvpnd`, and Mullvad uses `mullvad`/`mullvad-daemon`. The Docker
-image is for UI/API development and is not a supported VPN gateway: a container cannot see or
-control provider installations on the host. Do not expose the Docker socket or mount broad host
-paths to bridge that boundary.
+ExitLane must run natively in the gateway VM or LXC. NordVPN uses `nordvpn`/`nordvpnd`; Mullvad uses
+ExitLane's own `wg-mullvad` interface and must not have an active Mullvad app daemon or firewall
+table. The Docker image is for UI/API development and is not a supported VPN gateway. Do not expose
+the Docker socket or mount broad host paths to bridge that boundary.
 
-The systemd service gives provider CLIs a private writable home under `/var/lib/exitlane` while
-retaining `ProtectHome=true`. The CLI communicates with the local daemon through its normal
-runtime interface; ExitLane does not mount host command or Docker control sockets.
+The systemd service gives provider tooling a private writable home under `/var/lib/exitlane` while
+retaining `ProtectHome=true`. ExitLane does not mount host command or Docker control sockets.
 
 ## Prerequisites
 
@@ -66,7 +64,8 @@ Verify on the appliance that ExitLane and the interactive CLI use the same runti
 ```bash
 sudo systemctl status exitlane
 sudo nordvpn status
-sudo mullvad status --json
+sudo wg show wg-mullvad
+sudo ip -4 route show table 51820
 curl --fail http://127.0.0.1:8787/api/health
 ```
 

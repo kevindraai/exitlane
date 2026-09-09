@@ -1,3 +1,37 @@
+export function providerStatusId(status = {}) {
+  return status.management?.provider?.id || null;
+}
+
+export function providerStatusMatchesView(application = {}, status = {}) {
+  return Boolean(
+    application.providerId
+    && providerStatusId(status) === application.providerId,
+  );
+}
+
+export function providerRequestIsCurrent(providerId, application = {}, status = null) {
+  if (!providerId || application.providerId !== providerId) return false;
+  return status === null || providerStatusId(status) === providerId;
+}
+
+export function providerViewContext(application = {}, providersData = {}, status = {}) {
+  const viewedProviderId = application.providerId || providersData.activeProviderId || null;
+  const activeProviderId = providersData.activeProviderId || null;
+  const providerSliceId = providerStatusId(status);
+  const metadata = (providersData.items || []).find(
+    (item) => item.id === viewedProviderId,
+  ) || null;
+  const matchesView = Boolean(viewedProviderId && providerSliceId === viewedProviderId);
+  return {
+    viewedProviderId,
+    activeProviderId,
+    providerSliceId,
+    metadata,
+    matchesView,
+    status: matchesView ? status : null,
+  };
+}
+
 export function providerManagementView(status = {}) {
   const management = status.management || {};
   const provider = management.provider || {};

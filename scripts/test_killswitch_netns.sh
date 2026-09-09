@@ -9,11 +9,16 @@ readonly RULES
 CAPTURE="$(mktemp --suffix=.pcap)"
 readonly CAPTURE
 CAPTURE_PID=""
+FLOW_PID=""
 
 cleanup() {
   if [[ -n "${CAPTURE_PID}" ]]; then
     kill "${CAPTURE_PID}" 2>/dev/null || true
     wait "${CAPTURE_PID}" 2>/dev/null || true
+  fi
+  if [[ -n "${FLOW_PID}" ]]; then
+    kill "${FLOW_PID}" 2>/dev/null || true
+    wait "${FLOW_PID}" 2>/dev/null || true
   fi
   ip netns del "${NS}" 2>/dev/null || true
   ip netns del "${CLIENT_NS}" 2>/dev/null || true
@@ -55,6 +60,14 @@ ip netns exec "${NS}" sysctl -q -w net.ipv4.ip_forward=1
 ip netns exec "${NS}" sysctl -q -w net.ipv6.conf.all.forwarding=1
 chmod 0600 "${RULES}"
 
+# Establish a client flow before protection is armed. The fail-closed rules
+# must classify protected ingress before their generic return-traffic accept,
+# otherwise this existing flow could escape during a provider handoff.
+ip netns exec "${CLIENT_NS}" ping -i 0.1 198.51.100.2 >/dev/null 2>&1 &
+FLOW_PID=$!
+sleep 1
+kill -0 "${FLOW_PID}"
+
 # The same fail-closed shape used by the application: no input/output hooks,
 # explicit DNS guard, IPv4/IPv6 forward protection, and an owned table only.
 {
@@ -63,10 +76,10 @@ chmod 0600 "${RULES}"
   echo ' set protected_ingress { type ifname; elements = { "wg0" } }'
   echo ' chain forward {'
   echo '  type filter hook forward priority -150; policy accept;'
-  echo '  ct state established,related accept'
   echo '  iifname @protected_ingress udp dport 53 counter drop'
   echo '  iifname @protected_ingress tcp dport 53 counter drop'
   echo '  iifname @protected_ingress counter drop'
+  echo '  ct state established,related accept'
   echo ' }'
   echo '}'
 } > "${RULES}"
@@ -97,6 +110,9 @@ ip netns exec "${CLIENT_NS}" bash -c \
 ip netns exec "${CLIENT_NS}" timeout 1 bash -c \
   'printf leak-test >/dev/tcp/198.51.100.2/53' 2>/dev/null || true
 sleep 1
+kill "${FLOW_PID}" 2>/dev/null || true
+wait "${FLOW_PID}" 2>/dev/null || true
+FLOW_PID=""
 kill "${CAPTURE_PID}" 2>/dev/null || true
 wait "${CAPTURE_PID}" 2>/dev/null || true
 CAPTURE_PID=""

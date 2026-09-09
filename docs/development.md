@@ -41,3 +41,27 @@ cannot test or control the NordVPN client installed on the Docker host.
 The LXC check catches systemd, permissions, TUN/WireGuard, NordVPN CLI, and host-integration
 problems that unit tests cannot represent. Record both automated and manual verification in the
 pull request before merge.
+
+After recreating a WireGuard interface, do not treat `active` service state and a restored route as
+proof that its demand-driven peer session is already usable. From the QA peer, run the bounded
+dataplane gate and only continue after its separate steady-state probe succeeds:
+
+```bash
+sudo python3 scripts/wireguard_dataplane_readiness.py \
+  --interface <qa-wireguard-interface> \
+  --target <external-test-address> \
+  --deadline-seconds 35 \
+  --steady-count 5
+```
+
+The bootstrap probe may initiate a fresh handshake. A handshake by itself never passes the gate;
+the final five-packet probe must be lossless. Use the same command with Mullvad and NordVPN active.
+
+The direct provider policy-routing layer also has an isolated namespace regression:
+
+```console
+sudo ./scripts/test_provider_egress_netns.sh
+```
+
+It proves host-main-route preservation, interface-bound probe routing, IPv4 fail-closed teardown
+and unconditional protected IPv6 blocking without contacting a provider.

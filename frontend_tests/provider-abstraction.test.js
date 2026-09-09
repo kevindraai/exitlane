@@ -32,8 +32,8 @@ test("provider overview, provider route, and generic API paths are distinct", as
   ]);
   assert.match(navigation, /#vpn\/provider\/\$\{encodeURIComponent\(providerId\)\}/);
   assert.match(overview, /data-view-panel="vpn"/);
-  assert.match(provider, /providerApiPath\("\/locations"\)/);
-  assert.match(provider, /providerApiPath\("\/disconnect"\)/);
+  assert.match(provider, /providerApiPath\("\/locations", providerId\)/);
+  assert.match(provider, /providerApiPath\("\/disconnect", providerId\)/);
   assert.doesNotMatch(provider, /postJson\("\/api\/vpn\/connect"/);
   assert.match(providers, /action\.addEventListener\("click", \(\) => showProviderView\(view\.id\)\)/);
 });

@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 INSTALLER = ROOT / "installer" / "install-debian.sh"
 DEFAULTS = ROOT / "installer" / "exitlane.default"
 DEPLOY_SCRIPT = ROOT / "scripts" / "deploy_worktree_to_test.sh"
+WIREGUARD_DROPIN = ROOT / "systemd" / "wg-quick@.service.d" / "exitlane.conf"
 
 
 def test_new_installer_defaults_omit_optional_reverse_proxy_environment_variables():
@@ -42,6 +43,13 @@ def test_clean_installer_creates_the_systemd_service_home():
 
     assert 'readonly SERVICE_HOME="/var/lib/exitlane"' in installer
     assert 'install -d -o root -g root -m 0700 "${SERVICE_HOME}"' in installer
+
+
+def test_wireguard_ingress_requires_successful_provider_boot_guard():
+    dropin = WIREGUARD_DROPIN.read_text(encoding="utf-8")
+
+    assert "Requires=exitlane-provider-egress.service" in dropin
+    assert "After=exitlane-provider-egress.service" in dropin
 
 
 def test_installer_has_locked_upgrade_snapshot_and_rollback_contract():
@@ -305,9 +313,7 @@ def test_rollback_restores_exact_prior_paths_and_removes_candidate_only_paths(tm
         "etc/systemd/system/mullvad-early-boot-blocking.service.d/exitlane.conf": (
             "candidate early-boot policy\n"
         ),
-        "etc/systemd/system/mullvad-daemon.service.d/exitlane.conf": (
-            "candidate daemon policy\n"
-        ),
+        "etc/systemd/system/mullvad-daemon.service.d/exitlane.conf": ("candidate daemon policy\n"),
         "etc/systemd/system/exitlane-speedtest-install.service": "candidate speedtest unit\n",
         "var/lib/exitlane/exitlane.db": "preserve data",
         "etc/wireguard/wg0.conf": "preserve wireguard",

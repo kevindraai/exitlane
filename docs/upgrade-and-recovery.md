@@ -51,11 +51,10 @@ The Debian timezone is the exception: it is part of the ExitLane settings contra
 from the root-only recovery snapshot before the previous service starts. A failed timezone restore
 is reported as requiring manual recovery rather than being hidden.
 
-The Mullvad daemon and early-boot drop-ins are exact recovery-snapshot paths as well. This preserves
-or removes ExitLane's package-time firewall suppression together with the candidate. The Mullvad
-package and provider-owned settings remain outside application rollback, but an ExitLane-managed
-package transaction is offline with respect to PID 1 and cannot write the durable daemon completion
-marker until the disconnected network baseline is proven.
+Legacy Mullvad helper and daemon-drop-in paths remain in the exact recovery snapshot allowlist so a
+failed upgrade can restore the previous candidate losslessly. The direct integration does not
+install or activate those artifacts. Existing Mullvad packages and provider-owned firewall state
+remain outside automatic rollback and are surfaced as a conflict for deliberate operator cleanup.
 
 If automatic service recovery cannot complete, inspect:
 

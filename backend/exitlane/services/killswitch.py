@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import os
 import re
@@ -14,6 +15,7 @@ from exitlane import core
 TABLE_FAMILY = "inet"
 TABLE_NAME = "exitlane_killswitch"
 SETTING_CONFIGURED = "network.exitlane_killswitch.configured"
+SETTING_TRANSITION = "network.exitlane_killswitch.provider_transition"
 SETTING_INGRESS = "network.exitlane_killswitch.routed_ingress_interfaces"
 SETTING_LOCAL_ALLOWLIST = "network.exitlane_killswitch.local_allowlist"
 INTERFACE_RE = re.compile(r"^[A-Za-z0-9_.-]{1,15}$")
@@ -28,7 +30,21 @@ SAFE_REASONS = {
     "firewall_apply_failed",
     "firewall_rules_missing",
     "invalid_configuration",
+    "provider_transition",
 }
+
+_mutation_loop: asyncio.AbstractEventLoop | None = None
+_mutation_guard: asyncio.Lock | None = None
+
+
+def _mutation_lock() -> asyncio.Lock:
+    """Return the single nft writer lock for the current application event loop."""
+    global _mutation_guard, _mutation_loop
+    loop = asyncio.get_running_loop()
+    if _mutation_guard is None or _mutation_loop is not loop:
+        _mutation_loop = loop
+        _mutation_guard = asyncio.Lock()
+    return _mutation_guard
 
 
 class KillswitchError(RuntimeError):
@@ -127,7 +143,6 @@ def generate_ruleset(
         [
             "  chain forward {",
             "    type filter hook forward priority -150; policy accept;",
-            '    ct state established,related accept comment "ExitLane return traffic"',
         ]
     )
     if v4_local:
@@ -153,6 +168,7 @@ def generate_ruleset(
             '    iifname @protected_ingress udp dport 53 drop comment "ExitLane DNS leak guard"',
             '    iifname @protected_ingress tcp dport 53 drop comment "ExitLane DNS leak guard"',
             '    iifname @protected_ingress drop comment "ExitLane fail closed"',
+            '    ct state established,related accept comment "ExitLane return traffic"',
             "  }",
         ]
     )
@@ -228,17 +244,25 @@ def _transition(value: str | None = None) -> str | None:
 
 async def status(facts: TunnelFacts, backend: NftBackend | None = None) -> KillswitchStatus:
     configured = bool(core.setting(SETTING_CONFIGURED, False))
+    transition = bool(core.setting(SETTING_TRANSITION, False))
     ingress, local = configuration()
     installed = await (backend or NftBackend()).installed()
     protected = bool(
         configured
+        and not transition
         and installed
         and facts.available
         and facts.protected_egress
         and facts.interface
         and facts.supports_ipv4
     )
-    if not configured:
+    if transition:
+        state, reason, effective = (
+            "enabled_transition",
+            "provider_transition",
+            installed,
+        )
+    elif not configured:
         state, reason, effective = "disabled", "disabled", False
     elif not installed:
         state, reason, effective = "error", "firewall_rules_missing", False
@@ -265,29 +289,87 @@ async def status(facts: TunnelFacts, backend: NftBackend | None = None) -> Kills
 
 
 async def enable(facts: TunnelFacts, backend: NftBackend | None = None) -> KillswitchStatus:
-    ingress, local = configuration()
-    firewall = backend or NftBackend()
-    await firewall.apply(generate_ruleset(facts, ingress=ingress, local_allowlist=local))
-    if not await firewall.installed():
-        raise KillswitchError("firewall_rules_missing")
-    core.set_setting(SETTING_CONFIGURED, True)
-    _transition(_now())
-    return await status(facts, firewall)
+    async with _mutation_lock():
+        ingress, local = configuration()
+        firewall = backend or NftBackend()
+        effective_facts = (
+            TunnelFacts(False, reason="provider_transition")
+            if core.setting(SETTING_TRANSITION, False)
+            else facts
+        )
+        await firewall.apply(
+            generate_ruleset(effective_facts, ingress=ingress, local_allowlist=local)
+        )
+        if not await firewall.installed():
+            raise KillswitchError("firewall_rules_missing")
+        core.set_setting(SETTING_CONFIGURED, True)
+        _transition(_now())
+        return await status(effective_facts, firewall)
 
 
 async def reconcile(facts: TunnelFacts, backend: NftBackend | None = None) -> KillswitchStatus:
-    firewall = backend or NftBackend()
-    if not core.setting(SETTING_CONFIGURED, False):
+    async with _mutation_lock():
+        firewall = backend or NftBackend()
+        if not core.setting(SETTING_TRANSITION, False):
+            if not core.setting(SETTING_CONFIGURED, False):
+                return await status(facts, firewall)
+            ingress, local = configuration()
+            await firewall.apply(generate_ruleset(facts, ingress=ingress, local_allowlist=local))
+            _transition(_now())
+            return await status(facts, firewall)
+        ingress, local = configuration()
+        await firewall.apply(
+            generate_ruleset(
+                TunnelFacts(False, reason="provider_transition"),
+                ingress=ingress,
+                local_allowlist=local,
+            )
+        )
+        return await status(TunnelFacts(False, reason="provider_transition"), firewall)
+
+
+async def arm_provider_transition(
+    backend: NftBackend | None = None,
+) -> KillswitchStatus:
+    """Persist and install a host-neutral fail-closed provider handoff guard."""
+    async with _mutation_lock():
+        core.set_setting(SETTING_TRANSITION, True)
+        ingress, local = configuration()
+        firewall = backend or NftBackend()
+        await firewall.apply(
+            generate_ruleset(
+                TunnelFacts(False, reason="provider_transition"),
+                ingress=ingress,
+                local_allowlist=local,
+            )
+        )
+        if not await firewall.installed():
+            raise KillswitchError("firewall_rules_missing")
+        return await status(TunnelFacts(False, reason="provider_transition"), firewall)
+
+
+async def complete_provider_transition(
+    facts: TunnelFacts,
+    backend: NftBackend | None = None,
+) -> KillswitchStatus:
+    """Converge the temporary guard only after a provider handoff is proven."""
+    async with _mutation_lock():
+        firewall = backend or NftBackend()
+        if core.setting(SETTING_CONFIGURED, False):
+            ingress, local = configuration()
+            await firewall.apply(generate_ruleset(facts, ingress=ingress, local_allowlist=local))
+        else:
+            await firewall.remove()
+        core.set_setting(SETTING_TRANSITION, False)
+        _transition(_now())
         return await status(facts, firewall)
-    ingress, local = configuration()
-    await firewall.apply(generate_ruleset(facts, ingress=ingress, local_allowlist=local))
-    _transition(_now())
-    return await status(facts, firewall)
 
 
 async def disable(backend: NftBackend | None = None) -> KillswitchStatus:
-    firewall = backend or NftBackend()
-    await firewall.remove()
-    core.set_setting(SETTING_CONFIGURED, False)
-    _transition(_now())
-    return await status(TunnelFacts(False), firewall)
+    async with _mutation_lock():
+        firewall = backend or NftBackend()
+        await firewall.remove()
+        core.set_setting(SETTING_CONFIGURED, False)
+        core.set_setting(SETTING_TRANSITION, False)
+        _transition(_now())
+        return await status(TunnelFacts(False), firewall)

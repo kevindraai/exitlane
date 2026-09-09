@@ -193,6 +193,41 @@ def test_invalid_token_is_not_audited_or_reflected(client, monkeypatch):
         )
 
 
+def test_mullvad_account_and_provider_output_never_reach_logs_api_or_events(
+    client, monkeypatch, caplog
+):
+    account = "1234123412341234"
+
+    async def signed_out(**_options):
+        return {"installed": True, "authenticated": False, "connected": False}
+
+    async def accepted(value):
+        assert value == account
+        return {
+            "ok": True,
+            "error": None,
+            "stdout": f'Mullvad account "{account}" set',
+        }
+
+    monkeypatch.setattr(main.mullvad_provider, "status", signed_out)
+    monkeypatch.setattr(main.mullvad_provider, "authenticate", accepted)
+    assert login(client).status_code == 200
+
+    with caplog.at_level("DEBUG"):
+        response = client.post(
+            "/api/vpn/providers/mullvad/authenticate",
+            json={"credential": account},
+        )
+
+    assert response.status_code == 200
+    assert account not in response.text
+    assert account not in caplog.text
+    with sqlite3.connect(main.DB) as connection:
+        events = connection.execute("SELECT code, metadata_json FROM events ORDER BY id").fetchall()
+    assert account not in repr(events)
+    assert ("provider.session_started", '{"provider": "mullvad"}') in events
+
+
 def test_uncontrolled_provider_error_is_not_reflected(client, monkeypatch):
     marker = "provider-output-must-not-be-reflected"
 

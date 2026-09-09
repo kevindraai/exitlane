@@ -130,6 +130,18 @@ def test_killswitch_failure_keeps_safe_error_and_audit_category(client, monkeypa
     )
 
 
+def test_web_killswitch_mutations_cannot_disarm_provider_transition(client):
+    assert login(client).status_code == 200
+    core.set_setting(main.killswitch.SETTING_TRANSITION, True)
+
+    for action in ("enable", "disable"):
+        response = client.post(f"/api/vpn/killswitch/{action}")
+        assert response.status_code == 409
+        assert response.json() == {"detail": "vpn_action_in_progress"}
+
+    assert core.setting(main.killswitch.SETTING_TRANSITION) is True
+
+
 def test_dashboard_and_vpn_page_use_same_runtime_killswitch_source(monkeypatch):
     calls = []
 

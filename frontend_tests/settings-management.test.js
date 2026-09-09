@@ -241,6 +241,7 @@ test("network deployment status and editable security configuration stay separat
   assert.match(markup, /id="settings-network-configuration-title"[\s\S]+id="settings-network-form"/);
   assert.match(markup, /id="settings-network-public-url"/);
   assert.match(markup, /id="settings-network-proxies" rows="5"/);
+  assert.match(markup, /id="settings-network-management-prefixes" rows="4"/);
   assert.match(markup, /id="settings-network-cookie-policy"/);
   assert.match(markup, /id="settings-network-public-url-source"/);
   assert.match(markup, /id="settings-network-proxies-source"/);
@@ -256,6 +257,7 @@ test("network deployment status and editable security configuration stay separat
   assert.match(source, /method: "PUT"/);
   assert.match(source, /access_loss_confirmation_required/);
   assert.match(source, /broad_proxy_confirmation_required/);
+  assert.match(source, /broad_management_prefix_confirmation_required/);
   assert.match(source, /direct_peer: deployment\.direct_peer/);
 });
 
@@ -269,7 +271,9 @@ test("network configuration sources and security warnings are translated in ever
       ["database", "default", "environment"],
     );
     assert.ok(locale.settings.network.cookie_disabled_warning);
+    assert.ok(locale.settings.network.management_prefixes_help);
     assert.match(locale.settings.network.errors.invalid_trusted_proxy, /\{line\}/);
+    assert.match(locale.settings.network.errors.invalid_management_prefix, /\{line\}/);
     assert.ok(locale.settings.network.errors.settings_storage_failed);
   }
 });

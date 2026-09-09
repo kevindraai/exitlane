@@ -142,6 +142,49 @@ def test_dashboard_keeps_partial_provider_failure_available(monkeypatch):
     assert "secret" not in response.model_dump_json()
 
 
+def test_dashboard_exposes_active_provider_metadata_and_runtime_switch():
+    import asyncio
+
+    async def provider():
+        return {"connected": False}
+
+    async def wireguard():
+        return {"configured": True, "active": True, "connected": False, "peers": []}
+
+    async def fake_system():
+        return system()
+
+    nordvpn = asyncio.run(
+        build_dashboard(
+            provider,
+            wireguard,
+            "1",
+            fake_system,
+            active_provider_id="nordvpn",
+            active_provider_display_name="NordVPN",
+        )
+    )
+    mullvad = asyncio.run(
+        build_dashboard(
+            provider,
+            wireguard,
+            "1",
+            fake_system,
+            active_provider_id="mullvad",
+            active_provider_display_name="Mullvad VPN",
+        )
+    )
+
+    assert nordvpn.active_provider.model_dump() == {
+        "id": "nordvpn",
+        "display_name": "NordVPN",
+    }
+    assert mullvad.active_provider.model_dump() == {
+        "id": "mullvad",
+        "display_name": "Mullvad VPN",
+    }
+
+
 def test_dashboard_preserves_ipv6_long_values_and_uses_first_of_multiple_peers(monkeypatch):
     import asyncio
 

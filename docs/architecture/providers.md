@@ -21,11 +21,34 @@ Generic authenticated routes live below `/api/vpn/providers/{provider_id}`. The 
 `/api/vpn/*` and `/api/providers/nordvpn/*` routes remain compatibility aliases during migration.
 Mutating aliases and generic routes use the same `vpn_operations.begin()` lifecycle, so conflict
 claims remain atomic and cleanup remains in the existing `finally` paths. Provider mutations are
-serialized globally: a provider switch first observes and, when needed, disconnects the old
-provider, verifies it is disconnected, and only then persists the new active ID. Failure keeps the
-old selection. An inactive-provider connect fails with `provider_not_active`. Observing two
-connected providers, or an externally connected inactive provider, produces
-`provider_connection_conflict`; a configured ExitLane killswitch treats that ambiguity as closed.
+serialized globally. A connected-provider switch is one transaction:
+
+1. inspect only network-independent dependency, local-control and tunnel state for both
+   providers;
+2. arm ExitLane's provider-neutral transition protection;
+3. disconnect the source and verify its local tunnel state is fully disconnected;
+4. run the target's network-dependent authentication/readiness check, prepare it, connect it and
+   prove protected egress and management routing; and
+5. persist the target as canonical only after those postconditions hold, then converge transition
+   protection to the operator's configured killswitch policy.
+
+The initial preflight must never call a target account, catalog, DNS or other remote endpoint: the
+connected source may legitimately own exclusive DNS or firewall policy. Failure after source
+disconnect rolls back to the previous provider while transition protection remains armed. A failed
+rollback leaves forwarded client traffic closed and preserves the previous canonical provider for
+local recovery; it never guesses that the target is active. An inactive-provider connect fails with
+`provider_not_active`. Observing two connected providers, or an externally connected inactive
+provider, produces `provider_connection_conflict`.
+
+After source handoff, remote target readiness remains provider-specific. The generic transaction
+may retry only a failure that the target adapter classified from a concrete operation as transient.
+Retries have a small attempt limit, per-attempt timeout, total readiness deadline and backoff; the
+transition guard and previous canonical provider remain unchanged throughout. Mullvad classifies
+only structured API timeout/unavailability from device readiness as retryable. Authentication,
+configuration, protocol and unclassified provider failures remain terminal. A connect
+command is never started twice merely because its caller timed out: ExitLane first reconciles the
+local tunnel state and accepts a late Connected state only after full target status, protected
+egress and management routing are proven.
 
 The frontend loads the provider catalog only after the administrator session check succeeds.
 Metadata creates sidebar entries, Overview cards, provider headings, and wizard choices. Provider
@@ -48,34 +71,56 @@ License and source details are recorded in `THIRD_PARTY_NOTICES.md`.
 
 ## Provider and credential boundaries
 
-Each provider translates its native CLI into the generic installation, authentication,
-connection, location, capability, and network-facts contracts. CLI output is untrusted: parsers
-use `LC_ALL=C`, validate identifiers, return only allowlisted fields, and reduce failures to safe
-codes. The generic authentication request uses `credential`; the older NordVPN token payload and
+Each provider translates its native control plane into the generic installation, authentication,
+local-status, connection, location, capability, and network-facts contracts. `local_status()` is
+the conservative, network-independent handoff boundary; full `status()` may verify the account or
+other remote readiness and therefore runs only after the source has released its policy. Provider
+responses and CLI output are untrusted: parsers enforce bounds and schemas, validate identifiers,
+return only allowlisted fields, and reduce failures to safe codes. The generic authentication
+request uses `credential`; the older NordVPN token payload and
 routes remain compatibility boundaries.
 
-NordVPN uses its verified private PTY flow. Mullvad invokes the fixed argv
-`mullvad account login`, supplies the 16-digit account number through stdin, captures and wipes the
-account-bearing output buffer, and never returns or logs it. Credentials are neither stored by
-ExitLane nor included in Activity metadata. Provider-specific authentication controls live in
+NordVPN uses its verified private PTY flow. Mullvad calls a fixed HTTPS origin, keeps access tokens
+memory-only, and encrypts its account, device binding and WireGuard private key with the appliance
+master key. Pending device intent is durable before remote mutation and reconciled by exact public
+key. Secrets are never included in Activity metadata. Provider-specific authentication controls live in
 small rendering boundaries selected by `authentication_method`; navigation, installation,
 connection, and location UI remain generic.
 
-The provider owns tunnel-interface discovery. NordVPN maps its verified client contract; Mullvad
-validates the interface reported by machine-readable status. The generic killswitch and WireGuard
-forwarding code never hardcode either name. Existing exact legacy WireGuard rules that forwarded
+The provider owns tunnel-interface discovery. NordVPN maps its verified client contract. Direct
+providers use a generic ExitLane-owned egress layer with a dedicated interface, ingress-selected
+policy table, unreachable fallback, exact-peer handshake and dataplane proof. WireGuard ingress is
+separate and never shares lifecycle/configuration with provider egress. The generic killswitch and
+WireGuard forwarding code consume reported network facts. Existing exact legacy WireGuard rules that forwarded
 to `nordlynx` are migrated atomically to provider-neutral default-route forwarding and restored if
 activation of the migrated rules fails.
 
-Mullvad package installation is a separate systemd/package trust boundary. APT runs with
-`SYSTEMD_OFFLINE=1`, so upstream package scripts may enable units but cannot start them through PID
-1. ExitLane-owned drop-ins prevent the early-boot firewall initializer from ever running and gate
-the daemon behind a transient controlled-start marker or a post-validation completion marker. The
-helper observes inactive units and no provider firewall table after APT, starts the daemon once,
-applies and reads back the unauthenticated management baseline, verifies disconnected network
-state, and only then persists completion. Settings that Mullvad exposes only with an account are
-applied and verified immediately after login and before activation. No generic provider or
-killswitch code deletes provider-owned firewall state.
+Policy routing protects a small set of exact non-provider destinations: discovered management
+networks, explicitly configured routed management prefixes, and the configured WireGuard ingress
+client network. It never treats all private address space as trusted. WireGuard contributes only
+canonical subnet/interface intent from application settings; the routing service derives the
+actual connected-device or gateway path from the kernel's `main` table. It rejects a path over a
+discovered provider default interface. Destination rules normally select `main`; when an earlier
+provider-owned policy table would win, only ExitLane-owned `proto 196` copies of the derived path
+are placed in that table. NordVPN rule priorities, table identifiers and tunnel interfaces remain
+provider-owned and dynamically discovered. Direct-provider egress uses ExitLane route protocol
+`196`, fixed table `51820`, interface `wg-mullvad`, and rules scoped only to protected ingress.
+
+An unavailable configured local path is represented by an exact owned `unreachable` route in
+`main` and any relevant earlier provider table. That is a successful safety transition but remains
+a stable operational error until the real route returns. Reconciliation is idempotent across
+provider connect/reconnect/switch, provider table recreation, WireGuard provisioning/recreation,
+application startup, and the early-boot preparation unit. Removing or changing canonical
+WireGuard configuration also removes stale owned rules and routes. The WireGuard unit's post-stop
+hook installs the temporary exact block after interface removal, while its post-start hook restores
+the derived local path after recreation.
+
+Mullvad is not a package/daemon integration. ExitLane validates the public relay catalog and exact
+bound device, renders a root-only `Table = off` WireGuard configuration, and owns only the direct
+provider interface/table/rules. Host management and API traffic stay in `main`. The direct table is
+armed unreachable before interface replacement and restored at early boot when an active
+generation is persisted. An active legacy Mullvad daemon or `table inet mullvad` blocks activation;
+no ExitLane code deletes provider-owned firewall state automatically.
 
 ## Adding a provider
 

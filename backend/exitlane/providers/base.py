@@ -19,6 +19,18 @@ class InstallationState(StrEnum):
     FAILED = "failed"
 
 
+class ProviderFailureClass(StrEnum):
+    TRANSIENT = "transient"
+    TERMINAL = "terminal"
+
+
+@dataclass(frozen=True)
+class ProviderControlPlaneFailure:
+    operation: str
+    error_code: str
+    classification: ProviderFailureClass
+
+
 @dataclass(frozen=True)
 class ProviderMetadata:
     id: str
@@ -52,6 +64,17 @@ class Provider(ABC):
     async def network_facts(self) -> TunnelFacts:
         """Return conservative provider-independent egress facts."""
         return TunnelFacts(False, reason="provider_unavailable")
+
+    async def local_status(self, *, timeout: float = 6) -> dict:
+        """Return network-independent daemon and tunnel state for handoff preflight."""
+        return {
+            "installed": False,
+            "daemon_active": False,
+            "local_control_available": False,
+            "connected": False,
+            "connection_state": "unknown",
+            "error_code": "provider_local_status_unavailable",
+        }
 
     async def installation_status(self) -> dict:
         return {
@@ -116,6 +139,10 @@ class Provider(ABC):
     async def prepare_activation(self) -> dict:
         """Validate provider-owned gateway prerequisites before authentication or activation."""
         return {"ok": True, "error_code": None}
+
+    def classify_activation_failure(self, status: dict) -> ProviderControlPlaneFailure | None:
+        """Classify a structured remote-readiness failure without inspecting raw CLI output."""
+        return None
 
     def management_status(
         self,

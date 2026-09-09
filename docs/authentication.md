@@ -73,17 +73,14 @@ the tunnel, while sign-out runs the supported `nordvpn logout` action, ends the 
 session, and consequently ends any active tunnel. A valid token is required to sign in again.
 Activity events record only the provider identifier and a safe failure code.
 
-## Mullvad account-number subprocess boundary
-
-The supported Mullvad CLI accepts an omitted account argument and then reads the account number
-from stdin. ExitLane invokes only `mullvad account login`, with `shell=False`, `LC_ALL=C`, and a
-short timeout. The normalized 16-digit account number is written to the subprocess pipe rather
-than argv or the environment. Mullvad's success output can contain that number, so ExitLane
-captures it into a bounded mutable buffer, never logs or reflects it, and overwrites both input and
-output buffers after classification.
+## Mullvad account and device boundary
 
 The browser uses a masked numeric field and removes its value immediately after starting the
-request. ExitLane does not persist the account number in SQLite, files, events, telemetry, or API
-responses. Safe errors distinguish invalid format/account, five-device exhaustion, expired account,
-daemon/command unavailability, timeout, and already-signed-in state without exposing raw output.
+request. The backend normalizes the 16-digit value and submits it only in the HTTPS request body to
+Mullvad's fixed authentication origin. It never appears in argv, Activity metadata or responses.
+
+ExitLane encrypts the account number, its generated WireGuard private key and the exact bound device
+record with the appliance master key. A pending key record is durable before remote registration,
+so an uncertain result can be reconciled by public key without creating another device. Short-lived
+access tokens remain in memory only. Safe errors expose no response body or secret value.
 See the [Mullvad provider guide](mullvad.md) for operational details.

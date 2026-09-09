@@ -16,9 +16,7 @@ PROVIDER = "nordvpn"
 CACHE_TTL = timedelta(minutes=5)
 QUICK_COUNTRIES = ("NL", "BE", "DE", "FR", "GB")
 NORDVPN_SERVER_PATTERN = re.compile(r"^(?P<country>[a-z]{2})[0-9]+\.nordvpn\.com$")
-SAFE_SERVER_PATTERN = re.compile(
-    r"^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$"
-)
+SAFE_SERVER_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$")
 _active_server_measurements: dict[tuple[str, str, str], asyncio.Task[dict]] = {}
 COUNTRY_NAMES = {
     "AT": "Oostenrijk",
@@ -171,9 +169,7 @@ async def _measure_active_server(
     endpoint: str,
     measurer: Callable[[str], Awaitable[dict]],
 ) -> dict:
-    if not SAFE_SERVER_PATTERN.fullmatch(hostname) or not re.fullmatch(
-        r"[A-Z]{2}", country_code
-    ):
+    if not SAFE_SERVER_PATTERN.fullmatch(hostname) or not re.fullmatch(r"[A-Z]{2}", country_code):
         return {"latency_ms": None, "latency_measured_at": None}
     result = await measurer(endpoint)
     measured_at = _now().isoformat()

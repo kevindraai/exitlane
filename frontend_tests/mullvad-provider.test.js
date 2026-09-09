@@ -7,7 +7,10 @@ import {
   providerAuthenticationView,
 } from "../backend/exitlane/static/js/provider.js";
 import { vpnProviderAccess } from "../backend/exitlane/static/js/provider-management.js";
-import { providerOverviewView } from "../backend/exitlane/static/js/providers.js";
+import {
+  providerActivationFailure,
+  providerOverviewView,
+} from "../backend/exitlane/static/js/providers.js";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
@@ -132,6 +135,28 @@ test("active state is separate from authentication and inactive controls fail cl
   assert.equal(active.canActivate, false);
 });
 
+test("activation failures prefer machine-readable readiness blockers", () => {
+  assert.deepEqual(providerActivationFailure({
+    payload: {
+      detail: "provider_not_ready",
+      blockers: [
+        { code: "provider_daemon_unavailable", provider: "mullvad" },
+      ],
+    },
+  }), {
+    code: "provider_daemon_unavailable",
+    providerId: "mullvad",
+    detail: "provider_not_ready",
+  });
+  assert.deepEqual(providerActivationFailure({
+    payload: { detail: "provider_switch_disconnect_failed" },
+  }), {
+    code: "provider_switch_disconnect_failed",
+    providerId: null,
+    detail: "provider_switch_disconnect_failed",
+  });
+});
+
 test("Mullvad and active-provider copy has EN/NL parity and responsive styling", async () => {
   const [english, dutch, styles] = await Promise.all([
     read("../backend/exitlane/static/locales/en.json").then(JSON.parse),
@@ -142,11 +167,14 @@ test("Mullvad and active-provider copy has EN/NL parity and responsive styling",
     "invalid_account_format",
     "invalid_account",
     "too_many_devices",
+    "device_key_in_use",
     "account_expired",
-    "daemon_unavailable",
-    "command_unavailable",
     "timeout",
-    "already_logged_in",
+    "provider_api_timeout",
+    "provider_api_unavailable",
+    "provider_api_invalid_response",
+    "provider_secret_key_unavailable",
+    "provider_secret_storage_failed",
     "credential_replacement_unsupported",
     "provider_error",
   ];
@@ -157,8 +185,21 @@ test("Mullvad and active-provider copy has EN/NL parity and responsive styling",
     assert.ok(locale.provider.inactive);
     assert.ok(locale.provider.make_active.includes("{provider}"));
     assert.ok(locale.provider.access.inactive_description.includes("{provider}"));
+    assert.ok(locale.provider.management.authentication_ready);
+    for (const key of [
+      "provider_not_installed",
+      "provider_daemon_unavailable",
+      "provider_authentication_required",
+      "provider_authentication_unverified",
+      "provider_status_unavailable",
+      "provider_gateway_configuration_failed",
+      "provider_connection_conflict",
+      "provider_switch_disconnect_failed",
+    ]) assert.ok(locale.provider.activation_errors[key]);
     for (const key of requiredErrors) assert.ok(locale.provider.mullvad.errors[key]);
   }
+  assert.equal(english.provider.management.authentication_ready, "Authenticated");
+  assert.equal(dutch.provider.management.authentication_ready, "Geauthenticeerd");
   assert.match(styles, /\.provider-choice--selected/);
   assert.match(styles, /\.provider-activity-controls/);
   assert.match(styles, /@media \(max-width: 650px\)[\s\S]+\.provider-card-actions/);

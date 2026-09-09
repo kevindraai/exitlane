@@ -24,6 +24,14 @@ function bytesOrUnknown(value) {
   return value == null ? "—" : formatBytes(value);
 }
 
+export function dashboardProviderName(data) {
+  return data.active_provider?.display_name || null;
+}
+
+export function renderDashboardProvider(data, renderText = text) {
+  renderText("#dashboard-vpn-provider", dashboardProviderName(data));
+}
+
 function renderLastSuccessfulRefresh(now = Date.now()) {
   const timestamp = getSlice("dashboard").updatedAt;
   text("#dashboard-refreshed", formatRelative(timestamp, now, t));
@@ -43,6 +51,7 @@ export function renderDashboard(data, { successfulRefresh = true } = {}) {
 
   const vpnState = !data.vpn.available ? "unavailable" : data.vpn.connected ? "connected" : "disconnected";
   setStatusPill(select("#dashboard-vpn-pill"), t(`dashboard.${vpnState}`, {}, vpnState), data.vpn.connected ? "success" : data.vpn.available ? "neutral" : "danger");
+  renderDashboardProvider(data);
   text("#dashboard-vpn-country", data.vpn.country);
   text("#dashboard-vpn-city", data.vpn.city);
   setTechnicalValue(select("#dashboard-vpn-server"), data.vpn.server);

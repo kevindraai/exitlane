@@ -814,6 +814,60 @@ class NordVPN(Provider):
             ),
         )
 
+    async def local_status(self, *, timeout: float = 6) -> dict:
+        """Observe only the local daemon/RPC path; never query the Nord account API."""
+        if not shutil.which("nordvpn"):
+            return {
+                "installed": False,
+                "daemon_active": False,
+                "local_control_available": False,
+                "connected": False,
+                "connection_state": "unknown",
+                "error_code": "provider_cli_unavailable",
+            }
+        daemon_rc, _, _ = await command(
+            "systemctl",
+            "is-active",
+            "nordvpnd",
+            timeout=timeout,
+        )
+        daemon_active = daemon_rc == 0
+        if not daemon_active:
+            return {
+                "installed": True,
+                "daemon_active": False,
+                "local_control_available": False,
+                "connected": False,
+                "connection_state": "unknown",
+                "error_code": "daemon_unavailable",
+            }
+        status_rc, status_out, status_err = await command(
+            "nordvpn",
+            "status",
+            timeout=timeout,
+        )
+        connection_state = parse(status_out or status_err).get("Status", "").casefold()
+        known = connection_state in {
+            "connected",
+            "disconnected",
+            "connecting",
+            "disconnecting",
+        }
+        return {
+            "installed": True,
+            "daemon_active": True,
+            "local_control_available": status_rc == 0 and known,
+            "connected": connection_state == "connected",
+            "connection_state": connection_state if known else "unknown",
+            "error_code": (
+                None
+                if status_rc == 0 and known
+                else "timeout"
+                if status_rc == 124
+                else "provider_local_status_unavailable"
+            ),
+        }
+
     async def status(self, *, timeout: float = 8):
         if not shutil.which("nordvpn"):
             in_container = Path("/.dockerenv").exists()
@@ -923,9 +977,9 @@ class NordVPN(Provider):
             "country_code": country_code,
             "city": values.get("City", ""),
             "server": hostname,
-            "tunnel_interface": "nordlynx" if connected and "nordlynx" in values.get(
-                "Current technology", ""
-            ).casefold() else None,
+            "tunnel_interface": "nordlynx"
+            if connected and "nordlynx" in values.get("Current technology", "").casefold()
+            else None,
             "external_ip": values.get("IP", ""),
             "technology": values.get(
                 "Current technology",
