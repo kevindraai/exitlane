@@ -1,6 +1,6 @@
 # Exitlane threat model
 
-Status: beta candidate, reviewed 2026-09-09. A trusted management network is a deployment assumption, not a substitute for application security.
+Status: 0.3.0-rc.1 threat-model review, 2026-09-25. A trusted management network is a deployment assumption, not a substitute for application security.
 
 ## System and trust boundaries
 
@@ -10,7 +10,7 @@ Before setup, health/session plus the allowlisted wizard operations are public o
 
 ## Assets, actors and entry points
 
-Assets are the administrator verifier and salts, session digests, provider credentials while in request memory, WireGuard private keys/configurations, SQLite configuration/events, active-provider selection, network routing and tunnel state, root privileges, Actions token and release artifacts. Entry points are HTTP routes, cookies and headers, provider output, SQLite state, environment/default files, downloaded client configurations, installer/package inputs, Actions and operator proxy configuration.
+Assets are the administrator verifier and salts, session digests, provider credentials in request memory and encrypted persisted Mullvad account/device/private-key state, the shared appliance master key, WireGuard private keys/configurations, SQLite configuration/events, active-provider selection, network routing and tunnel state, root privileges, Actions token and release artifacts. Entry points are HTTP routes, cookies and headers, provider output, SQLite state, environment/default files, downloaded client configurations, installer/package inputs, Actions and operator proxy configuration.
 
 Plausible attackers include an unauthorised management-LAN user, compromised browser/extension, stolen-cookie holder, setup-route attacker, cross-site CSRF origin, command-injection input, malicious provider output, limited local Linux user, compromised dependency/Action, misconfigured reverse-proxy operator, manipulated backup/update/restore artifact and a reader mining errors or Activity/logs for secrets.
 
@@ -34,7 +34,7 @@ Plausible attackers include an unauthorised management-LAN user, compromised bro
 | Malicious provider/subprocess output | Secret leak, UI injection or parser confusion | Parsers and frontend `textContent` in dynamic paths | Safe error codes, bounded Activity metadata, CSP | Some setup diagnostic/provider output remains visible to an authorised/setup operator; deferred sanitisation review |
 | Malicious local documentation content or link | Browser script execution or unsafe navigation | Fixed authenticated catalog, bounded UTF-8 files, typed Markdown projection, HTTPS/local-link allowlist and DOM construction with `textContent` | Backend and frontend negative documentation tests plus CSP | A repository writer can still publish misleading prose; normal source review remains required |
 | Local Linux file read/write | Credential/key/database theft | 0700 directories, 0600 key files, umask 0077 | systemd filesystem sandbox and permission tests | Root or equivalent host control defeats these controls |
-| Compromised dependency or Action | Build/runtime compromise | Narrow dependencies | CodeQL, Bandit, pip-audit, dependency review, Gitleaks, SHA-pinned Actions, Dependabot | Python ranges are not a lockfile; reproducible constraints are deferred |
+| Compromised dependency or Action | Build/runtime compromise | Narrow dependencies | CodeQL, Bandit, pip-audit, dependency review, Gitleaks, SHA-pinned Actions, Dependabot | The development uv.lock is versioned; the appliance installer resolves pyproject dependency ranges with pip, including explicit security floors, so appliance dependency resolution is not fully reproducible |
 | Malicious backup/update/release | Persistent compromise | Authenticated encrypted backup format, strict restore staging, lifecycle lock, root-only recovery snapshot and downgrade rejection | Lifecycle negative tests, release checklist, package-content and checksum review | No signed update channel exists; operators must verify trusted source provenance |
 | Proxy/Internet misconfiguration | Client-IP/CSRF/cookie downgrade | Forwarded headers accepted only from configured IP/CIDR peers | Right-to-left chain parsing, reliable HTTPS status and conditional HSTS | Incorrectly broad operator trust remains dangerous |
 | Logs/errors/Activity mined | Secret disclosure | allowlisted metadata and generic auth/storage errors | size/control-character bounds, scanner checks | system journal contains third-party process messages outside application control |
@@ -42,7 +42,9 @@ Plausible attackers include an unauthorised management-LAN user, compromised bro
 STRIDE was used as a checklist: spoofing (sessions/setup), tampering (settings/files/releases), repudiation (Activity), information disclosure (errors/logs/downloads), denial of service (request sizes/subprocess timeouts) and elevation of privilege (root commands/systemd).
 
 Database-only theft does not expose the encrypted TOTP secret or usable recovery codes without the
-separate masterkey. Theft of both permits offline verification/decryption. Local root compromise
+separate masterkey. Mullvad account, device and private-key state uses AES-GCM with that same
+appliance master key; database-only theft does not reveal those encrypted values. Theft of both
+permits offline verification/decryption. Local root compromise
 defeats the application key, CLI and filesystem boundaries.
 
 ## Beta assumptions and boundaries

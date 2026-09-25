@@ -374,7 +374,7 @@ wheels = [
 
 [[package]]
 name = "exitlane"
-version = "0.2.0rc1"
+version = "0.3.0rc1"
 source = { editable = "." }
 dependencies = [
     { name = "anyio" },

@@ -1,6 +1,7 @@
 # GitHub security settings
 
-Verified repository state for the beta.5 release-assurance correction:
+Repository settings rechecked on 2026-09-25 for 0.3.0-rc.1 preparation.
+Final source-specific CI and findings are recorded separately in release qualification.
 
 - [x] Dependency Graph enabled
 - [x] repository variable
@@ -29,4 +30,4 @@ mandatory `pip-audit` remains an additional control.
 
 | Finding | Severity | Source | Status | Reason | Compensating control | Closure condition |
 | --- | --- | --- | --- | --- | --- | --- |
-| Dependabot security updates disabled | informational / configuration | GitHub repository | open | Not required by the beta.5 release-governance work order | dependency review, pip-audit and manual alert triage | enable Dependabot security updates without automatic merge |
+| Dependabot security updates disabled | informational / configuration | GitHub repository | open | Retained informational configuration risk; not a mandatory release gate | dependency review, pip-audit and manual alert triage | enable Dependabot security updates without automatic merge |

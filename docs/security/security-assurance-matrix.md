@@ -37,5 +37,6 @@ logging failures, and SSRF-relevant webhook/provider boundaries.
 `Resolved` means the documented control and automated regression exist.
 `Accepted` requires an explicit deployment assumption or operator control.
 `Release blocker until LXC` must remain open until the real Debian 13 appliance
-evidence is recorded in pull request #34. `Later external review` is not evidence
+evidence is recorded in the corresponding release PR or qualification report; PR #34 is
+historical beta evidence and does not close later feature gates. `Later external review` is not evidence
 of independent assurance and must not be described as such.

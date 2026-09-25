@@ -1,7 +1,22 @@
 # Roadmap
 
 The roadmap describes direction rather than a release commitment. Priorities may change as the
-beta is tested in real networks.
+release candidates are tested in real networks.
+
+## Included in 0.3.0-rc.1
+
+- Direct Mullvad WireGuard egress alongside NordVPN, with one active provider at a time.
+- Explicit ownership of the registered Mullvad device, encrypted credentials and provider keys.
+- Protected connect, relay switching, tunnel loss and restored or interrupted provider generations.
+- Protection for locally generated traffic using the exact provider-assigned source address.
+- Recovery that restores routing before ingress, revokes sessions and preserves the device identity.
+- Installer rollback that preserves original executable and systemd-unit permissions.
+- An AnyIO security minimum enforced for appliance upgrades as well as locked development installs.
+- Operator guides for Mullvad onboarding, deployment, backup, migration and upgrade from `v0.2.0`.
+
+These are implementation scope, not a statement that a preparation branch has been released.
+Publication and qualification receipts belong to the tagged release and its
+[release notes](docs/release-notes/0.3.0-rc.1.md).
 
 ## Completed in v0.2.0-beta.5
 
@@ -59,9 +74,9 @@ Beta.5 inherits the beta.4 UX, accessibility, design-system and integrated-docum
 ## Next
 
 - UX and visual consistency polish
-- Integrated and contextual documentation
 - Provider abstraction hardening
-- Additional VPN providers
+- Further VPN providers and broader relay-availability testing
+- IPv6 egress support for Mullvad
 - Notification management improvements
 - Appliance and installation polish
 - Extended operational logging and diagnostic depth
@@ -75,3 +90,4 @@ Beta.5 inherits the beta.4 UX, accessibility, design-system and integrated-docum
 - API tokens
 - Supported public REST API
 - Plugin architecture
+- Qualification of additional architectures and container configurations
