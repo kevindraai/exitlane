@@ -492,12 +492,53 @@ class ProviderWireGuard:
         await self._preflight(ingress, egress_interface, source)
         await self._apply_guard(ingress, egress_interface, source)
 
+    async def _check_removal_ownership(
+        self, ingress: tuple[str, ...], egress_interface: str | None
+    ) -> None:
+        for family in (4, 6):
+            await self._check_table_ownership(family, egress_interface)
+            expected = {(RULE_PRIORITY, "iif", item) for item in ingress}
+            if family == 4 and egress_interface is not None:
+                expected.add((PROBE_RULE_PRIORITY, "oif", egress_interface))
+            for rule in await self._json(f"-{family}", "rule", "show"):
+                for priority, direction, interface in expected:
+                    # Only inspect rules the exact deletion argv could select.
+                    # Another provider's table/protocol/ingress slot is unrelated.
+                    if (
+                        str(rule.get("priority")) != str(priority)
+                        or str(rule.get("table")) != str(TABLE_ID)
+                        or str(rule.get("protocol")) != str(ROUTE_PROTOCOL)
+                        or rule.get(direction) != interface
+                    ):
+                        continue
+                    removable = dict(rule)
+                    # Unregistering the owned interface can detach its selector;
+                    # removing that exact stale rule is safe, reusing it is not.
+                    if removable.get(f"{direction}_detached") is True:
+                        removable.pop(f"{direction}_detached")
+                    if not self._owned_rule(removable, (priority, direction, interface)):
+                        raise ProviderWireGuardError("provider_egress_resource_conflict")
+
     async def disarm(
         self, ingress_interfaces: Iterable[str], egress_interface: str | None = None
     ) -> None:
-        for ingress in tuple(dict.fromkeys(ingress_interfaces)):
+        ingress = tuple(dict.fromkeys(ingress_interfaces))
+        if any(
+            not isinstance(item, str) or INTERFACE_PATTERN.fullmatch(item) is None
+            for item in ingress
+        ):
+            raise ProviderWireGuardError("provider_egress_configuration_invalid")
+        if egress_interface is not None and (
+            not isinstance(egress_interface, str)
+            or INTERFACE_PATTERN.fullmatch(egress_interface) is None
+        ):
+            raise ProviderWireGuardError("provider_egress_configuration_invalid")
+        # Validate both tables and every deletion candidate before any mutation.
+        # This intentionally does not claim unrelated rules at the same priority.
+        await self._check_removal_ownership(ingress, egress_interface)
+        for interface in ingress:
             for family in (4, 6):
-                await self._delete_rule("iif", ingress, RULE_PRIORITY, family)
+                await self._delete_rule("iif", interface, RULE_PRIORITY, family)
         if egress_interface is not None:
             await self._delete_rule("oif", egress_interface, PROBE_RULE_PRIORITY, 4)
         # Late kernel replies can outlive disconnect/sign-out or a restored DB.

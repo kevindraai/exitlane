@@ -644,3 +644,114 @@ def test_source_only_guard_does_not_arm_ingress_or_probe_policy_during_inactive_
     assert not any("iif" in call or "oif" in call for call in mutations)
     assert not any("del" in call or "flush" in call for call in mutations)
     assert len(runner.source_rules) == 1
+
+
+def test_disarm_rejects_foreign_ipv6_unreachable_metric_before_any_mutation(tmp_path):
+    runner = Runner()
+    foreign_route = {
+        "dst": "default",
+        "type": "unreachable",
+        "metric": 42760,
+        "protocol": "static",
+    }
+
+    async def foreign(*args, timeout):
+        if args == ("ip", "-j", "-6", "route", "show", "table", "51820"):
+            runner.calls.append(args)
+            return 0, json.dumps([foreign_route]), ""
+        return await runner(*args, timeout=timeout)
+
+    with pytest.raises(ProviderWireGuardError, match="provider_egress_resource_conflict"):
+        asyncio.run(ProviderWireGuard(foreign, root=tmp_path).disarm(("wg0",), "wg-mullvad"))
+    assert all(call[:2] == ("ip", "-j") for call in runner.calls)
+    assert foreign_route["protocol"] == "static"
+
+
+@pytest.mark.parametrize(
+    "direction,interface,priority",
+    [
+        ("iif", "wg0", 20000),
+        ("oif", "wg-mullvad", 19999),
+    ],
+)
+@pytest.mark.parametrize("extra", [{"src": "192.0.2.0/24"}, {"fwmark": "0x1"}, {"dst": "1.1.1.1"}])
+def test_disarm_does_not_delete_foreign_rules_with_extra_selectors(
+    tmp_path,
+    direction,
+    interface,
+    priority,
+    extra,
+):
+    runner = Runner()
+
+    async def foreign(*args, timeout):
+        if args == ("ip", "-j", "-4", "rule", "show"):
+            runner.calls.append(args)
+            return (
+                0,
+                json.dumps(
+                    [
+                        {
+                            "priority": priority,
+                            direction: interface,
+                            "table": 51820,
+                            "protocol": 196,
+                            **extra,
+                        }
+                    ]
+                ),
+                "",
+            )
+        return await runner(*args, timeout=timeout)
+
+    with pytest.raises(ProviderWireGuardError, match="provider_egress_resource_conflict"):
+        asyncio.run(ProviderWireGuard(foreign, root=tmp_path).disarm(("wg0",), "wg-mullvad"))
+    assert all(call[:2] == ("ip", "-j") for call in runner.calls)
+
+
+def test_disarm_ignores_other_provider_slots_and_removes_exact_detached_owned_rules(tmp_path):
+    runner = Runner()
+
+    async def mixed(*args, timeout):
+        if args == ("ip", "-j", "-4", "rule", "show"):
+            runner.calls.append(args)
+            return (
+                0,
+                json.dumps(
+                    [
+                        {
+                            "priority": 20000,
+                            "iif": "wg0",
+                            "table": 51821,
+                            "protocol": "static",
+                            "fwmark": "0x1",
+                        },
+                        {
+                            "priority": 19999,
+                            "oif": "wg-mullvad",
+                            "oif_detached": True,
+                            "table": 51820,
+                            "protocol": 196,
+                        },
+                    ]
+                ),
+                "",
+            )
+        return await runner(*args, timeout=timeout)
+
+    asyncio.run(ProviderWireGuard(mixed, root=tmp_path).disarm(("wg0",), "wg-mullvad"))
+    assert not any("51821" in call or "static" in call for call in runner.calls)
+    assert (
+        "ip",
+        "-4",
+        "rule",
+        "del",
+        "priority",
+        "19999",
+        "oif",
+        "wg-mullvad",
+        "table",
+        "51820",
+        "protocol",
+        "196",
+    ) in runner.calls
