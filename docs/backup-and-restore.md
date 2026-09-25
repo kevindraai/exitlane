@@ -63,10 +63,10 @@ The passphrase is read without echo. Automation may use `--passphrase-file`
 with a regular, single-link file whose mode grants no group or other access.
 Never pass the passphrase as a command-line argument.
 
-Restore creates a root-only pre-restore database/key snapshot, stops the service,
-replaces validated data, reapplies mode `0600`, revokes security state, starts
+Restore holds protected forwarding, stops the service, creates a root-only pre-restore
+database/key/WireGuard snapshot, and replaces validated data. It reapplies mode `0600`, revokes security state, starts
 the service, and performs a database integrity check. A failed replacement or
-health validation restores the pre-restore database and key. Operators must
+health validation restores the pre-restore database, key and WireGuard files. Operators must
 retain the encrypted source backup until application login, MFA, WireGuard,
 killswitch, and provider integration have also been checked.
 
@@ -81,3 +81,11 @@ master key are mandatory and restored as one recovery unit.
 Backups contain highly sensitive appliance data even though they are encrypted.
 Use a strong unique passphrase, keep multiple offline copies, restrict access,
 and test restore regularly.
+
+For direct Mullvad egress, the encrypted database and master key preserve the registered device and
+WireGuard keypair. Restore does not register another device. A temporary forwarding guard covers
+both the old and restored protected interfaces while services and files are replaced. Provider
+routing and the configured killswitch are restored before ingress becomes available; this also
+applies when the backup records the optional killswitch as disabled. Reconnect explicitly after
+restore. If network recovery fails, the temporary guard and root-only recovery snapshot remain for
+local recovery rather than releasing unverified traffic.

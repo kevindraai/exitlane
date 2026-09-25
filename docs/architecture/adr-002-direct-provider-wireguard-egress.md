@@ -17,8 +17,9 @@ tool that uses its account-device and relay endpoints.
 ## Decision
 
 Mullvad uses an ExitLane-owned direct WireGuard egress interface. The generic provider-egress layer
-owns a dedicated interface, a dedicated IPv4 policy table, rules selected only by protected ingress
-interface, an unreachable fallback, exact-peer handshake observation and active dataplane probes.
+owns a dedicated interface, a dedicated IPv4 policy table, rules selected by protected ingress,
+bound probe interface and exact provider source address, an unreachable fallback, exact-peer
+handshake observation and active dataplane probes.
 The host default route remains in `main`. Ingress and egress share validation primitives only; they
 do not share interface lifecycle or configuration files.
 
@@ -31,6 +32,14 @@ Boot restores the unreachable provider table before networking when an active ge
 persisted. A connect or relay change commits only after exact routing, peer handshake and dataplane
 proof. Failure restores the prior proven generation or remains guarded. An active Mullvad daemon or
 provider-owned nftables table is a hard conflict and is never deleted automatically.
+
+Qualification on 2026-09-25 found that kernel-generated TCP resets can retain the provider source
+address without an ingress or bound output interface. An exact IPv4 `/32` source rule therefore
+precedes management routing while preserving the kernel local-table rule. It shares table `51820`
+and protocol `196`. Assigned addresses already present on another local interface are rejected.
+The source rule and unreachable default survive disconnect, sign-out and restore until reboot,
+covering late queued replies. These rules contain no account or key data. After reboot only the
+persisted active/pending identity is restored; old kernel packets no longer exist.
 
 ## Consequences
 

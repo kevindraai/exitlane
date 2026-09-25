@@ -25,6 +25,17 @@
 
 ### Security
 
+- Guard host-generated replies from the exact Mullvad source address, retaining unreachable
+  protection across disconnect, sign-out and restore until reboot.
+- Enforce the AnyIO security minimum in package metadata as well as the development lock, so
+  source-directory appliance upgrades replace vulnerable installed versions.
+- Preserve original executable and unit permissions during installer rollback while keeping the
+  recovery snapshot private.
+- Preserve mandatory provider routing protection during backup restore, including rollback of
+  WireGuard files and root-only key permissions.
+- Protect the configured ingress interface consistently, reserve the Mullvad egress name, and
+  reject interface renames that could leave an older ingress outside the forwarding policy.
+- Isolate provider test data from system directories so the complete CI suite runs without root.
 - Fixed clean Debian installations to create the root-only service home required by the hardened
   systemd mount namespace before starting ExitLane.
 - Encrypt Mullvad account, device and private-key state with the appliance master key; keep API

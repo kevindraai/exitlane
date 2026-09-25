@@ -573,6 +573,8 @@ class Mullvad(Provider):
                 return {"ok": False, "error": "provider_error"}
             try:
                 ingress, _ = killswitch.configuration()
+                if state.get("ipv4_address") is not None:
+                    await self.wireguard.arm_source(INTERFACE, state["ipv4_address"])
                 await self.wireguard.stop_interface(INTERFACE)
                 await self.wireguard.disarm(ingress, INTERFACE)
                 api = self.api_factory(account)
@@ -841,10 +843,12 @@ class Mullvad(Provider):
             try:
                 if owns_transition:
                     await killswitch.arm_provider_transition()
-                await self.wireguard.stop_interface(INTERFACE)
-                ingress, _ = killswitch.configuration()
-                await self.wireguard.disarm(ingress, INTERFACE)
                 state = self._state()
+                ingress, _ = killswitch.configuration()
+                if state and state.get("ipv4_address") is not None:
+                    await self.wireguard.arm_source(INTERFACE, state["ipv4_address"])
+                await self.wireguard.stop_interface(INTERFACE)
+                await self.wireguard.disarm(ingress, INTERFACE)
                 if state:
                     state.pop("active", None)
                     state.pop("pending", None)

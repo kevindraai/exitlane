@@ -72,6 +72,10 @@ class FakeWireGuard:
         self.ready = ready
         self.started = []
         self.stopped = []
+        self.source_guards = []
+
+    async def arm_source(self, interface, source_address):
+        self.source_guards.append((interface, source_address))
 
     async def start(self, config, ingress):
         self.started.append((config, tuple(ingress)))
@@ -306,6 +310,7 @@ def test_disconnect_disarms_provider_rules_under_temporary_guard():
     assert result["ok"] is True
     assert "active" not in provider_secrets.load("mullvad")
     assert "wg-mullvad" in wireguard.stopped
+    assert wireguard.source_guards == [("wg-mullvad", "10.67.12.34/32")]
     assert (("wg0",), "wg-mullvad") in wireguard.stopped
     assert core.setting(mullvad.killswitch.SETTING_TRANSITION) is False
 
@@ -421,6 +426,7 @@ def test_sign_out_deletes_only_the_bound_device_then_local_secret():
     assert api.calls == [("delete", device().id)]
     assert provider_secrets.load("mullvad") is None
     assert ("remove", "wg-mullvad") in wireguard.stopped
+    assert wireguard.source_guards == [("wg-mullvad", "10.67.12.34/32")]
 
 
 def test_provider_secret_database_contains_no_plaintext_account_or_private_key():

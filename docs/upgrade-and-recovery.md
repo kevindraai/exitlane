@@ -76,3 +76,7 @@ table. Alpha databases without that table are assigned schema version 1 during
 the idempotent migration. An unknown or future schema causes startup and restore
 to stop. Schema migrations must be transactional and accompanied by a
 pre-upgrade recovery snapshot.
+
+Recovery directories are root-owned and mode `0700`. Copied application files and systemd units
+retain their original modes inside that private boundary so rollback restores executable and unit
+permissions exactly. Newly written snapshot metadata and database/key material remain private.

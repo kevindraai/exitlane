@@ -7,7 +7,8 @@ name="exitlane"
 version="0.2.0rc1"
 description="Smart egress for every network"
 requires-python=">=3.11"
-dependencies=["cryptography>=50.0.0,<51","fastapi>=0.139,<1","pyotp>=2.9,<3","uvicorn[standard]>=0.34,<1","pydantic>=2.10,<3","python-multipart>=0.0.20,<1","segno==1.6.6"]
+# Appliance pip upgrades do not read uv.lock; enforce the AnyIO security floor here.
+dependencies=["anyio>=4.14.2,<5","cryptography>=50.0.0,<51","fastapi>=0.139,<1","pyotp>=2.9,<3","uvicorn[standard]>=0.34,<1","pydantic>=2.10,<3","python-multipart>=0.0.20,<1","segno==1.6.6"]
 
 [project.scripts]
 exitlane-cli = "exitlane.cli:main"

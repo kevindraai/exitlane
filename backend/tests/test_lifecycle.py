@@ -206,7 +206,9 @@ def test_active_mullvad_restore_guards_before_start_and_recovers_original_files(
     core.set_setting("wireguard_interface", "wg-restored")
     core.set_setting(killswitch.SETTING_INGRESS, ["br-restored"])
     core.set_setting(killswitch.SETTING_CONFIGURED, False)
-    provider_secrets.save("mullvad", {"active": {"generation": "backup-generation"}})
+    provider_secrets.save(
+        "mullvad", {"active": {"generation": "backup-generation"}, "ipv4_address": "10.67.12.34/32"}
+    )
     destination = tmp_path / "active.elb"
     lifecycle.create_backup(
         destination,
@@ -217,7 +219,11 @@ def test_active_mullvad_restore_guards_before_start_and_recovers_original_files(
     # Exercise both an intentional disconnect and a different live generation.
     (appliance["config"] / "secret.key").write_bytes(b"x" * 32)
     provider_secrets.save(
-        "mullvad", {"active": {"generation": "current-generation"} if target_active else None}
+        "mullvad",
+        {
+            "active": {"generation": "current-generation"} if target_active else None,
+            "ipv4_address": "10.67.12.35/32",
+        },
     )
     core.set_setting("language", "current")
     core.set_setting("wireguard_interface", "wg-current")
@@ -246,7 +252,9 @@ def test_active_mullvad_restore_guards_before_start_and_recovers_original_files(
         return 0, "", ""
 
     class Egress:
-        async def arm(self, ingress: tuple[str, ...], interface: str) -> None:
+        async def arm(
+            self, ingress: tuple[str, ...], interface: str, *, source_address=None
+        ) -> None:
             assert guard["held"]
             nonlocal failed_once
             active = provider_secrets.load("mullvad").get("active")
@@ -381,7 +389,9 @@ def test_reset_removes_owned_egress_policy_before_unregistering_ingress(
     actions: list[str] = []
 
     class Egress:
-        async def arm(self, ingress: tuple[str, ...], interface: str) -> None:
+        async def arm(
+            self, ingress: tuple[str, ...], interface: str, *, source_address=None
+        ) -> None:
             actions.append("preflight-and-arm")
 
         async def stop_interface(self, interface: str) -> None:

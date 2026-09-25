@@ -19,6 +19,7 @@ from exitlane import core
 INTERFACE_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,15}$")
 PROVIDER_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 TABLE_ID = 51820
+SOURCE_RULE_PRIORITY = 0
 RULE_PRIORITY = 20000
 PROBE_RULE_PRIORITY = 19999
 ROUTE_PROTOCOL = 196
@@ -34,6 +35,25 @@ class ProviderWireGuardError(RuntimeError):
     def __init__(self, code: str):
         super().__init__(code)
         self.code = code
+
+
+def _source_address(value: str) -> str:
+    if not isinstance(value, str):
+        raise ProviderWireGuardError("provider_egress_configuration_invalid")
+    try:
+        source = ipaddress.ip_interface(value)
+    except (TypeError, ValueError) as error:
+        raise ProviderWireGuardError("provider_egress_configuration_invalid") from error
+    if (
+        source.version != 4
+        or source.network.prefixlen != 32
+        or source.ip.is_unspecified
+        or source.ip.is_multicast
+        or source.ip.is_loopback
+        or source.ip.is_link_local
+    ):
+        raise ProviderWireGuardError("provider_egress_configuration_invalid")
+    return str(source)
 
 
 def _wireguard_key(value: str) -> str:
@@ -272,15 +292,101 @@ class ProviderWireGuard:
             and str(rule.get("protocol")) == str(ROUTE_PROTOCOL)
         )
 
+    @staticmethod
+    def _owned_source_rule(rule: dict) -> bool:
+        if (
+            not set(rule) <= {"priority", "src", "table", "protocol"}
+            or str(rule.get("priority")) != str(SOURCE_RULE_PRIORITY)
+            or str(rule.get("table")) != str(TABLE_ID)
+            or str(rule.get("protocol")) != str(ROUTE_PROTOCOL)
+            or not isinstance(rule.get("src"), str)
+        ):
+            return False
+        try:
+            source = _source_address(rule["src"])
+        except ProviderWireGuardError:
+            return False
+        return rule["src"] in {source, source.removesuffix("/32")}
+
+    @staticmethod
+    def _local_rule(rule: dict) -> bool:
+        return (
+            set(rule) <= {"priority", "src", "table", "protocol"}
+            and str(rule.get("priority")) == "0"
+            and rule.get("src") == "all"
+            and str(rule.get("table")) in {"local", "255"}
+            and str(rule.get("protocol", "kernel")) in {"kernel", "2"}
+        )
+
+    def _check_source_rule_order(self, rules: list[dict], *, required: bool) -> None:
+        zero = [rule for rule in rules if str(rule.get("priority")) == "0"]
+        if not zero and not required:
+            return
+        if (
+            not zero
+            or not self._local_rule(zero[0])
+            or any(not self._owned_source_rule(rule) for rule in zero[1:])
+        ):
+            raise ProviderWireGuardError("provider_egress_resource_conflict")
+
+    async def _check_source_assignment(self, source: str, interface: str | None) -> None:
+        address = source.removesuffix("/32")
+        for link in await self._json("-4", "address", "show"):
+            if link.get("ifname") == interface:
+                continue
+            entries = link.get("addr_info", [])
+            if not isinstance(entries, list) or not all(isinstance(item, dict) for item in entries):
+                raise ProviderWireGuardError("provider_egress_apply_failed")
+            if any(item.get("local") == address for item in entries):
+                raise ProviderWireGuardError("provider_egress_resource_conflict")
+
+    async def _ensure_source_rule(self, source: str) -> None:
+        rules = await self._json("-4", "rule", "show")
+        self._check_source_rule_order(rules, required=True)
+        if not any(
+            self._owned_source_rule(rule) and _source_address(rule["src"]) == source
+            for rule in rules
+        ):
+            await self._run(
+                "ip",
+                "-4",
+                "rule",
+                "add",
+                "priority",
+                str(SOURCE_RULE_PRIORITY),
+                "from",
+                source,
+                "table",
+                str(TABLE_ID),
+                "protocol",
+                str(ROUTE_PROTOCOL),
+            )
+        # Equal-priority insertion must preserve the built-in local lookup first.
+        # Never rewrite/flush priority zero to repair a conflicting host policy.
+        rules = await self._json("-4", "rule", "show")
+        self._check_source_rule_order(rules, required=True)
+        if not any(
+            self._owned_source_rule(rule) and _source_address(rule["src"]) == source
+            for rule in rules
+        ):
+            raise ProviderWireGuardError("provider_egress_source_guard_failed")
+
     async def _preflight(
-        self, ingress_interfaces: tuple[str, ...], egress_interface: str | None
+        self,
+        ingress_interfaces: tuple[str, ...],
+        egress_interface: str | None,
+        source_address: str | None = None,
     ) -> None:
+        if source_address is not None:
+            await self._check_source_assignment(source_address, egress_interface)
         expected = {(RULE_PRIORITY, "iif", item) for item in ingress_interfaces}
         if egress_interface is not None:
             expected.add((PROBE_RULE_PRIORITY, "oif", egress_interface))
         for family in (4, 6):
             await self._check_table_ownership(family, egress_interface)
             rules = await self._json(f"-{family}", "rule", "show")
+            if family == 4:
+                self._check_source_rule_order(rules, required=source_address is not None)
             for rule in rules:
                 try:
                     priority = int(rule.get("priority"))
@@ -295,7 +401,10 @@ class ProviderWireGuard:
                     raise ProviderWireGuardError("provider_egress_resource_conflict")
 
     async def _apply_guard(
-        self, ingress_interfaces: tuple[str, ...], egress_interface: str | None
+        self,
+        ingress_interfaces: tuple[str, ...],
+        egress_interface: str | None,
+        source_address: str | None = None,
     ) -> None:
         for family in (4, 6):
             await self._run(
@@ -312,6 +421,8 @@ class ProviderWireGuard:
                 "proto",
                 str(ROUTE_PROTOCOL),
             )
+        if source_address is not None:
+            await self._ensure_source_rule(source_address)
         for ingress_interface in ingress_interfaces:
             for family in (4, 6):
                 await self._ensure_rule("iif", ingress_interface, RULE_PRIORITY, family)
@@ -341,16 +452,45 @@ class ProviderWireGuard:
                 return
         raise ProviderWireGuardError("provider_egress_apply_failed")
 
+    async def arm_source(self, egress_interface: str, source_address: str) -> None:
+        """Protect delayed host replies without altering another provider's ingress."""
+        source = _source_address(source_address)
+        if INTERFACE_PATTERN.fullmatch(egress_interface) is None:
+            raise ProviderWireGuardError("provider_egress_configuration_invalid")
+        await self._check_source_assignment(source, egress_interface)
+        await self._check_table_ownership(4, egress_interface)
+        self._check_source_rule_order(await self._json("-4", "rule", "show"), required=True)
+        await self._run(
+            "ip",
+            "-4",
+            "route",
+            "replace",
+            "unreachable",
+            "default",
+            "table",
+            str(TABLE_ID),
+            "metric",
+            str(UNREACHABLE_METRIC),
+            "proto",
+            str(ROUTE_PROTOCOL),
+        )
+        await self._ensure_source_rule(source)
+
     async def arm(
-        self, ingress_interfaces: Iterable[str], egress_interface: str | None = None
+        self,
+        ingress_interfaces: Iterable[str],
+        egress_interface: str | None = None,
+        *,
+        source_address: str | None = None,
     ) -> None:
+        source = _source_address(source_address) if source_address is not None else None
         ingress = tuple(dict.fromkeys(ingress_interfaces))
         if any(INTERFACE_PATTERN.fullmatch(item) is None for item in ingress):
             raise ProviderWireGuardError("provider_egress_configuration_invalid")
         if egress_interface is not None and INTERFACE_PATTERN.fullmatch(egress_interface) is None:
             raise ProviderWireGuardError("provider_egress_configuration_invalid")
-        await self._preflight(ingress, egress_interface)
-        await self._apply_guard(ingress, egress_interface)
+        await self._preflight(ingress, egress_interface, source)
+        await self._apply_guard(ingress, egress_interface, source)
 
     async def disarm(
         self, ingress_interfaces: Iterable[str], egress_interface: str | None = None
@@ -360,14 +500,36 @@ class ProviderWireGuard:
                 await self._delete_rule("iif", ingress, RULE_PRIORITY, family)
         if egress_interface is not None:
             await self._delete_rule("oif", egress_interface, PROBE_RULE_PRIORITY, 4)
+        # Late kernel replies can outlive disconnect/sign-out or a restored DB.
+        # Retain exact source guards and unreachable defaults until reboot.
         for family in (4, 6):
-            await self.runner(
+            await self._run(
                 "ip",
                 f"-{family}",
                 "route",
-                "flush",
+                "replace",
+                "unreachable",
+                "default",
                 "table",
                 str(TABLE_ID),
+                "metric",
+                str(UNREACHABLE_METRIC),
+                "proto",
+                str(ROUTE_PROTOCOL),
+            )
+        if egress_interface is not None:
+            await self.runner(
+                "ip",
+                "-4",
+                "route",
+                "del",
+                "default",
+                "dev",
+                egress_interface,
+                "table",
+                str(TABLE_ID),
+                "metric",
+                "10",
                 "proto",
                 str(ROUTE_PROTOCOL),
                 timeout=5,
@@ -422,13 +584,14 @@ class ProviderWireGuard:
             INTERFACE_PATTERN.fullmatch(value) is None for value in ingress
         ):
             raise ProviderWireGuardError("provider_egress_configuration_invalid")
-        await self._preflight(ingress, item.interface)
+        source = _source_address(item.address)
+        await self._preflight(ingress, item.interface, source)
         try:
             previous = path.read_text(encoding="utf-8") if path.exists() else None
         except OSError as error:
             raise ProviderWireGuardError("provider_egress_apply_failed") from error
         try:
-            await self._apply_guard(ingress, item.interface)
+            await self._apply_guard(ingress, item.interface, source)
             await self.stop_interface(item.interface)
             self._atomic_write(path, self.render(item))
             await self._run("wg-quick", "up", str(path), timeout=20)

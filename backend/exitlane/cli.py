@@ -302,7 +302,10 @@ def restore_provider_egress_guard(*, effective_user_id: int | None = None) -> in
         ):
             return 0
         ingress, _ = killswitch.configuration()
-        asyncio.run(ProviderWireGuard().arm(ingress, "wg-mullvad"))
+        source = state.get("ipv4_address")
+        if not isinstance(source, str):
+            raise ProviderWireGuardError("provider_egress_configuration_invalid")
+        asyncio.run(ProviderWireGuard().arm(ingress, "wg-mullvad", source_address=source))
     except (
         provider_secrets.ProviderSecretError,
         ProviderWireGuardError,
@@ -312,8 +315,9 @@ def restore_provider_egress_guard(*, effective_user_id: int | None = None) -> in
         try:
             asyncio.run(killswitch.arm_provider_transition())
         except killswitch.KillswitchError:
-            return 1
-        return 0
+            pass
+        # A forwarding-only fallback cannot protect locally generated replies.
+        return 1
     return 0
 
 
@@ -470,14 +474,20 @@ def _systemd_service_action(action: str) -> None:
             egress = ProviderWireGuard()
             # Ownership preflight must pass before touching any old direct tunnel.
             # The independent restore guard holds forwarding throughout teardown.
-            await egress.arm(ingress, "wg-mullvad")
+            state = provider_secrets.load("mullvad")
+            source = state.get("ipv4_address") if state else None
+            await egress.arm(ingress, "wg-mullvad", source_address=source)
             await egress.stop_interface("wg-mullvad")
             await egress.disarm(ingress, "wg-mullvad")
             egress.remove_config("wg-mullvad")
 
         try:
             asyncio.run(reset_egress())
-        except (ProviderWireGuardError, killswitch.KillswitchError) as error:
+        except (
+            ProviderWireGuardError,
+            provider_secrets.ProviderSecretError,
+            killswitch.KillswitchError,
+        ) as error:
             raise lifecycle.LifecycleError("restore_egress_reset_failed") from error
         # Unregistering ingress first detaches its RPDB rules and makes ownership
         # ambiguous. Remove owned egress rules while the old ingress still exists.

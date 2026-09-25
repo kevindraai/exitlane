@@ -43,10 +43,17 @@ and a valid 32-byte public key are eligible. The first release scope is IPv4-onl
 - provider DNS address for live tests: `10.64.0.1`.
 
 `Table = off` prevents `wg-quick` from changing the host default route. ExitLane adds policy rules
-only for configured protected ingress interfaces. The host continues to use `main` for SSH, WebUI,
+for protected ingress, interface-bound probes and the exact provider-assigned IPv4 source. The
+host continues to use `main` for SSH, WebUI,
 Mullvad API access and the relay underlay path. Table `51820` always has an ExitLane-owned
 unreachable default before it receives the live `wg-mullvad` default, so tunnel loss cannot fall
 through to plaintext egress.
+
+The exact source rule also catches kernel-generated replies with no interface binding. It precedes
+management routing and remains, with the unreachable default, until reboot even after disconnect
+or sign-out. Previously used provider addresses are therefore reserved as sources for the current
+boot; no account or key is retained in these rules. An address already assigned to another local
+interface is rejected. The kernel local-table rule remains first.
 
 Connect and relay-switch transactions save a generation and relay intent, arm the guard, replace
 the interface, verify the exact ingress/table/interface route, then require both an active
@@ -54,7 +61,7 @@ dataplane probe and a handshake for exactly the configured peer. Only then is th
 committed. A failed switch restores the previous generation when it can be proven; otherwise the
 owned unreachable route remains fail closed.
 
-At boot, `exitlane-provider-egress.service` restores the guarded table and ingress rules before
+At boot, `exitlane-provider-egress.service` restores the guarded table, ingress and source rules before
 normal networking whenever encrypted state records an active or pending Mullvad generation. Every
 systemd-managed `wg-quick` ingress directly requires this successful guard restoration. This
 applies even when the optional nftables killswitch setting is off. Normal status polling observes
@@ -108,3 +115,22 @@ Run this on the disposable network runner/appliance with a test account:
 
 Unit and namespace simulations are necessary evidence but do not replace these real-account,
 real-relay checks.
+
+## Connection failures and recovery
+
+An explicit relay request is attempted for that relay only. Country selection chooses an eligible
+relay; availability is not guaranteed by its catalog entry. If readiness times out, ExitLane reports
+`vpn_connect_timeout` and restores the previous proven generation where possible. Otherwise it
+keeps protected forwarding blocked. Select another relay or retry after checking provider status;
+ExitLane does not silently substitute a different country.
+
+Choose the WireGuard ingress interface name during first setup. Once configured, changing its name
+through the provisioning API is rejected: leaving an older ingress enabled could bypass the new
+interface's routing policy. Regeneration using the existing name remains supported. `wg-mullvad`
+is reserved for provider egress.
+
+Backup restore holds forwarding for both the old and restored ingress while replacing data. It
+explicitly reinstalls the mandatory provider routing guard before starting ingress and the
+application, including when the optional killswitch was disabled in the backup. Reconnect after
+restore to establish a new proven tunnel. A failed restore recovers the previous database, master
+key and WireGuard files; a failed recovery keeps forwarding blocked for local operator recovery.
