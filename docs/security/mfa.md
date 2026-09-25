@@ -12,6 +12,12 @@ The TOTP secret and pending enrollments are encrypted with AES-256-GCM using
 `/etc/exitlane/secret.key`. Pending enrollment expires after ten minutes. Successfully accepted
 TOTP counters are updated transactionally so a code cannot be replayed.
 
+The administrator can make at most five failed second-factor attempts in a five-minute window,
+starting with the first failed attempt. Starting again, cancelling the dialog, changing client IP or restarting
+ExitLane does not reset that budget. After the limit, wait for the original window to expire.
+A successful MFA login clears the budget. Challenge state, failed-attempt accounting and one-time
+factor consumption are committed together, including when requests arrive concurrently.
+
 Disabling MFA in the UI requires the password and current TOTP and ends every session. If the
 authenticator and all recovery codes are lost, run locally as root:
 

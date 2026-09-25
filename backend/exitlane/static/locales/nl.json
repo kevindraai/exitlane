@@ -688,7 +688,7 @@
       "title": "Controleer je aanmelding", "description": "Voer een code uit je authenticator-app of een herstelcode in.",
       "code": "Verificatiecode", "mode": "Codetype", "authenticator": "Authenticator-app", "recovery": "Herstelcode",
       "verify": "Controleren", "verifying": "Controleren…", "back": "Terug",
-      "errors": {"invalid": "De code is ongeldig of verlopen.", "invalid_mfa_code": "De code is ongeldig.", "mfa_challenge_expired": "De aanmelding is verlopen. Begin opnieuw.", "too_many_attempts": "Te veel pogingen. Begin opnieuw."}
+      "errors": {"invalid": "De code is ongeldig of verlopen.", "invalid_mfa_code": "De code is ongeldig.", "mfa_challenge_expired": "De aanmelding is verlopen. Begin opnieuw.", "too_many_attempts": "Te veel pogingen. Wacht enkele minuten en probeer opnieuw."}
     }
   },
   "diagnostics": {

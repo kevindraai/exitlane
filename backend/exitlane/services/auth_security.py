@@ -19,6 +19,7 @@ RECOVERY_CODE_COUNT = 10
 MFA_CHALLENGE_SECONDS = 300
 MFA_ENROLLMENT_SECONDS = 600
 MFA_MAX_ATTEMPTS = 5
+MFA_FAILURE_WINDOW_SECONDS = 300
 
 
 class AuthSecurityError(ValueError):
@@ -245,43 +246,49 @@ def confirm_enrollment(user_id: int, session_token: str, enrollment: str, code: 
     return codes
 
 
+def _verify_totp(connection: sqlite3.Connection, user_id: int, code: str, now: int) -> bool:
+    row = connection.execute(
+        "SELECT encrypted_totp_secret,last_totp_counter FROM users WHERE id=? AND mfa_enabled=1",
+        (user_id,),
+    ).fetchone()
+    if row is None:
+        return False
+    counter = totp_counter(decrypt_secret(row[0]), code, now, row[1])
+    if counter is None:
+        return False
+    return (
+        connection.execute(
+            "UPDATE users SET last_totp_counter=? WHERE id=? AND (last_totp_counter IS NULL OR last_totp_counter<?)",
+            (counter, user_id, counter),
+        ).rowcount
+        == 1
+    )
+
+
 def verify_totp(user_id: int, code: str) -> bool:
-    now = int(time.time())
     with sqlite3.connect(core.DB, timeout=5.0) as connection:
         connection.execute("BEGIN IMMEDIATE")
-        row = connection.execute(
-            "SELECT encrypted_totp_secret,last_totp_counter FROM users WHERE id=? AND mfa_enabled=1",
-            (user_id,),
-        ).fetchone()
-        if row is None:
-            return False
-        counter = totp_counter(decrypt_secret(row[0]), code, now, row[1])
-        if counter is None:
-            return False
-        return (
-            connection.execute(
-                "UPDATE users SET last_totp_counter=? WHERE id=? AND (last_totp_counter IS NULL OR last_totp_counter<?)",
-                (counter, user_id, counter),
-            ).rowcount
-            == 1
-        )
+        return _verify_totp(connection, user_id, code, int(time.time()))
+
+
+def _verify_recovery(connection: sqlite3.Connection, user_id: int, code: str, now: int) -> bool:
+    row = connection.execute(
+        "SELECT id FROM recovery_codes WHERE user_id=? AND code_hash=? AND used_at IS NULL",
+        (user_id, _recovery_digest(code)),
+    ).fetchone()
+    return bool(
+        row
+        and connection.execute(
+            "UPDATE recovery_codes SET used_at=? WHERE id=? AND used_at IS NULL", (now, row[0])
+        ).rowcount
+        == 1
+    )
 
 
 def verify_recovery(user_id: int, code: str) -> bool:
-    now = int(time.time())
     with sqlite3.connect(core.DB, timeout=5.0) as connection:
         connection.execute("BEGIN IMMEDIATE")
-        row = connection.execute(
-            "SELECT id FROM recovery_codes WHERE user_id=? AND code_hash=? AND used_at IS NULL",
-            (user_id, _recovery_digest(code)),
-        ).fetchone()
-        return bool(
-            row
-            and connection.execute(
-                "UPDATE recovery_codes SET used_at=? WHERE id=? AND used_at IS NULL", (now, row[0])
-            ).rowcount
-            == 1
-        )
+        return _verify_recovery(connection, user_id, code, int(time.time()))
 
 
 def start_challenge(user_id: int, client_ip: str) -> str:
@@ -296,9 +303,13 @@ def start_challenge(user_id: int, client_ip: str) -> str:
 
 
 def consume_challenge(challenge: str, code: str, mode: str, client_ip: str) -> tuple[int, bool]:
-    now = int(time.time())
     digest = token_hash(challenge)
-    with sqlite3.connect(core.DB) as connection:
+    error = None
+    with sqlite3.connect(core.DB, timeout=5.0) as connection:
+        # Serialize validation, attempt accounting and one-time credential use.
+        # Authentication failures are raised only after their state is committed.
+        connection.execute("BEGIN IMMEDIATE")
+        now = int(time.time())
         row = connection.execute(
             "SELECT user_id,expires_at,attempts,client_ip FROM mfa_challenges WHERE token_hash=?",
             (digest,),
@@ -310,22 +321,52 @@ def consume_challenge(challenge: str, code: str, mode: str, client_ip: str) -> t
             or not hmac.compare_digest(row[3], client_ip)
         ):
             connection.execute("DELETE FROM mfa_challenges WHERE token_hash=?", (digest,))
-            raise AuthSecurityError("mfa_challenge_expired")
-    valid = verify_recovery(row[0], code) if mode == "recovery" else verify_totp(row[0], code)
-    with sqlite3.connect(core.DB, timeout=5.0) as connection:
-        connection.execute("BEGIN IMMEDIATE")
-        if not valid:
-            connection.execute(
-                "UPDATE mfa_challenges SET attempts=attempts+1 WHERE token_hash=?", (digest,)
-            )
-            if row[2] + 1 >= MFA_MAX_ATTEMPTS:
+            error = "mfa_challenge_expired"
+        else:
+            budget = connection.execute(
+                "SELECT mfa_failed_attempts,mfa_failure_window_started_at FROM users WHERE id=?",
+                (row[0],),
+            ).fetchone()
+            if budget is None:
                 connection.execute("DELETE FROM mfa_challenges WHERE token_hash=?", (digest,))
-                raise AuthSecurityError("too_many_attempts")
-            raise AuthSecurityError("invalid_mfa_code")
-        consumed = connection.execute("DELETE FROM mfa_challenges WHERE token_hash=?", (digest,))
-        if consumed.rowcount != 1:
-            raise AuthSecurityError("mfa_challenge_expired")
-        return row[0], mode == "recovery"
+                error = "mfa_challenge_expired"
+            else:
+                failures, window_started = budget
+                if window_started is None or now >= window_started + MFA_FAILURE_WINDOW_SECONDS:
+                    failures, window_started = 0, now
+                if failures >= MFA_MAX_ATTEMPTS:
+                    connection.execute("DELETE FROM mfa_challenges WHERE token_hash=?", (digest,))
+                    error = "too_many_attempts"
+                else:
+                    verifier = _verify_recovery if mode == "recovery" else _verify_totp
+                    if verifier(connection, row[0], code, now):
+                        connection.execute(
+                            "UPDATE users SET mfa_failed_attempts=0,mfa_failure_window_started_at=NULL WHERE id=?",
+                            (row[0],),
+                        )
+                        connection.execute(
+                            "DELETE FROM mfa_challenges WHERE token_hash=?", (digest,)
+                        )
+                    else:
+                        failures += 1
+                        connection.execute(
+                            "UPDATE users SET mfa_failed_attempts=?,mfa_failure_window_started_at=? WHERE id=?",
+                            (failures, window_started, row[0]),
+                        )
+                        if failures >= MFA_MAX_ATTEMPTS:
+                            connection.execute(
+                                "DELETE FROM mfa_challenges WHERE token_hash=?", (digest,)
+                            )
+                            error = "too_many_attempts"
+                        else:
+                            connection.execute(
+                                "UPDATE mfa_challenges SET attempts=attempts+1 WHERE token_hash=?",
+                                (digest,),
+                            )
+                            error = "invalid_mfa_code"
+    if error is not None:
+        raise AuthSecurityError(error)
+    return row[0], mode == "recovery"
 
 
 def mfa_status(user_id: int) -> dict:
@@ -402,6 +443,7 @@ def disable_mfa(user_id: int) -> None:
         connection.execute("BEGIN IMMEDIATE")
         connection.execute(
             """UPDATE users SET mfa_enabled=0,encrypted_totp_secret=NULL,last_totp_counter=NULL,
+               mfa_failed_attempts=0,mfa_failure_window_started_at=NULL,
                mfa_updated_at=? WHERE id=?""",
             (int(time.time()), user_id),
         )

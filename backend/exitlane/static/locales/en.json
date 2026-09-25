@@ -688,7 +688,7 @@
       "title": "Verify your sign-in", "description": "Enter a code from your authenticator app or a recovery code.",
       "code": "Verification code", "mode": "Code type", "authenticator": "Authenticator app", "recovery": "Recovery code",
       "verify": "Verify", "verifying": "Verifying…", "back": "Back",
-      "errors": {"invalid": "The code is invalid or expired.", "invalid_mfa_code": "The code is invalid.", "mfa_challenge_expired": "The sign-in expired. Start again.", "too_many_attempts": "Too many attempts. Start again."}
+      "errors": {"invalid": "The code is invalid or expired.", "invalid_mfa_code": "The code is invalid.", "mfa_challenge_expired": "The sign-in expired. Start again.", "too_many_attempts": "Too many attempts. Wait a few minutes before trying again."}
     }
   },
   "diagnostics": {
