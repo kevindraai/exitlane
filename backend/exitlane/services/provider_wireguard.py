@@ -209,7 +209,22 @@ class ProviderWireGuard:
         )
 
     async def _check_table_ownership(self, family: int, egress_interface: str | None) -> None:
-        routes = await self._json(f"-{family}", "route", "show", "table", str(TABLE_ID))
+        arguments = ("ip", "-j", f"-{family}", "route", "show", "table", str(TABLE_ID))
+        rc, output, error = await self.runner(*arguments, timeout=5)
+        if rc != 0:
+            missing_table = f"Error: ipv{family}: FIB table does not exist."
+            if output.strip() in {"", "[]"} and error.strip().splitlines() in (
+                [missing_table],
+                [missing_table, "Dump terminated"],
+            ):
+                return
+            raise ProviderWireGuardError("provider_egress_apply_failed")
+        try:
+            routes = json.loads(output)
+        except (TypeError, ValueError) as error:
+            raise ProviderWireGuardError("provider_egress_apply_failed") from error
+        if not isinstance(routes, list) or not all(isinstance(route, dict) for route in routes):
+            raise ProviderWireGuardError("provider_egress_apply_failed")
         if any(not self._owned_route(route, egress_interface) for route in routes):
             raise ProviderWireGuardError("provider_egress_resource_conflict")
 

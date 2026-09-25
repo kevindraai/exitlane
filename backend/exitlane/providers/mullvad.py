@@ -37,7 +37,8 @@ from .base import (
 )
 
 API_ORIGIN = "https://api.mullvad.net"
-TOKEN_PATH = "/auth/v1/webtoken"
+# This is a fixed API path, not a credential.
+TOKEN_PATH = "/auth/v1/webtoken"  # nosec B105
 DEVICES_PATH = "/accounts/v1/devices"
 RELAYS_PATH = "/www/relays/all"
 INTERFACE = "wg-mullvad"

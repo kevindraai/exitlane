@@ -225,6 +225,60 @@ def test_foreign_provider_table_route_is_rejected_before_mutation(tmp_path):
     assert not any(call[:4] == ("ip", "-4", "route", "replace") for call in runner.calls)
 
 
+def test_missing_kernel_route_table_is_empty_during_first_guard_install(tmp_path):
+    runner = Runner()
+
+    async def absent(*args, timeout):
+        if args[:2] == ("ip", "-j") and args[3:5] == ("route", "show"):
+            runner.calls.append(args)
+            family = args[2].removeprefix("-")
+            return 2, "[]", f"Error: ipv{family}: FIB table does not exist.\nDump terminated\n"
+        return await Runner.__call__(runner, *args, timeout=timeout)
+
+    service = ProviderWireGuard(absent, root=tmp_path)
+    asyncio.run(service.arm(("wg0",), "wg-mullvad"))
+
+    assert (
+        "ip",
+        "-4",
+        "route",
+        "replace",
+        "unreachable",
+        "default",
+        "table",
+        "51820",
+        "metric",
+        "42760",
+        "proto",
+        "196",
+    ) in runner.calls
+    assert (
+        "ip",
+        "-6",
+        "route",
+        "replace",
+        "unreachable",
+        "default",
+        "table",
+        "51820",
+        "metric",
+        "42760",
+        "proto",
+        "196",
+    ) in runner.calls
+
+
+def test_route_table_errors_other_than_absence_still_fail_closed(tmp_path):
+    async def denied(*args, timeout):
+        if args[:2] == ("ip", "-j") and args[3:5] == ("route", "show"):
+            return 2, "[]", "RTNETLINK answers: Operation not permitted"
+        return 0, "[]", ""
+
+    service = ProviderWireGuard(denied, root=tmp_path)
+    with pytest.raises(ProviderWireGuardError, match="provider_egress_apply_failed"):
+        asyncio.run(service.arm(("wg0",), "wg-mullvad"))
+
+
 def test_ipv6_or_rule_collision_is_rejected_before_any_route_mutation(tmp_path):
     runner = Runner()
 
