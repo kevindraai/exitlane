@@ -4,6 +4,10 @@
 
 ExitLane is a self-hosted egress appliance for routers, VLANs, and selected devices. Your router maintains one permanent WireGuard tunnel to ExitLane, while ExitLane manages outbound connection through NordVPN or a direct Mullvad WireGuard tunnel.
 
+The **0.3.0-rc.1** release candidate adds direct Mullvad egress and strengthens provider switching,
+traffic protection and appliance recovery. Read the [release notes](docs/release-notes/0.3.0-rc.1.md)
+for the supported scope, upgrade procedure and limitations.
+
 The result is an experience closer to a native VPN app, but for an entire network: switch countries, reconnect, use the fastest available server, and keep provider-specific configuration away from your router.
 
 ![ExitLane appliance dashboard](docs/images/promo/exitlane-dashboard-hero.png)
@@ -81,6 +85,8 @@ the relevant operational screen.
 - Switch VPN countries from the WebUI and compare measured latency for quick choices.
 - Discover registered VPN providers and view provider authentication and tunnel status separately.
 - Protect routed client traffic with a configurable killswitch when no usable VPN tunnel is active.
+- Keep active or interrupted Mullvad transactions protected independently of that optional
+  killswitch. Enable the killswitch when clients must also remain blocked after an explicit disconnect.
 
 ### WireGuard ingress
 
@@ -132,17 +138,24 @@ The WebUI's semantic theme adoption is recorded in the
 
 ## Installation
 
-The supported appliance baseline is Debian 13 on `amd64`. ExitLane is tested primarily in a
-Debian 13 Proxmox LXC. Other Debian releases and architectures are not supported release targets.
-An LXC must have `/dev/net/tun` and permission to create WireGuard interfaces.
+The supported appliance baseline is Debian 13 on `amd64`. The qualified Proxmox configuration is a
+**privileged LXC** with `/dev/net/tun` and permission to manage WireGuard, routing and nftables.
+Other Debian releases, architectures and unprivileged LXC configurations are not supported release
+targets. Keep the management interface on a trusted network.
+
+Install a published release tag rather than the moving development branch. For this release:
 
 ```bash
-git clone https://github.com/kevindraai/exitlane.git
+git clone --branch v0.3.0-rc.1 --depth 1 https://github.com/kevindraai/exitlane.git
 cd exitlane
 sudo ./installer/install-debian.sh
 ```
 
 Open `http://<host>:8787` and complete the first-run wizard.
+
+Use the tagged installation command once the candidate is published on the
+[Releases page](https://github.com/kevindraai/exitlane/releases). For an existing appliance,
+[create and verify a backup before upgrading](docs/upgrade-and-recovery.md).
 
 Read the [deployment guide](docs/deployment.md), [Mullvad provider guide](docs/mullvad.md), [backup and restore guide](docs/backup-and-restore.md), [upgrade and recovery guide](docs/upgrade-and-recovery.md), and [Proxmox LXC notes](docs/proxmox-lxc.md) before using ExitLane outside a development environment.
 

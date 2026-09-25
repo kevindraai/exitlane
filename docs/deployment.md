@@ -31,7 +31,7 @@ The reset requires explicit confirmation and revokes every browser session. Envi
 overrides retain precedence and must be corrected in the service configuration.
 
 Exitlane is currently designed as a single service on a dedicated Debian 13 `amd64` host or LXC.
-That is the supported 0.2.0 appliance baseline; other Debian releases and architectures are not
+That is the supported 0.3.0-rc.1 appliance baseline; other Debian releases and architectures are not
 supported release targets. The installer creates an isolated Python environment, installs the
 systemd unit, and prepares configuration, data, and log locations.
 
@@ -47,11 +47,15 @@ retaining `ProtectHome=true`. ExitLane does not mount host command or Docker con
 
 The host needs systemd, outbound internet access, `/dev/net/tun`, and permission to create and
 manage WireGuard interfaces. A Proxmox LXC must be configured accordingly; the currently tested
-baseline is a privileged container. See [Proxmox LXC](proxmox-lxc.md).
+baseline is a privileged container. Unprivileged LXC is not a supported release target.
+See [Proxmox LXC](proxmox-lxc.md).
 
-Run the installer from a repository checkout:
+Use the published release tag. The following command becomes available when `v0.3.0-rc.1` is
+published; do not substitute an unreviewed development branch for an appliance deployment:
 
 ```bash
+git clone --branch v0.3.0-rc.1 --depth 1 https://github.com/kevindraai/exitlane.git
+cd exitlane
 sudo ./installer/install-debian.sh
 ```
 
@@ -59,15 +63,32 @@ After installation, open `http://<host>:8787` from the trusted management networ
 wizard. The router imports the generated WireGuard client configuration and owns the policy that
 selects which traffic uses Exitlane. See [Router integrations](router-integrations.md).
 
-Verify on the appliance that ExitLane and the interactive CLI use the same runtime:
+## First-run checklist
+
+1. Create the local administrator and enable MFA after completing setup. Store recovery codes
+   somewhere other than the appliance.
+2. Choose NordVPN, Mullvad or direct egress. For Mullvad, follow the
+   [account and device setup](mullvad.md#set-up-and-connect) instructions; the Mullvad app is not required.
+3. Choose the WireGuard ingress name before provisioning. A configured interface cannot be renamed
+   through the API; regeneration retains its name and replaces the client identity.
+4. Import the generated profile on the router, then apply the router's routing policy to a test
+   client first. Configure client DNS through the intended tunnel path.
+5. Enable the ExitLane killswitch if clients must stay offline after an explicit VPN disconnect,
+   then connect the selected provider. Direct-egress setups can continue without a VPN connection.
+6. From that client, check internet access, DNS and the public exit address. Check that management
+   access remains available from its trusted network, then create an encrypted backup.
+
+Verify the application first:
 
 ```bash
 sudo systemctl status exitlane
-sudo nordvpn status
-sudo wg show wg-mullvad
-sudo ip -4 route show table 51820
 curl --fail http://127.0.0.1:8787/api/health
 ```
+
+For a connected Mullvad appliance, also inspect `sudo wg show wg-mullvad` and
+`sudo ip -4 route show table 51820`. On a NordVPN appliance, use `sudo nordvpn status`.
+An absent Mullvad interface while disconnected is expected. A successful health response confirms
+the management service; client traffic and DNS need their own checks.
 
 ## Security and operations
 
@@ -76,9 +97,10 @@ network boundary and protect local configuration, state, and logs. Configure HTT
 [reverse-proxy guide](deployment/reverse-proxy.md); forwarding headers are ignored unless their
 direct peer is explicitly trusted.
 
-The installer creates `/etc/exitlane/secret.key` with mode `0600` and never replaces it during an
-upgrade. Preserve the database and key together. Losing the key never bypasses MFA: run
-`sudo exitlane-cli disable-mfa` locally and enroll again.
+The installer creates `/etc/exitlane/secret.key` with mode `0600` and preserves it during an
+upgrade. Preserve the database and key together. If the key is lost, restore that pair from a
+verified backup. For an MFA lockout, local `sudo exitlane-cli disable-mfa` is available; it does not
+recover encrypted Mullvad credentials or the provider's WireGuard identity if the key is lost.
 
 ExitLane provides root-only encrypted appliance backup and strictly validated restore commands.
 Create and verify a portable backup before upgrading, retain the installer's protected local

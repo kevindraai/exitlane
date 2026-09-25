@@ -1,11 +1,27 @@
 # Upgrade and recovery
 
-ExitLane supports an in-place Debian appliance upgrade from `0.2.0-beta.5` to
-`0.2.0-rc.1`. Run the installer from a trusted, reviewed checkout
-of the target release:
+The 0.3.0-rc.1 release line provides an in-place upgrade path from the published `v0.2.0` tag on
+Debian 13 `amd64`. That historical tag reports runtime version `0.2.0-rc.1` and Python package
+version `0.2.0rc1`; this is expected metadata, not evidence that another installation was selected.
+The new runtime version is `0.3.0-rc.1` and its Python package version is `0.3.0rc1`.
+
+## Before upgrading
+
+Create and verify a portable encrypted backup, keep the local console available and schedule a
+client-traffic interruption. Record any custom `/etc/default/exitlane`, systemd, host-network and
+router settings separately. Do not change settings in the browser during the upgrade.
 
 ```bash
-cd /path/to/exitlane
+sudo exitlane-cli backup create /var/lib/exitlane/backups/pre-0.3.0-rc.1.elb
+sudo exitlane-cli backup verify /var/lib/exitlane/backups/pre-0.3.0-rc.1.elb
+```
+
+Keep a protected copy outside the appliance. Once the target tag is published, use a separate
+release checkout so the installer source is never the live `/opt/exitlane` directory:
+
+```bash
+git clone --branch v0.3.0-rc.1 --depth 1 https://github.com/kevindraai/exitlane.git exitlane-0.3.0-rc.1
+cd exitlane-0.3.0-rc.1
 sudo ./installer/install-debian.sh
 ```
 
@@ -17,11 +33,13 @@ without changing the installation.
 
 The installer:
 
-1. verifies root, the supported Debian 13 `amd64` baseline, systemd, source layout, TUN, network
-   administration, connectivity, and at least 512 MiB free space;
-2. distinguishes a clean install from an existing database or package;
-3. detects the installed and target versions and rejects a downgrade;
-4. takes the exclusive lifecycle lock;
+1. verifies root and takes the exclusive lifecycle lock;
+2. checks the supported Debian 13 `amd64` baseline, systemd, source layout and TUN, installs required
+   system packages, then checks connectivity and network-administration capability;
+3. distinguishes a clean install from an existing database or package, rejects a downgrade and
+   verifies at least 512 MiB free space;
+4. prepares the application, configuration and private service-home directories while preserving
+   the existing master key;
 5. creates a root-only recovery directory below
    `/var/lib/exitlane/recovery`;
 6. snapshots SQLite with its backup API and preserves the previous application,
@@ -38,6 +56,39 @@ off-appliance recovery.
 
 Re-running the same installer is supported and preserves `/etc/default/exitlane`,
 the application master key, SQLite data, and operator settings.
+
+The package now requires AnyIO `>=4.14.2,<5`, so the installer's normal pip upgrade also replaces
+older vulnerable AnyIO versions. Updating the development lockfile alone would not protect an
+existing appliance installation.
+
+## Mullvad and WireGuard changes
+
+The direct Mullvad integration owns `wg-mullvad` and policy table `51820`. It does not install the
+Mullvad app. Retire any existing app daemon or conflicting provider firewall state deliberately
+before activation; follow the [Mullvad conflict procedure](mullvad.md#legacy-mullvad-app-conflict).
+
+On startup, an older ingress profile with fixed NordVPN forwarding rules is migrated to
+provider-neutral forwarding. Its existing keys, peer configuration and client profile remain
+unchanged. Changing VPN providers does not require replacing the router's ingress profile.
+
+Choose a new ingress name only during initial provisioning. Renaming an already configured
+interface is rejected; profile regeneration keeps its name. With a stored active or pending Mullvad
+generation, reboot and restore establish the mandatory routing guard before ingress starts.
+Reconnect explicitly after recovery and verify the client path.
+
+## After upgrading
+
+```bash
+sudo systemctl status exitlane.service --no-pager
+curl --fail http://127.0.0.1:8787/api/health
+sudo cat /etc/exitlane/installed-version
+```
+
+Confirm the new version, sign in with the existing account and MFA, check saved settings and the
+ingress profile, then connect the intended provider. From a routed client, verify DNS, the public
+exit and the configured disconnect/killswitch behavior. Check management and reverse-proxy access
+from their normal networks and inspect Activity for failed operations. An active service alone is
+not proof that the router's traffic uses the VPN.
 
 ## Automatic rollback
 

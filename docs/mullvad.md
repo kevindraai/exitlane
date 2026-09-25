@@ -5,6 +5,54 @@ control the Mullvad desktop app, CLI or `mullvad-daemon`. ExitLane owns the egre
 policy-routing table and forwarded-traffic killswitch; WireGuard ingress remains a separate
 interface and responsibility.
 
+This guide describes the direct integration in **0.3.0-rc.1**. Use the supported
+[Debian 13 `amd64` appliance](deployment.md); the qualified Proxmox configuration is a privileged
+LXC. The integration currently provides IPv4 egress.
+
+## Set up and connect
+
+1. Keep local console access available and create a verified encrypted backup if the appliance
+   already holds configuration. Use an active Mullvad account with an available device slot.
+2. During the wizard, select Mullvad. On an existing appliance, open **VPN**, select **Mullvad VPN**
+   and follow its sign-in action. Enter the 16-digit account number in the authenticated WebUI.
+   ExitLane creates and owns one device for this appliance; no Mullvad app installation is needed.
+3. Confirm that the provider reports **Signed in**. Provision ingress before starting the outbound
+   connection; readiness verification requires that ingress interface to exist.
+4. Set up the separate WireGuard ingress and import its client profile on the router. Choose the
+   ingress name once; `wg-mullvad` is reserved and cannot be used for ingress. The router's policy
+   determines which clients or VLANs enter ExitLane.
+5. Select Mullvad as the active provider, choose a country or relay and connect. Wait for
+   **Connected** before relying on it for client traffic. ExitLane verifies the configured peer
+   and usable data path before accepting the connection.
+6. Enable the ExitLane killswitch if those clients must stay blocked after a deliberate disconnect.
+   Keep the management network outside the client routing policy.
+7. From a routed client, verify internet access and the expected VPN exit. Test DNS through the
+   tunnel, for example with `dig @10.64.0.1 example.com` and
+   `dig +tcp @10.64.0.1 example.com`. Configure that client's or router's DNS policy accordingly;
+   changing the appliance's resolver alone does not change client DNS.
+
+Country and relay changes keep the router's ingress profile unchanged. Regenerating that ingress
+profile is a separate action: it replaces the router's keypair and requires importing the new profile.
+
+## Disconnect, protection and sign-out
+
+| Situation | Routed client behavior |
+| --- | --- |
+| Mullvad connected | Protected IPv4 uses the Mullvad tunnel; protected IPv6 is blocked. |
+| Connection pending, tunnel unexpectedly lost, or restored generation awaiting reconnect | Mandatory routing protection blocks unverified egress, even with the optional killswitch off. |
+| Explicit disconnect, optional killswitch enabled | Client forwarding remains blocked until a usable active provider is available. |
+| Explicit disconnect, optional killswitch disabled | Client traffic may use direct egress through the host's normal route. |
+
+The optional killswitch setting and the mandatory Mullvad routing guard have different purposes.
+Choose the optional killswitch according to the desired behavior when you deliberately stop the VPN.
+Management access continues over the host's normal route.
+
+Disconnect before ending the Mullvad session. Sign-out removes only ExitLane's registered device;
+it also makes backups containing that device identity unusable for reconnection. To migrate using
+a backup, keep the original appliance shut down and restore the existing identity on the replacement.
+Do not sign out on the original or run both appliances with the same identity. See
+[backup and restore](backup-and-restore.md#mullvad-identity-and-appliance-migration).
+
 The implementation follows Mullvad's official
 [WireGuard configuration guidance](https://mullvad.net/en/help/wireguard-and-mullvad-vpn) and the
 endpoint/field usage in Mullvad's official
@@ -118,6 +166,10 @@ real-relay checks.
 
 ## Connection failures and recovery
 
+If sign-in fails, check the account number, account availability and device slots in Mullvad's
+account management. Retry an uncertain registration on the same appliance so ExitLane can reconcile
+the existing public key. Do not remove unrelated Mullvad devices to make the error disappear.
+
 An explicit relay request is attempted for that relay only. Country selection chooses an eligible
 relay; availability is not guaranteed by its catalog entry. If readiness times out, ExitLane reports
 `vpn_connect_timeout` and restores the previous proven generation where possible. Otherwise it
@@ -129,8 +181,23 @@ through the provisioning API is rejected: leaving an older ingress enabled could
 interface's routing policy. Regeneration using the existing name remains supported. `wg-mullvad`
 is reserved for provider egress.
 
+If activation reports `legacy_mullvad_runtime_conflict`, follow the legacy-conflict inspection
+above. If it reports a routing resource conflict, inspect table `51820` and policy rules from the
+local console; do not flush shared routing or firewall state. Keep client forwarding blocked until
+ownership is understood. The Activity view and provider status expose safe error codes for diagnosis.
+
 Backup restore holds forwarding for both the old and restored ingress while replacing data. It
 explicitly reinstalls the mandatory provider routing guard before starting ingress and the
 application, including when the optional killswitch was disabled in the backup. Reconnect after
 restore to establish a new proven tunnel. A failed restore recovers the previous database, master
 key and WireGuard files; a failed recovery keeps forwarding blocked for local operator recovery.
+
+## Release limitations
+
+- IPv6 through Mullvad is not supported; protected IPv6 is blocked.
+- One commercial provider is active at a time. Signing in to both providers does not combine them.
+- No automatic switch to another relay or country is promised after an unavailable relay.
+- This integration does not expose the Mullvad app's full feature set, such as multihop or obfuscation.
+- Direct exposure of the management API to the internet is unsupported.
+- A restored appliance must reconnect explicitly. If the recorded device was revoked, it requires
+  deliberate account/device recovery; restore never silently registers a replacement.

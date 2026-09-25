@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.0-rc.1] - 2026-09-25
+
 ### Added
 
 - Added Mullvad VPN as direct ExitLane-owned WireGuard egress with encrypted account/device/key

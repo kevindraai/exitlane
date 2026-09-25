@@ -1,6 +1,6 @@
 # ASVS-based baseline
 
-This is a selected control mapping based on OWASP ASVS 5 structure for a local administrative application. It is neither certification nor a claim of complete compliance.
+This is a selected control mapping using the [OWASP ASVS 4.0.3 chapter structure](https://github.com/OWASP/ASVS/tree/v4.0.3) for a local administrative application. It is neither certification nor a claim of complete compliance.
 
 | Reference / requirement | Applicable | Current implementation | Automatic test | Manual test / open risk |
 | --- | --- | --- | --- | --- |
@@ -9,7 +9,7 @@ This is a selected control mapping based on OWASP ASVS 5 structure for a local a
 | V3 sessions | yes | random token, SHA-256 digest, expiry and revocation | cookie/session tests | Secure requires HTTPS configuration |
 | V4 access control | yes | central default-deny after setup | route/method/setup tests | static shell is intentionally public |
 | V5 validation/encoding | yes | strict Pydantic fields, URL/path/command allowlists, typed Markdown projection without raw HTML | negative API, documentation and frontend tests | expand property tests with new models |
-| V6 stored cryptography | partially | passwords use scrypt; keys are mode 0600 | hash and permissions tests | SQLite is not encrypted at rest; host boundary applies |
+| V6 stored cryptography | partially | passwords use scrypt; MFA and persisted Mullvad secrets use authenticated encryption with the appliance master key; keys are mode 0600 | hash and permissions tests | SQLite is not encrypted at rest; host boundary applies |
 | V7 errors/logging | yes | generic HTTP errors and allowlisted Activity metadata | error/event tests | provider journal output requires operational review |
 | V8 data protection | partially | no-store, key/database isolation and encrypted authenticated appliance backups | header, lifecycle and installer tests | passphrase and off-appliance custody are operator-managed |
 | V9 communications | partially | same-origin app; HTTPS deployment supported | HSTS opt-in test | TLS is external to Exitlane and mandatory for untrusted links |

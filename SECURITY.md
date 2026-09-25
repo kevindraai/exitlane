@@ -2,18 +2,19 @@
 
 ## Supported versions
 
-Exitlane is pre-release software. Security fixes are provided only for the most recent published
-pre-release.
+ExitLane remains pre-release software. Security fixes target the most recent published release or
+release candidate. This policy accompanies `v0.3.0-rc.1` and takes effect when that candidate is
+published; a preparation branch or draft release does not supersede the current published version.
 
 | Version | Supported |
 | --- | --- |
-| v0.2.0-beta.5 | Yes |
-| v0.2.0-beta.4 | No |
-| v0.2.0-beta.3 | No |
-| v0.2.0-beta.2 | No |
-| v0.2.0-beta.1 | No |
-| v0.2.0-alpha.1 | No |
-| v0.1.x | No |
+| v0.3.0-rc.1 | Yes, upon publication |
+| v0.2.0 | Superseded upon publication of v0.3.0-rc.1 |
+| Earlier prereleases and v0.1.x | No |
+
+See the [published releases](https://github.com/kevindraai/exitlane/releases) for availability.
+The historical `v0.2.0` tag reports application version `0.2.0-rc.1` and Python package version
+`0.2.0rc1`; include both the tag and reported runtime version in reports about that release.
 
 ## Reporting a vulnerability
 
@@ -36,7 +37,9 @@ older candidates.
 
 TOTP MFA reduces the impact of a stolen password but is not phishing-resistant. Keep recovery
 codes offline. The SQLite database and `/etc/exitlane/secret.key` are jointly sensitive and must
-be preserved together for operator-managed disaster recovery.
+be preserved together for operator-managed disaster recovery. The same master key protects
+ExitLane-owned Mullvad account and WireGuard device state. Encrypted backups therefore contain
+provider credentials as well as administrator and MFA data.
 
 ## Scope
 
@@ -44,7 +47,7 @@ In scope are vulnerabilities in the Exitlane backend, browser application, authe
 session handling, installer and service configuration, provider integration, WireGuard ingress,
 and project-owned deployment artifacts.
 
-Third-party services and software—including NordVPN, router firmware, Proxmox, operating-system
+Third-party services and software—including NordVPN, Mullvad, router firmware, Proxmox, operating-system
 packages, and infrastructure not operated by the project—are outside project scope. Reports that
 only describe missing hardening on an intentionally trusted management network may be treated as
 deployment guidance rather than a product vulnerability.
@@ -54,3 +57,12 @@ deployment guidance rather than a product vulnerability.
 Keep the management interface on a trusted network, restrict access to Exitlane data and
 configuration directories, and rotate any credentials or keys exposed in logs or screenshots.
 Exitlane does not currently claim to be safe for direct exposure to the public internet.
+
+The supported OS and architecture are Debian 13 on `amd64`; the qualified Proxmox baseline is a
+privileged LXC. ExitLane needs root-level network administration to operate its gateway interfaces.
+Use a dedicated appliance and keep local console recovery available. Docker, unprivileged LXC,
+other Debian releases and other architectures are not supported release targets.
+
+Mullvad egress currently supports IPv4. Its mandatory routing guard protects active and interrupted
+connections, while the optional ExitLane killswitch controls whether routed clients may use direct
+egress after an explicit disconnect. See the [Mullvad operator guide](docs/mullvad.md).
