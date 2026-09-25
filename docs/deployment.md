@@ -31,7 +31,7 @@ The reset requires explicit confirmation and revokes every browser session. Envi
 overrides retain precedence and must be corrected in the service configuration.
 
 Exitlane is currently designed as a single service on a dedicated Debian 13 `amd64` host or LXC.
-That is the supported 0.3.0-rc.1 appliance baseline; other Debian releases and architectures are not
+That is the supported 0.3.0-rc.2 appliance baseline; other Debian releases and architectures are not
 supported release targets. The installer creates an isolated Python environment, installs the
 systemd unit, and prepares configuration, data, and log locations.
 
@@ -50,11 +50,11 @@ manage WireGuard interfaces. A Proxmox LXC must be configured accordingly; the c
 baseline is a privileged container. Unprivileged LXC is not a supported release target.
 See [Proxmox LXC](proxmox-lxc.md).
 
-Use the published release tag. The following command becomes available when `v0.3.0-rc.1` is
+Use the published release tag. The following command becomes available when `v0.3.0-rc.2` is
 published; do not substitute an unreviewed development branch for an appliance deployment:
 
 ```bash
-git clone --branch v0.3.0-rc.1 --depth 1 https://github.com/kevindraai/exitlane.git
+git clone --branch v0.3.0-rc.2 --depth 1 https://github.com/kevindraai/exitlane.git
 cd exitlane
 sudo ./installer/install-debian.sh
 ```

@@ -5,7 +5,7 @@ control the Mullvad desktop app, CLI or `mullvad-daemon`. ExitLane owns the egre
 policy-routing table and forwarded-traffic killswitch; WireGuard ingress remains a separate
 interface and responsibility.
 
-This guide describes the direct integration in **0.3.0-rc.1**. Use the supported
+This guide describes the direct integration in **0.3.0-rc.2**. Use the supported
 [Debian 13 `amd64` appliance](deployment.md); the qualified Proxmox configuration is a privileged
 LXC. The integration currently provides IPv4 egress.
 

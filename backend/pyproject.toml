@@ -4,7 +4,7 @@ build-backend="hatchling.build"
 
 [project]
 name="exitlane"
-version="0.3.0rc1"
+version="0.3.0rc2"
 description="Smart egress for every network"
 requires-python=">=3.11"
 # Appliance pip upgrades do not read uv.lock; enforce the AnyIO security floor here.

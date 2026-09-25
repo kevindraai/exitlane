@@ -1,6 +1,6 @@
 # Backup and restore
 
-ExitLane 0.3.0-rc.1 uses a local, root-only appliance backup. Restore is intentionally
+ExitLane 0.3.0-rc.2 uses a local, root-only appliance backup. Restore is intentionally
 not exposed through the web interface.
 
 ## Scope

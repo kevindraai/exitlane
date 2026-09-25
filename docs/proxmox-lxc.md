@@ -1,6 +1,6 @@
 # Proxmox LXC
 
-The qualified container baseline for ExitLane 0.3.0-rc.1 is **Debian 13, `amd64`, privileged LXC**.
+The qualified container baseline for ExitLane 0.3.0-rc.2 is **Debian 13, `amd64`, privileged LXC**.
 Unprivileged containers, other Debian releases and other architectures are not supported release
 targets. ExitLane runs natively inside the container and needs systemd, WireGuard, nftables and
 permission to administer its network namespace.
