@@ -4,8 +4,8 @@
 
 ExitLane is a self-hosted egress appliance for routers, VLANs, and selected devices. Your router maintains one permanent WireGuard tunnel to ExitLane, while ExitLane manages outbound connection through NordVPN or a direct Mullvad WireGuard tunnel.
 
-The **0.3.0-rc.1** release candidate adds direct Mullvad egress and strengthens provider switching,
-traffic protection and appliance recovery. Read the [release notes](docs/release-notes/0.3.0-rc.1.md)
+The **0.3.0-rc.2** release candidate improves provider setup, fixes NordVPN installation after
+switching providers, and adds the NordVPN guide to integrated Help. Read the [release notes](docs/release-notes/0.3.0-rc.2.md)
 for the supported scope, upgrade procedure and limitations.
 
 The result is an experience closer to a native VPN app, but for an entire network: switch countries, reconnect, use the fastest available server, and keep provider-specific configuration away from your router.
@@ -146,7 +146,7 @@ targets. Keep the management interface on a trusted network.
 Install a published release tag rather than the moving development branch. For this release:
 
 ```bash
-git clone --branch v0.3.0-rc.1 --depth 1 https://github.com/kevindraai/exitlane.git
+git clone --branch v0.3.0-rc.2 --depth 1 https://github.com/kevindraai/exitlane.git
 cd exitlane
 sudo ./installer/install-debian.sh
 ```

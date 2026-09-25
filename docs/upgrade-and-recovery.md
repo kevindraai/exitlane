@@ -1,9 +1,9 @@
 # Upgrade and recovery
 
-The 0.3.0-rc.1 release line provides an in-place upgrade path from the published `v0.2.0` tag on
-Debian 13 `amd64`. That historical tag reports runtime version `0.2.0-rc.1` and Python package
+The 0.3.0-rc.2 release supports an in-place upgrade from `v0.3.0-rc.1` and the published `v0.2.0` tag
+on Debian 13 `amd64`. The historical `v0.2.0` tag reports runtime version `0.2.0-rc.1` and Python package
 version `0.2.0rc1`; this is expected metadata, not evidence that another installation was selected.
-The new runtime version is `0.3.0-rc.1` and its Python package version is `0.3.0rc1`.
+The new runtime version is `0.3.0-rc.2` and its Python package version is `0.3.0rc2`.
 
 ## Before upgrading
 
@@ -12,16 +12,16 @@ client-traffic interruption. Record any custom `/etc/default/exitlane`, systemd,
 router settings separately. Do not change settings in the browser during the upgrade.
 
 ```bash
-sudo exitlane-cli backup create /var/lib/exitlane/backups/pre-0.3.0-rc.1.elb
-sudo exitlane-cli backup verify /var/lib/exitlane/backups/pre-0.3.0-rc.1.elb
+sudo exitlane-cli backup create /var/lib/exitlane/backups/pre-0.3.0-rc.2.elb
+sudo exitlane-cli backup verify /var/lib/exitlane/backups/pre-0.3.0-rc.2.elb
 ```
 
 Keep a protected copy outside the appliance. Once the target tag is published, use a separate
 release checkout so the installer source is never the live `/opt/exitlane` directory:
 
 ```bash
-git clone --branch v0.3.0-rc.1 --depth 1 https://github.com/kevindraai/exitlane.git exitlane-0.3.0-rc.1
-cd exitlane-0.3.0-rc.1
+git clone --branch v0.3.0-rc.2 --depth 1 https://github.com/kevindraai/exitlane.git exitlane-0.3.0-rc.2
+cd exitlane-0.3.0-rc.2
 sudo ./installer/install-debian.sh
 ```
 

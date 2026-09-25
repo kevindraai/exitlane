@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.0-rc.2] - 2026-09-25
+
 ### Fixed
 
 - Restore the NordVPN installation action after changing providers in the setup wizard,
@@ -15,6 +17,11 @@
 
 - Add the NordVPN operator guide to repository documentation and integrated Help, with
   contextual manual links for both VPN providers.
+
+### Security
+
+- No new security-boundary changes. Existing trusted-management-network requirements and
+  release-candidate limitations continue to apply.
 
 ## [0.3.0-rc.1] - 2026-09-25
 

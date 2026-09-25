@@ -3,6 +3,13 @@
 The roadmap describes direction rather than a release commitment. Priorities may change as the
 release candidates are tested in real networks.
 
+## Included in 0.3.0-rc.2
+
+- Clear provider selection and keyboard-accessible configuration tabs in the setup wizard.
+- Reliable NordVPN installation after switching providers.
+- NordVPN administrator documentation in the repository and integrated Help.
+- Mobile Help layout corrections.
+
 ## Included in 0.3.0-rc.1
 
 - Direct Mullvad WireGuard egress alongside NordVPN, with one active provider at a time.

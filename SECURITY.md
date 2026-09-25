@@ -3,13 +3,14 @@
 ## Supported versions
 
 ExitLane remains pre-release software. Security fixes target the most recent published release or
-release candidate. This policy accompanies `v0.3.0-rc.1` and takes effect when that candidate is
+release candidate. This policy accompanies `v0.3.0-rc.2` and takes effect when that candidate is
 published; a preparation branch or draft release does not supersede the current published version.
 
 | Version | Supported |
 | --- | --- |
-| v0.3.0-rc.1 | Yes, upon publication |
-| v0.2.0 | Superseded upon publication of v0.3.0-rc.1 |
+| v0.3.0-rc.2 | Yes, upon publication |
+| v0.3.0-rc.1 | Superseded upon publication of v0.3.0-rc.2 |
+| v0.2.0 | No |
 | Earlier prereleases and v0.1.x | No |
 
 See the [published releases](https://github.com/kevindraai/exitlane/releases) for availability.
