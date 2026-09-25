@@ -1,2 +1,6 @@
 # Exact false-positive fingerprint: an IANA timezone fixture, not a credential.
 backend/tests/test_settings.py:generic-api-key:447
+
+# Exact false-positive fingerprints: Mullvad's public repository signing-key fingerprint.
+installer/install-mullvad.sh:generic-api-key:7
+backend/tests/test_mullvad_installer.py:generic-api-key:38

@@ -38,6 +38,7 @@ let loadingSettings = false;
 const mfaState = createMfaState();
 let networkMfaRequired = false;
 let networkBroadTrustConfirmation = false;
+let networkBroadManagementConfirmation = false;
 let pendingSystemAction = null;
 let systemActionSubmitted = false;
 
@@ -222,6 +223,8 @@ async function loadAuthenticationSecurity() {
   const configuration = deployment.configuration;
   select("#settings-network-public-url").value = configuration.public_url || "";
   select("#settings-network-proxies").value = configuration.trusted_proxies.join("\n");
+  select("#settings-network-management-prefixes").value =
+    configuration.management_prefixes.join("\n");
   select("#settings-network-cookie-policy").value = configuration.secure_cookie_policy;
   const fields = {
     public_url: [
@@ -233,6 +236,11 @@ async function loadAuthenticationSecurity() {
       "#settings-network-proxies",
       "#settings-network-proxies-override",
       "#settings-network-proxies-source",
+    ],
+    management_prefixes: [
+      "#settings-network-management-prefixes",
+      "#settings-network-management-prefixes-override",
+      "#settings-network-management-prefixes-source",
     ],
     secure_cookie_policy: [
       "#settings-network-cookie-policy",
@@ -482,10 +490,13 @@ function networkSecurityPayload(confirmAccessLoss = false) {
     public_url: select("#settings-network-public-url").value.trim(),
     trusted_proxies: select("#settings-network-proxies").value
       .split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean),
+    management_prefixes: select("#settings-network-management-prefixes").value
+      .split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean),
     secure_cookie_policy: select("#settings-network-cookie-policy").value,
     current_password: select("#settings-network-password").value,
     code: networkMfaRequired ? select("#settings-network-totp").value : null,
     confirm_broad_trust: networkBroadTrustConfirmation,
+    confirm_broad_management: networkBroadManagementConfirmation,
     confirm_access_loss: confirmAccessLoss,
   };
 }
@@ -511,8 +522,14 @@ async function submitNetworkSecurity({ confirmAccessLoss = false } = {}) {
     const detail = error.payload?.detail;
     const code = typeof detail === "object" ? detail.code : detail;
     if (code === "access_loss_confirmation_required" ||
-        code === "broad_proxy_confirmation_required") {
-      networkBroadTrustConfirmation = code === "broad_proxy_confirmation_required";
+        code === "broad_proxy_confirmation_required" ||
+        code === "broad_management_prefix_confirmation_required") {
+      if (code === "broad_proxy_confirmation_required") {
+        networkBroadTrustConfirmation = true;
+      }
+      if (code === "broad_management_prefix_confirmation_required") {
+        networkBroadManagementConfirmation = true;
+      }
       select("#settings-network-confirm").showModal();
       return;
     }
@@ -720,11 +737,13 @@ export function initialiseSettings() {
   select("#settings-network-confirm-cancel").addEventListener("click", () => {
     select("#settings-network-confirm").close();
     networkBroadTrustConfirmation = false;
+    networkBroadManagementConfirmation = false;
   });
   select("#settings-network-confirm-save").addEventListener("click", async () => {
     select("#settings-network-confirm").close();
     await submitNetworkSecurity({ confirmAccessLoss: true });
     networkBroadTrustConfirmation = false;
+    networkBroadManagementConfirmation = false;
   });
   select("#settings-mfa-enable-form").addEventListener("submit", beginMfa);
   select("#settings-mfa-confirm-form").addEventListener("submit", confirmMfa);

@@ -152,6 +152,13 @@
           <small data-i18n="settings.network.managed_environment" hidden="" id="settings-network-proxies-override">Managed through environment configuration.</small>
          </label>
          <label>
+          <span data-i18n="settings.network.management_prefixes">Management networks</span>
+          <textarea aria-describedby="settings-network-management-prefixes-help settings-network-management-prefixes-source settings-network-management-prefixes-override" id="settings-network-management-prefixes" rows="4" spellcheck="false"></textarea>
+          <small data-i18n="settings.network.management_prefixes_help" id="settings-network-management-prefixes-help">One routed administrator network per line. ExitLane also protects its directly connected management network automatically.</small>
+          <small id="settings-network-management-prefixes-source"></small>
+          <small data-i18n="settings.network.managed_environment" hidden="" id="settings-network-management-prefixes-override">Managed through environment configuration.</small>
+         </label>
+         <label>
           <span data-i18n="settings.network.cookie_policy">Secure cookies</span>
           <select aria-describedby="settings-network-cookie-source settings-network-cookie-override settings-network-cookie-warning" id="settings-network-cookie-policy">
            <option data-i18n="settings.network.cookie_auto" value="auto">Automatic</option>

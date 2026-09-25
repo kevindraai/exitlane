@@ -1,5 +1,48 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Added Mullvad VPN as direct ExitLane-owned WireGuard egress with encrypted account/device/key
+  state, relay selection, exact-peer readiness, guarded policy routing and boot restoration.
+- Added none/NordVPN/Mullvad/both first-run selection and post-install provider activation.
+
+### Changed
+
+- Made provider installation, authentication, country selection, latency, lifecycle, dashboard,
+  WireGuard forwarding, and killswitch integration provider-neutral while preserving NordVPN API
+  aliases and the backward-compatible NordVPN default.
+- Enforced one active commercial provider across connect, reconnect, and switch races; conflicting
+  externally connected tunnels now fail closed for the ExitLane killswitch.
+- Retry only structured transient Mullvad API-readiness timeouts during a protected provider
+  switch, with bounded attempts/backoff, late-connect reconciliation and unchanged rollback rules.
+- Extend exact management policy-route protection to the configured WireGuard ingress client
+  network, with dynamic main-table path discovery, provider-table reconciliation, stale cleanup,
+  and fail-closed handling while its local interface is unavailable.
+- Distinguish WireGuard peer bootstrap from steady state in live QA: a bounded active dataplane
+  probe may establish the demand-driven session, but only a separate lossless probe passes.
+
+### Security
+
+- Guard host-generated replies from the exact Mullvad source address, retaining unreachable
+  protection across disconnect, sign-out and restore until reboot.
+- Enforce the AnyIO security minimum in package metadata as well as the development lock, so
+  source-directory appliance upgrades replace vulnerable installed versions.
+- Preserve original executable and unit permissions during installer rollback while keeping the
+  recovery snapshot private.
+- Preserve mandatory provider routing protection during backup restore, including rollback of
+  WireGuard files and root-only key permissions.
+- Protect the configured ingress interface consistently, reserve the Mullvad egress name, and
+  reject interface renames that could leave an older ingress outside the forwarding policy.
+- Isolate provider test data from system directories so the complete CI suite runs without root.
+- Fixed clean Debian installations to create the root-only service home required by the hardened
+  systemd mount namespace before starting ExitLane.
+- Encrypt Mullvad account, device and private-key state with the appliance master key; keep API
+  tokens memory-only and all secret values out of argv, logs, events and responses.
+- Reject active legacy Mullvad daemon/firewall ownership without automatically deleting foreign
+  nftables state, and restore an unreachable provider-egress route guard before networking at boot.
+
 ## [0.2.0-rc.1] - 2026-08-25
 
 ### Fixed

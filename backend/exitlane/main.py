@@ -31,7 +31,6 @@ from exitlane.config import (
     DEFAULT_WIREGUARD_INTERFACE,
     DEFAULT_WIREGUARD_PORT,
     DEFAULT_WIREGUARD_SUBNET,
-    DEFAULT_WIREGUARD_VPN_INTERFACE,
     MAX_PASSWORD_LENGTH,
     MAX_REQUEST_BODY_BYTES,
     MIN_PASSWORD_LENGTH,
@@ -50,6 +49,7 @@ from exitlane.core import (
     set_setting,
     set_settings,
     setting,
+    stored_settings,
     verify_password,
 )
 from exitlane.documentation import (
@@ -66,15 +66,18 @@ from exitlane.events import (
     record_event,
 )
 from exitlane.html import render_index
-from exitlane.providers.base import ProviderActionUnsupported
-from exitlane.providers.nordvpn import SIGN_OUT_ERROR_CODES, TOKEN_ERROR_CODES, provider
+from exitlane.providers.base import ProviderActionUnsupported, ProviderFailureClass
+from exitlane.providers.mullvad import provider as mullvad_provider
+from exitlane.providers.nordvpn import provider
 from exitlane.providers.registry import ProviderNotFound, ProviderRegistry
 from exitlane.proxy import deployment_status, normalized_origin, request_security, trusted_origin
 from exitlane.services import (
     auth_security,
     connection_diagnostics,
     killswitch,
+    management_routing,
     network_security,
+    provider_secrets,
     speedtest_installation,
     vpn_operations,
 )
@@ -125,8 +128,7 @@ SECURITY_REJECTION_LOG_ATTEMPTS = 5
 SECURITY_REJECTION_LOG_WINDOW_SECONDS = 60
 NETWORK_REAUTH_ATTEMPTS = 5
 NETWORK_REAUTH_WINDOW_SECONDS = 300
-NORDVPN_HOST_COUNTRY_CODES = {"UK": "GB"}
-provider_registry = ProviderRegistry([provider], default_id=provider.id)
+provider_registry = ProviderRegistry([provider, mullvad_provider], default_id=provider.id)
 SYSTEM_ACTION_COMMANDS = {
     "restart": ("/usr/bin/systemctl", "restart", "exitlane.service"),
     "reboot": ("/usr/bin/systemctl", "reboot"),
@@ -187,6 +189,8 @@ class NetworkSecurityUpdate(BaseModel):
     current_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
     code: str | None = Field(default=None, min_length=6, max_length=8)
     confirm_broad_trust: bool = False
+    management_prefixes: list[str] = Field(default_factory=list, max_length=64)
+    confirm_broad_management: bool = False
     confirm_access_loss: bool = False
 
 
@@ -195,6 +199,15 @@ class Token(BaseModel):
         min_length=0,
         max_length=512,
     )
+
+
+class ProviderCredential(BaseModel):
+    credential: str | None = Field(default=None, min_length=0, max_length=512)
+    token: str | None = Field(default=None, min_length=0, max_length=512)
+
+
+class SetupProviders(BaseModel):
+    provider_ids: list[str] = Field(default_factory=list, max_length=16)
 
 
 class Callback(BaseModel):
@@ -294,13 +307,39 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     if database not in _system_started_databases:
         record_event("system.started")
         _system_started_databases.add(database)
-    monitor = asyncio.create_task(_monitor_killswitch())
+    if setting("wireguard_configured", False):
+        try:
+            migrated = await wireguard_service.migrate_legacy_provider_egress(
+                setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE),
+                setting("wireguard_client_name", DEFAULT_WIREGUARD_CLIENT),
+                activate=activate_wireguard_interface,
+            )
+            if migrated:
+                logger.info("Migrated WireGuard forwarding to provider-neutral egress")
+        except wireguard_service.WireGuardConfigurationError as error:
+            logger.error("WireGuard egress migration failed safely: %s", error.code)
+    try:
+        await management_routing.reconcile()
+    except management_routing.ManagementRoutingError as error:
+        # The periodic monitor and every provider/WireGuard lifecycle action
+        # retry this. A missing configured local interface is already blocked
+        # by the reconciler before it reports the stable diagnostic code.
+        record_event(
+            "network.management_routing_error",
+            metadata={"reason": error.code},
+        )
+    monitors = [
+        asyncio.create_task(_monitor_killswitch()),
+        asyncio.create_task(_monitor_management_routing()),
+    ]
     try:
         yield
     finally:
-        monitor.cancel()
-        with suppress(asyncio.CancelledError):
-            await monitor
+        for monitor in monitors:
+            monitor.cancel()
+        for monitor in monitors:
+            with suppress(asyncio.CancelledError):
+                await monitor
 
 
 async def _monitor_killswitch() -> None:
@@ -308,20 +347,28 @@ async def _monitor_killswitch() -> None:
     previous_facts: killswitch.TunnelFacts | None = None
     while True:
         await asyncio.sleep(5)
-        if not setting(killswitch.SETTING_CONFIGURED, False):
+        configured = bool(setting(killswitch.SETTING_CONFIGURED, False))
+        transition = bool(setting(killswitch.SETTING_TRANSITION, False))
+        if not configured and not transition:
             previous = None
             previous_facts = None
             continue
         try:
-            selected = provider_registry.get(
-                setting("vpn.provider_id", provider_registry.default_id)
-            )
-            facts = await selected.network_facts()
-            current = (
-                await killswitch.reconcile(facts)
-                if facts != previous_facts
-                else await killswitch.status(facts)
-            )
+            if transition:
+                # Only the transaction that armed this persisted guard may
+                # release it after its own generation and management-route
+                # postconditions have passed. The monitor is deliberately a
+                # one-way fail-closed reconciler so stale observations cannot
+                # open a newer provider transaction.
+                facts = killswitch.TunnelFacts(False, reason="provider_transition")
+                current = await killswitch.reconcile(facts)
+            else:
+                facts = await _exclusive_provider_facts()
+                current = (
+                    await killswitch.reconcile(facts)
+                    if facts != previous_facts
+                    else await killswitch.status(facts)
+                )
             previous_facts = facts
         except (killswitch.KillswitchError, ProviderNotFound):
             if previous != "error":
@@ -333,9 +380,30 @@ async def _monitor_killswitch() -> None:
         if current.state != previous:
             if current.state == "enabled_protected" and previous is not None:
                 record_event("network.killswitch_released")
-            elif current.state in {"enabled_waiting_for_tunnel", "enabled_degraded"}:
+            elif current.state in {
+                "enabled_waiting_for_tunnel",
+                "enabled_degraded",
+                "enabled_transition",
+            }:
                 record_event("network.killswitch_engaged", metadata={"reason": current.reason})
             previous = current.state
+
+
+async def _monitor_management_routing() -> None:
+    previous_error: str | None = None
+    while True:
+        await asyncio.sleep(5)
+        try:
+            await management_routing.reconcile()
+        except management_routing.ManagementRoutingError as error:
+            if previous_error != error.code:
+                record_event(
+                    "network.management_routing_error",
+                    metadata={"reason": error.code},
+                )
+            previous_error = error.code
+        else:
+            previous_error = None
 
 
 app = FastAPI(
@@ -368,6 +436,7 @@ SETUP_API_ROUTES = {
     ("GET", "/api/config/public"),
     ("GET", "/api/setup/state"),
     ("POST", "/api/setup/admin"),
+    ("POST", "/api/setup/providers"),
     ("POST", "/api/setup/provider/defer"),
     ("POST", "/api/setup/complete"),
     ("GET", "/api/system/network"),
@@ -379,9 +448,25 @@ SETUP_API_ROUTES = {
     ("POST", "/api/ingress/wireguard"),
     ("GET", "/api/ingress/wireguard/status"),
 }
+SETUP_PROVIDER_API_ROUTE = re.compile(
+    r"^/api/vpn/providers(?:/[^/]+(?:/(?:status|installation|authenticate|activate))?)?$"
+)
+SETUP_PROVIDER_SKIP_ROUTE = re.compile(r"^/api/setup/providers/[^/]+/skip$")
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 PROTECTED_APPLICATION_ROUTES = {"/docs", "/redoc", "/openapi.json"}
 SENSITIVE_CACHE_CONTROL = "no-store"
+
+
+def is_setup_provider_api_route(method: str, path: str) -> bool:
+    """Allow provider-neutral first-run reads; mutations still require the setup admin."""
+    if SETUP_PROVIDER_SKIP_ROUTE.fullmatch(path):
+        return method == "POST"
+    match = SETUP_PROVIDER_API_ROUTE.fullmatch(path)
+    if not match:
+        return False
+    if method == "GET":
+        return not path.endswith(("/authenticate", "/activate"))
+    return method == "POST" and path.endswith(("/installation", "/authenticate", "/activate"))
 
 
 def _theme_script_hash() -> str:
@@ -503,7 +588,16 @@ async def require_authentication(request: Request, call_next):
     request.state.user = user
     setup_complete = bool(setting("setup_complete", False))
     setup_client_download = is_setup_client_download(request.method, path)
-    if user or (not setup_complete and (route in SETUP_API_ROUTES or setup_client_download)):
+    generic_setup_provider_route = is_setup_provider_api_route(request.method, path)
+    if user or (
+        not setup_complete
+        and (
+            route in SETUP_API_ROUTES
+            or setup_client_download
+            or generic_setup_provider_route
+            and request.method in SAFE_METHODS
+        )
+    ):
         return await call_next(request)
     return JSONResponse(status_code=401, content={"detail": "Authentication required"})
 
@@ -583,12 +677,15 @@ async def help_document(slug: str) -> dict:
 
 @app.get("/api/dashboard", response_model=DashboardResponse)
 async def dashboard() -> DashboardResponse:
+    active_provider = _active_provider()
     return await build_dashboard(
-        provider.status,
+        active_provider.status,
         wireguard_status,
         __version__,
         system_status_call=lambda: system_status(DATA),
         killswitch_status_call=_current_killswitch_status,
+        active_provider_id=active_provider.id,
+        active_provider_display_name=active_provider.display_name,
     )
 
 
@@ -1005,8 +1102,7 @@ async def get_deployment_security(request: Request) -> dict:
 
 
 async def _current_killswitch_status() -> dict:
-    selected = provider_registry.get(setting("vpn.provider_id", provider_registry.default_id))
-    facts = await selected.network_facts()
+    facts = await _exclusive_provider_facts()
     return (await killswitch.status(facts)).as_dict()
 
 
@@ -1017,8 +1113,9 @@ async def get_killswitch_status() -> dict:
 
 @app.post("/api/vpn/killswitch/enable")
 async def enable_killswitch(request: Request) -> dict:
-    selected = provider_registry.get(setting("vpn.provider_id", provider_registry.default_id))
-    facts = await selected.network_facts()
+    if setting(killswitch.SETTING_TRANSITION, False):
+        raise HTTPException(status_code=409, detail="vpn_action_in_progress")
+    facts = await _exclusive_provider_facts()
     try:
         result = await killswitch.enable(facts)
     except killswitch.KillswitchError as error:
@@ -1034,6 +1131,8 @@ async def enable_killswitch(request: Request) -> dict:
 
 @app.post("/api/vpn/killswitch/disable")
 async def disable_killswitch(request: Request) -> dict:
+    if setting(killswitch.SETTING_TRANSITION, False):
+        raise HTTPException(status_code=409, detail="vpn_action_in_progress")
     try:
         result = await killswitch.disable()
     except killswitch.KillswitchError as error:
@@ -1072,6 +1171,8 @@ async def update_deployment_security(req: NetworkSecurityUpdate, request: Reques
             trusted_proxies=req.trusted_proxies,
             secure_cookie_policy=req.secure_cookie_policy,
             confirm_broad_trust=req.confirm_broad_trust,
+            management_prefixes=req.management_prefixes,
+            confirm_broad_management=req.confirm_broad_management,
         )
     except network_security.NetworkSecurityError as error:
         raise HTTPException(
@@ -1097,7 +1198,12 @@ async def update_deployment_security(req: NetworkSecurityUpdate, request: Reques
     proxy_risk = request_security(request).direct_peer_trusted and not any(
         peer_address in network for network in proxies
     )
-    if (origin_risk or proxy_risk) and not req.confirm_access_loss:
+    current_management = network_security.current_config().management_prefixes
+    management_risk = bool(
+        any(peer_address in network for network in current_management)
+        and not any(peer_address in network for network in prospective.management_prefixes)
+    )
+    if (origin_risk or proxy_risk or management_risk) and not req.confirm_access_loss:
         raise HTTPException(status_code=409, detail="access_loss_confirmation_required")
     try:
         configuration, changed = network_security.update_config(
@@ -1105,6 +1211,8 @@ async def update_deployment_security(req: NetworkSecurityUpdate, request: Reques
             trusted_proxies=req.trusted_proxies,
             secure_cookie_policy=req.secure_cookie_policy,
             confirm_broad_trust=req.confirm_broad_trust,
+            management_prefixes=req.management_prefixes,
+            confirm_broad_management=req.confirm_broad_management,
         )
     except network_security.NetworkSecurityError as error:
         raise HTTPException(
@@ -1128,6 +1236,19 @@ async def update_deployment_security(req: NetworkSecurityUpdate, request: Reques
             actor=user,
             metadata=network_security.settings_updated_event_metadata(configuration, changed),
         )
+    if "management_prefixes" in changed:
+        try:
+            await management_routing.reconcile()
+        except management_routing.ManagementRoutingError as error:
+            record_event(
+                "network.management_routing_error",
+                actor=user,
+                metadata={"reason": error.code},
+            )
+            raise HTTPException(
+                status_code=503,
+                detail={"code": error.code, "field": "management_prefixes"},
+            ) from None
     return {
         **deployment_status(request),
         "configuration": configuration.as_public_dict(),
@@ -1140,19 +1261,67 @@ async def setup_state() -> dict:
     with sqlite3.connect(DB) as connection:
         admin_count = connection.execute("SELECT COUNT(*) FROM users").fetchone()[0]
 
-    selected_provider_id = setting("vpn.provider_id", provider_registry.default_id)
-    selected_provider = _provider_or_404(selected_provider_id)
-    provider_status = await selected_provider.status()
-    provider_authenticated = bool(provider_status.get("authenticated", False))
+    active_provider_id = _active_provider().id
+    stored = stored_settings(("setup_provider_ids", "setup_provider_skipped_ids"))
+    selected_provider_ids = stored.get("setup_provider_ids")
+    if not isinstance(selected_provider_ids, list):
+        selected_provider_ids = (
+            [] if setting("setup_provider_deferred", False) else [active_provider_id]
+        )
+    registered_ids = {item.id for item in provider_registry.all()}
+    selected_provider_ids = [
+        item
+        for item in dict.fromkeys(selected_provider_ids)
+        if isinstance(item, str) and item in registered_ids
+    ]
+    skipped_provider_ids = stored.get("setup_provider_skipped_ids", [])
+    if not isinstance(skipped_provider_ids, list):
+        skipped_provider_ids = []
+    skipped_provider_ids = [item for item in skipped_provider_ids if item in selected_provider_ids]
+    provider_statuses = await _observed_provider_statuses()
+    authenticated_provider_ids = [
+        item.id
+        for item in provider_registry.all()
+        if provider_statuses[item.id].get("authenticated")
+    ]
+    selected_authenticated_ids = [
+        item for item in selected_provider_ids if item in authenticated_provider_ids
+    ]
     provider_deferred = bool(setting("setup_provider_deferred", False))
-    if provider_authenticated and provider_deferred:
+    if selected_authenticated_ids and provider_deferred:
         set_setting("setup_provider_deferred", False)
         provider_deferred = False
+    provider_selection_resolved = bool(selected_provider_ids) and all(
+        item in selected_authenticated_ids or item in skipped_provider_ids
+        for item in selected_provider_ids
+    )
+    active_provider_confirmed = bool(setting("setup_active_provider_confirmed", False))
+    active_provider_ready = (
+        len(selected_authenticated_ids) < 2
+        or active_provider_confirmed
+        and active_provider_id in selected_authenticated_ids
+    )
+    provider_step_complete = provider_deferred or (
+        provider_selection_resolved and active_provider_ready
+    )
+    pending_provider_ids = [
+        item
+        for item in selected_provider_ids
+        if item not in selected_authenticated_ids and item not in skipped_provider_ids
+    ]
+    selected_provider_id = (
+        pending_provider_ids[0]
+        if pending_provider_ids
+        else selected_provider_ids[0]
+        if selected_provider_ids
+        else active_provider_id
+    )
+    provider_status = provider_statuses.get(selected_provider_id, {})
 
     steps = {
         "system": bool(setting("setup_system_complete", False)),
         "admin": admin_count > 0,
-        "provider": provider_authenticated or provider_deferred,
+        "provider": provider_step_complete,
         "wireguard": bool(setting("wireguard_configured", False)),
     }
 
@@ -1177,11 +1346,97 @@ async def setup_state() -> dict:
         "current_step": current_step,
         "steps": steps,
         "provider": provider_status,
-        "provider_authenticated": provider_authenticated,
+        "provider_authenticated": bool(selected_authenticated_ids),
         "provider_deferred": provider_deferred,
-        "providers": [_provider_metadata(item) for item in provider_registry.all()],
+        "providers": [
+            {
+                **_provider_metadata(item),
+                "status": provider_statuses[item.id],
+                "selected": item.id in selected_provider_ids,
+                "skipped": item.id in skipped_provider_ids,
+            }
+            for item in provider_registry.all()
+        ],
         "selected_provider_id": selected_provider_id,
+        "selected_provider_ids": selected_provider_ids,
+        "skipped_provider_ids": skipped_provider_ids,
+        "pending_provider_ids": pending_provider_ids,
+        "authenticated_provider_ids": authenticated_provider_ids,
+        "active_provider_id": active_provider_id,
+        "active_provider_selection_required": len(selected_authenticated_ids) > 1
+        and not active_provider_ready,
     }
+
+
+async def _setup_provider_progress_values(
+    selected_provider_ids: list[str],
+    skipped_provider_ids: list[str],
+    *,
+    authenticated_hint: str | None = None,
+) -> dict[str, object]:
+    selected = list(dict.fromkeys(selected_provider_ids))
+    skipped = [item for item in dict.fromkeys(skipped_provider_ids) if item in selected]
+    statuses = await _observed_provider_statuses()
+    authenticated = [
+        item
+        for item in selected
+        if item == authenticated_hint or statuses.get(item, {}).get("authenticated")
+    ]
+    resolved = bool(selected) and all(item in authenticated or item in skipped for item in selected)
+    values: dict[str, object] = {
+        "setup_provider_ids": selected,
+        "setup_provider_skipped_ids": skipped,
+        "setup_provider_deferred": not selected,
+        "setup_provider_complete": resolved and len(authenticated) == 1,
+        "setup_active_provider_confirmed": False,
+        "setup_current_step": 4 if not selected or resolved and len(authenticated) == 1 else 3,
+    }
+    if resolved and len(authenticated) == 1:
+        values["vpn.provider_id"] = authenticated[0]
+        values["setup_active_provider_confirmed"] = True
+    return values
+
+
+@app.post("/api/setup/providers")
+async def select_setup_providers(req: SetupProviders, request: Request) -> dict:
+    if setting("setup_complete", False):
+        raise HTTPException(status_code=409, detail="setup_already_complete")
+    if request_actor(request) is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    registered_ids = {item.id for item in provider_registry.all()}
+    requested = list(dict.fromkeys(req.provider_ids))
+    if len(requested) != len(req.provider_ids) or any(
+        item not in registered_ids for item in requested
+    ):
+        raise HTTPException(status_code=422, detail="invalid_provider_selection")
+    deterministic = [item.id for item in provider_registry.all() if item.id in requested]
+    if not deterministic:
+        statuses = await _observed_provider_statuses()
+        if any(status.get("authenticated") for status in statuses.values()):
+            raise HTTPException(status_code=409, detail="provider_already_authenticated")
+    values = await _setup_provider_progress_values(deterministic, [])
+    set_settings(values)
+    return {
+        "ok": True,
+        "selected_provider_ids": deterministic,
+        "provider_deferred": not deterministic,
+    }
+
+
+@app.post("/api/setup/providers/{provider_id}/skip")
+async def skip_setup_provider(provider_id: str, request: Request) -> dict:
+    if setting("setup_complete", False):
+        raise HTTPException(status_code=409, detail="setup_already_complete")
+    if request_actor(request) is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    _provider_or_404(provider_id)
+    selected = setting("setup_provider_ids", [])
+    if provider_id not in selected:
+        raise HTTPException(status_code=409, detail="provider_not_selected")
+    skipped = setting("setup_provider_skipped_ids", [])
+    skipped = list(dict.fromkeys([*skipped, provider_id]))
+    set_settings(await _setup_provider_progress_values(selected, skipped))
+    return {"ok": True, "provider_id": provider_id, "skipped": True}
 
 
 @app.post("/api/setup/provider/defer")
@@ -1196,14 +1451,20 @@ async def defer_provider_setup(request: Request) -> dict:
     if not setting("setup_system_complete", False) or admin_count < 1:
         raise HTTPException(status_code=409, detail="setup_prerequisites_incomplete")
 
-    selected_provider_id = setting("vpn.provider_id", provider_registry.default_id)
-    provider_status = await _provider_or_404(selected_provider_id).status()
-    if provider_status.get("authenticated"):
+    provider_statuses = await _observed_provider_statuses()
+    if any(status.get("authenticated") for status in provider_statuses.values()):
         raise HTTPException(status_code=409, detail="provider_already_authenticated")
 
-    set_setting("setup_provider_deferred", True)
-    set_setting("setup_provider_complete", False)
-    set_setting("setup_current_step", 4)
+    set_settings(
+        {
+            "setup_provider_ids": [],
+            "setup_provider_skipped_ids": [],
+            "setup_provider_deferred": True,
+            "setup_provider_complete": False,
+            "setup_active_provider_confirmed": False,
+            "setup_current_step": 4,
+        }
+    )
     return {
         "ok": True,
         "provider_deferred": True,
@@ -1401,22 +1662,63 @@ async def install_speedtest(
 
 @app.post("/api/providers/nordvpn/login/token")
 async def login_token(req: Token, request: Request) -> dict:
-    return await _authenticate_provider(provider, req, request)
+    return await _authenticate_provider(provider, req.token, request, legacy_token=True)
 
 
 @app.post("/api/providers/nordvpn/token")
 async def update_nordvpn_token(req: Token, request: Request) -> dict:
-    return await _authenticate_provider(provider, req, request)
+    return await _authenticate_provider(provider, req.token, request, legacy_token=True)
 
 
-async def _authenticate_provider(provider_instance, req: Token, request: Request) -> dict:
-    status = await provider_instance.status(timeout=8)
+async def _after_provider_authenticated(provider_instance) -> None:
+    if setting("setup_complete", False):
+        return
+    selected = setting("setup_provider_ids", [provider_registry.default_id])
+    if provider_instance.id not in selected:
+        selected = [*selected, provider_instance.id]
+        set_setting("setup_provider_ids", selected)
+    skipped = [
+        item for item in setting("setup_provider_skipped_ids", []) if item != provider_instance.id
+    ]
+    set_settings(
+        await _setup_provider_progress_values(
+            selected,
+            skipped,
+            authenticated_hint=provider_instance.id,
+        )
+    )
+
+
+async def _authenticate_provider(
+    provider_instance,
+    credential: str,
+    request: Request,
+    *,
+    legacy_token: bool = False,
+) -> dict:
+    status = await _fresh_status_for(provider_instance)
     if status.get("authenticated"):
-        raise HTTPException(status_code=409, detail="token_replacement_unsupported")
-    result = await provider_instance.authenticate(req.token)
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "token_replacement_unsupported"
+                if legacy_token and provider_instance.id == "nordvpn"
+                else "credential_replacement_unsupported"
+            ),
+        )
+    try:
+        result = await provider_instance.authenticate(credential)
+    except asyncio.CancelledError:
+        raise
+    except Exception:  # noqa: BLE001 - provider exceptions may contain credential-bearing output.
+        logger.warning(
+            "Provider authentication failed inside provider boundary: provider=%s",
+            provider_instance.id,
+        )
+        result = {"ok": False, "error": "provider_error"}
     if not result.get("ok"):
         error = result.get("error")
-        if error not in TOKEN_ERROR_CODES:
+        if error not in provider_instance.authentication_error_codes:
             error = "provider_error"
         status_code = (
             504
@@ -1424,7 +1726,13 @@ async def _authenticate_provider(provider_instance, req: Token, request: Request
             else 503
             if error in {"daemon_unavailable", "command_unavailable", "provider_error"}
             else 409
-            if error in {"already_logged_in", "token_replacement_unsupported"}
+            if error
+            in {
+                "already_logged_in",
+                "token_replacement_unsupported",
+                "credential_replacement_unsupported",
+                "too_many_devices",
+            }
             else 422
         )
         raise HTTPException(status_code=status_code, detail=error)
@@ -1433,11 +1741,7 @@ async def _authenticate_provider(provider_instance, req: Token, request: Request
         actor=request_actor(request),
         metadata={"provider": provider_instance.id},
     )
-    set_setting("vpn.provider_id", provider_instance.id)
-    set_setting("setup_provider_deferred", False)
-    if not setting("setup_complete", False):
-        set_setting("setup_provider_complete", True)
-        set_setting("setup_current_step", 4)
+    await _after_provider_authenticated(provider_instance)
     return {"ok": True, "reconnect_required": bool(result.get("reconnect_required", False))}
 
 
@@ -1459,12 +1763,201 @@ def _provider_or_404(provider_id: str):
         raise HTTPException(status_code=404, detail="provider_not_found") from None
 
 
+def _provider_connection_id(provider_instance) -> str:
+    return f"provider:{provider_instance.id}"
+
+
+def _active_provider_id() -> str:
+    try:
+        provider_id = setting("vpn.provider_id", provider_registry.default_id)
+    except sqlite3.OperationalError:
+        # Pure unit tests can exercise the provider boundary before the
+        # application lifespan has initialized its database.
+        provider_id = provider_registry.default_id
+    try:
+        provider_registry.get(provider_id)
+    except (ProviderNotFound, TypeError):
+        return provider_registry.default_id
+    return provider_id
+
+
+def _active_provider():
+    return provider_registry.get(_active_provider_id())
+
+
+async def _observed_provider_statuses() -> dict[str, dict]:
+    async def observe(provider_instance) -> tuple[str, dict]:
+        try:
+            return provider_instance.id, await provider_instance.status(
+                timeout=vpn_operations.STATUS_TIMEOUT_SECONDS
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - provider output remains behind a safe boundary.
+            return provider_instance.id, {
+                "available": False,
+                "connected": False,
+                "error_code": "provider_status_unavailable",
+            }
+
+    return dict(await asyncio.gather(*(observe(item) for item in provider_registry.all())))
+
+
+async def _local_provider_statuses() -> dict[str, dict]:
+    async def observe(provider_instance) -> tuple[str, dict]:
+        try:
+            return provider_instance.id, await provider_instance.local_status(
+                timeout=vpn_operations.STATUS_TIMEOUT_SECONDS
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - expose only local preflight state.
+            return provider_instance.id, {
+                "installed": False,
+                "daemon_active": False,
+                "local_control_available": False,
+                "connected": False,
+                "connection_state": "unknown",
+                "error_code": "provider_local_status_unavailable",
+            }
+
+    return dict(await asyncio.gather(*(observe(item) for item in provider_registry.all())))
+
+
+async def _wait_for_local_provider_state(
+    provider_instance,
+    expected: set[str],
+    *,
+    timeout: float,
+) -> dict:
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            status = await provider_instance.local_status(
+                timeout=min(vpn_operations.STATUS_TIMEOUT_SECONDS, timeout)
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - provider detail stays inside the boundary.
+            status = {
+                "local_control_available": False,
+                "connected": False,
+                "connection_state": "unknown",
+                "error_code": "provider_local_status_unavailable",
+            }
+        if status.get("connection_state") in expected:
+            return status
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or not status.get("local_control_available"):
+            return status
+        await asyncio.sleep(min(0.25, remaining))
+
+
+async def _exclusive_provider_facts() -> killswitch.TunnelFacts:
+    active = _active_provider()
+    statuses = await _observed_provider_statuses()
+    connected = [provider_id for provider_id, status in statuses.items() if status.get("connected")]
+    if len(connected) > 1 or (connected and connected[0] != active.id):
+        return killswitch.TunnelFacts(False, reason="provider_conflict")
+    return await active.network_facts()
+
+
 def _provider_metadata(provider_instance) -> dict:
     return {
         **provider_instance.metadata.as_dict(),
         "enabled": True,
-        "active": provider_instance.id == setting("vpn.provider_id", provider_registry.default_id),
+        "active": provider_instance.id == _active_provider_id(),
     }
+
+
+def _provider_activation_state(
+    provider_instance,
+    status: dict,
+    *,
+    active_provider_id: str,
+) -> tuple[dict, list[dict]]:
+    management = status.get("management", {})
+    installation_state = management.get("provider", {}).get("installation_state")
+    authentication_state = _provider_authentication_state(status)
+    installed = status.get("installed") is True or installation_state not in {
+        None,
+        "not_installed",
+    }
+    daemon_available = (
+        installation_state == "available"
+        and status.get("available") is True
+        and status.get("daemon_active") is not False
+    )
+    authenticated = authentication_state == "signed_in"
+    blockers = []
+    if not installed:
+        blockers.append({"code": "provider_not_installed", "provider": provider_instance.id})
+    elif (
+        installation_state in {"daemon_missing", "daemon_inactive"}
+        or status.get("daemon_active") is False
+        or status.get("error_code") == "daemon_unavailable"
+    ):
+        blockers.append({"code": "provider_daemon_unavailable", "provider": provider_instance.id})
+    elif installation_state != "available" or status.get("available") is not True:
+        blockers.append({"code": "provider_status_unavailable", "provider": provider_instance.id})
+    elif authentication_state == "signed_out":
+        blockers.append(
+            {
+                "code": "provider_authentication_required",
+                "provider": provider_instance.id,
+            }
+        )
+    elif not authenticated:
+        blockers.append(
+            {
+                "code": "provider_authentication_unverified",
+                "provider": provider_instance.id,
+            }
+        )
+    state = {
+        "id": provider_instance.id,
+        "installed": installed,
+        "daemon_available": daemon_available,
+        "authenticated": authenticated,
+        "selected": provider_instance.id == active_provider_id,
+        "tunnel_connected": status.get("connected") is True,
+        "ready_to_activate": not blockers,
+    }
+    return state, blockers
+
+
+def _provider_local_activation_state(
+    provider_instance,
+    status: dict,
+    *,
+    active_provider_id: str,
+) -> tuple[dict, list[dict]]:
+    """Classify only network-independent target state before source handoff."""
+    installed = status.get("installed") is True
+    daemon_available = status.get("daemon_active") is True
+    local_control_available = status.get("local_control_available") is True
+    blockers = []
+    if not installed:
+        blockers.append({"code": "provider_not_installed", "provider": provider_instance.id})
+    elif not daemon_available:
+        blockers.append({"code": "provider_daemon_unavailable", "provider": provider_instance.id})
+    elif not local_control_available or status.get("connection_state") not in {
+        "connected",
+        "disconnected",
+    }:
+        blockers.append({"code": "provider_status_unavailable", "provider": provider_instance.id})
+    state = {
+        "id": provider_instance.id,
+        "installed": installed,
+        "daemon_available": daemon_available,
+        # Authentication is deliberately inconclusive until the source provider
+        # has released exclusive DNS/firewall ownership.
+        "authenticated": None,
+        "selected": provider_instance.id == active_provider_id,
+        "tunnel_connected": status.get("connected") is True,
+        "ready_to_activate": not blockers,
+    }
+    return state, blockers
 
 
 @app.post("/api/providers/nordvpn/session/end")
@@ -1510,7 +2003,7 @@ async def _end_provider_session(provider_instance, request: Request) -> dict:
         }
 
     error = result.get("error")
-    if error not in SIGN_OUT_ERROR_CODES:
+    if error not in provider_instance.sign_out_error_codes:
         error = "provider_error"
     if signed_out:
         _provider_sign_out_failures.pop(failure_key, None)
@@ -1542,9 +2035,7 @@ async def login_callback(req: Callback) -> dict:
     result = await provider.login_callback(req.callback_url)
 
     if result.get("ok"):
-        set_setting("setup_provider_deferred", False)
-        set_setting("setup_provider_complete", True)
-        set_setting("setup_current_step", 4)
+        await _after_provider_authenticated(provider)
 
     return result
 
@@ -1562,7 +2053,7 @@ async def configure_nordvpn_defaults() -> dict:
 @app.get("/api/providers/nordvpn/status")
 async def nordvpn_status() -> dict:
     global _pending_provider_connection
-    status = await _fresh_vpn_status()
+    status = await _fresh_status_for(provider)
     if _pending_provider_connection and status.get("connected"):
         pending = _pending_provider_connection
         _pending_provider_connection = None
@@ -1572,7 +2063,12 @@ async def nordvpn_status() -> dict:
             metadata={key: status[key] for key in ("country", "city", "server") if status.get(key)},
             correlation_id=pending["correlation_id"],
         )
-    return {"status": {**status, **server_latency(status.get("server"))}}
+    return {
+        "status": {
+            **status,
+            **server_latency(status.get("server"), provider_id=provider.id),
+        }
+    }
 
 
 @app.get("/api/providers/nordvpn/countries")
@@ -1585,8 +2081,20 @@ async def nordvpn_countries() -> dict:
 async def _provider_overview(provider_instance) -> dict:
     status = await _fresh_status_for(provider_instance)
     metadata = _provider_metadata(provider_instance)
+    status["is_active"] = metadata["active"]
     if not metadata["active"]:
         status.pop("operation", None)
+        capabilities = status.get("management", {}).get("capabilities", {})
+        for key in (
+            "can_connect",
+            "can_disconnect",
+            "can_reconnect",
+            "can_select_country",
+            "can_select_server",
+            "can_measure_latency",
+            "can_select_location",
+        ):
+            capabilities[key] = False
     summary = (
         country_summary(status["country_code"], provider_id=provider_instance.id)
         if status.get("country_code")
@@ -1608,8 +2116,27 @@ async def vpn_providers() -> dict:
     providers = await asyncio.gather(
         *(_provider_overview(item) for item in provider_registry.all())
     )
+    active_provider_id = _active_provider_id()
+    connected_ids = [item["id"] for item in providers if item["status"].get("connected")]
+    if len(connected_ids) > 1 or any(
+        provider_id != active_provider_id for provider_id in connected_ids
+    ):
+        for item in providers:
+            item["status"]["error_code"] = "provider_connection_conflict"
+            management = item["status"].get("management", {})
+            management["error_code"] = "provider_connection_conflict"
+            for key in (
+                "can_connect",
+                "can_disconnect",
+                "can_reconnect",
+                "can_select_country",
+                "can_select_server",
+                "can_measure_latency",
+                "can_select_location",
+            ):
+                management.get("capabilities", {})[key] = False
     return {
-        "active_provider_id": setting("vpn.provider_id", provider_registry.default_id),
+        "active_provider_id": active_provider_id,
         "providers": providers,
     }
 
@@ -1622,9 +2149,25 @@ async def vpn_provider_detail(provider_id: str) -> dict:
 @app.get("/api/vpn/providers/{provider_id}/status")
 async def vpn_provider_status(provider_id: str) -> dict:
     provider_instance = _provider_or_404(provider_id)
+    metadata = _provider_metadata(provider_instance)
+    status = await _fresh_status_for(provider_instance)
+    status["is_active"] = metadata["active"]
+    if not metadata["active"]:
+        status.pop("operation", None)
+        capabilities = status.get("management", {}).get("capabilities", {})
+        for key in (
+            "can_connect",
+            "can_disconnect",
+            "can_reconnect",
+            "can_select_country",
+            "can_select_server",
+            "can_measure_latency",
+            "can_select_location",
+        ):
+            capabilities[key] = False
     return {
-        "provider": _provider_metadata(provider_instance),
-        "status": await _fresh_status_for(provider_instance),
+        "provider": metadata,
+        "status": status,
     }
 
 
@@ -1686,8 +2229,14 @@ async def install_vpn_provider(provider_id: str, request: Request) -> dict:
 
 
 @app.post("/api/vpn/providers/{provider_id}/authenticate")
-async def authenticate_vpn_provider(provider_id: str, req: Token, request: Request) -> dict:
-    return await _authenticate_provider(_provider_or_404(provider_id), req, request)
+async def authenticate_vpn_provider(
+    provider_id: str, req: ProviderCredential, request: Request
+) -> dict:
+    provider_instance = _provider_or_404(provider_id)
+    supplied = [value for value in (req.credential, req.token) if value is not None]
+    if len(supplied) != 1 or (req.token is not None and provider_instance.id != "nordvpn"):
+        raise HTTPException(status_code=422, detail="invalid_credential_payload")
+    return await _authenticate_provider(provider_instance, supplied[0], request)
 
 
 @app.post("/api/vpn/providers/{provider_id}/sign-out")
@@ -1702,7 +2251,10 @@ async def vpn_provider_locations(provider_id: str) -> dict:
     catalog = await _vpn_catalog(provider_instance)
     connected = vpn["country_code"]
     codes = [item["country_code"] for item in catalog]
-    last = setting("vpn.last_country")
+    last = setting(
+        f"vpn.last_country.{provider_instance.id}",
+        setting("vpn.last_country") if provider_instance.id == "nordvpn" else None,
+    )
     quick = list(
         dict.fromkeys(code for code in (connected, last, *QUICK_COUNTRIES) if code in codes)
     )
@@ -1722,25 +2274,26 @@ async def vpn_provider_locations(provider_id: str) -> dict:
     }
 
 
-async def _vpn_catalog(provider_instance=provider) -> list[dict]:
+async def _vpn_catalog(provider_instance=None) -> list[dict]:
+    provider_instance = provider_instance or _active_provider()
     return await provider_instance.countries()
 
 
-def _country_id(catalog: list[dict], country_code: str) -> int | None:
+def _country_id(catalog: list[dict], country_code: str) -> int | str | None:
     return next(
         (item["id"] for item in catalog if item["country_code"] == country_code.upper()), None
     )
 
 
-def _vpn_snapshot(status: dict) -> dict:
+def _vpn_snapshot(status: dict, provider_instance=provider) -> dict:
     hostname = normalize_server_hostname(status.get("server")) or ""
-    match = re.fullmatch(r"([a-z]{2})[0-9]+\.nordvpn\.com", hostname.lower())
     connected = bool(status.get("connected"))
-    technology = str(status.get("technology", "")).casefold()
-    vpn_operations.set_interface("nordlynx" if connected and "nordlynx" in technology else None)
-    hostname_code = match.group(1).upper() if connected and match else None
-    country_code = NORDVPN_HOST_COUNTRY_CODES.get(hostname_code, hostname_code)
-    operation = vpn_operations.snapshot()
+    connection_id = _provider_connection_id(provider_instance)
+    vpn_operations.set_interface(
+        status.get("tunnel_interface") if connected else None,
+        connection_id=connection_id,
+    )
+    operation = vpn_operations.snapshot(connection_id)
     if operation["state"] not in vpn_operations.ACTIVE_STATES:
         operation["state"] = (
             "connected" if connected else "failed" if operation.get("last_error_code") else "idle"
@@ -1748,7 +2301,7 @@ def _vpn_snapshot(status: dict) -> dict:
     return {
         **status,
         "connected": connected,
-        "country_code": country_code,
+        "country_code": status.get("country_code") if connected else None,
         "country": status.get("country") or None if connected else None,
         "city": status.get("city") or None if connected else None,
         "server": hostname or None if connected else None,
@@ -1757,15 +2310,22 @@ def _vpn_snapshot(status: dict) -> dict:
     }
 
 
-async def _fresh_vpn_status(provider_instance=provider) -> dict:
+async def _fresh_vpn_status(provider_instance=None) -> dict:
+    provider_instance = provider_instance or _active_provider()
     try:
         snapshot = _vpn_snapshot(
-            await provider_instance.status(timeout=vpn_operations.STATUS_TIMEOUT_SECONDS)
+            await provider_instance.status(timeout=vpn_operations.STATUS_TIMEOUT_SECONDS),
+            provider_instance,
         )
         try:
-            latency = server_latency(snapshot.get("server"))
+            latency = server_latency(snapshot.get("server"), provider_id=provider_instance.id)
             if snapshot.get("connected") and latency["latency_measured_at"] is None:
-                latency = await ensure_active_server_latency(snapshot.get("server"))
+                latency = await ensure_active_server_latency(
+                    snapshot.get("server"),
+                    provider_id=provider_instance.id,
+                    country_code=snapshot.get("country_code"),
+                    endpoint=snapshot.get("latency_endpoint"),
+                )
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 - optional telemetry cannot downgrade VPN state.
@@ -1781,7 +2341,8 @@ async def _fresh_vpn_status(provider_instance=provider) -> dict:
                 "connected": False,
                 "state": "error",
                 "error_code": "provider_status_unavailable",
-            }
+            },
+            provider_instance,
         )
 
 
@@ -1823,12 +2384,13 @@ async def system_action(action: str, request: Request) -> dict:
 async def _fresh_status_for(provider_instance) -> dict:
     # Keep legacy tests and aliases patchable while provider-scoped routes can
     # explicitly select another registered implementation.
-    if provider_instance is provider:
+    if provider_instance is provider and _active_provider() is provider:
         return await _fresh_vpn_status()
     return await _fresh_vpn_status(provider_instance)
 
 
-async def _require_provider_authentication(provider_instance=provider) -> dict:
+async def _require_provider_authentication(provider_instance=None) -> dict:
+    provider_instance = provider_instance or _active_provider()
     status = await _fresh_status_for(provider_instance)
     authentication_state = _provider_authentication_state(status)
     if authentication_state == "signed_out":
@@ -1839,26 +2401,31 @@ async def _require_provider_authentication(provider_instance=provider) -> dict:
 
 
 def _action_conflict() -> JSONResponse:
-    operation = vpn_operations.snapshot()
+    operation = vpn_operations.active_snapshot() or vpn_operations.snapshot()
     return JSONResponse(
         status_code=409,
         content={"error": "vpn_action_in_progress", **operation},
     )
 
 
-def _release_vpn_claim_after_failure(error: BaseException) -> None:
+def _release_vpn_claim_after_failure(error: BaseException, *, connection_id: str) -> None:
     error_code = (
         error.detail
         if isinstance(error, HTTPException) and isinstance(error.detail, str)
         else "provider_action_failed"
     )
-    vpn_operations.finish(connected=False, error_code=error_code)
+    vpn_operations.finish(connected=False, error_code=error_code, connection_id=connection_id)
 
 
 @app.get("/api/vpn/status")
 async def vpn_status() -> dict:
     status = await _fresh_vpn_status()
-    summary = country_summary(status["country_code"]) if status["country_code"] else {}
+    active = _active_provider()
+    summary = (
+        country_summary(status["country_code"], provider_id=active.id)
+        if status["country_code"]
+        else {}
+    )
     return {
         **status,
         "latency_ms": summary.get("latency_ms"),
@@ -1868,11 +2435,12 @@ async def vpn_status() -> dict:
 
 @app.get("/api/vpn/countries")
 async def vpn_countries() -> dict:
-    vpn = await _require_provider_authentication()
-    catalog = await _vpn_catalog()
+    active = _active_provider()
+    vpn = await _require_provider_authentication(active)
+    catalog = await _vpn_catalog(active)
     connected = vpn["country_code"]
     codes = [item["country_code"] for item in catalog]
-    last = setting("vpn.last_country")
+    last = setting(f"vpn.last_country.{active.id}", setting("vpn.last_country"))
     quick = list(
         dict.fromkeys(code for code in (connected, last, *QUICK_COUNTRIES) if code in codes)
     )
@@ -1884,6 +2452,7 @@ async def vpn_countries() -> dict:
                 item["country_code"],
                 connected_code=connected,
                 provider_name=item["provider_name"],
+                provider_id=active.id,
             )
             for item in catalog
         ],
@@ -1892,43 +2461,143 @@ async def vpn_countries() -> dict:
 
 @app.get("/api/vpn/countries/{country_code}/servers")
 async def vpn_country_servers(country_code: str) -> dict:
-    await _require_provider_authentication()
+    active = _active_provider()
+    await _require_provider_authentication(active)
     code = country_code.upper()
-    country_id = _country_id(await _vpn_catalog(), code)
+    country_id = _country_id(await _vpn_catalog(active), code)
     if country_id is None:
         raise HTTPException(404, "Unsupported country")
-    return {"country_code": code, "servers": await provider.servers(country_id)}
+    return {"country_code": code, "servers": await active.servers(country_id)}
 
 
 @app.post("/api/vpn/countries/{country_code}/measure")
 async def measure_vpn_country(country_code: str) -> dict:
-    await _require_provider_authentication()
+    active = _active_provider()
+    await _require_provider_authentication(active)
     code = country_code.upper()
-    country_id = _country_id(await _vpn_catalog(), code)
+    country_id = _country_id(await _vpn_catalog(active), code)
     if country_id is None:
         raise HTTPException(404, "Unsupported country")
-    servers = await provider.servers(country_id)
-    measurements = await measure_servers(code, servers, force=True)
-    return {**country_summary(code), "servers": measurements}
+    servers = await active.servers(country_id)
+    measurements = await measure_servers(code, servers, force=True, provider_id=active.id)
+    return {
+        **country_summary(code, provider_id=active.id),
+        "servers": measurements,
+    }
 
 
 @app.post("/api/vpn/connect")
 async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
+    return await _connect_provider_country(_active_provider(), req, request)
+
+
+async def _reconcile_management_routes_or_503(
+    actor: dict | None = None,
+    *,
+    rollback_provider=None,
+) -> None:
+    try:
+        await management_routing.reconcile()
+    except management_routing.ManagementRoutingError as error:
+        if rollback_provider:
+            try:
+                await rollback_provider()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - provider rollback remains best effort.
+                logger.warning(
+                    "Provider rollback after management underlay failure did not complete"
+                )
+            try:
+                # A provider disconnect normally removes the provider policy.
+                # Reconcile once more to restore and prove the underlay while
+                # retaining the original hard connect failure.
+                await management_routing.reconcile()
+            except management_routing.ManagementRoutingError:
+                logger.error("Management underlay remained unavailable after provider rollback")
+        record_event(
+            "network.management_routing_error",
+            actor=actor,
+            metadata={"reason": error.code},
+        )
+        raise HTTPException(status_code=503, detail="management_routing_failed") from None
+
+
+async def _prepare_management_routes_or_503(actor: dict | None = None) -> None:
+    try:
+        await management_routing.prepare_provider_transition()
+    except management_routing.ManagementRoutingError as error:
+        record_event(
+            "network.management_routing_error",
+            actor=actor,
+            metadata={"reason": error.code},
+        )
+        raise HTTPException(status_code=503, detail="management_routing_failed") from None
+
+
+async def _run_with_management_routing(
+    operation,
+    *,
+    actor: dict | None = None,
+    rollback_provider=None,
+):
+    await _prepare_management_routes_or_503(actor)
+    operation_task = asyncio.create_task(operation())
+    try:
+        while True:
+            completed, _pending = await asyncio.wait({operation_task}, timeout=0.25)
+            if completed:
+                return await operation_task
+            # Keep management-plane routes reconciled while a provider mutates
+            # its tunnel state. The provider's forwarded-data policy remains
+            # separately owned and fail closed throughout this transition.
+            await _prepare_management_routes_or_503(actor)
+    finally:
+        if not operation_task.done():
+            operation_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await operation_task
+        await _reconcile_management_routes_or_503(
+            actor,
+            rollback_provider=rollback_provider,
+        )
+
+
+async def _connect_provider_country(
+    provider_instance, req: CountryConnect, request: Request
+) -> dict:
     global _pending_provider_connection
     code = req.country_code.upper()
+    connection_id = _provider_connection_id(provider_instance)
     try:
-        vpn_operations.begin("connecting", country_code=code, timeout=125)
+        vpn_operations.begin(
+            "connecting",
+            country_code=code,
+            timeout=125,
+            connection_id=connection_id,
+        )
     except vpn_operations.VPNActionInProgress:
         return _action_conflict()
     try:
-        await _require_provider_authentication()
-        catalog = await _vpn_catalog()
+        statuses = await _observed_provider_statuses()
+        conflicting = [
+            provider_id
+            for provider_id, status in statuses.items()
+            if provider_id != provider_instance.id and status.get("connected")
+        ]
+        if conflicting:
+            raise HTTPException(status_code=409, detail="provider_connection_conflict")
+        await _require_provider_authentication(provider_instance)
+        catalog = await _vpn_catalog(provider_instance)
         country = next((item for item in catalog if item["country_code"] == code), None)
         country_id = country["id"] if country else None
         if country_id is None:
             raise HTTPException(404, "Unsupported country")
-    except (asyncio.CancelledError, Exception) as error:
-        _release_vpn_claim_after_failure(error)
+    except asyncio.CancelledError as error:
+        _release_vpn_claim_after_failure(error, connection_id=connection_id)
+        raise
+    except Exception as error:
+        _release_vpn_claim_after_failure(error, connection_id=connection_id)
         raise
 
     actor = request_actor(request)
@@ -1945,29 +2614,48 @@ async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
     status = None
     recovered = False
     try:
-        selection_generation = vpn_operations.begin_selection(code)
-        selected = await select_server(code, await provider.servers(country_id))
+        selection_generation = vpn_operations.begin_selection(code, connection_id=connection_id)
+        selected = await select_server(
+            code,
+            await provider_instance.servers(country_id),
+            provider_id=provider_instance.id,
+        )
         vpn_operations.finish_selection(
             selection_generation,
             server=selected.get("server") if selected else None,
             fallback=not bool(selected and selected.get("latency_ms") is not None),
+            connection_id=connection_id,
         )
-        result = await provider.connect_country(
-            code, timeout=vpn_operations.CONNECT_TIMEOUT_SECONDS
+        result = await _run_with_management_routing(
+            lambda: provider_instance.connect_country(
+                code,
+                server_hostname=selected.get("server") if selected else None,
+                timeout=vpn_operations.CONNECT_TIMEOUT_SECONDS,
+            ),
+            actor=actor,
+            rollback_provider=lambda: provider_instance.disconnect(timeout=15),
         )
-        status = await _fresh_vpn_status()
+        status = await _fresh_status_for(provider_instance)
 
-        if result.get("error_code") == "vpn_connect_timeout" and not status.get("connected"):
-            if vpn_operations.recovery_allowed():
-                vpn_operations.record_recovery()
-                vpn_operations.transition("recovering")
+        if (
+            result.get("error_code") == "vpn_connect_timeout"
+            and not status.get("connected")
+            and provider_instance.supports_timeout_recovery
+        ):
+            if vpn_operations.recovery_allowed(connection_id=connection_id):
+                vpn_operations.record_recovery(connection_id=connection_id)
+                vpn_operations.transition("recovering", connection_id=connection_id)
                 record_event(
                     "provider.recovery_started",
                     actor=actor,
                     metadata={"country_code": code, "reason": "timeout"},
                     correlation_id=correlation_id,
                 )
-                recovery = await provider.recover_daemon()
+                recovery = await _run_with_management_routing(
+                    provider_instance.recover_daemon,
+                    actor=actor,
+                    rollback_provider=lambda: provider_instance.disconnect(timeout=15),
+                )
                 if recovery.get("ok"):
                     recovered = True
                     record_event(
@@ -1976,20 +2664,26 @@ async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
                         metadata={"country_code": code},
                         correlation_id=correlation_id,
                     )
-                    vpn_operations.transition("connecting")
+                    vpn_operations.transition("connecting", connection_id=connection_id)
                     record_event(
                         "provider.retry_started",
                         actor=actor,
                         metadata={"country_code": code},
                         correlation_id=correlation_id,
                     )
-                    result = await provider.connect_country(
-                        code, timeout=vpn_operations.CONNECT_TIMEOUT_SECONDS
+                    result = await _run_with_management_routing(
+                        lambda: provider_instance.connect_country(
+                            code,
+                            server_hostname=selected.get("server") if selected else None,
+                            timeout=vpn_operations.CONNECT_TIMEOUT_SECONDS,
+                        ),
+                        actor=actor,
+                        rollback_provider=lambda: provider_instance.disconnect(timeout=15),
                     )
-                    status = await _fresh_vpn_status()
+                    status = await _fresh_status_for(provider_instance)
                 else:
                     result = {**result, "error_code": recovery.get("error_code")}
-                    status = await _fresh_vpn_status()
+                    status = await _fresh_status_for(provider_instance)
                     record_event(
                         "provider.recovery_failed",
                         actor=actor,
@@ -2005,27 +2699,35 @@ async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
                     correlation_id=correlation_id,
                 )
     except asyncio.CancelledError:
-        status = await _fresh_vpn_status()
+        status = await _fresh_status_for(provider_instance)
         vpn_operations.finish(
             connected=status.get("connected", False),
             error_code=None if status.get("connected") else "provider_connect_cancelled",
+            connection_id=connection_id,
+        )
+        raise
+    except HTTPException as error:
+        status = await _fresh_status_for(provider_instance)
+        vpn_operations.finish(
+            connected=(
+                bool(status.get("connected")) and error.detail != "management_routing_failed"
+            ),
+            error_code=str(error.detail),
+            connection_id=connection_id,
         )
         raise
     except Exception:  # noqa: BLE001 - provider boundary normalizes implementation-specific failures.
         result = {"ok": False, "exit_code": None, "error_code": "provider_connect_failed"}
-        status = await _fresh_vpn_status()
+        status = await _fresh_status_for(provider_instance)
 
-    status = status or await _fresh_vpn_status()
+    status = status or await _fresh_status_for(provider_instance)
 
-    expected_country = country["provider_name"].casefold()
     proven = bool(
-        result.get("ok")
-        and status.get("connected")
-        and status.get("country", "").casefold() == expected_country
+        result.get("ok") and status.get("connected") and status.get("country_code") == code
     )
     event_technical = {**technical, "exit_code": str(result.get("exit_code"))}
     if proven:
-        remember_country(code)
+        remember_country(code, provider_id=provider_instance.id)
         record_event(
             "provider.connected",
             actor=actor,
@@ -2055,7 +2757,11 @@ async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
             correlation_id=correlation_id,
         )
     error_code = None if proven else result.get("error_code") or reason
-    operation = vpn_operations.finish(connected=proven, error_code=error_code)
+    operation = vpn_operations.finish(
+        connected=proven,
+        error_code=error_code,
+        connection_id=connection_id,
+    )
     status["operation"] = operation
     return {
         **result,
@@ -2074,34 +2780,45 @@ async def connect_vpn_country(req: CountryConnect, request: Request) -> dict:
 
 @app.post("/api/vpn/disconnect")
 async def disconnect_vpn(request: Request) -> dict:
+    return await _disconnect_provider(_active_provider(), request)
+
+
+async def _disconnect_provider(provider_instance, request: Request) -> dict:
+    connection_id = _provider_connection_id(provider_instance)
     try:
-        vpn_operations.begin("disconnecting", timeout=25)
+        vpn_operations.begin("disconnecting", timeout=25, connection_id=connection_id)
     except vpn_operations.VPNActionInProgress:
         return _action_conflict()
     try:
-        await _require_provider_authentication()
-    except (asyncio.CancelledError, Exception) as error:
-        _release_vpn_claim_after_failure(error)
+        await _require_provider_authentication(provider_instance)
+    except asyncio.CancelledError as error:
+        _release_vpn_claim_after_failure(error, connection_id=connection_id)
+        raise
+    except Exception as error:
+        _release_vpn_claim_after_failure(error, connection_id=connection_id)
         raise
     correlation_id = str(uuid.uuid4())
     actor = request_actor(request)
     record_event("provider.disconnect_started", actor=actor, correlation_id=correlation_id)
     try:
-        result = await provider.disconnect(timeout=15)
+        result = await provider_instance.disconnect(timeout=15)
     except asyncio.CancelledError:
-        status = await _fresh_vpn_status()
+        status = await _fresh_status_for(provider_instance)
         vpn_operations.finish(
             connected=status.get("connected", False),
             error_code="provider_disconnect_cancelled" if status.get("connected") else None,
+            connection_id=connection_id,
         )
         raise
     except Exception:  # noqa: BLE001 - provider boundary normalizes implementation-specific failures.
         result = {"ok": False, "error_code": "provider_disconnect_failed"}
-    status = await _fresh_vpn_status()
+    status = await _fresh_status_for(provider_instance)
     success = not status.get("connected")
     error_code = None if success else result.get("error_code") or "provider_disconnect_failed"
     operation = vpn_operations.finish(
-        connected=status.get("connected", False), error_code=error_code
+        connected=status.get("connected", False),
+        error_code=error_code,
+        connection_id=connection_id,
     )
     status["operation"] = operation
     record_event(
@@ -2121,17 +2838,41 @@ async def disconnect_vpn(request: Request) -> dict:
 
 @app.post("/api/providers/nordvpn/connect")
 async def connect_nordvpn(req: Connect, request: Request) -> dict:
+    _require_active_provider(provider.id)
+    return await _connect_provider(provider, req, request)
+
+
+async def _connect_provider(
+    provider_instance,
+    req: Connect,
+    request: Request,
+    *,
+    reconnect: bool = False,
+) -> dict:
     global _pending_provider_connection
     if req.target and re.fullmatch(r"[A-Za-z]{2}", req.target):
-        return await connect_vpn_country(CountryConnect(country_code=req.target), request)
+        return await _connect_provider_country(
+            provider_instance, CountryConnect(country_code=req.target), request
+        )
+    connection_id = _provider_connection_id(provider_instance)
     try:
-        vpn_operations.begin("connecting", timeout=50)
+        vpn_operations.begin("connecting", timeout=50, connection_id=connection_id)
     except vpn_operations.VPNActionInProgress:
         return _action_conflict()
     try:
-        await _require_provider_authentication()
-    except (asyncio.CancelledError, Exception) as error:
-        _release_vpn_claim_after_failure(error)
+        statuses = await _observed_provider_statuses()
+        if any(
+            item.get("connected")
+            for provider_id, item in statuses.items()
+            if provider_id != provider_instance.id
+        ):
+            raise HTTPException(status_code=409, detail="provider_connection_conflict")
+        await _require_provider_authentication(provider_instance)
+    except asyncio.CancelledError as error:
+        _release_vpn_claim_after_failure(error, connection_id=connection_id)
+        raise
+    except Exception as error:
+        _release_vpn_claim_after_failure(error, connection_id=connection_id)
         raise
     correlation_id = str(uuid.uuid4())
     metadata = {"target": req.target or "recommended"}
@@ -2142,14 +2883,35 @@ async def connect_nordvpn(req: Connect, request: Request) -> dict:
         correlation_id=correlation_id,
     )
     try:
-        result = await provider.connect(req.target, timeout=vpn_operations.CONNECT_TIMEOUT_SECONDS)
+        operation_call = provider_instance.reconnect if reconnect else provider_instance.connect
+        result = await _run_with_management_routing(
+            lambda: operation_call(req.target, timeout=vpn_operations.CONNECT_TIMEOUT_SECONDS),
+            actor=request_actor(request),
+            rollback_provider=lambda: provider_instance.disconnect(timeout=15),
+        )
     except asyncio.CancelledError:
+        status = await _fresh_status_for(provider_instance)
+        vpn_operations.finish(
+            connected=status.get("connected", False),
+            error_code=None if status.get("connected") else "provider_connect_cancelled",
+            connection_id=connection_id,
+        )
+        raise
+    except HTTPException as error:
+        status = await _fresh_status_for(provider_instance)
+        vpn_operations.finish(
+            connected=(
+                bool(status.get("connected")) and error.detail != "management_routing_failed"
+            ),
+            error_code=str(error.detail),
+            connection_id=connection_id,
+        )
         raise
     except Exception:  # noqa: BLE001 - provider boundary normalizes implementation-specific failures.
         result = {"ok": False, "error_code": "provider_connect_failed"}
     if result.get("ok"):
         try:
-            status = await provider.status()
+            status = await provider_instance.status()
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 - provider detail must not reach the event log.
@@ -2192,10 +2954,14 @@ async def connect_nordvpn(req: Connect, request: Request) -> dict:
             correlation_id=correlation_id,
         )
         _pending_provider_connection = None
-    status = await _fresh_vpn_status()
+    status = await _fresh_status_for(provider_instance)
     proven = bool(result.get("ok") and status.get("connected"))
     error_code = None if proven else result.get("error_code") or "connection_failed"
-    operation = vpn_operations.finish(connected=proven, error_code=error_code)
+    operation = vpn_operations.finish(
+        connected=proven,
+        error_code=error_code,
+        connection_id=connection_id,
+    )
     status["operation"] = operation
     return {
         **result,
@@ -2208,56 +2974,670 @@ async def connect_nordvpn(req: Connect, request: Request) -> dict:
 
 @app.post("/api/providers/nordvpn/disconnect")
 async def disconnect_nordvpn(request: Request) -> dict:
-    return await disconnect_vpn(request)
+    _require_active_provider(provider.id)
+    return await _disconnect_provider(provider, request)
 
 
-def _require_active_provider(provider_id: str) -> None:
-    _provider_or_404(provider_id)
-    active_id = setting("vpn.provider_id", provider_registry.default_id)
+def _require_active_provider(provider_id: str):
+    provider_instance = _provider_or_404(provider_id)
+    active_id = _active_provider().id
     if provider_id != active_id:
-        raise HTTPException(status_code=409, detail="provider_action_unsupported")
+        raise HTTPException(status_code=409, detail="provider_not_active")
+    return provider_instance
+
+
+async def _arm_provider_transition_or_503(actor: dict | None) -> None:
+    try:
+        await killswitch.arm_provider_transition()
+    except killswitch.KillswitchError:
+        record_event(
+            "network.killswitch_error",
+            actor=actor,
+            metadata={"reason": "firewall_apply_failed"},
+        )
+        raise HTTPException(status_code=503, detail="provider_switch_failed") from None
+
+
+def _provider_switch_remaining(*, maximum: float | None = None) -> float:
+    remaining = vpn_operations.remaining_seconds("provider-switch", maximum=maximum)
+    if remaining <= 0:
+        raise TimeoutError("provider switch deadline exhausted")
+    return remaining
+
+
+def _unavailable_activation_status(provider_instance, local_status: dict) -> dict:
+    connection_state = str(local_status.get("connection_state", "unknown"))
+    return {
+        "installed": local_status.get("installed") is True,
+        "available": False,
+        "daemon_active": local_status.get("daemon_active") is True,
+        "authenticated": False,
+        "connected": connection_state == "connected",
+        "state": connection_state,
+        "error_code": "provider_status_unavailable",
+        "management": provider_instance.management_status(
+            installation_state=(
+                "available" if local_status.get("daemon_active") is True else "daemon_inactive"
+            ),
+            authentication_state="unknown",
+            connection_state=connection_state,
+            error_code="provider_status_unavailable",
+        ),
+    }
+
+
+async def _target_activation_readiness(
+    target,
+    *,
+    active_provider_id: str,
+    phase: str = "target_readiness",
+) -> tuple[dict, dict, list[dict]]:
+    """Retry only provider-classified transient target control-plane failures."""
+    total_timeout = _provider_switch_remaining(
+        maximum=vpn_operations.TARGET_READINESS_TOTAL_TIMEOUT_SECONDS
+    )
+    deadline = time.monotonic() + total_timeout
+    last_result: tuple[dict, dict, list[dict]] | None = None
+
+    for attempt in range(1, vpn_operations.TARGET_READINESS_ATTEMPTS + 1):
+        remaining = min(deadline - time.monotonic(), _provider_switch_remaining())
+        if remaining <= 0:
+            break
+        local_timeout = min(vpn_operations.STATUS_TIMEOUT_SECONDS, remaining)
+        try:
+            local_status = await target.local_status(timeout=local_timeout)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - provider detail remains behind the safe boundary.
+            local_status = {
+                "installed": True,
+                "daemon_active": False,
+                "local_control_available": False,
+                "connected": False,
+                "connection_state": "unknown",
+                "error_code": "provider_local_status_unavailable",
+            }
+
+        if local_status.get("local_control_available") is not True or local_status.get(
+            "connection_state"
+        ) not in {"connected", "disconnected"}:
+            status = _unavailable_activation_status(target, local_status)
+        else:
+            attempt_timeout = min(
+                vpn_operations.TARGET_READINESS_ATTEMPT_TIMEOUT_SECONDS,
+                deadline - time.monotonic(),
+                _provider_switch_remaining(),
+            )
+            if attempt_timeout <= 0:
+                break
+            try:
+                status = await asyncio.wait_for(
+                    _fresh_status_for(target),
+                    timeout=attempt_timeout,
+                )
+            except TimeoutError:
+                status = _unavailable_activation_status(target, local_status)
+
+        provider_state, blockers = _provider_activation_state(
+            target,
+            status,
+            active_provider_id=active_provider_id,
+        )
+        last_result = (status, provider_state, blockers)
+        failure = target.classify_activation_failure(status)
+        classification = (
+            failure.classification
+            if failure is not None
+            else ProviderFailureClass.TERMINAL
+            if blockers
+            else None
+        )
+        operation = failure.operation if failure is not None else "status"
+        error_code = (
+            failure.error_code
+            if failure is not None
+            else blockers[0]["code"]
+            if blockers
+            else "none"
+        )
+        logger.log(
+            logging.WARNING if blockers else logging.INFO,
+            "Provider switch target=%s phase=%s attempt=%s/%s class=%s operation=%s error=%s",
+            target.id,
+            phase,
+            attempt,
+            vpn_operations.TARGET_READINESS_ATTEMPTS,
+            classification.value if classification is not None else "none",
+            operation,
+            error_code,
+        )
+        if not blockers or classification != ProviderFailureClass.TRANSIENT:
+            return last_result
+        if attempt >= vpn_operations.TARGET_READINESS_ATTEMPTS:
+            return last_result
+
+        backoff = vpn_operations.TARGET_READINESS_BACKOFF_SECONDS[attempt - 1]
+        remaining = min(deadline - time.monotonic(), _provider_switch_remaining())
+        if remaining <= backoff:
+            return last_result
+        await asyncio.sleep(backoff)
+
+    if last_result is not None:
+        return last_result
+    raise TimeoutError("target readiness deadline exhausted")
+
+
+async def _observe_target_after_connect(
+    target,
+    connect_result: dict,
+    *,
+    active_provider_id: str,
+) -> tuple[dict, dict, list[dict]]:
+    """Reconcile an accepted/timeout connect without starting a second command."""
+    observation_timeout = _provider_switch_remaining(
+        maximum=vpn_operations.TARGET_CONNECT_RECONCILE_TIMEOUT_SECONDS
+    )
+    deadline = time.monotonic() + observation_timeout
+    local_status: dict = {}
+    observation = 0
+    while True:
+        observation += 1
+        remaining = min(deadline - time.monotonic(), _provider_switch_remaining())
+        if remaining <= 0:
+            break
+        try:
+            local_status = await target.local_status(
+                timeout=min(vpn_operations.STATUS_TIMEOUT_SECONDS, remaining)
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - expose only the stable local-state classification.
+            local_status = {
+                "installed": True,
+                "daemon_active": True,
+                "local_control_available": False,
+                "connected": False,
+                "connection_state": "unknown",
+                "error_code": "provider_local_status_unavailable",
+            }
+        state = str(local_status.get("connection_state", "unknown"))
+        logger.info(
+            "Provider switch target=%s phase=observe attempt=%s class=%s operation=local_status error=%s",
+            target.id,
+            observation,
+            "none" if state == "connected" else "transient",
+            local_status.get("error_code") or "none",
+        )
+        if state == "connected":
+            return await _target_activation_readiness(
+                target,
+                active_provider_id=active_provider_id,
+                phase="observe",
+            )
+
+        should_observe = (
+            connect_result.get("ok") is True
+            or connect_result.get("error_code") == "vpn_connect_timeout"
+            or state in {"connecting", "disconnecting", "unknown"}
+        )
+        if not should_observe:
+            break
+        await asyncio.sleep(min(0.25, remaining))
+
+    status = await _fresh_status_for(target)
+    provider_state, blockers = _provider_activation_state(
+        target,
+        status,
+        active_provider_id=active_provider_id,
+    )
+    return status, provider_state, blockers
+
+
+async def _rollback_provider_switch(previous, target, actor: dict | None) -> bool:
+    """Restore the canonical source provider while transition protection stays armed."""
+    vpn_operations.transition("recovering", connection_id="provider-switch")
+
+    def failed(reason: str) -> bool:
+        logger.warning(
+            "Provider switch target=%s phase=rollback class=terminal "
+            "operation=restore_source error=%s rollback=failed",
+            target.id,
+            reason,
+        )
+        return False
+
+    try:
+        target_state = await target.local_status(timeout=vpn_operations.STATUS_TIMEOUT_SECONDS)
+        if target_state.get("connection_state") != "disconnected":
+            await target.disconnect(timeout=15)
+            target_state = await _wait_for_local_provider_state(
+                target,
+                {"disconnected"},
+                timeout=15,
+            )
+        if target_state.get("connection_state") != "disconnected":
+            return failed("target_not_disconnected")
+
+        if _active_provider_id() != previous.id:
+            set_setting("vpn.provider_id", previous.id)
+
+        previous_state = await previous.local_status(timeout=vpn_operations.STATUS_TIMEOUT_SECONDS)
+        if previous_state.get("connection_state") != "connected":
+            prepared = await previous.prepare_activation()
+            if not prepared.get("ok"):
+                return failed("source_preparation_failed")
+            result = await _run_with_management_routing(
+                lambda: previous.connect(
+                    None,
+                    timeout=vpn_operations.CONNECT_TIMEOUT_SECONDS,
+                ),
+                actor=actor,
+                rollback_provider=lambda: previous.disconnect(timeout=15),
+            )
+            if not result.get("ok"):
+                return failed("source_connect_failed")
+            previous_state = await _wait_for_local_provider_state(
+                previous,
+                {"connected"},
+                timeout=vpn_operations.CONNECT_TIMEOUT_SECONDS,
+            )
+        if previous_state.get("connection_state") != "connected":
+            return failed("source_not_connected")
+
+        facts = await previous.network_facts()
+        if not facts.available or not facts.protected_egress or not facts.interface:
+            return failed("source_egress_unproven")
+        await management_routing.reconcile()
+        await killswitch.complete_provider_transition(facts)
+        logger.info(
+            "Provider switch target=%s phase=rollback class=none "
+            "operation=restore_source error=none rollback=succeeded",
+            target.id,
+        )
+        return True
+    except asyncio.CancelledError:
+        raise
+    except Exception:  # noqa: BLE001 - rollback failure stays fail-closed.
+        return failed("rollback_exception")
+
+
+@app.post("/api/vpn/providers/{provider_id}/activate")
+async def activate_vpn_provider(provider_id: str, request: Request) -> dict:
+    target = _provider_or_404(provider_id)
+    previous = _active_provider()
+    actor = request_actor(request)
+    switch_connection_id = "provider-switch"
+    try:
+        vpn_operations.begin(
+            "switching",
+            timeout=vpn_operations.PROVIDER_SWITCH_TIMEOUT_SECONDS,
+            connection_id=switch_connection_id,
+        )
+    except vpn_operations.VPNActionInProgress:
+        return _action_conflict()
+
+    async def rejected_activation(
+        detail: str,
+        provider_state: dict,
+        blockers: list[dict],
+    ) -> JSONResponse:
+        await _reconcile_management_routes_or_503(actor)
+        vpn_operations.finish(
+            connected=False,
+            error_code=detail,
+            connection_id=switch_connection_id,
+        )
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": detail,
+                "ready": False,
+                "provider": {**provider_state, "ready_to_activate": False},
+                "active_provider_id": previous.id,
+                "blockers": blockers,
+            },
+        )
+
+    transition_armed = False
+    handoff_started = False
+    try:
+        await _prepare_management_routes_or_503(actor)
+        if previous.id == target.id:
+            target_status = await _fresh_status_for(target)
+            target_state, _blockers = _provider_activation_state(
+                target,
+                target_status,
+                active_provider_id=previous.id,
+            )
+            await _reconcile_management_routes_or_503(actor)
+            vpn_operations.finish(
+                connected=bool(target_status.get("connected")),
+                connection_id=switch_connection_id,
+            )
+            return {
+                "ok": True,
+                "already_active": True,
+                "active_provider_id": target.id,
+                "provider": _provider_metadata(target),
+                "readiness": target_state,
+                "status": target_status,
+            }
+
+        local_statuses = await _local_provider_statuses()
+        target_state, blockers = _provider_local_activation_state(
+            target,
+            local_statuses[target.id],
+            active_provider_id=previous.id,
+        )
+        connected_ids = [item for item, status in local_statuses.items() if status.get("connected")]
+        if len(connected_ids) > 1 or (connected_ids and connected_ids[0] != previous.id):
+            return await rejected_activation(
+                "provider_connection_conflict",
+                target_state,
+                [{"code": "provider_connection_conflict", "provider": target.id}],
+            )
+        if blockers:
+            return await rejected_activation(
+                "provider_not_ready",
+                target_state,
+                blockers,
+            )
+
+        source_state = local_statuses[previous.id]
+        if not source_state.get("local_control_available"):
+            return await rejected_activation(
+                "provider_not_ready",
+                target_state,
+                [{"code": "provider_status_unavailable", "provider": previous.id}],
+            )
+        if source_state.get("connection_state") not in {"connected", "disconnected"}:
+            return await rejected_activation(
+                "provider_not_ready",
+                target_state,
+                [{"code": "provider_status_unavailable", "provider": previous.id}],
+            )
+
+        if not source_state.get("connected"):
+            statuses = await _observed_provider_statuses()
+            target_status = statuses[target.id]
+            target_state, blockers = _provider_activation_state(
+                target,
+                target_status,
+                active_provider_id=previous.id,
+            )
+            if blockers:
+                return await rejected_activation(
+                    "provider_not_ready",
+                    target_state,
+                    blockers,
+                )
+            prepared = await target.prepare_activation()
+            if not prepared.get("ok"):
+                return await rejected_activation(
+                    "provider_not_ready",
+                    target_state,
+                    [
+                        {
+                            "code": "provider_gateway_configuration_failed",
+                            "provider": target.id,
+                        }
+                    ],
+                )
+            values: dict[str, object] = {"vpn.provider_id": target.id}
+            if not setting("setup_complete", False):
+                values["setup_active_provider_confirmed"] = True
+            set_settings(values)
+            if setting(killswitch.SETTING_CONFIGURED, False):
+                try:
+                    await killswitch.reconcile(await target.network_facts())
+                except killswitch.KillswitchError:
+                    record_event(
+                        "network.killswitch_error",
+                        actor=actor,
+                        metadata={"reason": "firewall_apply_failed"},
+                    )
+            status = await _fresh_status_for(target)
+            await _reconcile_management_routes_or_503(actor)
+            vpn_operations.finish(
+                connected=bool(status.get("connected")),
+                connection_id=switch_connection_id,
+            )
+            return {
+                "ok": True,
+                "already_active": False,
+                "active_provider_id": target.id,
+                "provider": _provider_metadata(target),
+                "readiness": {
+                    **target_state,
+                    "selected": True,
+                    "ready_to_activate": True,
+                },
+                "status": status,
+            }
+
+        await _arm_provider_transition_or_503(actor)
+        transition_armed = True
+        try:
+            source_disconnect_timeout = _provider_switch_remaining(maximum=15)
+            disconnect_result = await previous.disconnect(timeout=source_disconnect_timeout)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - expose only the stable switch error.
+            rollback_ok = await _rollback_provider_switch(previous, target, actor)
+            transition_armed = not rollback_ok
+            if not rollback_ok:
+                raise RuntimeError("source_disconnect_rollback_failed") from None
+            return await rejected_activation(
+                "provider_switch_disconnect_failed",
+                target_state,
+                [
+                    {
+                        "code": "provider_switch_disconnect_failed",
+                        "provider": previous.id,
+                    }
+                ],
+            )
+        observed_previous = await _wait_for_local_provider_state(
+            previous,
+            {"disconnected"},
+            timeout=_provider_switch_remaining(maximum=15),
+        )
+        if (
+            not disconnect_result.get("ok")
+            or observed_previous.get("connection_state") != "disconnected"
+        ):
+            rollback_ok = await _rollback_provider_switch(previous, target, actor)
+            transition_armed = not rollback_ok
+            if not rollback_ok:
+                raise RuntimeError("source_disconnect_rollback_failed")
+            return await rejected_activation(
+                "provider_switch_disconnect_failed",
+                target_state,
+                [
+                    {
+                        "code": "provider_switch_disconnect_failed",
+                        "provider": previous.id,
+                    }
+                ],
+            )
+        handoff_started = True
+
+        target_status, target_state, blockers = await _target_activation_readiness(
+            target,
+            active_provider_id=previous.id,
+        )
+        if target_status.get("connected") or blockers:
+            raise RuntimeError("target_remote_readiness_failed")
+        prepared = await asyncio.wait_for(
+            target.prepare_activation(),
+            timeout=_provider_switch_remaining(),
+        )
+        if not prepared.get("ok"):
+            raise RuntimeError("target_gateway_preparation_failed")
+
+        target_connect_timeout = _provider_switch_remaining(
+            maximum=vpn_operations.CONNECT_TIMEOUT_SECONDS
+        )
+        connect_result = await _run_with_management_routing(
+            lambda: target.connect(
+                None,
+                timeout=target_connect_timeout,
+            ),
+            actor=actor,
+            rollback_provider=lambda: target.disconnect(timeout=15),
+        )
+        target_status, target_state, blockers = await _observe_target_after_connect(
+            target,
+            connect_result,
+            active_provider_id=previous.id,
+        )
+        if blockers or not target_status.get("connected"):
+            raise RuntimeError("target_connect_failed")
+        if not connect_result.get("ok"):
+            logger.info(
+                "Provider switch target=%s phase=observe class=transient "
+                "operation=connect error=%s reconciled=connected",
+                target.id,
+                connect_result.get("error_code") or "provider_connect_failed",
+            )
+        target_facts = await asyncio.wait_for(
+            target.network_facts(),
+            timeout=_provider_switch_remaining(),
+        )
+        if (
+            not target_facts.available
+            or not target_facts.protected_egress
+            or not target_facts.interface
+        ):
+            raise RuntimeError("target_egress_unproven")
+
+        await _reconcile_management_routes_or_503(actor)
+        values = {"vpn.provider_id": target.id}
+        if not setting("setup_complete", False):
+            values["setup_active_provider_confirmed"] = True
+        set_settings(values)
+        await killswitch.complete_provider_transition(target_facts)
+        transition_armed = False
+        target_state, _blockers = _provider_activation_state(
+            target,
+            target_status,
+            active_provider_id=target.id,
+        )
+        vpn_operations.finish(
+            connected=True,
+            connection_id=switch_connection_id,
+        )
+        return {
+            "ok": True,
+            "already_active": False,
+            "active_provider_id": target.id,
+            "provider": _provider_metadata(target),
+            "readiness": target_state,
+            "status": target_status,
+        }
+    except asyncio.CancelledError:
+        if transition_armed:
+            await _rollback_provider_switch(previous, target, actor)
+        else:
+            await _reconcile_management_routes_or_503(actor)
+        vpn_operations.finish(
+            connected=False,
+            error_code="provider_switch_cancelled",
+            connection_id=switch_connection_id,
+        )
+        raise
+    except HTTPException as error:
+        if transition_armed:
+            rollback_ok = await _rollback_provider_switch(previous, target, actor)
+            transition_armed = not rollback_ok
+        elif error.detail != "management_routing_failed":
+            await _reconcile_management_routes_or_503(actor)
+        vpn_operations.finish(
+            connected=False,
+            error_code=(
+                "provider_switch_failed"
+                if handoff_started or transition_armed
+                else str(error.detail)
+            ),
+            connection_id=switch_connection_id,
+        )
+        if handoff_started or transition_armed:
+            raise HTTPException(status_code=503, detail="provider_switch_failed") from None
+        raise
+    except Exception:  # noqa: BLE001 - provider details never cross the API boundary.
+        rollback_ok = (
+            await _rollback_provider_switch(previous, target, actor) if transition_armed else False
+        )
+        transition_armed = transition_armed and not rollback_ok
+        if not transition_armed:
+            await _reconcile_management_routes_or_503(actor)
+        vpn_operations.finish(
+            connected=False,
+            error_code="provider_switch_failed",
+            connection_id=switch_connection_id,
+        )
+        raise HTTPException(status_code=503, detail="provider_switch_failed") from None
 
 
 @app.post("/api/vpn/providers/{provider_id}/connect")
 async def connect_vpn_provider(provider_id: str, req: Connect, request: Request) -> dict:
-    _require_active_provider(provider_id)
-    return await connect_nordvpn(req, request)
+    provider_instance = _require_active_provider(provider_id)
+    return await _connect_provider(provider_instance, req, request)
 
 
 @app.post("/api/vpn/providers/{provider_id}/disconnect")
 async def disconnect_vpn_provider(provider_id: str, request: Request) -> dict:
-    _require_active_provider(provider_id)
-    return await disconnect_vpn(request)
+    provider_instance = _require_active_provider(provider_id)
+    return await _disconnect_provider(provider_instance, request)
 
 
 @app.post("/api/vpn/providers/{provider_id}/reconnect")
 async def reconnect_vpn_provider(
     provider_id: str, req: ProviderReconnect, request: Request
 ) -> dict:
-    _require_active_provider(provider_id)
+    provider_instance = _require_active_provider(provider_id)
     if req.country_code:
-        return await connect_vpn_country(CountryConnect(country_code=req.country_code), request)
-    return await connect_nordvpn(Connect(target=None), request)
+        return await _connect_provider_country(
+            provider_instance, CountryConnect(country_code=req.country_code), request
+        )
+    return await _connect_provider(provider_instance, Connect(target=None), request, reconnect=True)
 
 
 @app.post("/api/vpn/providers/{provider_id}/location")
 async def select_vpn_provider_location(
     provider_id: str, req: CountryConnect, request: Request
 ) -> dict:
-    _require_active_provider(provider_id)
-    return await connect_vpn_country(req, request)
+    provider_instance = _require_active_provider(provider_id)
+    return await _connect_provider_country(provider_instance, req, request)
 
 
 @app.get("/api/vpn/providers/{provider_id}/locations/{country_code}/servers")
 async def vpn_provider_location_servers(provider_id: str, country_code: str) -> dict:
-    _require_active_provider(provider_id)
-    return await vpn_country_servers(country_code)
+    provider_instance = _require_active_provider(provider_id)
+    await _require_provider_authentication(provider_instance)
+    code = country_code.upper()
+    country_id = _country_id(await _vpn_catalog(provider_instance), code)
+    if country_id is None:
+        raise HTTPException(404, "Unsupported country")
+    return {"country_code": code, "servers": await provider_instance.servers(country_id)}
 
 
 @app.post("/api/vpn/providers/{provider_id}/locations/{country_code}/measure")
 async def measure_vpn_provider_location(provider_id: str, country_code: str) -> dict:
-    _require_active_provider(provider_id)
-    return await measure_vpn_country(country_code)
+    provider_instance = _require_active_provider(provider_id)
+    await _require_provider_authentication(provider_instance)
+    code = country_code.upper()
+    country_id = _country_id(await _vpn_catalog(provider_instance), code)
+    if country_id is None:
+        raise HTTPException(404, "Unsupported country")
+    servers = await provider_instance.servers(country_id)
+    measurements = await measure_servers(
+        code, servers, force=True, provider_id=provider_instance.id
+    )
+    return {
+        **country_summary(code, provider_id=provider_instance.id),
+        "servers": measurements,
+    }
 
 
 @app.get("/api/vpn/providers/{provider_id}/latency")
@@ -2357,11 +3737,8 @@ async def activate_wireguard_interface(interface: str) -> None:
         raise RuntimeError(active_error or "De WireGuard-service is niet actief geworden.")
 
 
-async def wireguard_egress_interface() -> str:
-    if not setting("setup_provider_deferred", False):
-        return DEFAULT_WIREGUARD_VPN_INTERFACE
-    network = await system_network()
-    return network["interface"]
+async def wireguard_egress_interface() -> None:
+    """Use the kernel-selected default route for direct or active-provider egress."""
 
 
 @app.post("/api/ingress/wireguard")
@@ -2373,7 +3750,23 @@ async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
             return JSONResponse(
                 status_code=409, content={"error": "wireguard_generation_in_progress"}
             )
-        async with generation_lock:
+        if mullvad_provider._operation_lock.locked():
+            return JSONResponse(status_code=409, content={"error": "vpn_action_in_progress"})
+        # Keep provider connection attempts out until the ingress name is saved;
+        # their fail-closed rules are derived from that persisted name.
+        async with generation_lock, mullvad_provider._operation_lock:
+            if req.interface != setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE):
+                if setting("wireguard_configured", False):
+                    return JSONResponse(
+                        status_code=409,
+                        content={"error": "wireguard_interface_change_unsupported"},
+                    )
+                state = provider_secrets.load("mullvad") or {}
+                if any(key in state for key in ("active", "pending")):
+                    return JSONResponse(
+                        status_code=409,
+                        content={"error": "wireguard_interface_change_requires_disconnect"},
+                    )
             result = await wireguard_service.provision(
                 activate=activate_wireguard_interface,
                 endpoint=req.endpoint,
@@ -2384,6 +3777,20 @@ async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
                 client=req.client,
                 vpn_interface=await wireguard_egress_interface(),
             )
+            set_settings(
+                {
+                    "wireguard_configured": True,
+                    "wireguard_client_name": req.client,
+                    "wireguard_interface": req.interface,
+                    "wireguard_endpoint": req.endpoint,
+                    "wireguard_subnet": req.subnet,
+                    "wireguard_dns": req.dns,
+                    "wireguard_port": req.port,
+                    "setup_current_step": 5,
+                }
+            )
+    except provider_secrets.ProviderSecretError as error:
+        raise HTTPException(status_code=503, detail="provider_state_unavailable") from error
     except ValueError as error:
         raise HTTPException(
             status_code=400,
@@ -2395,18 +3802,7 @@ async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
             detail=error.code,
         ) from error
 
-    set_settings(
-        {
-            "wireguard_configured": True,
-            "wireguard_client_name": req.client,
-            "wireguard_interface": req.interface,
-            "wireguard_endpoint": req.endpoint,
-            "wireguard_subnet": req.subnet,
-            "wireguard_dns": req.dns,
-            "wireguard_port": req.port,
-            "setup_current_step": 5,
-        }
-    )
+    await _reconcile_management_routes_or_503(request_actor(request))
 
     record_event(
         "wireguard.configuration_generated",
@@ -2541,6 +3937,7 @@ async def regenerate_wireguard_configuration(request: Request) -> JSONResponse:
         return _private_response({"error": "wireguard_regeneration_failed"}, status_code=500)
 
     set_setting("wireguard_configured", True)
+    await _reconcile_management_routes_or_503(request_actor(request))
     record_event(
         "wireguard.configuration_regenerated",
         actor=request_actor(request),

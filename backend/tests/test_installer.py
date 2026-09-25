@@ -1,3 +1,4 @@
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -7,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 INSTALLER = ROOT / "installer" / "install-debian.sh"
 DEFAULTS = ROOT / "installer" / "exitlane.default"
 DEPLOY_SCRIPT = ROOT / "scripts" / "deploy_worktree_to_test.sh"
+WIREGUARD_DROPIN = ROOT / "systemd" / "wg-quick@.service.d" / "exitlane.conf"
 
 
 def test_new_installer_defaults_omit_optional_reverse_proxy_environment_variables():
@@ -35,6 +37,79 @@ def test_installer_database_snapshot_path_matches_application_runtime_default():
 
     assert 'readonly DATA_DIR="${EXITLANE_DATA_DIR:-/etc/exitlane}"' in installer
     assert "EXITLANE_DATA_DIR=/etc/exitlane" in defaults
+
+
+def test_real_upgrade_snapshot_and_restore_preserve_modes_under_private_root(tmp_path):
+    target = tmp_path / "application"
+    config = tmp_path / "config"
+    recovery = tmp_path / "recovery"
+    target.mkdir(mode=0o755)
+    config.mkdir(mode=0o700)
+    expected = {
+        target / "executable": ("original executable", 0o755),
+        target / "service-unit": ("original unit", 0o644),
+        config / "secret.key": ("synthetic secret", 0o600),
+    }
+    for path, (content, mode) in expected.items():
+        path.write_text(content, encoding="utf-8")
+        path.chmod(mode)
+    command = f"""
+export TARGET={shlex.quote(str(target))}
+export EXITLANE_CONFIG_DIR={shlex.quote(str(config))}
+export EXITLANE_DATA_DIR={shlex.quote(str(config))}
+export EXITLANE_RECOVERY_ROOT={shlex.quote(str(recovery))}
+source {shlex.quote(str(INSTALLER))}
+# Exercise the real snapshot/restore as an unprivileged test user. Only omit
+# root ownership assignment and host-specific paths outside our fixtures.
+install() {{
+  local -a arguments=()
+  while (( $# )); do
+    case "$1" in
+      -o|-g) shift 2 ;;
+      *) arguments+=("$1"); shift ;;
+    esac
+  done
+  command install "${{arguments[@]}}"
+}}
+eval "$(declare -f snapshot_recovery_path | sed '1s/snapshot_recovery_path/snapshot_test_path/')"
+snapshot_recovery_path() {{
+  case "$1" in
+    "$TARGET"|"$CONFIG_DIR") snapshot_test_path "$1" ;;
+  esac
+}}
+timedatectl() {{ printf '%s\\n' UTC; }}
+UPGRADE_MODE=1
+prepare_upgrade_recovery
+printf changed > "$TARGET/executable"
+chmod 0600 "$TARGET/executable" "$TARGET/service-unit"
+printf changed > "$CONFIG_DIR/secret.key"
+restore_recovery_files "$RECOVERY_DIR/files" "$RECOVERY_DIR/path-state" /
+"""
+
+    subprocess.run(["bash", "-c", command], check=True, capture_output=True, text=True)
+
+    for path, (content, mode) in expected.items():
+        assert path.read_text(encoding="utf-8") == content
+        assert path.stat().st_mode & 0o777 == mode
+    snapshot = next(recovery.glob("pre-upgrade.*"))
+    for directory in (recovery, snapshot, snapshot / "files"):
+        assert directory.stat().st_mode & 0o777 == 0o700
+    for name in ("target-version", "system-timezone", "path-state"):
+        assert (snapshot / name).stat().st_mode & 0o777 == 0o600
+
+
+def test_clean_installer_creates_the_systemd_service_home():
+    installer = INSTALLER.read_text(encoding="utf-8")
+
+    assert 'readonly SERVICE_HOME="/var/lib/exitlane"' in installer
+    assert 'install -d -o root -g root -m 0700 "${SERVICE_HOME}"' in installer
+
+
+def test_wireguard_ingress_requires_successful_provider_boot_guard():
+    dropin = WIREGUARD_DROPIN.read_text(encoding="utf-8")
+
+    assert "Requires=exitlane-provider-egress.service" in dropin
+    assert "After=exitlane-provider-egress.service" in dropin
 
 
 def test_installer_has_locked_upgrade_snapshot_and_rollback_contract():
@@ -250,7 +325,16 @@ def test_rollback_restores_exact_prior_paths_and_removes_candidate_only_paths(tm
         "/etc/exitlane": ("setting", "preserved"),
         "/etc/default/exitlane": (None, "EXISTING_CONFIGURATION=preserved\n"),
         "/usr/local/libexec/exitlane-install-nordvpn": (None, "previous provider helper\n"),
+        "/usr/local/libexec/exitlane-install-mullvad": (None, "previous Mullvad helper\n"),
         "/etc/systemd/system/exitlane-provider-install-nordvpn.service": (None, "previous unit\n"),
+        "/etc/systemd/system/exitlane-provider-install-mullvad.service": (
+            None,
+            "previous Mullvad unit\n",
+        ),
+        "/etc/systemd/system/mullvad-early-boot-blocking.service.d/exitlane.conf": (
+            None,
+            "previous early-boot policy\n",
+        ),
     }
     for absolute_path, (child, contents) in saved_paths.items():
         saved = files / absolute_path.lstrip("/")
@@ -266,7 +350,11 @@ def test_rollback_restores_exact_prior_paths_and_removes_candidate_only_paths(tm
         "present|/etc/exitlane\n"
         "present|/etc/default/exitlane\n"
         "present|/usr/local/libexec/exitlane-install-nordvpn\n"
+        "present|/usr/local/libexec/exitlane-install-mullvad\n"
         "present|/etc/systemd/system/exitlane-provider-install-nordvpn.service\n"
+        "present|/etc/systemd/system/exitlane-provider-install-mullvad.service\n"
+        "present|/etc/systemd/system/mullvad-early-boot-blocking.service.d/exitlane.conf\n"
+        "absent|/etc/systemd/system/mullvad-daemon.service.d/exitlane.conf\n"
         "absent|/usr/local/libexec/exitlane-install-speedtest\n"
         "absent|/etc/systemd/system/exitlane-speedtest-install.service\n",
         encoding="utf-8",
@@ -278,8 +366,14 @@ def test_rollback_restores_exact_prior_paths_and_removes_candidate_only_paths(tm
         "etc/exitlane/setting": "candidate",
         "etc/default/exitlane": "candidate\n",
         "usr/local/libexec/exitlane-install-nordvpn": "candidate provider helper\n",
+        "usr/local/libexec/exitlane-install-mullvad": "candidate Mullvad helper\n",
         "usr/local/libexec/exitlane-install-speedtest": "candidate speedtest helper\n",
         "etc/systemd/system/exitlane-provider-install-nordvpn.service": "candidate unit\n",
+        "etc/systemd/system/exitlane-provider-install-mullvad.service": "candidate Mullvad unit\n",
+        "etc/systemd/system/mullvad-early-boot-blocking.service.d/exitlane.conf": (
+            "candidate early-boot policy\n"
+        ),
+        "etc/systemd/system/mullvad-daemon.service.d/exitlane.conf": ("candidate daemon policy\n"),
         "etc/systemd/system/exitlane-speedtest-install.service": "candidate speedtest unit\n",
         "var/lib/exitlane/exitlane.db": "preserve data",
         "etc/wireguard/wg0.conf": "preserve wireguard",
@@ -300,10 +394,20 @@ def test_rollback_restores_exact_prior_paths_and_removes_candidate_only_paths(tm
     assert (target / "usr/local/libexec/exitlane-install-nordvpn").read_text(
         encoding="utf-8"
     ) == "previous provider helper\n"
+    assert (target / "usr/local/libexec/exitlane-install-mullvad").read_text(
+        encoding="utf-8"
+    ) == "previous Mullvad helper\n"
     assert not (target / "usr/local/libexec/exitlane-install-speedtest").exists()
     assert (target / "etc/systemd/system/exitlane-provider-install-nordvpn.service").read_text(
         encoding="utf-8"
     ) == "previous unit\n"
+    assert (target / "etc/systemd/system/exitlane-provider-install-mullvad.service").read_text(
+        encoding="utf-8"
+    ) == "previous Mullvad unit\n"
+    assert (
+        target / "etc/systemd/system/mullvad-early-boot-blocking.service.d/exitlane.conf"
+    ).read_text(encoding="utf-8") == "previous early-boot policy\n"
+    assert not (target / "etc/systemd/system/mullvad-daemon.service.d/exitlane.conf").exists()
     assert not (target / "etc/systemd/system/exitlane-speedtest-install.service").exists()
     assert (target / "var/lib/exitlane/exitlane.db").read_text(encoding="utf-8") == "preserve data"
     assert (target / "etc/wireguard/wg0.conf").read_text(encoding="utf-8") == "preserve wireguard"

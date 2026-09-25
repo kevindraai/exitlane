@@ -63,7 +63,8 @@ test("success collapses to an accessible expandable summary and activates sign-i
   assert.match(component, /details\.open = false/);
   assert.match(component, /details\.setAttribute\("aria-expanded"/);
   assert.match(source, /select\("#provider-login-methods"\)\.hidden = false/);
-  assert.match(source, /select\("#nord-token"\)\?\.focus/);
+  assert.match(source, /mullvadControls[\s\S]+select\("#mullvad-account-number"\)[\s\S]+select\("#nord-token"\)/);
+  assert.match(source, /input\?\.focus/);
 });
 
 test("failure marks one step, preserves completed steps and offers retry", () => {
@@ -74,14 +75,15 @@ test("failure marks one step, preserves completed steps and offers retry", () =>
   assert.match(source, /reapply_gateway_settings/);
   assert.match(source, /retry_gateway/);
   assert.match(source, /recheck_provider/);
-  assert.match(source, /journalctl -u exitlane-provider-install-nordvpn\.service -n 100 --no-pager/);
+  assert.match(source, /journalctl -u exitlane-provider-install-\$\{providerId\}\.service -n 100 --no-pager/);
   assert.doesNotMatch(markup, /provider-install-log/);
   assert.doesNotMatch(source, /status\.logs|apt.*output|journal.*output/);
 });
 
 test("token login remains explicit and always releases busy state", () => {
-  assert.match(source, /provider\.authentication\.errors\.\$\{code\}/);
-  assert.match(source, /finally \{\s*setBusy\(button, false\)/);
+  assert.match(source, /const prefix = metadata\?\.authentication_method === "account_number"/);
+  assert.match(source, /provider\.authentication\.errors/);
+  assert.match(source, /finally \{\s*input\.value = "";\s*setBusy\(button, false\)/);
   assert.doesNotMatch(source, /void loginWithToken\(\)|await loginWithToken\(\)/);
   assert.doesNotMatch(source, /void startBrowserLogin\(\)|await startBrowserLogin\(\)/);
 });

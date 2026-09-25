@@ -26,12 +26,14 @@ readonly VENV_DIR="${TARGET}/venv"
 readonly CLI_TARGET="/usr/local/sbin/exitlane-cli"
 readonly NORDVPN_HELPER_SOURCE="${SOURCE_DIR}/installer/install-nordvpn.sh"
 readonly NORDVPN_HELPER_TARGET="/usr/local/libexec/exitlane-install-nordvpn"
+readonly MULLVAD_HELPER_TARGET="/usr/local/libexec/exitlane-install-mullvad"
 readonly SPEEDTEST_HELPER_SOURCE="${SOURCE_DIR}/installer/install-speedtest.sh"
 readonly SPEEDTEST_HELPER_TARGET="/usr/local/libexec/exitlane-install-speedtest"
 
 readonly CONFIG_DIR="${EXITLANE_CONFIG_DIR:-/etc/exitlane}"
 readonly DATA_DIR="${EXITLANE_DATA_DIR:-/etc/exitlane}"
 readonly LOG_DIR="${EXITLANE_LOG_DIR:-/var/log/exitlane}"
+readonly SERVICE_HOME="/var/lib/exitlane"
 readonly MASTER_KEY="${CONFIG_DIR}/secret.key"
 
 readonly SERVICE_NAME="exitlane.service"
@@ -39,8 +41,17 @@ readonly SERVICE_SOURCE="${SOURCE_DIR}/systemd/${SERVICE_NAME}"
 readonly SERVICE_TARGET="/etc/systemd/system/${SERVICE_NAME}"
 readonly KILLSWITCH_SERVICE_SOURCE="${SOURCE_DIR}/systemd/exitlane-killswitch.service"
 readonly KILLSWITCH_SERVICE_TARGET="/etc/systemd/system/exitlane-killswitch.service"
+readonly PROVIDER_EGRESS_SERVICE_SOURCE="${SOURCE_DIR}/systemd/exitlane-provider-egress.service"
+readonly PROVIDER_EGRESS_SERVICE_TARGET="/etc/systemd/system/exitlane-provider-egress.service"
+readonly MANAGEMENT_ROUTING_SERVICE_SOURCE="${SOURCE_DIR}/systemd/exitlane-management-routing.service"
+readonly MANAGEMENT_ROUTING_SERVICE_TARGET="/etc/systemd/system/exitlane-management-routing.service"
+readonly WIREGUARD_ROUTING_DROPIN_SOURCE="${SOURCE_DIR}/systemd/wg-quick@.service.d/exitlane.conf"
+readonly WIREGUARD_ROUTING_DROPIN_TARGET="/etc/systemd/system/wg-quick@.service.d/exitlane.conf"
 readonly PROVIDER_INSTALL_SERVICE_SOURCE="${SOURCE_DIR}/systemd/exitlane-provider-install-nordvpn.service"
 readonly PROVIDER_INSTALL_SERVICE_TARGET="/etc/systemd/system/exitlane-provider-install-nordvpn.service"
+readonly MULLVAD_INSTALL_SERVICE_TARGET="/etc/systemd/system/exitlane-provider-install-mullvad.service"
+readonly MULLVAD_EARLY_BOOT_DROPIN_TARGET="/etc/systemd/system/mullvad-early-boot-blocking.service.d/exitlane.conf"
+readonly MULLVAD_DAEMON_DROPIN_TARGET="/etc/systemd/system/mullvad-daemon.service.d/exitlane.conf"
 readonly SPEEDTEST_INSTALL_SERVICE_SOURCE="${SOURCE_DIR}/systemd/exitlane-speedtest-install.service"
 readonly SPEEDTEST_INSTALL_SERVICE_TARGET="/etc/systemd/system/exitlane-speedtest-install.service"
 
@@ -205,16 +216,25 @@ prepare_upgrade_recovery() {
     "${CLI_TARGET}" \
     "${SERVICE_TARGET}" \
     "${KILLSWITCH_SERVICE_TARGET}" \
+    "${PROVIDER_EGRESS_SERVICE_TARGET}" \
+    "${MANAGEMENT_ROUTING_SERVICE_TARGET}" \
+    "${WIREGUARD_ROUTING_DROPIN_TARGET}" \
     "${PROVIDER_INSTALL_SERVICE_TARGET}" \
+    "${MULLVAD_INSTALL_SERVICE_TARGET}" \
+    "${MULLVAD_EARLY_BOOT_DROPIN_TARGET}" \
+    "${MULLVAD_DAEMON_DROPIN_TARGET}" \
     "${SPEEDTEST_INSTALL_SERVICE_TARGET}" \
     "${NORDVPN_HELPER_TARGET}" \
+    "${MULLVAD_HELPER_TARGET}" \
     "${SPEEDTEST_HELPER_TARGET}" \
     "${DEFAULTS_TARGET}" \
     "${IP_FORWARDING_TARGET}"; do
     snapshot_recovery_path "${path}"
   done
   printf '%s\n' "${INSTALLER_VERSION}" > "${RECOVERY_DIR}/target-version"
-  chmod -R go-rwx "${RECOVERY_DIR}"
+  chmod 0600 "${RECOVERY_DIR}/target-version"
+  # The root-owned 0700 recovery directories protect all copied files. Keep
+  # their original modes intact so rollback restores executables and units.
   success "Root-only pre-upgrade recovery snapshot created"
 }
 
@@ -250,7 +270,7 @@ restore_recovery_files() {
     [[ -n "${state}" ]] || continue
     case "${state}" in present|absent) ;; *) return 1 ;; esac
     case "${source_path}" in
-      "${TARGET}"|"${CONFIG_DIR}"|"${CLI_TARGET}"|"${SERVICE_TARGET}"|"${KILLSWITCH_SERVICE_TARGET}"|"${PROVIDER_INSTALL_SERVICE_TARGET}"|"${SPEEDTEST_INSTALL_SERVICE_TARGET}"|"${NORDVPN_HELPER_TARGET}"|"${SPEEDTEST_HELPER_TARGET}"|"${DEFAULTS_TARGET}"|"${IP_FORWARDING_TARGET}") ;;
+      "${TARGET}"|"${CONFIG_DIR}"|"${CLI_TARGET}"|"${SERVICE_TARGET}"|"${KILLSWITCH_SERVICE_TARGET}"|"${PROVIDER_EGRESS_SERVICE_TARGET}"|"${MANAGEMENT_ROUTING_SERVICE_TARGET}"|"${WIREGUARD_ROUTING_DROPIN_TARGET}"|"${PROVIDER_INSTALL_SERVICE_TARGET}"|"${MULLVAD_INSTALL_SERVICE_TARGET}"|"${MULLVAD_EARLY_BOOT_DROPIN_TARGET}"|"${MULLVAD_DAEMON_DROPIN_TARGET}"|"${SPEEDTEST_INSTALL_SERVICE_TARGET}"|"${NORDVPN_HELPER_TARGET}"|"${MULLVAD_HELPER_TARGET}"|"${SPEEDTEST_HELPER_TARGET}"|"${DEFAULTS_TARGET}"|"${IP_FORWARDING_TARGET}") ;;
       *) return 1 ;;
     esac
     destination="${destination_root%/}${source_path}"
@@ -319,6 +339,14 @@ check_source_layout() {
 
   [[ -f "${SERVICE_SOURCE}" ]] ||
     fail "${SERVICE_SOURCE} is missing."
+  [[ -f "${KILLSWITCH_SERVICE_SOURCE}" ]] ||
+    fail "${KILLSWITCH_SERVICE_SOURCE} is missing."
+  [[ -f "${PROVIDER_EGRESS_SERVICE_SOURCE}" ]] ||
+    fail "${PROVIDER_EGRESS_SERVICE_SOURCE} is missing."
+  [[ -f "${MANAGEMENT_ROUTING_SERVICE_SOURCE}" ]] ||
+    fail "${MANAGEMENT_ROUTING_SERVICE_SOURCE} is missing."
+  [[ -f "${WIREGUARD_ROUTING_DROPIN_SOURCE}" ]] ||
+    fail "${WIREGUARD_ROUTING_DROPIN_SOURCE} is missing."
 
   [[ -f "${DEFAULTS_SOURCE}" ]] ||
     fail "${DEFAULTS_SOURCE} is missing."
@@ -410,6 +438,7 @@ install_system_packages() {
     ca-certificates \
     curl \
     gnupg \
+    gpgv \
     iproute2 \
     iputils-ping \
     iptables \
@@ -431,6 +460,7 @@ create_directories() {
   install -d -m 0700 "${CONFIG_DIR}"
   install -d -m 0700 "${DATA_DIR}"
   install -d -m 0700 "${LOG_DIR}"
+  install -d -o root -g root -m 0700 "${SERVICE_HOME}"
 
   success "Directories created"
 }
@@ -544,6 +574,14 @@ install_service_files() {
     "${SERVICE_SOURCE}" \
     "${SERVICE_TARGET}"
   install -m 0644 "${KILLSWITCH_SERVICE_SOURCE}" "${KILLSWITCH_SERVICE_TARGET}"
+  install -m 0644 "${PROVIDER_EGRESS_SERVICE_SOURCE}" "${PROVIDER_EGRESS_SERVICE_TARGET}"
+  install -m 0644 \
+    "${MANAGEMENT_ROUTING_SERVICE_SOURCE}" \
+    "${MANAGEMENT_ROUTING_SERVICE_TARGET}"
+  install -d -o root -g root -m 0755 "$(dirname "${WIREGUARD_ROUTING_DROPIN_TARGET}")"
+  install -o root -g root -m 0644 \
+    "${WIREGUARD_ROUTING_DROPIN_SOURCE}" \
+    "${WIREGUARD_ROUTING_DROPIN_TARGET}"
   install -o root -g root -m 0644 \
     "${PROVIDER_INSTALL_SERVICE_SOURCE}" \
     "${PROVIDER_INSTALL_SERVICE_TARGET}"
@@ -589,6 +627,9 @@ start_service() {
 
   systemctl enable "${SERVICE_NAME}"
   systemctl enable exitlane-killswitch.service
+  systemctl enable exitlane-provider-egress.service
+  systemctl enable exitlane-management-routing.service
+  systemctl restart exitlane-management-routing.service
   systemctl restart "${SERVICE_NAME}"
 
   sleep 2

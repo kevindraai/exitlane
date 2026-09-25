@@ -57,8 +57,8 @@ Exitlane uses a short timeout and restricted non-secret environment, discards
 all provider terminal output for this operation, and never logs, persists,
 reflects or adds the token to Activity metadata. This PTY adapter is specific to
 the verified NordVPN interface. If NordVPN presents its first-run analytics
-consent before the token prompt, Exitlane explicitly answers no. Future
-providers must define and test their own secret-input boundary.
+consent before the token prompt, Exitlane explicitly answers no. Every provider
+must define and test its own secret-input boundary.
 
 The CLI also offers no supported, non-destructive way to validate a replacement token while an
 account session is active. Exitlane therefore never logs out automatically or claims that it
@@ -72,3 +72,15 @@ NordVPN authentication sign-out and VPN disconnect are different operations. Dis
 the tunnel, while sign-out runs the supported `nordvpn logout` action, ends the authentication
 session, and consequently ends any active tunnel. A valid token is required to sign in again.
 Activity events record only the provider identifier and a safe failure code.
+
+## Mullvad account and device boundary
+
+The browser uses a masked numeric field and removes its value immediately after starting the
+request. The backend normalizes the 16-digit value and submits it only in the HTTPS request body to
+Mullvad's fixed authentication origin. It never appears in argv, Activity metadata or responses.
+
+ExitLane encrypts the account number, its generated WireGuard private key and the exact bound device
+record with the appliance master key. A pending key record is durable before remote registration,
+so an uncertain result can be reconciled by public key without creating another device. Short-lived
+access tokens remain in memory only. Safe errors expose no response body or secret value.
+See the [Mullvad provider guide](mullvad.md) for operational details.

@@ -26,6 +26,7 @@ from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 
 from exitlane import __version__, core
 from exitlane.config import CONFIG_DIR
+from exitlane.services import killswitch
 
 MAGIC = b"EXITLANE-BACKUP\x00"
 FORMAT_VERSION = 1
@@ -422,6 +423,44 @@ def _backup_info(manifest: dict[str, object]) -> BackupInfo:
     )
 
 
+def _restore_ingress(database: Path) -> tuple[str, ...]:
+    """Read only the bounded ingress settings, without swapping global DB state."""
+    try:
+        with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
+            settings = {
+                key: json.loads(value)
+                for key, value in connection.execute(
+                    "SELECT key,value FROM settings WHERE key IN (?, ?, ?)",
+                    ("wireguard_interface", "wireguard.interface", killswitch.SETTING_INGRESS),
+                )
+            }
+        routed = settings.get(killswitch.SETTING_INGRESS, [])
+        if not isinstance(routed, list):
+            raise TypeError
+        ingress = (
+            settings.get("wireguard_interface", settings.get("wireguard.interface", "wg0")),
+            *routed,
+        )
+        if any(
+            not isinstance(item, str) or killswitch.INTERFACE_RE.fullmatch(item) is None
+            for item in ingress
+        ):
+            raise ValueError
+        return tuple(dict.fromkeys(ingress))
+    except (sqlite3.DatabaseError, TypeError, ValueError) as error:
+        raise LifecycleError("invalid_restore_ingress") from error
+
+
+def _replace_wireguard(source: Path) -> None:
+    core.WG_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+    for existing in core.WG_DIR.iterdir():
+        _safe_regular_file(existing)
+        existing.unlink()
+    for item in source.iterdir():
+        shutil.copyfile(item, core.WG_DIR / item.name, follow_symlinks=False)
+        os.chmod(core.WG_DIR / item.name, 0o600)
+
+
 def restore_backup(
     source: Path,
     passphrase: str,
@@ -431,6 +470,7 @@ def restore_backup(
     lock_path: Path = LOCK_PATH,
     service_action: Callable[[str], None] | None = None,
     health_check: Callable[[], bool] | None = None,
+    forwarding_guard: Callable[[tuple[str, ...], bool], None] | None = None,
 ) -> BackupInfo:
     _root_only(effective_user_id)
     if confirmation != "RESTORE EXITLANE":
@@ -449,46 +489,98 @@ def restore_backup(
             staging / entry["name"] for entry in entries if entry["type"] == "master_key"
         )
         _inspect_database(database)
+        ingress = tuple(dict.fromkeys((*_restore_ingress(core.DB), *_restore_ingress(database))))
+        if service_action is not None and forwarding_guard is None:
+            raise LifecycleError("restore_guard_required")
+        restored_wireguard = staging / "wireguard"
+        restored_wireguard.mkdir(mode=0o700)
+        for entry in entries:
+            if entry["type"] == "wireguard_config":
+                name = entry.get("original_name")
+                if (
+                    not isinstance(name, str)
+                    or name in {"", ".", ".."}
+                    or PurePosixPath(name).name != name
+                    or (restored_wireguard / name).exists()
+                ):
+                    raise LifecycleError("invalid_manifest")
+                os.replace(staging / entry["name"], restored_wireguard / name)
+        # Quiesce both generations before stopping the only application writer.
+        # No restored or recovered service is exposed until its own guards exist.
+        if forwarding_guard:
+            forwarding_guard(ingress, True)
         recovery_dir = Path(tempfile.mkdtemp(prefix=".exitlane-prerestore-", dir=core.DATA.parent))
         os.chmod(recovery_dir, 0o700)
+        snapshot_ready = False
+        files_replaced = False
+        cleanup_snapshot = False
         try:
-            _database_snapshot(core.DB, recovery_dir / "database.sqlite3")
-            shutil.copyfile(CONFIG_DIR / "secret.key", recovery_dir / "master-key")
             if service_action:
                 service_action("stop")
+            _database_snapshot(core.DB, recovery_dir / "database.sqlite3")
+            _safe_regular_file(CONFIG_DIR / "secret.key")
+            shutil.copyfile(CONFIG_DIR / "secret.key", recovery_dir / "master-key")
+            os.chmod(recovery_dir / "master-key", 0o600)
+            recovery_wireguard = recovery_dir / "wireguard"
+            recovery_wireguard.mkdir(mode=0o700)
+            for existing in core.WG_DIR.iterdir():
+                _safe_regular_file(existing)
+                shutil.copyfile(existing, recovery_wireguard / existing.name)
+                os.chmod(recovery_wireguard / existing.name, 0o600)
+            snapshot_ready = True
+            if service_action:
+                service_action("reset-egress")
             os.replace(database, core.DB)
+            files_replaced = True
             os.chmod(core.DB, 0o600)
             os.replace(master_key, CONFIG_DIR / "secret.key")
             os.chmod(CONFIG_DIR / "secret.key", 0o600)
-            core.WG_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
-            for existing in core.WG_DIR.iterdir():
-                if existing.is_file() and not existing.is_symlink():
-                    existing.unlink()
-            for entry in entries:
-                if entry["type"] == "wireguard_config":
-                    original_name = entry.get("original_name")
-                    if (
-                        not isinstance(original_name, str)
-                        or PurePosixPath(original_name).name != original_name
-                    ):
-                        raise LifecycleError("invalid_manifest")
-                    os.replace(staging / entry["name"], core.WG_DIR / original_name)
-                    os.chmod(core.WG_DIR / original_name, 0o600)
+            _replace_wireguard(restored_wireguard)
             with sqlite3.connect(core.DB) as connection:
                 connection.execute("DELETE FROM sessions")
                 connection.execute("DELETE FROM mfa_challenges")
                 connection.execute("DELETE FROM mfa_enrollments")
+            _inspect_database(core.DB)
             if service_action:
                 service_action("start")
-            _inspect_database(core.DB)
             if health_check and not health_check():
                 raise LifecycleError("restored_service_unhealthy")
+            if forwarding_guard:
+                forwarding_guard(ingress, False)
+            cleanup_snapshot = True
         except Exception:
-            os.replace(recovery_dir / "database.sqlite3", core.DB)
-            os.replace(recovery_dir / "master-key", CONFIG_DIR / "secret.key")
+            # The candidate may already be running after a failed health check.
+            # Stop it before replacing files, and retain the temporary guard if
+            # either quiescing or recovery fails.
             if service_action:
-                service_action("start")
+                service_action("stop")
+            if snapshot_ready:
+                cleanup_failed = False
+                if files_replaced and service_action:
+                    try:
+                        service_action("reset-egress")
+                    except Exception:  # noqa: BLE001 - recover files even if a callback fails
+                        cleanup_failed = True
+                for name, destination in (
+                    ("database.sqlite3", core.DB),
+                    ("master-key", CONFIG_DIR / "secret.key"),
+                ):
+                    recovered = staging / f"recovered-{name}"
+                    shutil.copyfile(recovery_dir / name, recovered)
+                    os.chmod(recovered, 0o600)
+                    os.replace(recovered, destination)
+                _replace_wireguard(recovery_wireguard)
+                if cleanup_failed:
+                    raise LifecycleError("recovery_network_cleanup_failed") from None
+                if service_action:
+                    service_action("start")
+                if health_check and not health_check():
+                    raise LifecycleError("recovery_service_unhealthy") from None
+                if forwarding_guard:
+                    forwarding_guard(ingress, False)
+                cleanup_snapshot = True
             raise
         finally:
-            shutil.rmtree(recovery_dir, ignore_errors=True)
+            if cleanup_snapshot or not snapshot_ready:
+                shutil.rmtree(recovery_dir, ignore_errors=True)
     return _backup_info(manifest)

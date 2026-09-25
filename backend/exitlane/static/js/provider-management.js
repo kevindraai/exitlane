@@ -1,3 +1,37 @@
+export function providerStatusId(status = {}) {
+  return status.management?.provider?.id || null;
+}
+
+export function providerStatusMatchesView(application = {}, status = {}) {
+  return Boolean(
+    application.providerId
+    && providerStatusId(status) === application.providerId,
+  );
+}
+
+export function providerRequestIsCurrent(providerId, application = {}, status = null) {
+  if (!providerId || application.providerId !== providerId) return false;
+  return status === null || providerStatusId(status) === providerId;
+}
+
+export function providerViewContext(application = {}, providersData = {}, status = {}) {
+  const viewedProviderId = application.providerId || providersData.activeProviderId || null;
+  const activeProviderId = providersData.activeProviderId || null;
+  const providerSliceId = providerStatusId(status);
+  const metadata = (providersData.items || []).find(
+    (item) => item.id === viewedProviderId,
+  ) || null;
+  const matchesView = Boolean(viewedProviderId && providerSliceId === viewedProviderId);
+  return {
+    viewedProviderId,
+    activeProviderId,
+    providerSliceId,
+    metadata,
+    matchesView,
+    status: matchesView ? status : null,
+  };
+}
+
 export function providerManagementView(status = {}) {
   const management = status.management || {};
   const provider = management.provider || {};
@@ -13,7 +47,8 @@ export function providerManagementView(status = {}) {
           : "unknown";
   }
   return {
-    providerId: provider.id || "nordvpn",
+    providerId: provider.id || null,
+    isActive: status.is_active !== false,
     installationState: provider.installation_state
       || (status.installed === false ? "not_installed" : status.installed === true ? "installed" : "unknown"),
     authenticationState,
@@ -40,10 +75,11 @@ export function vpnProviderAccess(status = {}) {
     state = "unknown";
   }
   const inconsistent = state === "signed_out" && view.connectionState === "connected";
+  const inactive = view.isActive === false;
   return {
     ...view,
-    state: inconsistent ? "unknown" : state,
-    blocked: state !== "signed_in" || inconsistent,
+    state: inconsistent ? "unknown" : inactive && state === "signed_in" ? "inactive" : state,
+    blocked: state !== "signed_in" || inconsistent || inactive,
     busy: transient.has(state),
   };
 }

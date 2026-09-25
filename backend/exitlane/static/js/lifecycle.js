@@ -1,51 +1,87 @@
 import { api } from "./api.js";
 import { beginRefresh, failRefresh, getSlice, succeedRefresh } from "./state.js";
 import { refreshActivity } from "./activity.js";
+import { providerRequestIsCurrent, providerStatusId } from "./provider-management.js";
 
-export function createDomainPoller({ refresh, isActive, intervalSeconds = 15, setTimer = setTimeout, clearTimer = clearTimeout }) {
+export function createDomainPoller({ refresh, isActive, key = () => null, intervalSeconds = 15, setTimer = setTimeout, clearTimer = clearTimeout }) {
   let timer = null;
   let running = false;
   let inFlight = null;
+  let inFlightKey = null;
   let generation = 0;
   let interval = intervalSeconds;
   let controller = null;
+  let activeKey = null;
 
   const cancelTimer = () => {
     if (timer !== null) clearTimer(timer);
     timer = null;
   };
   const run = () => {
+    const requestedKey = key();
+    if (inFlight && requestedKey !== inFlightKey) {
+      controller?.abort("poller_key_changed");
+      inFlight = null;
+      inFlightKey = null;
+      controller = null;
+    }
     if (!inFlight) {
-      controller = new AbortController();
-      inFlight = Promise.resolve(refresh({ signal: controller.signal })).finally(() => {
-        inFlight = null;
-        controller = null;
+      const requestController = new AbortController();
+      const refreshOptions = { signal: requestController.signal };
+      if (requestedKey !== null && requestedKey !== undefined) {
+        refreshOptions.providerId = requestedKey;
+      }
+      controller = requestController;
+      inFlightKey = requestedKey;
+      const request = Promise.resolve(refresh(refreshOptions)).finally(() => {
+        if (inFlight === request) {
+          inFlight = null;
+          inFlightKey = null;
+        }
+        if (controller === requestController) controller = null;
       });
+      inFlight = request;
     }
     return inFlight;
   };
-  const schedule = (expected) => {
-    if (!running || !isActive() || expected !== generation) return;
+  const schedule = (expected, expectedKey) => {
+    if (
+      !running
+      || !isActive()
+      || expected !== generation
+      || expectedKey !== key()
+    ) return;
     cancelTimer();
     timer = setTimer(async () => {
       timer = null;
       try { await run(); } catch { /* Slice retains the last confirmed data. */ }
-      schedule(expected);
+      schedule(expected, expectedKey);
     }, interval * 1000);
   };
   const start = ({ immediate = true } = {}) => {
     if (!isActive()) return stop();
+    const requestedKey = key();
+    if (running && requestedKey !== activeKey) stop();
     if (running) return immediate ? run() : undefined;
     running = true;
+    activeKey = requestedKey;
     generation += 1;
     const current = generation;
-    if (immediate) run().catch(() => {}).finally(() => schedule(current)); else schedule(current);
+    if (immediate) {
+      run().catch(() => {}).finally(() => schedule(current, requestedKey));
+    } else {
+      schedule(current, requestedKey);
+    }
   };
   const stop = () => {
     running = false;
+    activeKey = null;
     generation += 1;
     cancelTimer();
     controller?.abort("lifecycle_stopped");
+    controller = null;
+    inFlight = null;
+    inFlightKey = null;
   };
   const restart = (seconds = interval) => { interval = seconds; stop(); start(); };
   return { refresh: run, start, stop, restart, isRunning: () => running, hasRequestInFlight: () => inFlight !== null };
@@ -64,13 +100,41 @@ async function refreshSlice(name, path, selectData = (value) => value, options =
   }
 }
 
-export const refreshProviderState = (options) => {
-  const providerId = getSlice("application").providerId
+export const refreshProviderState = async (options = {}) => {
+  const providerId = options.providerId
+    || getSlice("application").providerId
     || getSlice("providers").data?.activeProviderId;
   const path = providerId
     ? `/api/vpn/providers/${encodeURIComponent(providerId)}/status`
     : "/api/vpn/status";
-  return refreshSlice("provider", path, (response) => response.status || response, options);
+  const requestOptions = { ...options };
+  delete requestOptions.providerId;
+  beginRefresh("provider");
+  try {
+    const response = await api(path, requestOptions);
+    const data = response.status || response;
+    if (providerId) {
+      const application = getSlice("application");
+      const providerViewActive = application.mode === "dashboard"
+        && application.activeView === "vpn-provider";
+      if (
+        providerStatusId(data) !== providerId
+        || (providerViewActive && !providerRequestIsCurrent(providerId, application, data))
+      ) return null;
+    }
+    succeedRefresh("provider", data);
+    return data;
+  } catch (error) {
+    if (
+      error.code !== "aborted"
+      && (
+        !providerId
+        || getSlice("application").activeView !== "vpn-provider"
+        || getSlice("application").providerId === providerId
+      )
+    ) failRefresh("provider", error.code || "request_failed");
+    throw error;
+  }
 };
 export const refreshProvidersState = (options) => refreshSlice(
   "providers",
@@ -92,7 +156,12 @@ export async function refreshDashboardState(options) {
 
 export function createApplicationLifecycle({ intervalSeconds, application = () => getSlice("application") } = {}) {
   const active = (...views) => application().mode === "dashboard" && views.includes(application().activeView);
-  const provider = createDomainPoller({ refresh: refreshProviderState, isActive: () => active("vpn-provider"), intervalSeconds });
+  const provider = createDomainPoller({
+    refresh: refreshProviderState,
+    isActive: () => active("vpn-provider"),
+    key: () => application().providerId || getSlice("providers").data?.activeProviderId || null,
+    intervalSeconds,
+  });
   const providers = createDomainPoller({ refresh: refreshProvidersState, isActive: () => active("vpn"), intervalSeconds });
   const wireguard = createDomainPoller({ refresh: refreshWireGuardState, isActive: () => active("wireguard"), intervalSeconds });
   const dashboard = createDomainPoller({ refresh: refreshDashboardState, isActive: () => active("dashboard"), intervalSeconds });

@@ -19,7 +19,7 @@ def configure(monkeypatch, *, status, selection=None):
     calls = []
     events = []
 
-    async def catalog():
+    async def catalog(_provider=None):
         return [{"id": 153, "country_code": "NL", "provider_name": "Netherlands"}]
 
     async def servers(_country_id):
@@ -39,7 +39,7 @@ def configure(monkeypatch, *, status, selection=None):
     async def provider_status(**_kwargs):
         return status
 
-    async def select(_code, _servers):
+    async def select(_code, _servers, **_options):
         return selection or {"server": "nl1155.nordvpn.com", "latency_ms": 17}
 
     monkeypatch.setattr(main, "_vpn_catalog", catalog)
@@ -50,13 +50,15 @@ def configure(monkeypatch, *, status, selection=None):
     monkeypatch.setattr(
         main,
         "server_latency",
-        lambda server: {
+        lambda server, **_options: {
             "latency_ms": 31 if server == status.get("server") else None,
             "latency_measured_at": "measured" if server == status.get("server") else None,
         },
     )
     monkeypatch.setattr(main, "country_summary", lambda *args, **kwargs: {"name": "Nederland"})
-    monkeypatch.setattr(main, "remember_country", lambda code: calls.append(f"remember:{code}"))
+    monkeypatch.setattr(
+        main, "remember_country", lambda code, **_options: calls.append(f"remember:{code}")
+    )
     monkeypatch.setattr(main, "record_event", lambda code, **values: events.append((code, values)))
     return calls, events
 
@@ -69,6 +71,7 @@ def test_success_requires_status_and_reports_actual_server(monkeypatch):
             "authenticated": True,
             "connected": True,
             "country": "Netherlands",
+            "country_code": "NL",
             "city": "Amsterdam",
             "server": "nl987.nordvpn.com",
         },
@@ -98,6 +101,7 @@ def test_reconnect_returns_latency_for_fresh_actual_server(monkeypatch):
             "authenticated": True,
             "connected": True,
             "country": "Netherlands",
+            "country_code": "NL",
             "city": "Amsterdam",
             "server": "nl999.nordvpn.com",
         },
@@ -149,6 +153,7 @@ def test_connect_waits_for_pending_selection_and_uses_latency_fallback(monkeypat
             "authenticated": True,
             "connected": True,
             "country": "Netherlands",
+            "country_code": "NL",
             "city": "Amsterdam",
             "server": "nl987.nordvpn.com",
         },

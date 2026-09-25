@@ -25,7 +25,8 @@ The installer:
 5. creates a root-only recovery directory below
    `/var/lib/exitlane/recovery`;
 6. snapshots SQLite with its backup API and preserves the previous application,
-   config, defaults, ExitLane systemd units, and the validated Debian system timezone;
+   config, defaults, ExitLane systemd units, fixed provider-install helpers/units, and the validated
+   Debian system timezone;
 7. stops the application, installs the candidate, preserves operator defaults,
    reapplies permissions and units, and reloads systemd;
 8. starts the service and checks that systemd reports it active;
@@ -41,13 +42,19 @@ the application master key, SQLite data, and operator settings.
 ## Automatic rollback
 
 An error after the recovery snapshot stops the candidate, restores the previous
-code, database, configuration, defaults, and systemd units, reloads systemd, and
+code, database, configuration, defaults, systemd units, and provider-install helper/unit files,
+removes candidate-only managed files, reloads systemd, and
 attempts to restart the previous service. The snapshot is retained and its path
 is printed. Provider packages and host-wide provider state are outside the
 ExitLane ownership boundary and are not rolled back.
 The Debian timezone is the exception: it is part of the ExitLane settings contract and is restored
 from the root-only recovery snapshot before the previous service starts. A failed timezone restore
 is reported as requiring manual recovery rather than being hidden.
+
+Legacy Mullvad helper and daemon-drop-in paths remain in the exact recovery snapshot allowlist so a
+failed upgrade can restore the previous candidate losslessly. The direct integration does not
+install or activate those artifacts. Existing Mullvad packages and provider-owned firewall state
+remain outside automatic rollback and are surfaced as a conflict for deliberate operator cleanup.
 
 If automatic service recovery cannot complete, inspect:
 
@@ -69,3 +76,7 @@ table. Alpha databases without that table are assigned schema version 1 during
 the idempotent migration. An unknown or future schema causes startup and restore
 to stop. Schema migrations must be transactional and accompanied by a
 pre-upgrade recovery snapshot.
+
+Recovery directories are root-owned and mode `0700`. Copied application files and systemd units
+retain their original modes inside that private boundary so rollback restores executable and unit
+permissions exactly. Newly written snapshot metadata and database/key material remain private.

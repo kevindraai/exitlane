@@ -1,17 +1,18 @@
 # Third-party notices
 
-## Self-Hosted Dashboard Icons — NordVPN logo
+## Self-Hosted Dashboard Icons — NordVPN and Mullvad VPN logos
 
-ExitLane includes the NordVPN SVG artwork, without visual modifications, from the
+ExitLane includes the NordVPN and Mullvad VPN SVG artwork, without visual modifications, from the
 [Self-Hosted Dashboard Icons collection](https://github.com/selfhst/icons), maintained by
 selfh.st. The local file was obtained from
-`https://cdn.jsdelivr.net/gh/selfhst/icons@main/svg/nordvpn.svg`; ExitLane makes no runtime
+`https://cdn.jsdelivr.net/gh/selfhst/icons@main/svg/nordvpn.svg` and
+`https://cdn.jsdelivr.net/gh/selfhst/icons@main/svg/mullvad-vpn.svg`; ExitLane makes no runtime
 request to that CDN.
 
 The collection is distributed under the
 [Creative Commons Attribution 4.0 International License](https://creativecommons.org/licenses/by/4.0/).
-The NordVPN name and logo may also be subject to Nord Security's trademark rights; inclusion
-does not imply endorsement by or affiliation with Nord Security.
+The NordVPN and Mullvad VPN names and logos may also be subject to their respective owners'
+trademark rights; inclusion does not imply endorsement or affiliation.
 
 ## PyOTP 2.10.0
 

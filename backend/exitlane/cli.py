@@ -16,7 +16,7 @@ from pathlib import Path
 from exitlane import core, lifecycle
 from exitlane.events import record_event
 from exitlane.providers.nordvpn import provider
-from exitlane.services import killswitch, network_security
+from exitlane.services import killswitch, management_routing, network_security, provider_secrets
 from exitlane.services.auth_security import disable_mfa as disable_administrator_mfa
 from exitlane.services.credentials import CredentialError, reset_administrator_password
 from exitlane.services.network_security import (
@@ -26,6 +26,7 @@ from exitlane.services.network_security import (
     reset_database_config,
     update_config,
 )
+from exitlane.services.provider_wireguard import ProviderWireGuard, ProviderWireGuardError
 
 
 def reset_password(
@@ -274,15 +275,96 @@ def restore_killswitch(*, effective_user_id: int | None = None) -> int:
     """Boot-only idempotent restore; configured gateways are closed before networking."""
     if (os.geteuid() if effective_user_id is None else effective_user_id) != 0:
         return 77
-    if not core.setting(killswitch.SETTING_CONFIGURED, False):
+    transition = bool(core.setting(killswitch.SETTING_TRANSITION, False))
+    if not core.setting(killswitch.SETTING_CONFIGURED, False) and not transition:
         return 0
     try:
         # Deliberately start closed. The backend reconciles with live provider facts
         # after startup; provider control traffic is host output and remains allowed.
-        asyncio.run(killswitch.reconcile(killswitch.TunnelFacts(False)))
+        if transition:
+            asyncio.run(killswitch.arm_provider_transition())
+        else:
+            asyncio.run(killswitch.reconcile(killswitch.TunnelFacts(False)))
     except killswitch.KillswitchError:
         record_event("network.killswitch_error", metadata={"reason": "firewall_apply_failed"})
         return 1
+    return 0
+
+
+def restore_provider_egress_guard(*, effective_user_id: int | None = None) -> int:
+    """Restore fail-closed forwarding before networking after an active direct VPN."""
+    if (os.geteuid() if effective_user_id is None else effective_user_id) != 0:
+        return 77
+    try:
+        state = provider_secrets.load("mullvad")
+        if not state or not any(
+            isinstance(state.get(field), dict) for field in ("pending", "active")
+        ):
+            return 0
+        ingress, _ = killswitch.configuration()
+        source = state.get("ipv4_address")
+        if not isinstance(source, str):
+            raise ProviderWireGuardError("provider_egress_configuration_invalid")
+        asyncio.run(ProviderWireGuard().arm(ingress, "wg-mullvad", source_address=source))
+    except (
+        provider_secrets.ProviderSecretError,
+        ProviderWireGuardError,
+        killswitch.KillswitchError,
+    ):
+        record_event("network.provider_egress_guard_error", metadata={"provider": "mullvad"})
+        try:
+            asyncio.run(killswitch.arm_provider_transition())
+        except killswitch.KillswitchError:
+            pass
+        # A forwarding-only fallback cannot protect locally generated replies.
+        return 1
+    return 0
+
+
+def reconcile_management_routes(*, effective_user_id: int | None = None) -> int:
+    if (os.geteuid() if effective_user_id is None else effective_user_id) != 0:
+        print("This command must be run as root or with sudo.", file=sys.stderr)
+        return 77
+    try:
+        result = asyncio.run(management_routing.reconcile())
+    except management_routing.ManagementRoutingError as error:
+        if error.code == "protected_destination_route_unavailable":
+            # Systemd invokes this after a configured WireGuard interface
+            # stops and after it starts. The reconciler has already installed
+            # and verified exact unreachable routes; a later lifecycle pass
+            # replaces that safe temporary block.
+            print("Protected destination routing is fail-closed pending interface startup.")
+            return 0
+        print(
+            f"Management routing reconciliation failed: {error.code}.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"Management routing reconciled for {len(result.prefixes)} destination prefix(es).")
+    return 0
+
+
+def prepare_management_routes(*, effective_user_id: int | None = None) -> int:
+    """Pre-populate cached provider tables before provider daemons start at boot."""
+    if (os.geteuid() if effective_user_id is None else effective_user_id) != 0:
+        print("This command must be run as root or with sudo.", file=sys.stderr)
+        return 77
+    try:
+        result = asyncio.run(management_routing.prepare_provider_transition())
+    except management_routing.ManagementRoutingError as error:
+        if error.code == "protected_destination_route_unavailable":
+            # The reconciler installs and verifies explicit unreachable routes
+            # before returning this code. A configured WireGuard interface may
+            # legitimately appear later in boot; its wg-quick post hook and the
+            # runtime monitor will replace the temporary block.
+            print("Protected destination routing is fail-closed pending interface startup.")
+            return 0
+        print(
+            f"Management routing preparation failed: {error.code}.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"Management routing prepared for {len(result.prefixes)} destination prefix(es).")
     return 0
 
 
@@ -307,7 +389,125 @@ def _read_backup_passphrase(
     return value
 
 
+def _restore_forwarding_guard(ingress: tuple[str, ...], enabled: bool) -> None:
+    """Atomically hold only old/new protected forwarding during file replacement."""
+    if not ingress or any(
+        not isinstance(item, str) or killswitch.INTERFACE_RE.fullmatch(item) is None
+        for item in ingress
+    ):
+        raise lifecycle.LifecycleError("invalid_restore_ingress")
+    rules = "destroy table inet exitlane_restore\n"
+    if enabled:
+        sources = ", ".join(f'"{item}"' for item in ingress)
+        rules += (
+            "table inet exitlane_restore {\n"
+            " chain forward {\n"
+            "  type filter hook forward priority -310; policy accept;\n"
+            f"  iifname {{ {sources} }} counter drop\n"
+            " }\n}\n"
+        )
+    environment = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C"}
+    for arguments in (("-c", "-f", "-"), ("-f", "-")):
+        rc, _, _ = asyncio.run(
+            core.command(
+                "/usr/sbin/nft", *arguments, input_text=rules, timeout=15, environment=environment
+            )
+        )
+        if rc:
+            raise lifecycle.LifecycleError("restore_guard_failed")
+    if enabled:
+        rc, _, _ = asyncio.run(
+            core.command(
+                "/usr/sbin/nft",
+                "list",
+                "table",
+                "inet",
+                "exitlane_restore",
+                timeout=10,
+                environment=environment,
+            )
+        )
+        if rc:
+            raise lifecycle.LifecycleError("restore_guard_failed")
+
+
+def _restore_ingress_service(*, start: bool) -> None:
+    if not core.setting("wireguard_configured", False):
+        return
+    ingress, _ = killswitch.configuration()
+    interface = ingress[0]
+    unit = f"wg-quick@{interface}.service"
+    if start:
+        source = core.WG_DIR / f"{interface}.conf"
+        lifecycle._safe_regular_file(source)
+        system_directory = Path("/etc/wireguard")
+        system_directory.mkdir(mode=0o700, exist_ok=True)
+        target = system_directory / source.name
+        if target.is_symlink():
+            if target.resolve() != source.resolve():
+                raise lifecycle.LifecycleError("restore_ingress_config_conflict")
+        elif target.exists():
+            raise lifecycle.LifecycleError("restore_ingress_config_conflict")
+        else:
+            target.symlink_to(source)
+        commands = (("enable", unit), ("restart", unit))
+    else:
+        commands = (("disable", "--now", unit),)
+    for arguments in commands:
+        rc, _, _ = asyncio.run(
+            core.command(
+                "/usr/bin/systemctl",
+                *arguments,
+                timeout=30,
+                environment={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C"},
+            )
+        )
+        if rc:
+            raise lifecycle.LifecycleError("restore_ingress_service_failed")
+
+
 def _systemd_service_action(action: str) -> None:
+    if action == "reset-egress":
+
+        async def reset_egress() -> None:
+            ingress, _ = killswitch.configuration()
+            egress = ProviderWireGuard()
+            # Ownership preflight must pass before touching any old direct tunnel.
+            # The independent restore guard holds forwarding throughout teardown.
+            state = provider_secrets.load("mullvad")
+            source = state.get("ipv4_address") if state else None
+            await egress.arm(ingress, "wg-mullvad", source_address=source)
+            await egress.stop_interface("wg-mullvad")
+            await egress.disarm(ingress, "wg-mullvad")
+            egress.remove_config("wg-mullvad")
+
+        try:
+            asyncio.run(reset_egress())
+        except (
+            ProviderWireGuardError,
+            provider_secrets.ProviderSecretError,
+            killswitch.KillswitchError,
+        ) as error:
+            raise lifecycle.LifecycleError("restore_egress_reset_failed") from error
+        # Unregistering ingress first detaches its RPDB rules and makes ownership
+        # ambiguous. Remove owned egress rules while the old ingress still exists.
+        _restore_ingress_service(start=False)
+        return
+    if action not in {"stop", "start"}:
+        raise lifecycle.LifecycleError("invalid_service_action")
+    if action == "start":
+        # Invoke the restorers directly: systemd oneshots with RemainAfterExit
+        # would otherwise keep the guard computed for the previous database.
+        if restore_provider_egress_guard() or restore_killswitch():
+            raise lifecycle.LifecycleError("restore_network_guard_failed")
+        if not core.setting(killswitch.SETTING_CONFIGURED, False) and not core.setting(
+            killswitch.SETTING_TRANSITION, False
+        ):
+            try:
+                asyncio.run(killswitch.NftBackend().remove())
+            except killswitch.KillswitchError as error:
+                raise lifecycle.LifecycleError("restore_network_guard_failed") from error
+        _restore_ingress_service(start=True)
     returncode, _output, _error = asyncio.run(
         core.command(
             "/usr/bin/systemctl",
@@ -356,6 +556,7 @@ def backup_command(arguments: argparse.Namespace) -> int:
                 confirmation=confirmation,
                 service_action=_systemd_service_action,
                 health_check=_local_health_check,
+                forwarding_guard=_restore_forwarding_guard,
             )
             print("Backup restored. Existing sessions were revoked.")
         print(f"Backup ID: {info.backup_id}")
@@ -403,6 +604,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     subcommands.add_parser("killswitch-status", help="show the ExitLane killswitch status")
     subcommands.add_parser("disable-killswitch", help="remove only the ExitLane killswitch rules")
     subcommands.add_parser("restore-killswitch", help=argparse.SUPPRESS)
+    subcommands.add_parser("restore-provider-egress-guard", help=argparse.SUPPRESS)
+    subcommands.add_parser(
+        "reconcile-management-routes",
+        help="restore ExitLane-owned management routing rules",
+    )
+    subcommands.add_parser("prepare-management-routes", help=argparse.SUPPRESS)
     backup_parser = subcommands.add_parser("backup", help="create, inspect, verify, or restore")
     backup_commands = backup_parser.add_subparsers(dest="backup_command", required=True)
     for backup_action in ("create", "inspect", "verify", "restore"):
@@ -451,6 +658,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.command == "restore-killswitch":
         core.init()
         return restore_killswitch()
+    if arguments.command == "restore-provider-egress-guard":
+        core.init()
+        return restore_provider_egress_guard()
+    if arguments.command == "reconcile-management-routes":
+        core.init()
+        return reconcile_management_routes()
+    if arguments.command == "prepare-management-routes":
+        core.init()
+        return prepare_management_routes()
     if arguments.command == "backup":
         return backup_command(arguments)
     return 2

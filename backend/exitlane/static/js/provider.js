@@ -3,7 +3,11 @@ import { localisedCountryName } from "./country-format.js";
 import { appState, getSlice, subscribe, succeedRefresh, updateSlice } from "./state.js";
 import { refreshProviderState } from "./lifecycle.js";
 import { initialiseLongTaskDisclosure, renderLongTask } from "./long-task.js";
-import { vpnProviderAccess } from "./provider-management.js";
+import {
+  providerRequestIsCurrent,
+  providerStatusMatchesView,
+  vpnProviderAccess,
+} from "./provider-management.js";
 import {
   clearInlineError,
   select,
@@ -27,6 +31,17 @@ const PROVIDER_AUTHENTICATION_ERROR_CODES = new Set([
   "command_unavailable",
   "already_logged_in",
   "token_replacement_unsupported",
+  "credential_replacement_unsupported",
+  "invalid_account_format",
+  "invalid_account",
+  "too_many_devices",
+  "device_key_in_use",
+  "account_expired",
+  "provider_api_timeout",
+  "provider_api_unavailable",
+  "provider_api_invalid_response",
+  "provider_secret_key_unavailable",
+  "provider_secret_storage_failed",
   "provider_error",
 ]);
 
@@ -42,10 +57,13 @@ export function providerAuthenticationErrorCode(value) {
     || "provider_error";
 }
 
-export function providerAuthenticationErrorMessage(value) {
+export function providerAuthenticationErrorMessage(value, metadata = wizardProviderMetadata()) {
   const code = providerAuthenticationErrorCode(value);
+  const prefix = metadata?.authentication_method === "account_number"
+    ? "provider.mullvad.errors"
+    : "provider.authentication.errors";
   return t(
-    `provider.authentication.errors.${code}`,
+    `${prefix}.${code}`,
     {},
     t(
       "provider.authentication.errors.provider_error",
@@ -56,6 +74,15 @@ export function providerAuthenticationErrorMessage(value) {
 }
 
 export function renderProviderStatus(status) {
+  const application = getSlice("application");
+  if (
+    application.mode === "dashboard"
+    && application.activeView === "vpn-provider"
+    && !providerStatusMatchesView(application, status)
+  ) {
+    renderPendingProviderStatus();
+    return;
+  }
   appState.provider = status;
 
   const installation = status.management?.provider?.installation_state
@@ -87,18 +114,37 @@ export function renderProviderStatus(status) {
     setStatusPill(select("#provider-state"), t("provider.status.not_installed", {}, "Not installed"), "danger");
   }
 
+  const metadata = wizardProviderMetadata();
+  const providerName = metadata?.display_name || t("completion.provider", {}, "VPN provider");
+  wizardInstallationCompleted = available;
   select("#provider-description").textContent = deferred
     ? t("provider.description.deferred", {}, "No VPN provider is configured. ExitLane will use its direct internet route.")
     : installed
     ? authenticated
-      ? t("provider.description.ready", {}, "The NordVPN Linux client is installed and signed in.")
-      : t("provider.description.signed_out", {}, "The NordVPN Linux client is installed but signed out.")
-    : t("provider.description.not_installed", {}, "The NordVPN Linux client is not installed yet.");
+      ? t("provider.description.ready", { provider: providerName }, `${providerName} is installed and signed in.`)
+      : t("provider.description.signed_out", { provider: providerName }, `${providerName} is installed but signed out.`)
+    : t("provider.description.not_installed", { provider: providerName }, `${providerName} is not installed yet.`);
 
   select("#provider-install").disabled = !installable
     || !status.management?.capabilities?.can_install;
-  select("#provider-next").disabled = !(authenticated || deferred);
+  select("#provider-install").textContent = t(
+    "provider.installation.start",
+    { provider: providerName },
+    `Install ${providerName}`,
+  );
+  select("#provider-install-intro").textContent = t(
+    "provider.installation.intro",
+    { provider: providerName },
+    `ExitLane installs the official ${providerName} Linux client and applies safe gateway settings.`,
+  );
+  select("#provider-install-steps").setAttribute("aria-label", t(
+    "provider.installation.progress_label",
+    { provider: providerName },
+    `${providerName} installation progress`,
+  ));
+  select("#provider-next").disabled = !Boolean(appState.setup?.steps?.provider);
   select("#provider-login-methods").hidden = !available || !wizardInstallationCompleted;
+  renderWizardAuthentication(metadata);
   if (available) {
     clearInlineError();
     setBusy(select("#provider-install"), false);
@@ -123,15 +169,94 @@ export function renderProviderStatus(status) {
   }
 }
 
-function providerApiPath(suffix = "") {
-  const providerId = getSlice("application").providerId
-    || getSlice("providers").data?.activeProviderId
-    || "nordvpn";
+export function providerApiPathFor(providerId, suffix = "") {
+  if (!providerId) return null;
   return `/api/vpn/providers/${encodeURIComponent(providerId)}${suffix}`;
+}
+
+function viewedProviderId() {
+  return getSlice("application").providerId
+    || getSlice("providers").data?.activeProviderId
+    || appState.setup?.selected_provider_id
+    || null;
+}
+
+function providerApiPath(suffix = "", providerId = viewedProviderId()) {
+  return providerApiPathFor(providerId, suffix);
+}
+
+function wizardProviderMetadata() {
+  const providerId = getSlice("application").providerId || appState.setup?.selected_provider_id;
+  return appState.setup?.providers?.find((item) => item.id === providerId)
+    || getSlice("providers").data?.items?.find((item) => item.id === providerId)
+    || null;
+}
+
+function renderPendingProviderStatus() {
+  const metadata = wizardProviderMetadata();
+  const providerName = metadata?.display_name || "VPN provider";
+  const pending = {
+    available: false,
+    authenticated: false,
+    connected: false,
+    management: {
+      provider: {
+        id: viewedProviderId(),
+        installation_state: "unknown",
+      },
+      authentication: { state: "unknown" },
+      connection: { state: "unknown" },
+      capabilities: {},
+    },
+  };
+  appState.provider = null;
+  const runtimeError = select("#vpn-runtime-error");
+  runtimeError.hidden = true;
+  runtimeError.textContent = "";
+  setStatusPill(
+    select("#connection-state"),
+    t("provider.access.checking_title", { provider: providerName }, `Checking ${providerName} status`),
+    "neutral",
+  );
+  for (const selector of ["#metric-country", "#metric-city", "#metric-server", "#metric-ip", "#metric-latency"]) {
+    select(selector).textContent = "—";
+  }
+  renderVpnProviderAccess(pending);
+  renderProviderControls(pending);
+}
+
+export function providerAuthenticationView(metadata = {}) {
+  const accountNumber = metadata.authentication_method === "account_number";
+  return {
+    providerId: metadata.id || null,
+    providerName: metadata.display_name || "",
+    method: accountNumber ? "account_number" : "token",
+    nordControls: metadata.id === "nordvpn" && !accountNumber,
+    mullvadControls: accountNumber,
+  };
+}
+
+function renderWizardAuthentication(metadata) {
+  const view = providerAuthenticationView(metadata || {});
+  select("#provider-auth-nordvpn").hidden = !view.nordControls;
+  select("#provider-auth-mullvad").hidden = !view.mullvadControls;
+  if (view.nordControls) {
+    select("#provider-sign-in-title").textContent = t(
+      "provider.sign_in_title",
+      { provider: view.providerName },
+      `Sign in to ${view.providerName}`,
+    );
+    select("#provider-sign-in-description").textContent = t(
+      "provider.sign_in_description",
+      { provider: view.providerName },
+      "Choose a supported sign-in method.",
+    );
+  }
 }
 
 function renderVpnProviderAccess(status) {
   const access = vpnProviderAccess(status);
+  const providerName = wizardProviderMetadata()?.display_name || "VPN provider";
   const blocker = select("#vpn-provider-blocker");
   const controls = select("#vpn-provider-controls");
   const goToSignIn = select("#vpn-provider-go-to-sign-in");
@@ -144,28 +269,32 @@ function renderVpnProviderAccess(status) {
   retry.hidden = access.state !== "unavailable" || access.canInstall;
 
   const content = {
+    inactive: [
+      t("provider.access.inactive_title", { provider: providerName }, `${providerName} is not active`),
+      t("provider.access.inactive_description", { provider: providerName }, `Make ${providerName} active to manage its VPN connection.`),
+    ],
     signed_out: [
-      t("provider.access.sign_in_required_title", {}, "NordVPN sign-in required"),
-      t("provider.access.sign_in_required_description", {}, "Sign in to the local NordVPN client before selecting a country or managing the VPN connection."),
+      t("provider.access.sign_in_required_title", { provider: providerName }, `${providerName} sign-in required`),
+      t("provider.access.sign_in_required_description", { provider: providerName }, `Sign in to ${providerName} before selecting a country or managing the VPN connection.`),
     ],
     unavailable: [
       access.canInstall
         ? t("provider.access.install_required_title", {}, "Provider installation required")
-        : t("provider.access.unavailable_title", {}, "NordVPN is unavailable"),
+        : t("provider.access.unavailable_title", { provider: providerName }, `${providerName} is unavailable`),
       access.canInstall
         ? t("provider.access.install_required_description", {}, "Install the provider above before managing its VPN connection.")
-        : t("provider.access.unavailable_description", {}, "Check the local NordVPN service and try again."),
+        : t("provider.access.unavailable_description", { provider: providerName }, `Check the local ${providerName} service and try again.`),
     ],
     signing_in: [
-      t("provider.access.signing_in_title", {}, "Signing in to NordVPN"),
+      t("provider.access.signing_in_title", { provider: providerName }, `Signing in to ${providerName}`),
       t("provider.access.busy_description", {}, "Provider management will become available when this action finishes."),
     ],
     signing_out: [
-      t("provider.access.signing_out_title", {}, "Signing out of NordVPN"),
+      t("provider.access.signing_out_title", { provider: providerName }, `Signing out of ${providerName}`),
       t("provider.access.busy_description", {}, "Provider management will become available when this action finishes."),
     ],
     unknown: [
-      t("provider.access.checking_title", {}, "Checking NordVPN status"),
+      t("provider.access.checking_title", { provider: providerName }, `Checking ${providerName} status`),
       t("provider.access.checking_description", {}, "Provider management remains unavailable until authentication is confirmed."),
     ],
   }[access.state];
@@ -181,6 +310,7 @@ export function formatActiveLatency(status) {
 }
 
 function renderVpnView(status) {
+  const providerName = wizardProviderMetadata()?.display_name || "VPN provider";
   const runtimeError = select("#vpn-runtime-error");
   runtimeError.hidden = !status.error_code;
   runtimeError.textContent = status.error_code
@@ -189,7 +319,7 @@ function renderVpnView(status) {
   const operation = status.operation || {};
   const operationActive = ["connecting", "disconnecting", "recovering", "measuring"].includes(operation.state);
   const operationLabel = operation.state === "recovering"
-    ? t("provider.operation.recovering", {}, "Recovering NordVPN…")
+    ? t("provider.operation.recovering", { provider: providerName }, `Recovering ${providerName}…`)
     : operation.state === "measuring"
       ? t("provider.country_selection.measuring", {}, "Measuring…")
     : operation.state === "connecting"
@@ -222,13 +352,42 @@ let countryLoadPromise = null;
 let countryLoadController = null;
 let countryLoadGeneration = 0;
 let countriesLoaded = false;
+let countryDataProviderId = null;
+let countryLoadProviderId = null;
 
 export function shouldLoadAuthenticatedProviderData(application, auth, providerSlice) {
   return application.mode === "dashboard"
     && application.activeView === "vpn-provider"
+    && Boolean(application.providerId)
     && auth.data?.authenticated === true
+    && providerStatusMatchesView(application, providerSlice?.data || {})
     && vpnProviderAccess(providerSlice?.data || {}).state === "signed_in"
     && vpnProviderAccess(providerSlice?.data || {}).canSelectLocation;
+}
+
+function providerDataRequestIsCurrent(providerId, generation = countryLoadGeneration) {
+  return generation === countryLoadGeneration
+    && (providerId === countryLoadProviderId || providerId === countryDataProviderId)
+    && shouldLoadAuthenticatedProviderData(
+      getSlice("application"),
+      getSlice("auth"),
+      getSlice("provider"),
+    );
+}
+
+export function shouldReportProviderDataError({
+  error,
+  requestedProviderId,
+  generation,
+  currentGeneration,
+  application,
+  auth,
+  providerSlice,
+}) {
+  return error?.code !== "aborted"
+    && generation === currentGeneration
+    && requestedProviderId === application.providerId
+    && shouldLoadAuthenticatedProviderData(application, auth, providerSlice);
 }
 
 function reconcileCountries(status) {
@@ -263,6 +422,7 @@ export function providerControlState(status, operation = status.operation || {})
 }
 
 function countryCard(country) {
+  const providerName = wizardProviderMetadata()?.display_name || "VPN provider";
   const button = document.createElement("button");
   button.type = "button";
   const action = getSlice("providerAction");
@@ -291,7 +451,7 @@ function countryCard(country) {
   const status = document.createElement("span");
   status.className = "country-card__status";
   status.textContent = requested && action.state === "recovering"
-    ? t("provider.operation.recovering", {}, "Recovering NordVPN…")
+    ? t("provider.operation.recovering", { provider: providerName }, `Recovering ${providerName}…`)
     : requested && action.state === "connecting"
       ? t("provider.action.connecting", {}, "Connecting…")
       : country.is_connected
@@ -314,12 +474,25 @@ function renderCountries() {
   )).map(countryCard));
 }
 
-async function refreshCountries({ signal } = {}) {
-  const result = await api(providerApiPath("/locations"), { deduplicate: false, signal });
+async function refreshCountries({
+  signal,
+  providerId = viewedProviderId(),
+  generation = countryLoadGeneration,
+} = {}) {
+  const result = await api(
+    providerApiPath("/locations", providerId),
+    { deduplicate: false, signal },
+  );
+  if (
+    !providerDataRequestIsCurrent(providerId, generation)
+    || (result.vpn && !providerRequestIsCurrent(providerId, getSlice("application"), result.vpn))
+  ) return false;
   vpnCountries = result.countries || [];
   quickCountryCodes = result.quick_country_codes || [];
-  if (result.vpn) succeedRefresh("provider", result.vpn);
+  applyVpnSnapshot(result.vpn);
+  countryDataProviderId = providerId;
   renderCountries();
+  return true;
 }
 
 export function activateAuthenticatedProviderData() {
@@ -330,35 +503,41 @@ export function activateAuthenticatedProviderData() {
   )) {
     return Promise.resolve(false);
   }
-  if (countriesLoaded) return Promise.resolve(true);
+  const providerId = getSlice("application").providerId;
+  if (countriesLoaded && countryDataProviderId === providerId) return Promise.resolve(true);
+  if (countryLoadPromise && countryLoadProviderId !== providerId) suspendProviderData("provider-view-changed");
   if (!countryLoadPromise) {
     const generation = countryLoadGeneration;
     const controller = new AbortController();
     countryLoadController = controller;
-    countryLoadPromise = refreshCountries({ signal: controller.signal })
-      .then(() => measureMissingCountries({ signal: controller.signal }))
-      .then(() => {
+    countryLoadProviderId = providerId;
+    countryLoadPromise = refreshCountries({
+      signal: controller.signal,
+      providerId,
+      generation,
+    })
+      .then((loaded) => loaded
+        ? measureMissingCountries({ signal: controller.signal, providerId, generation })
+        : false)
+      .then((loaded) => {
         if (
-          generation !== countryLoadGeneration
-          || !shouldLoadAuthenticatedProviderData(
-            getSlice("application"),
-            getSlice("auth"),
-            getSlice("provider"),
-          )
+          loaded === false
+          || !providerDataRequestIsCurrent(providerId, generation)
         ) return false;
         countriesLoaded = true;
+        countryDataProviderId = providerId;
         return true;
       })
       .catch((error) => {
-        if (
-          error.code === "aborted"
-          || generation !== countryLoadGeneration
-          || !shouldLoadAuthenticatedProviderData(
-          getSlice("application"),
-          getSlice("auth"),
-          getSlice("provider"),
-          )
-        ) return false;
+        if (!shouldReportProviderDataError({
+          error,
+          requestedProviderId: providerId,
+          generation,
+          currentGeneration: countryLoadGeneration,
+          application: getSlice("application"),
+          auth: getSlice("auth"),
+          providerSlice: getSlice("provider"),
+        })) return false;
         showMessage(
           t("provider.country_selection.load_failed", {}, "Countries could not be loaded."),
           "error",
@@ -366,50 +545,61 @@ export function activateAuthenticatedProviderData() {
         throw error;
       })
       .finally(() => {
-        if (generation === countryLoadGeneration) {
+        if (
+          generation === countryLoadGeneration
+          && countryLoadProviderId === providerId
+        ) {
           countryLoadPromise = null;
           countryLoadController = null;
+          countryLoadProviderId = null;
         }
       });
   }
   return countryLoadPromise;
 }
 
-function suspendProviderData() {
-  if (!countriesLoaded && !countryLoadPromise && !vpnCountries.length) return;
+function suspendProviderData(reason = "provider-authentication-ended") {
   countryLoadGeneration += 1;
-  countryLoadController?.abort("provider-authentication-ended");
+  countryLoadController?.abort(reason);
   stopActionPolling();
   vpnCountries = [];
   quickCountryCodes = [];
   countryLoadPromise = null;
   countryLoadController = null;
   countriesLoaded = false;
+  countryDataProviderId = null;
+  countryLoadProviderId = null;
+  providerActionProgress?.close();
+  providerActionProgress = null;
+  setBusy(select("#disconnect-button"), false);
+  setBusy(select("#remeasure-countries"), false);
   select("#quick-countries")?.replaceChildren();
   select("#country-list")?.replaceChildren();
 }
 
 export function deactivateAuthenticatedProviderData() {
-  countryLoadGeneration += 1;
-  countryLoadController?.abort("authentication-ended");
-  stopActionPolling();
-  vpnCountries = [];
-  quickCountryCodes = [];
-  countryLoadPromise = null;
-  countryLoadController = null;
-  countriesLoaded = false;
+  suspendProviderData("authentication-ended");
 }
 
 function applyVpnSnapshot(vpn) {
-  if (vpn) succeedRefresh("provider", vpn);
+  if (
+    vpn
+    && providerRequestIsCurrent(viewedProviderId(), getSlice("application"), vpn)
+  ) {
+    succeedRefresh("provider", {
+      ...(getSlice("provider").data || {}),
+      ...vpn,
+    });
+  }
 }
 
 function connectionErrorMessage(errorCode, countryCode) {
+  const providerName = wizardProviderMetadata()?.display_name || "VPN provider";
   if (errorCode === "provider_authentication_required") {
     return t(
       "provider.errors.provider_authentication_required",
       {},
-      "Sign in to NordVPN before managing the VPN connection.",
+      `Sign in to ${providerName} before managing the VPN connection.`,
     );
   }
   if (errorCode === "vpn_connect_timeout") {
@@ -418,13 +608,14 @@ function connectionErrorMessage(errorCode, countryCode) {
     return t("provider.errors.vpn_connect_timeout", { country }, `Connection to ${country} took too long.`);
   }
   if (errorCode === "provider_recovery_rate_limited") {
-    return t("provider.errors.provider_recovery_rate_limited", {}, "NordVPN recovery is temporarily rate limited.");
+    return t("provider.errors.provider_recovery_rate_limited", { provider: providerName }, `${providerName} recovery is temporarily rate limited.`);
   }
   return t("provider.notifications.connect_failed", { target: countryCode }, `Could not connect to ${countryCode}.`);
 }
 
 let actionPollTimer = null;
 let actionPollInFlight = false;
+let providerActionProgress = null;
 
 function stopActionPolling() {
   window.clearTimeout(actionPollTimer);
@@ -453,6 +644,7 @@ function startActionPolling() {
 async function connectCountry(countryCode, button) {
   if (!vpnProviderAccess(getSlice("provider").data || {}).canSelectLocation) return;
   if (["connecting", "disconnecting", "recovering", "measuring"].includes(getSlice("providerAction").state)) return;
+  const providerId = viewedProviderId();
   const statusLabel = button.querySelector(".country-card__status");
   button.disabled = true;
   button.classList.add("country-card--connecting");
@@ -460,22 +652,30 @@ async function connectCountry(countryCode, button) {
   updateSlice("providerAction", { state: "connecting", target: countryCode, error: null });
   startActionPolling();
   try {
-    const result = await postJson(providerApiPath("/location"), { country_code: countryCode }, { timeoutMilliseconds: 130000 });
+    const result = await postJson(
+      providerApiPath("/location", providerId),
+      { country_code: countryCode },
+      { timeoutMilliseconds: 130000 },
+    );
+    if (!providerRequestIsCurrent(providerId, getSlice("application"))) return;
     applyVpnSnapshot(result.vpn);
     if (!result.success) {
       const error = new Error(result.error || "connect_failed");
       error.code = result.error || "connect_failed";
       throw error;
     }
-    await refreshCountries();
+    await refreshCountries({ providerId });
+    if (!providerRequestIsCurrent(providerId, getSlice("application"))) return;
     showMessage(t("provider.notifications.country_connected", { server: result.server || countryCode }, `Connected to ${result.server || countryCode}.`), "success");
   } catch (error) {
+    if (!providerRequestIsCurrent(providerId, getSlice("application"))) return;
     applyVpnSnapshot(error.payload?.vpn);
     const message = connectionErrorMessage(error.code || error.payload?.error, countryCode);
     statusLabel.textContent = message;
     showMessage(message, "error");
   } finally {
     stopActionPolling();
+    if (!providerRequestIsCurrent(providerId, getSlice("application"))) return;
     const providerStatus = getSlice("provider").data || {};
     updateSlice("providerAction", { state: providerStatus.connected ? "connected" : "idle", target: null });
     button.classList.remove("country-card--connecting");
@@ -486,21 +686,29 @@ async function connectCountry(countryCode, button) {
 
 async function remeasureCountries() {
   if (!vpnProviderAccess(getSlice("provider").data || {}).canSelectLocation) return;
+  const providerId = viewedProviderId();
   const button = select("#remeasure-countries");
   setBusy(button, true, t("provider.country_selection.measuring", {}, "Measuring…"));
   try {
     for (const code of quickCountryCodes) {
-      await postJson(providerApiPath(`/locations/${code}/measure`));
+      await postJson(providerApiPath(`/locations/${code}/measure`, providerId));
+      if (!providerRequestIsCurrent(providerId, getSlice("application"))) return;
     }
-    await refreshCountries();
+    await refreshCountries({ providerId });
   } catch {
+    if (!providerRequestIsCurrent(providerId, getSlice("application"))) return;
     showMessage(t("provider.country_selection.measure_failed", {}, "Not all latency values could be measured."), "error");
   } finally {
+    if (!providerRequestIsCurrent(providerId, getSlice("application"))) return;
     setBusy(button, false);
   }
 }
 
-async function measureMissingCountries({ signal } = {}) {
+async function measureMissingCountries({
+  signal,
+  providerId = viewedProviderId(),
+  generation = countryLoadGeneration,
+} = {}) {
   const missing = quickCountryCodes.filter((code) => {
     const country = vpnCountries.find((item) => item.country_code === code);
     return country && country.latency_measured_at == null;
@@ -513,11 +721,11 @@ async function measureMissingCountries({ signal } = {}) {
   for (const code of missing) {
     try {
       const result = await postJson(
-        providerApiPath(`/locations/${code}/measure`),
+        providerApiPath(`/locations/${code}/measure`, providerId),
         undefined,
         { signal },
       );
-      if (signal?.aborted) return;
+      if (signal?.aborted || !providerDataRequestIsCurrent(providerId, generation)) return false;
       vpnCountries = vpnCountries.map((country) => (
         country.country_code === code
           ? {
@@ -530,15 +738,19 @@ async function measureMissingCountries({ signal } = {}) {
       ));
       renderCountries();
     } catch (error) {
-      if (signal?.aborted || error.code === "aborted") return;
+      if (
+        signal?.aborted
+        || error.code === "aborted"
+        || !providerDataRequestIsCurrent(providerId, generation)
+      ) return false;
       vpnCountries = vpnCountries.map((country) => (
         country.country_code === code ? { ...country, measuring: false } : country
       ));
       renderCountries();
     }
   }
-  if (signal?.aborted) return;
-  await refreshCountries({ signal });
+  if (signal?.aborted || !providerDataRequestIsCurrent(providerId, generation)) return false;
+  return refreshCountries({ signal, providerId, generation });
 }
 
 async function reconnectCountry() {
@@ -567,6 +779,8 @@ const INSTALL_POLL_INTERVAL_MS = 1500;
 
 function installationErrorMessage(error) {
   const code = error.payload?.detail || error.code || "installation_failed";
+  const metadata = wizardProviderMetadata();
+  const providerId = metadata?.id || "provider";
   const message = t(
     `provider.installation.errors.${code}`,
     {},
@@ -574,12 +788,14 @@ function installationErrorMessage(error) {
   );
   return `${message} ${t(
     "provider.installation.diagnosis",
-    {},
-    "Local diagnosis: journalctl -u exitlane-provider-install-nordvpn.service -n 100 --no-pager",
+    { provider_id: providerId },
+    `Local diagnosis: journalctl -u exitlane-provider-install-${providerId}.service -n 100 --no-pager`,
   )}`;
 }
 
 function renderInstallationStatus(status, { focusSignIn = false } = {}) {
+  const metadata = wizardProviderMetadata();
+  const providerName = metadata?.display_name || "VPN provider";
   const completed = status.phase === "completed";
   const failed = status.phase === "failed";
   const inProgress = status.installation_in_progress === true;
@@ -594,8 +810,8 @@ function renderInstallationStatus(status, { focusSignIn = false } = {}) {
     return;
   }
   const summary = completed
-    ? t("provider.installation.completed_summary", {}, "NordVPN installed")
-    : t("provider.installation.title", {}, "Install NordVPN");
+    ? t("provider.installation.completed_summary", { provider: providerName }, `${providerName} installed`)
+    : t("provider.installation.title", { provider: providerName }, `Install ${providerName}`);
   const summaryIcon = select("#provider-install-disclosure > summary .long-task-icon");
   summaryIcon.dataset.status = completed ? "completed" : failed ? "failed" : "active";
   select("#provider-install-summary").textContent = summary;
@@ -622,8 +838,8 @@ function renderInstallationStatus(status, { focusSignIn = false } = {}) {
   context.textContent = longRunning
     ? t(
       "provider.installation.long_running",
-      {},
-      "NordVPN installs system packages and initializes the daemon. This may take a while.",
+      { provider: providerName },
+      `${providerName} installs system packages and initializes the daemon. This may take a while.`,
     )
     : "";
 
@@ -632,20 +848,23 @@ function renderInstallationStatus(status, { focusSignIn = false } = {}) {
   retryButton.hidden = !failed;
   const retryTranslations = {
     restart_installation: ["provider.installation.retry_installation", "Retry installation"],
-    recheck_provider: ["provider.installation.retry_provider", "Check NordVPN again"],
+    recheck_provider: ["provider.installation.retry_provider", `Check ${providerName} again`],
     reapply_gateway_settings: ["provider.installation.retry_gateway", "Reapply gateway settings"],
     revalidate_installation: ["provider.installation.retry_validation", "Check installation again"],
   };
   const [retryKey, retryFallback] = retryTranslations[status.retry_action]
     || ["provider.installation.retry", "Try again"];
-  retryButton.textContent = t(retryKey, {}, retryFallback);
+  retryButton.textContent = t(retryKey, { provider: providerName }, retryFallback);
   setBusy(select("#provider-install"), inProgress, t("busy.installing", {}, "Installing…"));
 
   if (completed) {
     clearInlineError();
     select("#provider-login-methods").hidden = false;
     if (focusSignIn) {
-      window.requestAnimationFrame(() => select("#nord-token")?.focus());
+      const input = providerAuthenticationView(metadata || {}).mullvadControls
+        ? select("#mullvad-account-number")
+        : select("#nord-token");
+      window.requestAnimationFrame(() => input?.focus());
     }
   }
 }
@@ -657,9 +876,10 @@ async function installProvider({ confirm = true } = {}) {
   const providerId = getSlice("application").providerId
     || appState.setup?.selected_provider_id;
   if (!providerId) return;
+  const providerName = wizardProviderMetadata()?.display_name || "VPN provider";
   if (confirm && !window.confirm(t(
     "provider.installation.confirm",
-    {},
+    { provider: providerName },
     "Install this VPN provider on this Debian 13 system?",
   ))) return;
 
@@ -712,7 +932,11 @@ async function pollInstallStatus(providerId) {
 
     if (status.phase === "completed") {
       showMessage(
-        t("provider.installation.success", {}, "The VPN provider is installed and available."),
+        t(
+          "provider.installation.success",
+          { provider: wizardProviderMetadata()?.display_name || "VPN provider" },
+          "The VPN provider is installed and available.",
+        ),
       );
       await Promise.all([
         refreshProvider(),
@@ -833,10 +1057,12 @@ async function copyBrowserLoginUrl() {
   }
 }
 
-async function loginWithToken(event) {
+async function loginWithCredential(event) {
   event.preventDefault();
   const button = event.currentTarget.querySelector('button[type="submit"]');
-  const input = select("#nord-token");
+  const input = event.currentTarget.querySelector('input[type="password"]');
+  const metadata = wizardProviderMetadata();
+  const providerName = metadata?.display_name || "VPN provider";
   setBusy(
   button,
   true,
@@ -845,10 +1071,12 @@ async function loginWithToken(event) {
   clearInlineError();
 
   try {
-    const result = await postJson(
+    const request = postJson(
       providerApiPath("/authenticate"),
-      { token: input.value },
+      { credential: input.value },
     );
+    input.value = "";
+    const result = await request;
 
     if (!result.ok) {
       const authenticationError = new Error("provider_authentication_failed");
@@ -856,19 +1084,19 @@ async function loginWithToken(event) {
       throw authenticationError;
     }
 
-    input.value = "";
     showMessage(
       t(
         "provider.authentication.success",
-        {},
-        "Signed in to NordVPN successfully.",
+        { provider: providerName },
+        `Signed in to ${providerName} successfully.`,
       ),
       "success",
     );
     await Promise.all([refreshProvider(), refreshSetup()]);
   } catch (error) {
-    showInlineError(providerAuthenticationErrorMessage(error));
+    showInlineError(providerAuthenticationErrorMessage(error, metadata));
   } finally {
+    input.value = "";
     setBusy(button, false);
   }
 }
@@ -896,7 +1124,7 @@ async function loginWithCallback(event) {
     showMessage(
       t(
         "provider.authentication.success",
-        {},
+        { provider: "NordVPN" },
         "Signed in to NordVPN successfully.",
       ),
       "success",
@@ -912,25 +1140,39 @@ async function loginWithCallback(event) {
 async function disconnectProvider() {
   if (!vpnProviderAccess(getSlice("provider").data || {}).canDisconnect) return;
   if (["connecting", "disconnecting", "recovering", "measuring"].includes(getSlice("providerAction").state)) return;
+  const providerId = viewedProviderId();
   const button = select("#disconnect-button");
   updateSlice("providerAction", { state: "disconnecting", target: null, error: null });
   startActionPolling();
   setBusy(button, true, t("provider.action.disconnecting", {}, "Disconnecting…"));
-  const progress = showMessage(t("provider.notifications.disconnecting", {}, "Disconnecting…"), "info", { id: "provider-action", duration: null });
+  providerActionProgress = showMessage(
+    t("provider.notifications.disconnecting", {}, "Disconnecting…"),
+    "info",
+    { id: "provider-action", duration: null },
+  );
   try {
-    const result = await postJson(providerApiPath("/disconnect"), undefined, { timeoutMilliseconds: 30000 });
+    const result = await postJson(
+      providerApiPath("/disconnect", providerId),
+      undefined,
+      { timeoutMilliseconds: 30000 },
+    );
+    if (!providerRequestIsCurrent(providerId, getSlice("application"))) return;
     applyVpnSnapshot(result.vpn);
     if (!result.success || result.vpn?.connected) throw new Error("disconnect_failed");
     updateSlice("providerAction", { state: "idle", error: null });
-    progress.close();
+    providerActionProgress?.close();
+    providerActionProgress = null;
     showMessage(t("provider.notifications.disconnected", {}, "Disconnected."), "success");
   } catch (error) {
+    if (!providerRequestIsCurrent(providerId, getSlice("application"))) return;
     applyVpnSnapshot(error.payload?.vpn);
     updateSlice("providerAction", { state: "failed", error: "disconnect_failed" });
-    progress.close();
+    providerActionProgress?.close();
+    providerActionProgress = null;
     showMessage(t("provider.notifications.disconnect_failed", {}, "Could not disconnect."), "error");
   } finally {
     stopActionPolling();
+    if (!providerRequestIsCurrent(providerId, getSlice("application"))) return;
     const providerStatus = getSlice("provider").data || {};
     setBusy(button, false);
     updateSlice("providerAction", { state: providerStatus.connected ? "connected" : "idle", target: null });
@@ -958,7 +1200,12 @@ export function initialiseProviderControls() {
 
   select("#token-form").addEventListener(
     "submit",
-    loginWithToken,
+    loginWithCredential,
+  );
+
+  select("#mullvad-form").addEventListener(
+    "submit",
+    loginWithCredential,
   );
 
   select("#callback-form").addEventListener(
@@ -974,7 +1221,7 @@ export function initialiseProviderControls() {
   select("#remeasure-countries").addEventListener("click", remeasureCountries);
   select("#vpn-provider-go-to-sign-in").addEventListener("click", () => {
     select("#provider-authentication-card").scrollIntoView({ block: "start" });
-    select("#provider-token")?.focus();
+    select("#provider-credential")?.focus();
   });
   select("#vpn-provider-retry").addEventListener("click", () => {
     refreshProviderState({ deduplicate: false }).catch(() => {});
@@ -993,10 +1240,23 @@ export function initialiseProviderControls() {
   });
   window.addEventListener("exitlane:viewchange", (event) => {
     if (event.detail?.view === "vpn-provider") {
-      void activateAuthenticatedProviderData();
+      const status = getSlice("provider").data || {};
+      if (!providerStatusMatchesView(getSlice("application"), status)) {
+        suspendProviderData("provider-view-changed");
+        renderPendingProviderStatus();
+      } else {
+        void activateAuthenticatedProviderData();
+      }
     } else {
-      suspendProviderData();
+      suspendProviderData("provider-view-ended");
     }
+  });
+  window.addEventListener("exitlane:wizardproviderchange", () => {
+    wizardInstallationCompleted = false;
+    window.clearTimeout(installPollTimer);
+    select("#nord-token").value = "";
+    select("#mullvad-account-number").value = "";
+    void restoreInstallStatus();
   });
 
   document

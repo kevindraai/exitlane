@@ -241,6 +241,7 @@ test("network deployment status and editable security configuration stay separat
   assert.match(markup, /id="settings-network-configuration-title"[\s\S]+id="settings-network-form"/);
   assert.match(markup, /id="settings-network-public-url"/);
   assert.match(markup, /id="settings-network-proxies" rows="5"/);
+  assert.match(markup, /id="settings-network-management-prefixes" rows="4"/);
   assert.match(markup, /id="settings-network-cookie-policy"/);
   assert.match(markup, /id="settings-network-public-url-source"/);
   assert.match(markup, /id="settings-network-proxies-source"/);
@@ -256,6 +257,7 @@ test("network deployment status and editable security configuration stay separat
   assert.match(source, /method: "PUT"/);
   assert.match(source, /access_loss_confirmation_required/);
   assert.match(source, /broad_proxy_confirmation_required/);
+  assert.match(source, /broad_management_prefix_confirmation_required/);
   assert.match(source, /direct_peer: deployment\.direct_peer/);
 });
 
@@ -269,7 +271,9 @@ test("network configuration sources and security warnings are translated in ever
       ["database", "default", "environment"],
     );
     assert.ok(locale.settings.network.cookie_disabled_warning);
+    assert.ok(locale.settings.network.management_prefixes_help);
     assert.match(locale.settings.network.errors.invalid_trusted_proxy, /\{line\}/);
+    assert.match(locale.settings.network.errors.invalid_management_prefix, /\{line\}/);
     assert.ok(locale.settings.network.errors.settings_storage_failed);
   }
 });
@@ -364,7 +368,7 @@ test("provider page has state regions and no killswitch control", async () => {
   const markup = await readFile(providerMarkupUrl, "utf8");
   const source = await readFile(providerSourceUrl, "utf8");
   assert.match(markup, /<div hidden="" id="provider-signed-in"/);
-  assert.match(markup, /id="provider-token-form"/);
+  assert.match(markup, /id="provider-credential-form"/);
   assert.match(markup, /<div hidden="" id="provider-unavailable"/);
   assert.match(markup, /class="button button-primary"[^>]+id="provider-management-install"/);
   assert.match(markup, /id="provider-management-install-status" role="status"/);
@@ -372,10 +376,10 @@ test("provider page has state regions and no killswitch control", async () => {
   assert.doesNotMatch(markup, /killswitch/i);
   const statusRegion = markup.indexOf('class="provider-management-status-region"');
   const signedInRegion = markup.indexOf('id="provider-signed-in"');
-  const tokenForm = markup.indexOf('id="provider-token-form"');
+  const tokenForm = markup.indexOf('id="provider-credential-form"');
   assert.ok(statusRegion > -1 && statusRegion < signedInRegion && signedInRegion < tokenForm);
   assert.match(source, /provider-signed-in"\)\.hidden = !signedIn/);
-  assert.match(source, /provider-token-form"\)\.hidden = !\(signedOut && view\.canSignIn\)/);
+  assert.match(source, /credentialForm\.hidden = !\(signedOut && view\.canSignIn\)/);
   assert.match(source, /provider-end-session"\)\.hidden = !view\.canSignOut/);
   assert.match(source, /provider-management-install"\)\.addEventListener[\s\S]+installProviderFromManagement/);
   assert.match(source, /\/api\/vpn\/providers\/\$\{encodeURIComponent\(providerId\)\}\/installation/);

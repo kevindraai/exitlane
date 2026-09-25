@@ -56,12 +56,12 @@ test("signed-out action stays on the provider route and focuses authentication",
   ]);
   assert.match(source, /vpn-provider-go-to-sign-in"\)\.addEventListener\("click"/);
   assert.match(source, /provider-authentication-card"\)\.scrollIntoView/);
-  assert.match(source, /provider-token"\)\?\.focus\(\)/);
+  assert.match(source, /provider-credential"\)\?\.focus\(\)/);
   assert.doesNotMatch(source, /vpn-provider-go-to-sign-in[\s\S]{0,400}(showView|history|location\.)/);
   assert.equal(english.provider.access.go_to_sign_in, "Go to sign in");
   assert.equal(dutch.provider.access.go_to_sign_in, "Naar aanmelden");
-  assert.match(english.provider.access.sign_in_required_description, /Sign in above/);
-  assert.match(dutch.provider.access.sign_in_required_description, /hierboven aan/);
+  assert.match(english.provider.access.sign_in_required_description, /Sign in to \{provider\}/);
+  assert.match(dutch.provider.access.sign_in_required_description, /Meld je aan bij \{provider\}/);
   assert.equal("open_settings" in english.provider.access, false);
   assert.equal("open_settings" in dutch.provider.access, false);
 });
@@ -75,7 +75,7 @@ test("handlers and provider data loading use explicit provider capabilities", as
   assert.match(source, /canSelectLocation\) return/);
   assert.match(source, /canDisconnect\) return/);
   assert.match(source, /application\.activeView === "vpn-provider"/);
-  assert.match(source, /providerApiPath\("\/locations"\)/);
+  assert.match(source, /providerApiPath\("\/locations", providerId\)/);
   assert.doesNotMatch(source, /showView\("settings"/);
 });
 

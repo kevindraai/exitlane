@@ -35,7 +35,7 @@ test("provider deferral is an explicit provider-neutral wizard action", () => {
 test("deferred setup advances honestly without pretending the provider is ready", () => {
   assert.match(wizard, /setup\.provider_deferred/);
   assert.match(wizard, /"completion\.deferred"/);
-  assert.match(provider, /authenticated \|\| deferred/);
+  assert.match(provider, /appState\.setup\?\.steps\?\.provider/);
   assert.match(provider, /provider\.status\.deferred/);
   assert.equal(english.completion.deferred, "Deferred");
   assert.equal(dutch.completion.deferred, "Uitgesteld");

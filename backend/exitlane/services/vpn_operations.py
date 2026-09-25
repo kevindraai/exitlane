@@ -4,9 +4,15 @@ from collections import deque
 from datetime import UTC, datetime, timedelta
 
 DEFAULT_CONNECTION_ID = "provider:nordvpn"
-ACTIVE_STATES = frozenset({"connecting", "disconnecting", "recovering"})
+ACTIVE_STATES = frozenset({"connecting", "disconnecting", "recovering", "switching"})
 CONNECT_TIMEOUT_SECONDS = 40
 STATUS_TIMEOUT_SECONDS = 6
+PROVIDER_SWITCH_TIMEOUT_SECONDS = 150
+TARGET_READINESS_ATTEMPTS = 3
+TARGET_READINESS_ATTEMPT_TIMEOUT_SECONDS = 8
+TARGET_READINESS_TOTAL_TIMEOUT_SECONDS = 30
+TARGET_READINESS_BACKOFF_SECONDS = (0.5, 1.0)
+TARGET_CONNECT_RECONCILE_TIMEOUT_SECONDS = 8
 RECOVERY_WINDOW = timedelta(minutes=10)
 RECOVERY_LIMIT = 2
 
@@ -65,8 +71,24 @@ def begin(
     connection_id: str = DEFAULT_CONNECTION_ID,
 ) -> dict:
     current = _connection(connection_id)
-    if current["state"] in ACTIVE_STATES:
-        raise VPNActionInProgress(current["state"])
+    serializes_providers = (
+        connection_id.startswith("provider:") or connection_id == "provider-switch"
+    )
+    active = next(
+        (
+            item
+            for item in _connections.values()
+            if item["state"] in ACTIVE_STATES
+            and serializes_providers
+            and (
+                item["connection_id"].startswith("provider:")
+                or item["connection_id"] == "provider-switch"
+            )
+        ),
+        None,
+    )
+    if active is not None:
+        raise VPNActionInProgress(active["state"])
     now = _now()
     current.update(
         state=state,
@@ -76,6 +98,29 @@ def begin(
         last_error_code=None,
     )
     return snapshot(connection_id)
+
+
+def active_snapshot() -> dict | None:
+    active = next(
+        (item for item in _connections.values() if item["state"] in ACTIVE_STATES),
+        None,
+    )
+    if active is None:
+        return None
+    return snapshot(active["connection_id"])
+
+
+def remaining_seconds(connection_id: str, *, maximum: float | None = None) -> float:
+    deadline_value = _connection(connection_id).get("action_deadline_at")
+    if not isinstance(deadline_value, str):
+        return max(0.0, maximum or 0.0)
+    try:
+        remaining = (datetime.fromisoformat(deadline_value) - _now()).total_seconds()
+    except ValueError:
+        return max(0.0, maximum or 0.0)
+    if maximum is not None:
+        remaining = min(remaining, maximum)
+    return max(0.0, remaining)
 
 
 def transition(state: str, *, connection_id: str = DEFAULT_CONNECTION_ID) -> dict:

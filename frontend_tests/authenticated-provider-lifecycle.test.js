@@ -11,29 +11,31 @@ const authUrl = new URL("../backend/exitlane/static/js/auth.js", import.meta.url
 
 test("protected provider data is gated by dashboard mode and authentication", () => {
   const signedIn = { data: { management: {
+    provider: { id: "nordvpn" },
     authentication: { state: "signed_in" },
     capabilities: { can_select_location: true },
   } } };
   assert.equal(shouldLoadAuthenticatedProviderData(
-    { mode: "login" },
+    { mode: "login", providerId: "nordvpn" },
     { data: { authenticated: false } }, signedIn,
   ), false);
   assert.equal(shouldLoadAuthenticatedProviderData(
-    { mode: "wizard" },
+    { mode: "wizard", providerId: "nordvpn" },
     { data: { authenticated: false } }, signedIn,
   ), false);
   assert.equal(shouldLoadAuthenticatedProviderData(
-    { mode: "dashboard", activeView: "vpn-provider" },
+    { mode: "dashboard", activeView: "vpn-provider", providerId: "nordvpn" },
     { data: { authenticated: false } }, signedIn,
   ), false);
   assert.equal(shouldLoadAuthenticatedProviderData(
-    { mode: "dashboard", activeView: "vpn-provider" },
+    { mode: "dashboard", activeView: "vpn-provider", providerId: "nordvpn" },
     { data: { authenticated: true } }, signedIn,
   ), true);
   assert.equal(shouldLoadAuthenticatedProviderData(
-    { mode: "dashboard", activeView: "vpn-provider" },
+    { mode: "dashboard", activeView: "vpn-provider", providerId: "nordvpn" },
     { data: { authenticated: true } },
     { data: { management: {
+      provider: { id: "nordvpn" },
       authentication: { state: "signed_out" },
       capabilities: { can_select_location: false },
     } } },
@@ -46,12 +48,12 @@ test("provider controls do not load countries before authenticated activation", 
   const initialiseEnd = source.indexOf("\n}", initialiseStart);
   const initialiseBody = source.slice(initialiseStart, initialiseEnd);
   assert.doesNotMatch(initialiseBody, /refreshCountries\(/);
-  assert.match(source, /if \(countriesLoaded\) return Promise\.resolve\(true\)/);
+  assert.match(source, /if \(countriesLoaded && countryDataProviderId === providerId\) return Promise\.resolve\(true\)/);
   assert.match(source, /if \(!countryLoadPromise\)/);
-  assert.match(source, /countryLoadController\?\.abort\("authentication-ended"\)/);
+  assert.match(source, /suspendProviderData\("authentication-ended"\)/);
   assert.match(source, /error\.code === "aborted"/);
   assert.match(source, /event\.detail\?\.view === "vpn-provider"/);
-  assert.match(source, /else \{\s*suspendProviderData\(\)/);
+  assert.match(source, /else \{\s*suspendProviderData\("provider-view-ended"\)/);
 });
 
 test("dashboard activation loads protected data and logout/session expiry tears it down", async () => {

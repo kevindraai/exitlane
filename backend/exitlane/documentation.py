@@ -21,6 +21,7 @@ DOCUMENTS = (
     DocumentDefinition("deployment", "getting-started", "deployment.md"),
     DocumentDefinition("proxmox-lxc", "getting-started", "proxmox-lxc.md"),
     DocumentDefinition("router-integrations", "getting-started", "router-integrations.md"),
+    DocumentDefinition("mullvad", "vpn", "mullvad.md"),
     DocumentDefinition("killswitch", "vpn", "killswitch.md"),
     DocumentDefinition("wireguard-configuration", "wireguard", "wireguard-configuration.md"),
     DocumentDefinition("diagnostics", "diagnostics", "diagnostics.md"),

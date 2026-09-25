@@ -198,6 +198,7 @@ def test_regeneration_is_post_only_and_logs_no_configuration(client, monkeypatch
         core.set_setting(key, value)
     calls = []
     events = []
+    reconciled = []
 
     async def provision(**kwargs):
         calls.append(kwargs)
@@ -206,14 +207,20 @@ def test_regeneration_is_post_only_and_logs_no_configuration(client, monkeypatch
     async def current(_interface, _client):
         return {"client_config": "synthetic-current"}
 
+    async def reconcile():
+        reconciled.append(core.setting("wireguard_configured"))
+        return main.management_routing.ReconcileResult((), 0, 0)
+
     monkeypatch.setattr(main.wireguard_service, "provision", provision)
     monkeypatch.setattr(main.wireguard_service, "read_current", current)
+    monkeypatch.setattr(main.management_routing, "reconcile", reconcile)
     monkeypatch.setattr(main, "record_event", lambda code, **values: events.append((code, values)))
     assert client.get("/api/ingress/wireguard/config/regenerate").status_code == 405
     response = client.post("/api/ingress/wireguard/config/regenerate")
     assert response.status_code == 200
     assert len(calls) == 1
     assert response.json()["configuration"].endswith("synthetic-new-secret\n")
+    assert reconciled == [True]
     assert "no-store" in response.headers["cache-control"]
     assert events[0][0] == "wireguard.configuration_regenerated"
     assert "synthetic-new-secret" not in str(events)
@@ -221,8 +228,10 @@ def test_regeneration_is_post_only_and_logs_no_configuration(client, monkeypatch
 
 def test_wizard_and_management_share_provisioning_service(client, monkeypatch):
     calls = []
+    reconciled = []
 
     async def provision(**kwargs):
+        assert main.mullvad_provider._operation_lock.locked()
         calls.append(kwargs)
         return {
             "interface": "wg0",
@@ -232,7 +241,18 @@ def test_wizard_and_management_share_provisioning_service(client, monkeypatch):
             "client_name": "router",
         }
 
+    async def reconcile():
+        reconciled.append(
+            (
+                core.setting("wireguard_configured"),
+                core.setting("wireguard_subnet"),
+                core.setting("wireguard_interface"),
+            )
+        )
+        return main.management_routing.ReconcileResult((), 0, 0)
+
     monkeypatch.setattr(main.wireguard_service, "provision", provision)
+    monkeypatch.setattr(main.management_routing, "reconcile", reconcile)
     monkeypatch.setattr(main, "record_event", lambda *_args, **_kwargs: None)
     response = client.post(
         "/api/ingress/wireguard",
@@ -249,9 +269,192 @@ def test_wizard_and_management_share_provisioning_service(client, monkeypatch):
     assert len(calls) == 1
     assert calls[0]["activate"] is main.activate_wireguard_interface
     assert response.json()["client_config"].endswith("synthetic-wizard-secret\n")
+    assert reconciled == [(True, "10.90.0.0/24", "wg0")]
 
 
-def test_deferred_provider_routes_wireguard_through_default_interface(client, monkeypatch):
+@pytest.mark.parametrize("generation", ["active", "pending"])
+def test_ingress_interface_change_rejected_during_provider_generation(
+    client, monkeypatch, generation
+):
+    core.set_setting("wireguard_interface", "wg0")
+    main.provider_secrets.save("mullvad", {generation: {"generation": "existing"}})
+    events = []
+
+    async def provision(**_kwargs):
+        pytest.fail("an interface change must be rejected before file or network mutation")
+
+    monkeypatch.setattr(main.wireguard_service, "provision", provision)
+    monkeypatch.setattr(main, "record_event", lambda *args, **kwargs: events.append(args))
+
+    response = client.post(
+        "/api/ingress/wireguard",
+        json={"endpoint": "192.0.2.10", "interface": "wg-edge"},
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {"error": "wireguard_interface_change_requires_disconnect"}
+    assert core.setting("wireguard_interface") == "wg0"
+    assert core.setting("wireguard_configured") is None
+    assert events == []
+
+
+def test_configured_ingress_cannot_leave_an_old_unprotected_interface(client, monkeypatch):
+    core.set_setting("wireguard_configured", True)
+    core.set_setting("wireguard_interface", "wg-office")
+
+    async def provision(**_kwargs):
+        pytest.fail("the existing ingress must not be orphaned by a name change")
+
+    monkeypatch.setattr(main.wireguard_service, "provision", provision)
+    response = client.post(
+        "/api/ingress/wireguard",
+        json={"endpoint": "192.0.2.10", "interface": "wg-other", "port": 51821},
+    )
+    assert response.status_code == 409
+    assert response.json() == {"error": "wireguard_interface_change_unsupported"}
+    assert core.setting("wireguard_interface") == "wg-office"
+
+
+def test_ingress_change_fails_closed_when_provider_state_cannot_be_read(client, monkeypatch):
+    async def provision(**_kwargs):
+        pytest.fail("unreadable provider state must prevent ingress mutation")
+
+    def unavailable(_provider_id):
+        raise main.provider_secrets.ProviderSecretError("provider_secret_key_unavailable")
+
+    monkeypatch.setattr(main.wireguard_service, "provision", provision)
+    monkeypatch.setattr(main.provider_secrets, "load", unavailable)
+    response = client.post(
+        "/api/ingress/wireguard",
+        json={"endpoint": "192.0.2.10", "interface": "wg-edge"},
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "provider_state_unavailable"}
+    assert core.setting("wireguard_configured") is None
+
+
+def test_ingress_change_rejected_while_provider_operation_is_running(client, monkeypatch):
+    lock = asyncio.Lock()
+    asyncio.run(lock.acquire())
+    monkeypatch.setattr(main.mullvad_provider, "_operation_lock", lock)
+
+    async def provision(**_kwargs):
+        pytest.fail("a concurrent provider operation must prevent ingress mutation")
+
+    monkeypatch.setattr(main.wireguard_service, "provision", provision)
+    try:
+        response = client.post(
+            "/api/ingress/wireguard",
+            json={"endpoint": "192.0.2.10", "interface": "wg-edge"},
+        )
+    finally:
+        lock.release()
+
+    assert response.status_code == 409
+    assert response.json() == {"error": "vpn_action_in_progress"}
+    assert core.setting("wireguard_configured") is None
+
+
+@pytest.mark.parametrize(
+    ("interface", "generation"), [("wg-edge", None), ("wg0", "active"), ("wg0", "pending")]
+)
+def test_ingress_interface_is_persisted_before_releasing_provider_lock(
+    client, monkeypatch, interface, generation
+):
+    if generation is not None:
+        main.provider_secrets.save("mullvad", {generation: {"generation": "existing"}})
+
+    async def provision(**_kwargs):
+        assert main.mullvad_provider._operation_lock.locked()
+        return {"interface": interface}
+
+    original = main.set_settings
+
+    def persist(values):
+        assert main.mullvad_provider._operation_lock.locked()
+        original(values)
+
+    monkeypatch.setattr(main.wireguard_service, "provision", provision)
+    monkeypatch.setattr(main, "set_settings", persist)
+    response = client.post(
+        "/api/ingress/wireguard",
+        json={"endpoint": "192.0.2.10", "interface": interface},
+    )
+
+    assert response.status_code == 200
+    assert core.setting("wireguard_interface") == interface
+    assert not main.mullvad_provider._operation_lock.locked()
+
+
+def test_reserved_provider_interface_returns_bad_request_without_mutation(client, monkeypatch):
+    async def keypair():
+        pytest.fail("reserved interface must be rejected before generating keys")
+
+    monkeypatch.setattr(wireguard, "keypair", keypair)
+    response = client.post(
+        "/api/ingress/wireguard",
+        json={"endpoint": "192.0.2.10", "interface": "wg-mullvad"},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "wireguard_interface_reserved"}
+    assert not list(core.WG_DIR.iterdir())
+    assert core.setting("wireguard_configured") is None
+
+
+def test_configuration_creation_reserves_provider_interface_before_mutation(tmp_path, monkeypatch):
+    monkeypatch.setattr(wireguard, "WG_DIR", tmp_path / "wireguard")
+
+    async def keypair():
+        pytest.fail("reserved interface must be rejected before generating keys")
+
+    monkeypatch.setattr(wireguard, "keypair", keypair)
+    with pytest.raises(ValueError, match="wireguard_interface_reserved"):
+        asyncio.run(wireguard.create(endpoint="192.0.2.10", interface="wg-mullvad"))
+
+    assert not wireguard.WG_DIR.exists()
+
+
+def test_wireguard_creation_reports_only_sanitized_protected_route_failure(client, monkeypatch):
+    async def provision(**_kwargs):
+        return {
+            "interface": "wg-edge",
+            "server_public_key": "synthetic-server-public",
+            "client_public_key": "synthetic-client-public",
+            "client_config": "[Interface]\nPrivateKey = synthetic-secret\n",
+            "client_name": "router",
+        }
+
+    async def fail_reconcile():
+        raise main.management_routing.ManagementRoutingError(
+            "protected_destination_route_unavailable"
+        )
+
+    monkeypatch.setattr(main.wireguard_service, "provision", provision)
+    monkeypatch.setattr(main.management_routing, "reconcile", fail_reconcile)
+    monkeypatch.setattr(main, "record_event", lambda *_args, **_kwargs: None)
+
+    response = client.post(
+        "/api/ingress/wireguard",
+        json={
+            "endpoint": "192.0.2.10",
+            "subnet": "10.77.0.0/24",
+            "dns": "1.1.1.1",
+            "port": 51820,
+            "interface": "wg-edge",
+            "client": "router",
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "management_routing_failed"}
+    assert "protected_destination_route_unavailable" not in response.text
+    assert core.setting("wireguard_configured") is True
+    assert core.setting("wireguard_subnet") == "10.77.0.0/24"
+
+
+def test_deferred_provider_uses_provider_neutral_default_route(client, monkeypatch):
     calls = []
 
     async def provision(**kwargs):
@@ -284,17 +487,17 @@ def test_deferred_provider_routes_wireguard_through_default_interface(client, mo
     )
 
     assert response.status_code == 200
-    assert calls[0]["vpn_interface"] == "eth0"
+    assert calls[0]["vpn_interface"] is None
 
 
-def test_provider_mode_keeps_provider_wireguard_egress(client, monkeypatch):
+def test_provider_mode_does_not_hardcode_provider_tunnel_interface(client, monkeypatch):
     core.set_setting("setup_provider_deferred", False)
 
     async def unexpected_network():
         raise AssertionError("direct route must not be selected in provider mode")
 
     monkeypatch.setattr(main, "system_network", unexpected_network)
-    assert asyncio.run(main.wireguard_egress_interface()) == "nordlynx"
+    assert asyncio.run(main.wireguard_egress_interface()) is None
 
 
 def test_reload_failure_returns_only_stable_error_code(client, monkeypatch):
@@ -478,3 +681,50 @@ def test_configuration_path_stays_below_canonical_wireguard_root(tmp_path, monke
     wireguard_root.mkdir()
     monkeypatch.setattr(wireguard, "WG_DIR", wireguard_root / ".." / "wireguard")
     assert wireguard._configuration_path("router") == wireguard_root / "router.conf"
+
+
+def test_legacy_provider_bound_forwarding_is_migrated_atomically(tmp_path, monkeypatch):
+    monkeypatch.setattr(wireguard, "WG_DIR", tmp_path)
+    subnet = "10.90.0.0/24"
+    legacy = wireguard._forwarding_rules("wg0", subnet, "nordlynx")
+    server = tmp_path / "wg0.conf"
+    server.write_text(
+        f"[Interface]\nAddress = 10.90.0.1/24\n{legacy}\n\n[Peer]\nPublicKey = test\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "router.conf").write_text("[Interface]\n", encoding="utf-8")
+    activations = []
+
+    async def activate(interface):
+        activations.append(interface)
+
+    migrated = asyncio.run(
+        wireguard.migrate_legacy_provider_egress("wg0", "router", activate=activate)
+    )
+    result = server.read_text(encoding="utf-8")
+    assert migrated is True
+    assert activations == ["wg0"]
+    assert "nordlynx" not in result
+    assert wireguard._forwarding_rules("wg0", subnet, None) in result
+    assert server.stat().st_mode & 0o777 == 0o600
+
+
+def test_legacy_forwarding_migration_restores_original_after_reload_failure(tmp_path, monkeypatch):
+    monkeypatch.setattr(wireguard, "WG_DIR", tmp_path)
+    legacy = wireguard._forwarding_rules("wg0", "10.90.0.0/24", "nordlynx")
+    original = f"[Interface]\nAddress = 10.90.0.1/24\n{legacy}\n"
+    server = tmp_path / "wg0.conf"
+    server.write_text(original, encoding="utf-8")
+    (tmp_path / "router.conf").write_text("[Interface]\n", encoding="utf-8")
+    attempts = []
+
+    async def activate(interface):
+        attempts.append(interface)
+        if len(attempts) == 1:
+            raise RuntimeError("synthetic reload failure")
+
+    with pytest.raises(wireguard.WireGuardConfigurationError) as error:
+        asyncio.run(wireguard.migrate_legacy_provider_egress("wg0", "router", activate=activate))
+    assert error.value.code == "wireguard_reload_failed"
+    assert server.read_text(encoding="utf-8") == original
+    assert attempts == ["wg0", "wg0"]

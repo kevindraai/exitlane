@@ -78,17 +78,18 @@ def test_all_vpn_mutations_claim_before_provider_preconditions(monkeypatch, name
 
 
 def test_latency_measurement_does_not_conflict_with_connect(monkeypatch):
-    async def authenticated():
+    async def authenticated(_provider=None):
         return {"authenticated": True, "connected": False}
 
-    async def catalog():
+    async def catalog(_provider=None):
         return [{"id": 153, "country_code": "NL", "provider_name": "Netherlands"}]
 
     async def servers(_country_id):
         return [{"hostname": "nl1.nordvpn.com", "station": "192.0.2.1"}]
 
-    async def measured(_code, _servers, *, force):
+    async def measured(_code, _servers, *, force, provider_id):
         assert force is True
+        assert provider_id == "nordvpn"
         return [{"server": "nl1.nordvpn.com", "latency_ms": 12}]
 
     monkeypatch.setattr(main, "_require_provider_authentication", authenticated)
@@ -195,13 +196,14 @@ def test_disconnected_snapshot_clears_stale_country_fields():
     assert snapshot["server"] is None
 
 
-def test_nordvpn_uk_hostname_maps_to_catalogue_gb_code():
+def test_snapshot_uses_country_code_normalized_by_provider_boundary():
     snapshot = main._vpn_snapshot(
         {
             "available": True,
             "connected": True,
             "state": "connected",
             "country": "United Kingdom",
+            "country_code": "GB",
             "server": "uk2087.nordvpn.com",
         }
     )
@@ -283,13 +285,13 @@ def test_failed_recovery_healthcheck_is_not_success(monkeypatch):
 
 
 def test_non_timeout_failure_never_restarts_daemon(monkeypatch):
-    async def catalog():
+    async def catalog(_provider=None):
         return [{"id": 153, "country_code": "NL", "provider_name": "Netherlands"}]
 
     async def servers(_country_id):
         return []
 
-    async def connect(_code, *, timeout):
+    async def connect(_code, *, timeout, server_hostname=None):
         assert timeout == 40
         return {"ok": False, "exit_code": 1, "error_code": "provider_connect_failed"}
 
@@ -310,7 +312,9 @@ def test_non_timeout_failure_never_restarts_daemon(monkeypatch):
     monkeypatch.setattr(main.provider, "connect_country", connect)
     monkeypatch.setattr(main.provider, "status", status)
     monkeypatch.setattr(main.provider, "recover_daemon", unexpected_recovery)
-    monkeypatch.setattr(main, "select_server", lambda *_args: asyncio.sleep(0, result=None))
+    monkeypatch.setattr(
+        main, "select_server", lambda *_args, **_kwargs: asyncio.sleep(0, result=None)
+    )
     monkeypatch.setattr(main, "country_summary", lambda *_args, **_kwargs: {"name": "Nederland"})
     monkeypatch.setattr(main, "record_event", lambda *_args, **_kwargs: None)
 
@@ -328,13 +332,13 @@ def test_timeout_recovers_and_retries_exactly_once(monkeypatch):
     recoveries = []
     events = []
 
-    async def catalog():
+    async def catalog(_provider=None):
         return [{"id": 153, "country_code": "NL", "provider_name": "Netherlands"}]
 
     async def servers(_country_id):
         return []
 
-    async def connect(code, *, timeout):
+    async def connect(code, *, timeout, server_hostname=None):
         connects.append((code, timeout))
         if len(connects) == 1:
             return {"ok": False, "exit_code": 124, "error_code": "vpn_connect_timeout"}
@@ -357,9 +361,16 @@ def test_timeout_recovers_and_retries_exactly_once(monkeypatch):
             {
                 "available": True,
                 "authenticated": True,
+                "connected": False,
+                "state": "disconnected",
+            },
+            {
+                "available": True,
+                "authenticated": True,
                 "connected": True,
                 "state": "connected",
                 "country": "Netherlands",
+                "country_code": "NL",
                 "server": "nl987.nordvpn.com",
             },
         ]
@@ -378,14 +389,16 @@ def test_timeout_recovers_and_retries_exactly_once(monkeypatch):
     monkeypatch.setattr(main.provider, "connect_country", connect)
     monkeypatch.setattr(main.provider, "status", status)
     monkeypatch.setattr(main.provider, "recover_daemon", recover)
-    monkeypatch.setattr(main, "select_server", lambda *_args: asyncio.sleep(0, result=None))
+    monkeypatch.setattr(
+        main, "select_server", lambda *_args, **_kwargs: asyncio.sleep(0, result=None)
+    )
     monkeypatch.setattr(main, "country_summary", lambda *_args, **_kwargs: {"name": "Nederland"})
     monkeypatch.setattr(
         main,
         "record_event",
         lambda code, **values: events.append((code, values)),
     )
-    monkeypatch.setattr(main, "remember_country", lambda *_args: None)
+    monkeypatch.setattr(main, "remember_country", lambda *_args, **_kwargs: None)
 
     result = asyncio.run(
         main.connect_vpn_country(main.CountryConnect(country_code="NL"), request())

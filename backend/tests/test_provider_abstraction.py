@@ -85,7 +85,9 @@ def test_provider_catalog_exposes_safe_metadata_and_capabilities(client, monkeyp
     monkeypatch.setattr(main.provider, "status", status)
     catalog = client.get("/api/vpn/providers")
     assert catalog.status_code == 200
-    item = catalog.json()["providers"][0]
+    items = {item["id"]: item for item in catalog.json()["providers"]}
+    assert set(items) == {"nordvpn", "mullvad"}
+    item = items["nordvpn"]
     assert item["id"] == "nordvpn"
     assert item["icon"] == "shield-check"
     assert item["logo"] == "/assets/providers/nordvpn.svg"
@@ -127,9 +129,9 @@ def test_provider_status_uses_only_server_specific_latency(client, monkeypatch):
     monkeypatch.setattr(
         main,
         "server_latency",
-        lambda server: (
+        lambda server, *, provider_id="nordvpn": (
             {"latency_ms": 19, "latency_measured_at": "measured"}
-            if server == "nl1234.nordvpn.com"
+            if provider_id == "nordvpn" and server == "nl1234.nordvpn.com"
             else {"latency_ms": None, "latency_measured_at": None}
         ),
     )

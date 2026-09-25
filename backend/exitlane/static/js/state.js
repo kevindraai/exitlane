@@ -86,6 +86,19 @@ export function resetAuthenticatedState() {
   notify("providerAction");
 }
 
+export function resetProviderViewState(providerId = null) {
+  appState.provider = null;
+  state.provider = {
+    ...statusSlice(),
+    loading: Boolean(providerId),
+    requestedProviderId: providerId,
+  };
+  notify("provider");
+  state.providerAction = { state: "idle", target: null, error: null };
+  notify("providerAction");
+  return state.provider;
+}
+
 export function beginRefresh(name) {
   const current = getSlice(name);
   return updateSlice(name, {

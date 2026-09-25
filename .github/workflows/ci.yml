@@ -80,7 +80,9 @@ jobs:
         run: bandit -c pyproject.toml -r exitlane
 
       - name: Audit Python dependencies
-        run: pip-audit
+        # ExitLane is the sole editable package and is not published on PyPI.
+        # Audit every installed third-party dependency, including dev tools.
+        run: pip-audit --skip-editable
 
       - name: Compile Python sources
         run: python -m compileall -q exitlane

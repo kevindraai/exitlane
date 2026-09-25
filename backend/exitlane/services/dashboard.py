@@ -76,8 +76,14 @@ class DashboardKillswitchStatus(BaseModel):
     state: str = "unknown"
 
 
+class DashboardProvider(BaseModel):
+    id: str | None = None
+    display_name: str | None = None
+
+
 class DashboardResponse(BaseModel):
     health: HealthStatus
+    active_provider: DashboardProvider
     vpn: VPNStatus
     wireguard: WireGuardStatus
     killswitch: DashboardKillswitchStatus
@@ -251,6 +257,9 @@ async def build_dashboard(
     version: str,
     system_status_call: Callable[[], Awaitable[SystemStatus]] | None = None,
     killswitch_status_call: Callable[[], Awaitable[dict]] | None = None,
+    *,
+    active_provider_id: str | None = None,
+    active_provider_display_name: str | None = None,
 ) -> DashboardResponse:
     generated_at = utc_now()
     system_status_call = system_status_call or system_status
@@ -335,6 +344,10 @@ async def build_dashboard(
         )
     return DashboardResponse(
         health=health,
+        active_provider=DashboardProvider(
+            id=active_provider_id,
+            display_name=active_provider_display_name,
+        ),
         vpn=vpn,
         wireguard=wireguard,
         killswitch=dashboard_killswitch,

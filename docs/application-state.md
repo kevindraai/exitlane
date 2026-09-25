@@ -37,9 +37,14 @@ the outcome.
   confirmed data.
 - Logout and an authentication failure stop all authenticated polling and clear provider,
   WireGuard, dashboard, and system state before returning to login.
-- Exitlane authentication and provider authentication are independent gates. Central provider
-  status may be refreshed while NordVPN is signed out, but countries, servers, latency checks,
-  and VPN mutations start only after the explicit provider capability permits them.
+- Exitlane authentication, provider authentication, active-provider selection, and tunnel state
+  are independent gates. Central provider status may be refreshed while a provider is signed out
+  or inactive, but countries, servers, latency checks, and VPN mutations start only after explicit
+  provider capabilities permit them. Only the active provider receives connection mutations.
+- A provider switch remains one backend-owned operation through local preflight, protected handoff,
+  target verification and commit or rollback. The frontend may show it as pending, but must not
+  infer a new canonical provider until the successful response names it. A rollback failure keeps
+  the previous canonical provider while the backend reports a failed/degraded operation.
 
 Not every form field belongs in central state. Short-lived input and purely presentational state
 can remain local. Central state is reserved for information that crosses views, participates in
@@ -55,14 +60,14 @@ view because they are explicit one-off actions, not shared application status.
 
 ## Active-server latency
 
-The active VPN latency is telemetry for the exact normalized server hostname
-reported by NordVPN status. ExitLane trims whitespace, compares hostnames
+The active VPN latency is telemetry for the exact normalized server hostname or validated relay
+address reported through the active provider contract. ExitLane trims whitespace, compares hostnames
 case-insensitively, and removes an optional trailing dot, while keeping short
 names distinct from fully qualified domain names. A fresh cache row is reused
 only when that normalized hostname matches exactly.
 
 If an active server has no fresh row, one deduplicated measurement probes that
-validated NordVPN hostname over TCP/443 and stores the result under the same
+validated provider target over TCP/443 and stores the result under the same
 normalized hostname. Concurrent provider polls share the in-flight probe. An
 unreachable server produces optional `—` telemetry and never changes the VPN's
 connected state. Country summaries may reuse the row only when their measured
