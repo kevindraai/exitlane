@@ -7,6 +7,9 @@ Requires=exitlane-provider-egress.service
 [Service]
 Type=simple
 User=root
+RuntimeDirectory=exitlane-routing
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
 Environment=HOME=/var/lib/exitlane
 EnvironmentFile=-/etc/default/exitlane
 WorkingDirectory=/opt/exitlane/backend
