@@ -27,6 +27,8 @@
 
 ### Security
 
+- Serialize management-route updates across application and CLI processes, and order WireGuard
+  startup after management-route preparation to prevent competing boot reconciliations.
 - Persist rejected MFA challenge attempts and expiry cleanup before returning authentication
   errors; preserve the five-attempt budget across new challenges, cancellation, client-IP
   changes and restarts, and serialize challenge and one-time factor consumption.

@@ -1315,6 +1315,18 @@ def test_boot_unit_runs_management_reconcile_before_providers():
     assert "mullvad-daemon.service" not in unit
     assert "After=networking.service" in unit
     assert "Wants=networking.service" in unit
+    for protected_unit in (unit, application_unit):
+        assert "RuntimeDirectory=exitlane-routing" in protected_unit
+        assert "RuntimeDirectoryMode=0700" in protected_unit
+        assert "RuntimeDirectoryPreserve=yes" in protected_unit
+    assert (
+        "Requires=exitlane-provider-egress.service exitlane-management-routing.service"
+        in wireguard_dropin
+    )
+    assert (
+        "After=exitlane-provider-egress.service exitlane-management-routing.service"
+        in wireguard_dropin
+    )
     assert "After=network-online.target" not in unit
     assert "Wants=network-online.target" not in unit
     assert "exitlane-management-routing.service" in application_unit
@@ -1432,3 +1444,194 @@ def test_runtime_monitor_retries_after_provider_or_daemon_rule_loss(monkeypatch)
             {"metadata": {"reason": "management_rule_inspection_failed"}},
         )
     ]
+
+
+@pytest.mark.parametrize("first_method", ["prepare_provider_transition", "reconcile"])
+def test_independent_processes_serialize_reconciliation_without_blocking_event_loop(
+    tmp_path, first_method
+):
+    import sys
+
+    second_method = (
+        "reconcile"
+        if first_method == "prepare_provider_transition"
+        else "prepare_provider_transition"
+    )
+    # Separate Python processes model the boot oneshot, wg-quick hook and app.
+    script = r"""
+import asyncio
+import sys
+from pathlib import Path
+from exitlane.services import management_routing as routing
+root = Path(sys.argv[1])
+method, label = sys.argv[2:]
+routing.LOCK_PATH = root / 'management.lock'
+routing.configured_prefixes = lambda: ()
+routing.configured_protected_destinations = lambda: ()
+class Backend:
+    async def work(self, *args):
+        with (root / 'events').open('a') as stream:
+            stream.write(label + '-enter\n')
+        print('entered', flush=True)
+        if label == 'first':
+            while not (root / 'release').exists():
+                await asyncio.sleep(0.01)
+        with (root / 'events').open('a') as stream:
+            stream.write(label + '-exit\n')
+        return routing.ReconcileResult((), 0, 0)
+    reconcile = work
+    prepare_provider_transition = work
+routing._backend = Backend()
+async def heartbeat():
+    await asyncio.sleep(0.05)
+    print('tick', flush=True)
+async def run():
+    task = asyncio.create_task(heartbeat())
+    await getattr(routing, method)()
+    await task
+asyncio.run(run())
+"""
+
+    async def run():
+        processes = []
+        try:
+            first = await asyncio.create_subprocess_exec(
+                sys.executable,
+                "-c",
+                script,
+                str(tmp_path),
+                first_method,
+                "first",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            processes.append(first)
+            assert await asyncio.wait_for(first.stdout.readline(), 5) == b"entered\n"
+            second = await asyncio.create_subprocess_exec(
+                sys.executable,
+                "-c",
+                script,
+                str(tmp_path),
+                second_method,
+                "second",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            processes.append(second)
+            # A heartbeat runs while the second process waits; it cannot enter the backend.
+            assert await asyncio.wait_for(second.stdout.readline(), 5) == b"tick\n"
+            assert (tmp_path / "events").read_text().splitlines() == ["first-enter"]
+            (tmp_path / "release").touch()
+            for process in processes:
+                _stdout, stderr = await asyncio.wait_for(process.communicate(), 5)
+                assert process.returncode == 0, stderr.decode()
+            assert (tmp_path / "events").read_text().splitlines() == [
+                "first-enter",
+                "first-exit",
+                "second-enter",
+                "second-exit",
+            ]
+            assert (tmp_path / "management.lock").stat().st_mode & 0o777 == 0o600
+        finally:
+            for process in processes:
+                if process.returncode is None:
+                    process.kill()
+                    await process.wait()
+
+    asyncio.run(run())
+
+
+def test_management_process_lock_timeout_is_bounded_and_does_not_mutate(tmp_path, monkeypatch):
+    import fcntl
+    import os
+
+    path = tmp_path / "management.lock"
+    monkeypatch.setattr(management_routing, "LOCK_PATH", path)
+    monkeypatch.setattr(management_routing, "LOCK_TIMEOUT_SECONDS", 0.03)
+    descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    async def run():
+        with pytest.raises(
+            management_routing.ManagementRoutingError, match="^management_lock_timeout$"
+        ):
+            async with management_routing._process_reconcile_lock():
+                pytest.fail("entered a busy management transaction")
+
+    try:
+        asyncio.run(run())
+        assert path.read_bytes() == b""
+    finally:
+        os.close(descriptor)
+
+    # The timed-out waiter must not keep a descriptor or advisory lock alive.
+    async def acquire():
+        async with management_routing._process_reconcile_lock():
+            pass
+
+    asyncio.run(acquire())
+
+
+@pytest.mark.parametrize("cancel_while", ["waiting", "holding"])
+def test_management_process_lock_cancellation_releases_descriptors(
+    tmp_path, monkeypatch, cancel_while
+):
+    import fcntl
+    import os
+    from pathlib import Path
+
+    path = tmp_path / "management.lock"
+    monkeypatch.setattr(management_routing, "LOCK_PATH", path)
+
+    async def run():
+        descriptor = None
+        if cancel_while == "waiting":
+            descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        baseline = len(list(Path("/proc/self/fd").iterdir()))
+        entered = asyncio.Event()
+
+        async def holder():
+            async with management_routing._process_reconcile_lock():
+                entered.set()
+                await asyncio.Future()
+
+        task = asyncio.create_task(holder())
+        try:
+            if cancel_while == "holding":
+                await asyncio.wait_for(entered.wait(), 2)
+            else:
+                await asyncio.sleep(0.02)
+                assert not entered.is_set()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert len(list(Path("/proc/self/fd").iterdir())) == baseline
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
+            if not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+        async with management_routing._process_reconcile_lock():
+            pass
+
+    asyncio.run(run())
+
+
+def test_management_process_lock_rejects_symlink_without_touching_target(tmp_path, monkeypatch):
+    target = tmp_path / "unrelated"
+    target.write_text("preserve")
+    path = tmp_path / "management.lock"
+    path.symlink_to(target)
+    monkeypatch.setattr(management_routing, "LOCK_PATH", path)
+
+    async def run():
+        with pytest.raises(
+            management_routing.ManagementRoutingError, match="^management_lock_unavailable$"
+        ):
+            async with management_routing._process_reconcile_lock():
+                pytest.fail("followed an unsafe lock path")
+
+    asyncio.run(run())
+    assert target.read_text() == "preserve"

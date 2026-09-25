@@ -90,6 +90,21 @@ exit and the configured disconnect/killswitch behavior. Check management and rev
 from their normal networks and inspect Activity for failed operations. An active service alone is
 not proof that the router's traffic uses the VPN.
 
+After a planned reboot, also check the routing services and the configured ingress unit. Replace
+`wg0` below with the ingress interface shown in WireGuard settings:
+
+```bash
+sudo systemctl status exitlane-provider-egress.service exitlane-management-routing.service \
+  wg-quick@wg0.service --no-pager
+sudo journalctl -b -u exitlane-provider-egress.service -u exitlane-management-routing.service \
+  -u wg-quick@wg0.service --no-pager
+```
+
+WireGuard startup waits for routing preparation, and route updates from separate processes are
+serialized. A failed routing or ingress unit requires investigation even when the API health check
+passes or the interface exists. Keep the failed-boot journal for diagnosis and verify management
+access and the routed client path after recovery.
+
 ## Automatic rollback
 
 An error after the recovery snapshot stops the candidate, restores the previous

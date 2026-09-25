@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import ipaddress
 import json
 import logging
+import os
 import re
+import stat
 from collections import Counter
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 from exitlane import core
@@ -19,6 +25,9 @@ PRIORITY_MIN = 1
 ROUTE_METRIC = 42760
 PROVIDER_TABLES_SETTING = "network.management_provider_tables"
 MAX_PREFIXES = 64
+LOCK_PATH = Path("/run/exitlane-routing/management.lock")
+LOCK_TIMEOUT_SECONDS = 30.0
+LOCK_RETRY_SECONDS = 0.05
 STANDARD_ROUTE_TABLES = frozenset({"local", "main", "default", "255", "254", "253"})
 BROAD_PRIVATE_NETWORKS = {
     ipaddress.ip_network("10.0.0.0/8"),
@@ -1193,8 +1202,56 @@ def _reconcile_lock() -> asyncio.Lock:
     return _lock
 
 
+@asynccontextmanager
+async def _process_reconcile_lock() -> AsyncIterator[None]:
+    # Systemd hooks run in separate processes from the app and each other.
+    # A preserved runtime directory keeps its inode stable across application
+    # restarts and data/installer rollback. Never unlink a shared lock file.
+    try:
+        LOCK_PATH.parent.mkdir(mode=0o700, exist_ok=True)
+        directory = LOCK_PATH.parent.lstat()
+        if (
+            not stat.S_ISDIR(directory.st_mode)
+            or directory.st_uid != os.geteuid()
+            or directory.st_mode & 0o077
+        ):
+            raise ManagementRoutingError("management_lock_unavailable")
+        descriptor = os.open(
+            LOCK_PATH,
+            os.O_RDWR | os.O_CREAT | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK,
+            0o600,
+        )
+    except OSError:
+        raise ManagementRoutingError("management_lock_unavailable") from None
+    try:
+        details = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(details.st_mode)
+            or details.st_nlink != 1
+            or details.st_uid != os.geteuid()
+            or details.st_mode & 0o077
+        ):
+            raise ManagementRoutingError("management_lock_unavailable")
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + LOCK_TIMEOUT_SECONDS
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    raise ManagementRoutingError("management_lock_timeout") from None
+                await asyncio.sleep(min(LOCK_RETRY_SECONDS, remaining))
+            except OSError:
+                raise ManagementRoutingError("management_lock_unavailable") from None
+        yield
+    finally:
+        os.close(descriptor)
+
+
 async def reconcile() -> ReconcileResult:
-    async with _reconcile_lock():
+    async with _reconcile_lock(), _process_reconcile_lock():
         return await _backend.reconcile(
             configured_prefixes(),
             configured_protected_destinations(),
@@ -1202,7 +1259,7 @@ async def reconcile() -> ReconcileResult:
 
 
 async def prepare_provider_transition() -> ReconcileResult:
-    async with _reconcile_lock():
+    async with _reconcile_lock(), _process_reconcile_lock():
         return await _backend.prepare_provider_transition(
             configured_prefixes(),
             configured_protected_destinations(),

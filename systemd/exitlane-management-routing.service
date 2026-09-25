@@ -9,6 +9,9 @@ Before=exitlane.service nordvpnd.service
 [Service]
 Type=oneshot
 User=root
+RuntimeDirectory=exitlane-routing
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
 Environment=HOME=/var/lib/exitlane
 EnvironmentFile=-/etc/default/exitlane
 ExecStart=/usr/local/sbin/exitlane-cli prepare-management-routes
