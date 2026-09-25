@@ -390,14 +390,11 @@ with tempfile.TemporaryDirectory(prefix="exitlane-transition-", dir="/root") as 
 
         action("restore_backup_policy", "/api/vpn/killswitch/disable", {})
         assert core.setting(killswitch.SETTING_CONFIGURED, False) is False
-        recovery = pathlib.Path("/root/exitlane-qa-restore")
-        recovery.mkdir(mode=0o700, exist_ok=True)
+        recovery = td / "restore"
+        recovery.mkdir(mode=0o700)
         import secrets
 
         passphrase = secrets.token_urlsafe(32)
-        passfile = recovery / "passphrase"
-        passfile.write_text(passphrase)
-        passfile.chmod(0o600)
         backup = recovery / "source.elb"
         lifecycle.create_backup(backup, passphrase)
         identity = provider_secrets.load("mullvad")

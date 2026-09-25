@@ -74,7 +74,12 @@ The decisive run on `3782a46` passed with **1,217 client packets**, including **
 The harness waits for capture headers before starting traffic and checks exact source-rule order,
 the unreachable fallback and real source-bound UDP sends after restore, tunnel deletion and
 disconnect. Installed CLI/provider/routing/lifecycle files matched the source archive. Harness
-SHA-256: `406ace9d71fb5216f859204f9610d674477c43de7f6983383ea7b6c3a761d8c4`.
+SHA-256: `406ace9d71fb5216f859204f9610d674477c43de7f6983383ea7b6c3a761d8c4`
+(the harness at `decb9af`). Subsequent CodeQL review removed its unnecessary plaintext passphrase
+file: the checked-in harness keeps that generated value only in memory and places its encrypted
+backup under the existing temporary directory. The tested restore operations already used the
+in-memory value. Runtime and packet assertions are unchanged; the live run is attributed to its
+actual harness revision rather than claimed as a rerun of this cleanup change.
 
 - Relays `nl-ams-wg-004`, `nl-ams-wg-005`, `de-ber-wg-001` and `au-adl-wg-301` connected in roughly
   1.5–3.7 seconds. The previously observed naturally unavailable relay was not reproduced.
@@ -105,8 +110,9 @@ administrator JSON file. Run from the reviewed checkout using its installed Pyth
   --admin-file /root/exitlane-qa-admin.json
 ```
 
-The harness creates a root-only local backup/passphrase for the recovery scenarios and removes its
-namespace, temporary key and capture table. Successful captures are removed; failed captures
+The harness creates a root-only encrypted temporary backup for the recovery scenarios, keeps its
+passphrase only in memory, and removes the backup, namespace, temporary key and capture table.
+Successful captures are removed; failed captures
 are retained locally in a unique root-only directory for diagnosis. Test credentials/backups must be
 removed and the registered device reconciled when the qualification is finished.
 
