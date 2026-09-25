@@ -385,7 +385,119 @@ def _read_backup_passphrase(
     return value
 
 
+def _restore_forwarding_guard(ingress: tuple[str, ...], enabled: bool) -> None:
+    """Atomically hold only old/new protected forwarding during file replacement."""
+    if not ingress or any(
+        not isinstance(item, str) or killswitch.INTERFACE_RE.fullmatch(item) is None
+        for item in ingress
+    ):
+        raise lifecycle.LifecycleError("invalid_restore_ingress")
+    rules = "destroy table inet exitlane_restore\n"
+    if enabled:
+        sources = ", ".join(f'"{item}"' for item in ingress)
+        rules += (
+            "table inet exitlane_restore {\n"
+            " chain forward {\n"
+            "  type filter hook forward priority -310; policy accept;\n"
+            f"  iifname {{ {sources} }} counter drop\n"
+            " }\n}\n"
+        )
+    environment = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C"}
+    for arguments in (("-c", "-f", "-"), ("-f", "-")):
+        rc, _, _ = asyncio.run(
+            core.command(
+                "/usr/sbin/nft", *arguments, input_text=rules, timeout=15, environment=environment
+            )
+        )
+        if rc:
+            raise lifecycle.LifecycleError("restore_guard_failed")
+    if enabled:
+        rc, _, _ = asyncio.run(
+            core.command(
+                "/usr/sbin/nft",
+                "list",
+                "table",
+                "inet",
+                "exitlane_restore",
+                timeout=10,
+                environment=environment,
+            )
+        )
+        if rc:
+            raise lifecycle.LifecycleError("restore_guard_failed")
+
+
+def _restore_ingress_service(*, start: bool) -> None:
+    if not core.setting("wireguard_configured", False):
+        return
+    ingress, _ = killswitch.configuration()
+    interface = ingress[0]
+    unit = f"wg-quick@{interface}.service"
+    if start:
+        source = core.WG_DIR / f"{interface}.conf"
+        lifecycle._safe_regular_file(source)
+        system_directory = Path("/etc/wireguard")
+        system_directory.mkdir(mode=0o700, exist_ok=True)
+        target = system_directory / source.name
+        if target.is_symlink():
+            if target.resolve() != source.resolve():
+                raise lifecycle.LifecycleError("restore_ingress_config_conflict")
+        elif target.exists():
+            raise lifecycle.LifecycleError("restore_ingress_config_conflict")
+        else:
+            target.symlink_to(source)
+        commands = (("enable", unit), ("restart", unit))
+    else:
+        commands = (("disable", "--now", unit),)
+    for arguments in commands:
+        rc, _, _ = asyncio.run(
+            core.command(
+                "/usr/bin/systemctl",
+                *arguments,
+                timeout=30,
+                environment={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C"},
+            )
+        )
+        if rc:
+            raise lifecycle.LifecycleError("restore_ingress_service_failed")
+
+
 def _systemd_service_action(action: str) -> None:
+    if action == "reset-egress":
+
+        async def reset_egress() -> None:
+            ingress, _ = killswitch.configuration()
+            egress = ProviderWireGuard()
+            # Ownership preflight must pass before touching any old direct tunnel.
+            # The independent restore guard holds forwarding throughout teardown.
+            await egress.arm(ingress, "wg-mullvad")
+            await egress.stop_interface("wg-mullvad")
+            await egress.disarm(ingress, "wg-mullvad")
+            egress.remove_config("wg-mullvad")
+
+        try:
+            asyncio.run(reset_egress())
+        except (ProviderWireGuardError, killswitch.KillswitchError) as error:
+            raise lifecycle.LifecycleError("restore_egress_reset_failed") from error
+        # Unregistering ingress first detaches its RPDB rules and makes ownership
+        # ambiguous. Remove owned egress rules while the old ingress still exists.
+        _restore_ingress_service(start=False)
+        return
+    if action not in {"stop", "start"}:
+        raise lifecycle.LifecycleError("invalid_service_action")
+    if action == "start":
+        # Invoke the restorers directly: systemd oneshots with RemainAfterExit
+        # would otherwise keep the guard computed for the previous database.
+        if restore_provider_egress_guard() or restore_killswitch():
+            raise lifecycle.LifecycleError("restore_network_guard_failed")
+        if not core.setting(killswitch.SETTING_CONFIGURED, False) and not core.setting(
+            killswitch.SETTING_TRANSITION, False
+        ):
+            try:
+                asyncio.run(killswitch.NftBackend().remove())
+            except killswitch.KillswitchError as error:
+                raise lifecycle.LifecycleError("restore_network_guard_failed") from error
+        _restore_ingress_service(start=True)
     returncode, _output, _error = asyncio.run(
         core.command(
             "/usr/bin/systemctl",
@@ -434,6 +546,7 @@ def backup_command(arguments: argparse.Namespace) -> int:
                 confirmation=confirmation,
                 service_action=_systemd_service_action,
                 health_check=_local_health_check,
+                forwarding_guard=_restore_forwarding_guard,
             )
             print("Backup restored. Existing sessions were revoked.")
         print(f"Backup ID: {info.backup_id}")

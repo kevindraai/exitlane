@@ -1282,6 +1282,7 @@ def test_network_configuration_persists_explicit_management_prefixes_atomically(
     data = tmp_path / "data"
     monkeypatch.setattr(core, "DATA", data)
     monkeypatch.setattr(core, "DB", data / "exitlane.db")
+    monkeypatch.setattr(core, "WG_DIR", data / "wireguard")
     for environment in network_security.ENVIRONMENT_KEYS.values():
         monkeypatch.delenv(environment, raising=False)
     core.init()

@@ -113,6 +113,18 @@ def test_start_owns_only_provider_interface_and_ingress_policy(tmp_path):
     )
 
 
+def test_start_rejects_egress_interface_as_ingress_before_any_mutation(tmp_path):
+    runner = Runner()
+    root = tmp_path / "provider-egress"
+    service = ProviderWireGuard(runner, root=root)
+
+    with pytest.raises(ProviderWireGuardError, match="provider_egress_configuration_invalid"):
+        asyncio.run(service.start(config(), ("wg0", "wg-mullvad")))
+
+    assert runner.calls == []
+    assert not root.exists()
+
+
 def test_probe_requires_dataplane_and_exact_peer_handshake(tmp_path):
     runner = Runner()
     runner.interface = True

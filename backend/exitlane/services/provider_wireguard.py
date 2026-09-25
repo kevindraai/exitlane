@@ -418,7 +418,9 @@ class ProviderWireGuard:
         item = config.validated()
         path = self._path(item.interface)
         ingress = tuple(dict.fromkeys(ingress_interfaces))
-        if any(INTERFACE_PATTERN.fullmatch(value) is None for value in ingress):
+        if item.interface in ingress or any(
+            INTERFACE_PATTERN.fullmatch(value) is None for value in ingress
+        ):
             raise ProviderWireGuardError("provider_egress_configuration_invalid")
         await self._preflight(ingress, item.interface)
         try:

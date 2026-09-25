@@ -10,6 +10,7 @@ from exitlane.services import auth_security, provider_secrets
 def secret_store(tmp_path, monkeypatch):
     monkeypatch.setattr(core, "DB", tmp_path / "exitlane.db")
     monkeypatch.setattr(core, "DATA", tmp_path)
+    monkeypatch.setattr(core, "WG_DIR", tmp_path / "wireguard")
     monkeypatch.setattr(auth_security, "master_key_path", lambda: tmp_path / "secret.key")
     core.init()
     auth_security.ensure_master_key()

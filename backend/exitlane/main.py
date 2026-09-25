@@ -77,6 +77,7 @@ from exitlane.services import (
     killswitch,
     management_routing,
     network_security,
+    provider_secrets,
     speedtest_installation,
     vpn_operations,
 )
@@ -3749,7 +3750,23 @@ async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
             return JSONResponse(
                 status_code=409, content={"error": "wireguard_generation_in_progress"}
             )
-        async with generation_lock:
+        if mullvad_provider._operation_lock.locked():
+            return JSONResponse(status_code=409, content={"error": "vpn_action_in_progress"})
+        # Keep provider connection attempts out until the ingress name is saved;
+        # their fail-closed rules are derived from that persisted name.
+        async with generation_lock, mullvad_provider._operation_lock:
+            if req.interface != setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE):
+                if setting("wireguard_configured", False):
+                    return JSONResponse(
+                        status_code=409,
+                        content={"error": "wireguard_interface_change_unsupported"},
+                    )
+                state = provider_secrets.load("mullvad") or {}
+                if any(key in state for key in ("active", "pending")):
+                    return JSONResponse(
+                        status_code=409,
+                        content={"error": "wireguard_interface_change_requires_disconnect"},
+                    )
             result = await wireguard_service.provision(
                 activate=activate_wireguard_interface,
                 endpoint=req.endpoint,
@@ -3760,6 +3777,20 @@ async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
                 client=req.client,
                 vpn_interface=await wireguard_egress_interface(),
             )
+            set_settings(
+                {
+                    "wireguard_configured": True,
+                    "wireguard_client_name": req.client,
+                    "wireguard_interface": req.interface,
+                    "wireguard_endpoint": req.endpoint,
+                    "wireguard_subnet": req.subnet,
+                    "wireguard_dns": req.dns,
+                    "wireguard_port": req.port,
+                    "setup_current_step": 5,
+                }
+            )
+    except provider_secrets.ProviderSecretError as error:
+        raise HTTPException(status_code=503, detail="provider_state_unavailable") from error
     except ValueError as error:
         raise HTTPException(
             status_code=400,
@@ -3771,18 +3802,6 @@ async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
             detail=error.code,
         ) from error
 
-    set_settings(
-        {
-            "wireguard_configured": True,
-            "wireguard_client_name": req.client,
-            "wireguard_interface": req.interface,
-            "wireguard_endpoint": req.endpoint,
-            "wireguard_subnet": req.subnet,
-            "wireguard_dns": req.dns,
-            "wireguard_port": req.port,
-            "setup_current_step": 5,
-        }
-    )
     await _reconcile_management_routes_or_503(request_actor(request))
 
     record_event(

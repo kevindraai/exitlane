@@ -60,6 +60,31 @@ def facts(**changes):
     return killswitch.TunnelFacts(**values)
 
 
+def test_transition_protects_the_configured_wireguard_ingress():
+    core.set_setting("wireguard_interface", "wg-office")
+    core.set_setting("wireguard.interface", "wg-legacy")
+    core.set_setting(killswitch.SETTING_INGRESS, ["vlan20", "wg-office"])
+    runner = FakeNft()
+
+    asyncio.run(killswitch.arm_provider_transition(killswitch.NftBackend(runner)))
+
+    assert killswitch.configuration() == (("wg-office", "vlan20"), ())
+    assert 'elements = { "wg-office", "vlan20" }' in runner.ruleset
+    assert "wg0" not in runner.ruleset
+    assert "wg-legacy" not in runner.ruleset
+
+
+def test_legacy_wireguard_ingress_setting_remains_supported():
+    core.set_setting("wireguard.interface", "wg-legacy")
+    assert killswitch.configuration() == (("wg-legacy",), ())
+
+
+def test_invalid_canonical_wireguard_ingress_cannot_fall_back_to_default():
+    core.set_setting("wireguard_interface", "invalid interface")
+    with pytest.raises(killswitch.KillswitchError, match="invalid_configuration"):
+        killswitch.configuration()
+
+
 def test_rules_cover_ipv4_ipv6_dns_management_and_provider_control():
     rules = killswitch.generate_ruleset(
         facts(), ingress=("wg0", "vlan20"), local_allowlist=("192.168.1.0/24", "fd00::/64")

@@ -19,6 +19,7 @@ RELAY_KEY = base64.b64encode(bytes(range(2, 34))).decode()
 def isolated_state(tmp_path, monkeypatch):
     monkeypatch.setattr(core, "DATA", tmp_path)
     monkeypatch.setattr(core, "DB", tmp_path / "exitlane.db")
+    monkeypatch.setattr(core, "WG_DIR", tmp_path / "wireguard")
     monkeypatch.setattr(auth_security, "master_key_path", lambda: tmp_path / "secret.key")
     core.init()
     auth_security.ensure_master_key()

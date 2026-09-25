@@ -26,6 +26,13 @@ class WireGuardConfigurationError(RuntimeError):
         self.code = code
 
 
+def _validate_ingress_interface(interface: str) -> None:
+    if re.fullmatch(r"[A-Za-z0-9-]{1,15}", interface) is None:
+        raise ValueError("De WireGuard-interfacenaam is ongeldig.")
+    if interface == "wg-mullvad":
+        raise ValueError("wireguard_interface_reserved")
+
+
 def _configuration_path(name: str) -> Path:
     if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", name) is None:
         raise WireGuardConfigurationError("wireguard_configuration_invalid")
@@ -225,11 +232,7 @@ async def create(
     if network.version != 4 or len(hosts) < 2:
         raise ValueError("Het WireGuard-tunnelnetwerk moet minimaal twee IPv4-adressen bevatten.")
 
-    if not re.fullmatch(
-        r"[A-Za-z0-9-]{1,15}",
-        interface,
-    ):
-        raise ValueError("De WireGuard-interfacenaam is ongeldig.")
+    _validate_ingress_interface(interface)
 
     if not re.fullmatch(
         r"[A-Za-z0-9_-]{1,64}",
@@ -317,6 +320,7 @@ async def provision(
     allowed_ips: str = DEFAULT_WIREGUARD_ALLOWED_IPS,
     keepalive: int = DEFAULT_WIREGUARD_KEEPALIVE,
 ) -> dict:
+    _validate_ingress_interface(interface)
     paths = (_configuration_path(interface), _configuration_path(client))
     previous: dict[Path, str | None] = {}
     for path in paths:

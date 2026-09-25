@@ -109,7 +109,9 @@ def validate_allowlist(values: list[str] | tuple[str, ...]) -> tuple[str, ...]:
 
 
 def configuration() -> tuple[tuple[str, ...], tuple[str, ...]]:
-    wireguard = _interface(core.setting("wireguard.interface", "wg0"))
+    wireguard = _interface(
+        core.setting("wireguard_interface", core.setting("wireguard.interface", "wg0"))
+    )
     routed = core.setting(SETTING_INGRESS, [])
     if not isinstance(routed, list):
         raise KillswitchError("invalid_configuration")
