@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Restore the NordVPN installation action after changing providers in the setup wizard,
+  and ignore stale installation/status responses from the previous provider.
+- Separate provider selection checkboxes from keyboard-accessible configuration tabs;
+  retain navigation with no providers selected and recover rejected selections honestly.
+- Keep provider manuals within the mobile Help layout, with wrapping breadcrumbs and
+  scrolling contained inside wide code blocks and tables.
+
+### Added
+
+- Add the NordVPN operator guide to repository documentation and integrated Help, with
+  contextual manual links for both VPN providers.
+
 ## [0.3.0-rc.1] - 2026-09-25
 
 ### Added

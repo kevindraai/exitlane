@@ -36,3 +36,33 @@ The same temporary credential can exercise the normal Settings timezone flow:
 EXITLANE_SCREENSHOT_PASSWORD='temporary-password' \
   EXITLANE_QA_TIMEZONE='Europe/London' npm run qualify:timezone
 ```
+
+## Provider wizard qualification
+
+`qualify-provider-wizard.mjs` exercises an incomplete first-run wizard on a disposable
+Debian 13 test appliance. Prepare the administrator and system-check steps first. The
+starting state must have Mullvad's direct WireGuard prerequisites available and NordVPN
+not installed. The script changes provider selections and installs NordVPN once through
+the real confirmation dialog; it never supplies provider credentials, connects a VPN or
+runs Speedtest. Do not point it at a production or personal appliance.
+
+```bash
+EXITLANE_QA_BASE_URL='http://<test-appliance>:8787' \
+EXITLANE_QA_ADMIN_FILE='/protected/temporary-admin.json' \
+EXITLANE_QA_OUTPUT='/protected/wizard-evidence' \
+EXITLANE_QA_ALLOW_INSTALL=1 \
+node qualify-provider-wizard.mjs
+```
+
+The administrator file contains `username` and `password`; keep it private and remove it
+after the test. `EXITLANE_QA_CHROMIUM` can select an existing Chromium executable.
+
+Checks include repeated provider switches, native checkbox selection, keyboard-operated
+tabs, narrow-screen overflow, cancellation without installation, one real installation,
+and resuming that operation after a reload. Two explicit browser fault cases reject a
+selection request and delay an unchanged real provider response to check stale-state
+handling. Assertions wait for the selected provider's authoritative status, rather than
+assuming an earlier page-load event means later requests have completed. Screenshots
+show only the provider step without credentials. Keep the separate authenticated Help
+rendering check in the task evidence, and restore the disposable appliance's setup state
+and remove temporary administrator material afterwards.

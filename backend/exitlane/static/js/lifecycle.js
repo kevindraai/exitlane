@@ -115,8 +115,8 @@ export const refreshProviderState = async (options = {}) => {
     const data = response.status || response;
     if (providerId) {
       const application = getSlice("application");
-      const providerViewActive = application.mode === "dashboard"
-        && application.activeView === "vpn-provider";
+      const providerViewActive = application.mode === "wizard"
+        || application.mode === "dashboard" && application.activeView === "vpn-provider";
       if (
         providerStatusId(data) !== providerId
         || (providerViewActive && !providerRequestIsCurrent(providerId, application, data))

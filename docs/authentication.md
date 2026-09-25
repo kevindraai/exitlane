@@ -46,6 +46,9 @@ endpoint, reset token, or remote flow.
 
 ## NordVPN token subprocess boundary
 
+For installation, access-token creation, sign-in and recovery, see the
+[NordVPN provider guide](nordvpn.md).
+
 NordVPN Linux 5.2 supports a masked interactive token prompt when
 `nordvpn login --token` is invoked without a token argument. Exitlane attaches a
 private pseudo-terminal, waits until the provider has disabled terminal echo,
@@ -62,7 +65,7 @@ must define and test its own secret-input boundary.
 
 The CLI also offers no supported, non-destructive way to validate a replacement token while an
 account session is active. Exitlane therefore never logs out automatically or claims that it
-validated a replacement. An administrator can instead use this deliberate Settings flow:
+validated a replacement. An administrator can instead use this deliberate **VPN → NordVPN** flow:
 
 1. choose **End current session** and confirm the destructive action;
 2. enter the new token after the client reports `signed_out`;

@@ -17,6 +17,7 @@ import {
 
 let navigationInitialised = false;
 let renderedWizardProviderId = null;
+let focusedWizardProviderId = null;
 let providerSelectionInFlight = false;
 
 function isStepComplete(stepNumber, setup = appState.setup) {
@@ -129,12 +130,12 @@ export function renderSetupState(setup) {
   showStep(requestedStep, { force: true });
 }
 
-async function saveProviderSelection(providerIds) {
+async function saveProviderSelection(providerIds, focusProviderId) {
   if (providerSelectionInFlight) return;
   providerSelectionInFlight = true;
   const container = select("#wizard-provider-choices");
   container.setAttribute("aria-busy", "true");
-  container.querySelectorAll("button").forEach((button) => {
+  container.querySelectorAll("input").forEach((button) => {
     button.disabled = true;
   });
   clearInlineError();
@@ -142,13 +143,16 @@ async function saveProviderSelection(providerIds) {
     await postJson("/api/setup/providers", { provider_ids: providerIds });
     await refreshSetup();
   } catch (error) {
+    try { await refreshSetup(); } catch { /* Keep the last confirmed selection. */ }
+    renderWizardProviders(appState.setup);
     showInlineError(error.message);
   } finally {
     providerSelectionInFlight = false;
     container.removeAttribute("aria-busy");
-    container.querySelectorAll("button").forEach((button) => {
+    container.querySelectorAll("input").forEach((button) => {
       button.disabled = false;
     });
+    container.querySelector(`input[data-provider-id="${focusProviderId}"]`)?.focus();
   }
 }
 
@@ -172,35 +176,82 @@ async function activateSetupProvider(providerId, button) {
 export function renderWizardProviders(setup) {
   const providers = setup.providers || [];
   const selectedIds = setup.selected_provider_ids || [];
-  const selectedId = selectedIds.length ? setup.selected_provider_id : null;
+  const selectedId = selectedIds.includes(focusedWizardProviderId)
+    ? focusedWizardProviderId
+    : selectedIds.length ? setup.selected_provider_id : null;
+  focusedWizardProviderId = selectedId;
   const container = select("#wizard-provider-choices");
   container.replaceChildren();
   for (const provider of providers) {
-    const item = document.createElement("button");
-    item.type = "button";
+    const item = document.createElement("label");
     item.className = "provider-choice";
-    item.dataset.providerId = provider.id;
     const selected = selectedIds.includes(provider.id);
     item.classList.toggle("provider-choice--selected", selected);
-    item.setAttribute("role", "checkbox");
-    item.setAttribute("aria-checked", String(selected));
-    item.setAttribute("aria-pressed", String(selected));
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.dataset.providerId = provider.id;
+    checkbox.checked = selected;
+    checkbox.disabled = providerSelectionInFlight;
+    const logo = document.createElement("span");
+    logo.className = "provider-logo";
+    logo.setAttribute("aria-hidden", "true");
+    renderProviderLogo(logo, provider);
+    const copy = document.createElement("span");
+    const name = document.createElement("strong");
+    name.textContent = provider.display_name;
+    const state = document.createElement("small");
     const status = provider.status?.authenticated
       ? t("vpn.overview.states.signed_in", {}, "Signed in")
       : provider.status?.installed
         ? t("vpn.overview.states.signed_out", {}, "Signed out")
         : t("provider.status.not_installed", {}, "Not installed");
-    item.textContent = `${selected ? "✓ " : ""}${provider.display_name} · ${status}`;
-    item.addEventListener("click", () => {
-      const next = selected
-        ? selectedIds.filter((id) => id !== provider.id)
-        : [...selectedIds, provider.id];
-      void saveProviderSelection(next);
+    state.textContent = status;
+    copy.append(name, state);
+    item.append(checkbox, logo, copy);
+    checkbox.addEventListener("change", () => {
+      const next = checkbox.checked
+        ? [...selectedIds, provider.id]
+        : selectedIds.filter((id) => id !== provider.id);
+      if (checkbox.checked) focusedWizardProviderId = provider.id;
+      void saveProviderSelection(next, provider.id);
     });
     container.append(item);
   }
+  const tabs = select("#wizard-provider-tabs");
+  tabs.replaceChildren();
+  tabs.hidden = selectedIds.length < 2;
+  for (const provider of providers.filter((item) => selectedIds.includes(item.id))) {
+    const tab = document.createElement("button");
+    tab.type = "button";
+    tab.id = `wizard-provider-tab-${provider.id}`;
+    tab.className = "wizard-provider-tab";
+    tab.setAttribute("role", "tab");
+    tab.setAttribute("aria-controls", "wizard-provider-configuration");
+    tab.setAttribute("aria-selected", String(provider.id === selectedId));
+    tab.tabIndex = provider.id === selectedId ? 0 : -1;
+    tab.textContent = provider.display_name;
+    tab.addEventListener("click", () => {
+      focusedWizardProviderId = provider.id;
+      renderWizardProviders(appState.setup);
+      select(`#wizard-provider-tab-${provider.id}`).focus();
+    });
+    tab.addEventListener("keydown", (event) => {
+      const buttons = [...tabs.querySelectorAll("button")];
+      const index = buttons.indexOf(tab);
+      const target = event.key === "Home" ? buttons[0]
+        : event.key === "End" ? buttons.at(-1)
+        : event.key === "ArrowRight" ? buttons[(index + 1) % buttons.length]
+        : event.key === "ArrowLeft" ? buttons[(index + buttons.length - 1) % buttons.length]
+        : null;
+      if (target) { event.preventDefault(); target.click(); }
+    });
+    tabs.append(tab);
+  }
   const selected = providers.find((provider) => provider.id === selectedId);
   select("#wizard-provider-configuration").hidden = !selected;
+  const configuration = select("#wizard-provider-configuration");
+  configuration.setAttribute("aria-labelledby", selectedIds.length > 1
+    ? `wizard-provider-tab-${selectedId}` : "wizard-provider-name");
   if (selected) {
     select("#wizard-provider-name").textContent = selected.display_name;
     selectAll("[data-provider-logo]").forEach((container) => {
@@ -545,13 +596,14 @@ export async function deferProviderSetup() {
 }
 
 export async function skipCurrentProvider() {
-  const providerId = appState.setup?.selected_provider_id;
+  const providerId = getSlice("application").providerId;
   if (!providerId) return;
   const button = select("#provider-skip");
   setBusy(button, true, t("step3.skipping_provider", {}, "Skipping…"));
   clearInlineError();
   try {
     await postJson(`/api/setup/providers/${encodeURIComponent(providerId)}/skip`);
+    focusedWizardProviderId = null;
     await refreshSetup();
   } catch (error) {
     showInlineError(error.message);
@@ -647,6 +699,7 @@ window.addEventListener(
       renderCompletionChecks(
         appState.setup,
       );
+      renderWizardProviders(appState.setup);
     }
   },
 );

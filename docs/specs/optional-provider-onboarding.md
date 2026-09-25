@@ -56,3 +56,20 @@ The provider catalog now includes NordVPN and Mullvad VPN. The wizard stores ind
 and skipped provider IDs, configures them deterministically, activates one ready provider
 automatically, and requires an explicit active choice when both are ready. Multiple providers may
 be installed and authenticated, but simultaneous commercial egress remains prohibited.
+
+## Provider selection and configuration controls
+
+The provider choices are labelled native checkboxes: selecting a provider adds it to setup,
+without making it active or installing it. When both providers are selected, a separate tab
+strip chooses the provider currently being configured. Its selected state, associated panel
+and keyboard focus are explicit; arrow keys, Home and End move between tabs.
+
+Configuration tabs do not alter the saved provider selection. Skip applies to the provider
+shown in the panel. Failed selection requests restore the last server-confirmed choice.
+Installation and authentication views are scoped to the displayed provider, so a late
+response for another provider cannot replace them. Returning to an uninstalled provider
+restores its installation action; installation progress resumes from the server after reload.
+
+The no-provider explanation and step navigation remain available when no configuration panel
+is selected. Provider operation manuals for both NordVPN and Mullvad are available from Help
+and from the corresponding provider management view.

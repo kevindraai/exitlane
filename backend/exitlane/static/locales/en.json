@@ -317,6 +317,9 @@
     "create_admin": "Create administrator"
   },
   "step3": {
+    "choose_providers": "Select providers to set up",
+    "selection_hint": "Select one or both. Use the tabs below to configure each selected provider.",
+    "configuration_tabs": "Provider setup",
     "kicker": "Step 3",
     "title": "VPN providers",
     "description": "Choose one or more VPN providers to configure. Only one provider can be active at a time.",
@@ -335,6 +338,7 @@
     "deferred_message": "Provider setup deferred. You can configure one later from VPN management."
   },
   "provider": {
+    "sign_in_method": "NordVPN sign-in method",
     "active": "Active",
     "inactive": "Inactive",
     "make_active": "Make {provider} active",
@@ -786,6 +790,7 @@
     "other": "Other"
   },
   "documents": {
+    "nordvpn": "NordVPN provider",
     "deployment": "Deployment",
     "proxmox-lxc": "Proxmox LXC",
     "router-integrations": "Router integrations",
@@ -802,6 +807,7 @@
     "activity-log": "Activity log"
   },
   "context": {
+    "provider": "Open the {provider} guide",
     "diagnostics": "Open the diagnostics guide",
     "wireguard": "Open the WireGuard configuration guide",
     "reverse_proxy": "Open the reverse-proxy guide",

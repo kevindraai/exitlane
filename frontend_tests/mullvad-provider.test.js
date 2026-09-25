@@ -93,11 +93,11 @@ test("first-run provider selection is an accessible independent multi-select wit
     read("../backend/exitlane/static/partials/wizard/provider.html"),
     read("../backend/exitlane/static/js/wizard.js"),
   ]);
-  assert.match(markup, /id="wizard-provider-choices" role="list"/);
+  assert.match(markup, /<fieldset class="wizard-provider-selection">[\s\S]+<legend/);
   assert.doesNotMatch(markup, /<select[^>]+provider/i);
-  assert.match(wizard, /item\.setAttribute\("role", "checkbox"\)/);
-  assert.match(wizard, /item\.setAttribute\("aria-checked", String\(selected\)\)/);
-  assert.match(wizard, /selected\s*\?\s*selectedIds\.filter[\s\S]+\[\.\.\.selectedIds, provider\.id\]/);
+  assert.match(wizard, /checkbox\.type = "checkbox"/);
+  assert.match(wizard, /checkbox\.checked = selected/);
+  assert.match(wizard, /checkbox\.checked[\s\S]+\[\.\.\.selectedIds, provider\.id\][\s\S]+selectedIds\.filter/);
   assert.match(wizard, /postJson\("\/api\/setup\/providers", \{ provider_ids: providerIds \}\)/);
   assert.match(wizard, /providerSelectionInFlight/);
   assert.match(wizard, /postJson\("\/api\/setup\/provider\/defer"\)/);

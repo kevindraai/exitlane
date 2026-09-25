@@ -1674,6 +1674,11 @@ pre {
   align-items: center;
 }
 
+.help-panel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .help-loading {
   margin-top: 24px;
   color: var(--muted);
@@ -1735,6 +1740,7 @@ pre {
 .help-breadcrumb {
   margin-bottom: 24px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   color: var(--muted);
@@ -2261,17 +2267,64 @@ pre {
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
 }
 
+.wizard-provider-selection {
+  min-width: 0;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  border: 0;
+}
+
+.wizard-provider-selection legend { font-weight: 700; }
+.wizard-provider-selection > p { color: var(--muted); margin: 0.5rem 0 1rem; }
+#wizard-provider-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
 .provider-choice {
-  display: grid;
-  gap: 0.4rem;
-  color: inherit;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
   text-align: left;
 }
 
-.provider-choice--selected {
-  border-color: var(--accent-border);
+.provider-choice input { width: 1.2rem; height: 1.2rem; margin: 0; accent-color: var(--accent); }
+.provider-choice strong, .provider-choice small { display: block; }
+.provider-choice small { margin-top: 0.3rem; color: var(--muted); }
+.provider-choice:focus-within { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+.provider-choice--selected { border-color: var(--accent-border); background: var(--accent-soft); }
+
+.wizard-provider-tabs {
+  display: flex;
+  gap: 0.4rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1rem;
+}
+
+.wizard-provider-tab {
+  flex: 1;
+  padding: 0.9rem 1rem;
+  border: 1px solid transparent;
+  border-bottom: 3px solid transparent;
+  border-radius: 8px 8px 0 0;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.wizard-provider-tab[aria-selected="true"] {
+  color: var(--text);
   background: var(--accent-soft);
-  box-shadow: 0 0 0 1px var(--accent-border-soft);
+  border-bottom-color: var(--accent);
+  font-weight: 700;
+}
+
+#step-3 > .provider-defer-card { margin-top: 1.5rem; }
+@media (max-width: 640px) {
+  #wizard-provider-choices { grid-template-columns: minmax(0, 1fr); }
 }
 
 .provider-card-actions,
@@ -2635,7 +2688,8 @@ pre {
   display: grid;
   gap: 3px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 8px 8px 0 0;
+  border-bottom: 3px solid transparent;
   color: var(--text);
   background: var(--surface-translucent);
   text-align: left;
@@ -2648,6 +2702,8 @@ pre {
 
 .login-method-tab.active {
   border-color: var(--accent-border);
+  border-bottom-color: var(--accent);
+  font-weight: 700;
   background: var(--accent-soft);
 }
 

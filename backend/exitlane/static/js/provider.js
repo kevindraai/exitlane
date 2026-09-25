@@ -21,6 +21,7 @@ import { refreshSetup } from "./wizard.js";
 import { t } from "./i18n.js";
 
 let wizardInstallationCompleted = false;
+let wizardInstallGeneration = 0;
 const PROVIDER_AUTHENTICATION_ERROR_CODES = new Set([
   "invalid_token_format",
   "invalid_token",
@@ -83,6 +84,7 @@ export function renderProviderStatus(status) {
     renderPendingProviderStatus();
     return;
   }
+  if (application.mode === "wizard" && !providerStatusMatchesView(application, status)) return;
   appState.provider = status;
 
   const installation = status.management?.provider?.installation_state
@@ -804,6 +806,7 @@ function renderInstallationStatus(status, { focusSignIn = false } = {}) {
   const startPanel = select("#provider-install-start");
   disclosure.hidden = !started;
   startPanel.hidden = started;
+  select("#provider-install").hidden = started;
   if (!started) {
     wizardInstallationCompleted = false;
     select("#provider-login-methods").hidden = true;
@@ -843,7 +846,6 @@ function renderInstallationStatus(status, { focusSignIn = false } = {}) {
     )
     : "";
 
-  select("#provider-install").hidden = inProgress || completed || failed;
   const retryButton = select("#provider-install-retry");
   retryButton.hidden = !failed;
   const retryTranslations = {
@@ -869,7 +871,15 @@ function renderInstallationStatus(status, { focusSignIn = false } = {}) {
   }
 }
 
+function wizardInstallationRequestIsCurrent(providerId, generation) {
+  const application = getSlice("application");
+  return generation === wizardInstallGeneration
+    && application.mode === "wizard"
+    && application.providerId === providerId;
+}
+
 async function installProvider({ confirm = true } = {}) {
+  const generation = wizardInstallGeneration;
   const button = confirm
     ? select("#provider-install")
     : select("#provider-install-retry");
@@ -891,6 +901,7 @@ async function installProvider({ confirm = true } = {}) {
       `/api/vpn/providers/${encodeURIComponent(providerId)}/installation`,
     );
 
+    if (!wizardInstallationRequestIsCurrent(providerId, generation)) return;
     if (!result.ok) {
       throw new Error(
         result.message || "Installatie kon niet worden gestart.",
@@ -898,18 +909,20 @@ async function installProvider({ confirm = true } = {}) {
     }
 
     renderInstallationStatus(result);
-    await pollInstallStatus(providerId);
+    await pollInstallStatus(providerId, generation);
   } catch (error) {
+    if (!wizardInstallationRequestIsCurrent(providerId, generation)) return;
     setBusy(button, false);
     if (error.payload?.detail === "installation_in_progress") {
-      await pollInstallStatus(providerId);
+      await pollInstallStatus(providerId, generation);
       return;
     }
     showInlineError(installationErrorMessage(error));
   }
 }
 
-async function pollInstallStatus(providerId) {
+async function pollInstallStatus(providerId, generation) {
+  if (!wizardInstallationRequestIsCurrent(providerId, generation)) return;
   window.clearTimeout(installPollTimer);
 
   try {
@@ -918,11 +931,12 @@ async function pollInstallStatus(providerId) {
       { deduplicate: false },
     );
 
+    if (!wizardInstallationRequestIsCurrent(providerId, generation)) return;
     renderInstallationStatus(status);
 
     if (status.installation_in_progress) {
       installPollTimer = window.setTimeout(
-        () => pollInstallStatus(providerId),
+        () => pollInstallStatus(providerId, generation),
         INSTALL_POLL_INTERVAL_MS,
       );
       return;
@@ -942,23 +956,26 @@ async function pollInstallStatus(providerId) {
         refreshProvider(),
         refreshSetup(),
       ]);
+      if (!wizardInstallationRequestIsCurrent(providerId, generation)) return;
       renderInstallationStatus(status, { focusSignIn: true });
       return;
     }
 
     if (status.phase === "failed") renderInstallationStatus(status);
   } catch (error) {
+    if (!wizardInstallationRequestIsCurrent(providerId, generation)) return;
     // A transient request failure is not a terminal installation failure.
     // Keep following the authoritative server-side operation.
     installPollTimer = window.setTimeout(
-      () => pollInstallStatus(providerId),
+      () => pollInstallStatus(providerId, generation),
       INSTALL_POLL_INTERVAL_MS,
     );
   }
 }
 
 export async function restoreInstallStatus() {
-  const providerId = appState.setup?.selected_provider_id;
+  const generation = wizardInstallGeneration;
+  const providerId = getSlice("application").providerId;
   if (!providerId) return;
   try {
     const status = await api(
@@ -966,9 +983,10 @@ export async function restoreInstallStatus() {
       { deduplicate: false },
     );
 
+    if (!wizardInstallationRequestIsCurrent(providerId, generation)) return;
     renderInstallationStatus(status);
     await refreshProviderState({ deduplicate: false });
-    if (status.installation_in_progress) await pollInstallStatus(providerId);
+    if (status.installation_in_progress) await pollInstallStatus(providerId, generation);
   } catch {
     // Er is nog geen installatiejob of de status is niet beschikbaar.
   }
@@ -982,6 +1000,7 @@ function selectLoginMethod(method) {
 
       button.classList.toggle("active", selected);
       button.setAttribute("aria-selected", String(selected));
+      button.tabIndex = selected ? 0 : -1;
     });
 
   select("#login-panel-token").hidden = method !== "token";
@@ -1252,10 +1271,21 @@ export function initialiseProviderControls() {
     }
   });
   window.addEventListener("exitlane:wizardproviderchange", () => {
+    wizardInstallGeneration += 1;
     wizardInstallationCompleted = false;
     window.clearTimeout(installPollTimer);
+    setBusy(select("#provider-install"), false);
+    delete select("#provider-install").dataset.originalLabel;
+    select("#provider-install").disabled = true;
+    renderWizardAuthentication(wizardProviderMetadata());
+    renderInstallationStatus({ phase: "not_started", installation_in_progress: false });
+    select("#provider-install-retry").hidden = true;
     select("#nord-token").value = "";
     select("#mullvad-account-number").value = "";
+    select("#nord-callback").value = "";
+    select("#browser-login-url").value = "";
+    select("#browser-login-open").href = "#";
+    select("#browser-login-instruction").hidden = true;
     void restoreInstallStatus();
   });
 
@@ -1264,6 +1294,16 @@ export function initialiseProviderControls() {
     .forEach((button) => {
       button.addEventListener("click", () => {
         selectLoginMethod(button.dataset.loginMethod);
+      });
+      button.addEventListener("keydown", (event) => {
+        const buttons = [...document.querySelectorAll("[data-login-method]")];
+        const index = buttons.indexOf(button);
+        const target = event.key === "Home" ? buttons[0]
+          : event.key === "End" ? buttons.at(-1)
+          : event.key === "ArrowRight" ? buttons[(index + 1) % buttons.length]
+          : event.key === "ArrowLeft" ? buttons[(index + buttons.length - 1) % buttons.length]
+          : null;
+        if (target) { event.preventDefault(); target.click(); target.focus(); }
       });
     });
 
