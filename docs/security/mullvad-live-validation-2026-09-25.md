@@ -1,6 +1,8 @@
 # Mullvad direct WireGuard candidate: disposable appliance validation
 
-Date: 2026-09-25 UTC. This is candidate evidence, not final-main release evidence.
+Date: 2026-09-25 UTC. This is initial candidate evidence, not final-main release evidence.
+See [the follow-up launch qualification](mullvad-launch-qualification-2026-09-25.md) for corrections
+and the subsequent closure of the test gaps listed here.
 
 ## Source and environment
 
