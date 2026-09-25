@@ -20,8 +20,9 @@ separate actions.
 - Native Debian 13 amd64 LXC, provisioned through the authorized runner: VM128 for real-account
   network qualification; VM100 for published-release upgrade/rollback; VM129 for synthetic cold
   recovery. These are disposable test installations, not production.
-- Source transfers use temporary SSH keys removed in a `finally` block. Real provider credentials
-  stay on the existing runner and encrypted in the test appliance. No credentials, configurations,
+- Source transfers use temporary SSH keys removed in a `finally` block. The explicitly authorized
+  cross-host recovery trial additionally transfers a secret-bearing backup bundle through a private
+  runner directory to the designated recovery appliance, then removes the temporary copies. No credentials, configurations,
   raw pcaps or database contents are included in repository evidence.
 
 ## Findings resolved
@@ -103,7 +104,10 @@ actual harness revision rather than claimed as a rerun of this cleanup change.
 
 To repeat on the dedicated test appliance, first configure `qa-router` at `10.99.99.2` through
 WireGuard ingress on UDP 51820, authenticate the Mullvad test account and supply a root-only
-administrator JSON file. Run from the reviewed checkout using its installed Python environment:
+administrator JSON file. Install the test-only prerequisites (`tcpdump`, `dnsutils`, `iproute2`,
+`wireguard-tools`, `nftables`, `iputils-ping`, Python); the cross-host HTTPS extension also uses
+`curl`. The harness refuses missing commands/readiness script before mutation. Run from the
+reviewed checkout using its installed Python environment:
 
 ```sh
 /opt/exitlane/venv/bin/python scripts/qa_mullvad_live.py --confirm-disposable \
@@ -164,10 +168,63 @@ health passed. Cold boot repeated those assertions and confirmed the guard unit 
 before the restored ingress unit. VM100 and VM129 were stopped and retained with root-only test
 evidence.
 
-A real-account backup transfer through the runner was rejected by automatic approval review as
-insufficiently specific authorization to export that secret-bearing bundle. No transfer occurred.
-The cold-recovery proof above uses local synthetic data; real Mullvad identity/reconnect proof was
-performed separately on VM128. A real-account move to another appliance is not claimed.
+The initial real-account backup transfer was rejected by automatic approval review because the
+prior authorization did not specifically cover exporting that secret-bearing bundle. No transfer
+occurred at that time. The user subsequently granted explicit permission for the temporary SSH
+transfer, root/test-user-only access and cleanup. The following additional trial closes that gap.
+
+## Authorized real-account recovery onto another appliance
+
+Both source VM128 and recovery VM129 ran the approved `3782a46` runtime. VM129 was reinstalled
+and cold-booted: its master key differed from the earlier installation, users/sessions/provider
+secrets were all zero, and only loopback and the management interface remained. Seven critical
+modules matched the approved source in both the service tree and installed package. Historical
+synthetic recovery evidence was preserved separately.
+
+A fresh test registration on VM128 produced an active-generation encrypted backup with the optional
+killswitch disabled. The backup, generated recovery passphrase, temporary administrator details
+and comparison metadata were transferred through the runner using SSH with host keys obtained
+from the authorized provisioner. Directories were mode 0700 and files 0600. Bundle hashes matched;
+the runner temporary directory and exact temporary SSH keys were removed automatically.
+
+Before target restore, VM128 was disconnected with forwarding protected, its local provider state,
+configuration, backup bundle and temporary administrator file were removed, and the VM was stopped.
+Its remote device set was unchanged, leaving the copied identity available to VM129 alone.
+
+Restore on VM129 recovered exactly the source master key, provider account/key/device identity and
+WireGuard files. The previous session returned HTTP 401. Source/ingress rules and IPv4/IPv6
+unreachable defaults were verified before reconnect. Administrator login and reconnect succeeded
+without changing the remote device set. Management health at the target's own `172.16.135.129`
+address returned HTTP 200 from the runner.
+
+The initial packet-test attempt stopped before traffic because the clean target lacked `tcpdump`.
+Its exact temporary namespace/link/table were removed, test tools were installed, and the harness
+now checks required tools and the readiness script before authentication or mutation. An empty-PATH
+regression exited with the expected prerequisite error. The subsequent live run uses the memory-only
+backup passphrase behavior and an additional HTTPS check from the real WireGuard client.
+
+The complete cross-host live run passed: **1,249 client packets**, including **301 IPv6 packets**,
+**zero physical plaintext packets**, and forward/host-OUTPUT counters both **0 packets / 0 bytes**.
+Both capture processes and all five capture/counter readers exited zero. Four relays, DNS UDP/TCP,
+HTTPS with a confirmed Mullvad exit, forced relay timeout with exact-generation rollback, both
+restore states, injected failed-health rollback and optional-killswitch-off tunnel deletion passed.
+The temporary HTTPS harness SHA-256 is
+`7013dcdea193ffea2e1a1fbee7a64dcb8c78371da133e461ca4f45a9b2eb17f6`; it uses the checked-in
+harness plus the reviewed namespace HTTPS check. Local result log:
+`/root/exitlane-crosshost-live-final.jsonl` on VM129.
+
+The restored appliance also passed active-generation reboot: exact source and ingress guards
+preceded ingress startup (monotonic timestamps `7446597930419` and `7446598473513`), management
+returned HTTP 200 from the runner and reconnect succeeded. Final sign-out removed only the shared
+test device (**3 → 2** remote devices, other IDs unchanged), while source protection remained.
+The target bundle, backup, passphrase, temporary administrator file and SSH keys were removed;
+restore staging/snapshots and QA namespaces were absent. Generated transfer secrets were absent
+from the last 300 service-journal lines. Both source VM128 and recovery VM129 were stopped and
+retained. The original runner credential file was not changed.
+
+This proves recovery and client dataplane on the new appliance. The namespace client explicitly
+selects that appliance; external router endpoint/DNS changes after moving management addresses
+remain an operator action and are not automatically validated by this test.
 
 CI on final runtime `3782a46` passed all required jobs: **627 backend tests**, **180 frontend tests**, shell checks,
 CodeQL (both languages), dependency review, dependency audit, secret scanning, passive ZAP and

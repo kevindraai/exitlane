@@ -28,6 +28,15 @@ parser.add_argument(
 )
 args = parser.parse_args()
 assert os.geteuid() == 0
+missing_tools = [
+    name
+    for name in ("ip", "wg", "nft", "tcpdump", "ping", "dig", "python3")
+    if shutil.which(name) is None
+]
+if missing_tools:
+    parser.error("Missing test prerequisites: " + ", ".join(missing_tools))
+if not pathlib.Path(args.readiness_script).is_file():
+    parser.error("The dataplane readiness script does not exist")
 suffix = uuid.uuid4().hex[:6]
 ns = "exlqa-" + suffix
 host = "exlh-" + suffix
