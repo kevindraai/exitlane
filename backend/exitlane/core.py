@@ -143,6 +143,8 @@ def init():
             "last_totp_counter": "INTEGER",
             "mfa_enabled_at": "INTEGER",
             "mfa_updated_at": "INTEGER",
+            "mfa_failed_attempts": "INTEGER NOT NULL DEFAULT 0",
+            "mfa_failure_window_started_at": "INTEGER",
         }.items():
             if name not in user_columns:
                 c.execute(f"ALTER TABLE users ADD COLUMN {name} {declaration}")

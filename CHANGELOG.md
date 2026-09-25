@@ -27,6 +27,9 @@
 
 ### Security
 
+- Persist rejected MFA challenge attempts and expiry cleanup before returning authentication
+  errors; preserve the five-attempt budget across new challenges, cancellation, client-IP
+  changes and restarts, and serialize challenge and one-time factor consumption.
 - Guard host-generated replies from the exact Mullvad source address, retaining unreachable
   protection across disconnect, sign-out and restore until reboot.
 - Enforce the AnyIO security minimum in package metadata as well as the development lock, so

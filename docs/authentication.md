@@ -70,7 +70,11 @@ validated a replacement. An administrator can instead use this deliberate Settin
 
 NordVPN authentication sign-out and VPN disconnect are different operations. Disconnect ends only
 the tunnel, while sign-out runs the supported `nordvpn logout` action, ends the authentication
-session, and consequently ends any active tunnel. A valid token is required to sign in again.
+session, and consequently ends any active tunnel. Normal NordVPN logout also invalidates the
+access token used for that session, including a non-expiring token. Generate a new token in Nord
+Account before signing in again; reusing the old token is not a renewal test. The separate native
+`--persist-token` option is not used by ExitLane
+([NordVPN token login and logout documentation](https://support.nordvpn.com/hc/en-us/articles/20286980309265-How-to-log-in-to-NordVPN-without-a-GUI-using-a-token)).
 Activity events record only the provider identifier and a safe failure code.
 
 ## Mullvad account and device boundary
