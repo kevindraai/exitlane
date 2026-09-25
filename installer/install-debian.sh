@@ -232,7 +232,9 @@ prepare_upgrade_recovery() {
     snapshot_recovery_path "${path}"
   done
   printf '%s\n' "${INSTALLER_VERSION}" > "${RECOVERY_DIR}/target-version"
-  chmod -R go-rwx "${RECOVERY_DIR}"
+  chmod 0600 "${RECOVERY_DIR}/target-version"
+  # The root-owned 0700 recovery directories protect all copied files. Keep
+  # their original modes intact so rollback restores executables and units.
   success "Root-only pre-upgrade recovery snapshot created"
 }
 

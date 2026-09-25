@@ -1,3 +1,4 @@
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -36,6 +37,65 @@ def test_installer_database_snapshot_path_matches_application_runtime_default():
 
     assert 'readonly DATA_DIR="${EXITLANE_DATA_DIR:-/etc/exitlane}"' in installer
     assert "EXITLANE_DATA_DIR=/etc/exitlane" in defaults
+
+
+def test_real_upgrade_snapshot_and_restore_preserve_modes_under_private_root(tmp_path):
+    target = tmp_path / "application"
+    config = tmp_path / "config"
+    recovery = tmp_path / "recovery"
+    target.mkdir(mode=0o755)
+    config.mkdir(mode=0o700)
+    expected = {
+        target / "executable": ("original executable", 0o755),
+        target / "service-unit": ("original unit", 0o644),
+        config / "secret.key": ("synthetic secret", 0o600),
+    }
+    for path, (content, mode) in expected.items():
+        path.write_text(content, encoding="utf-8")
+        path.chmod(mode)
+    command = f"""
+export TARGET={shlex.quote(str(target))}
+export EXITLANE_CONFIG_DIR={shlex.quote(str(config))}
+export EXITLANE_DATA_DIR={shlex.quote(str(config))}
+export EXITLANE_RECOVERY_ROOT={shlex.quote(str(recovery))}
+source {shlex.quote(str(INSTALLER))}
+# Exercise the real snapshot/restore as an unprivileged test user. Only omit
+# root ownership assignment and host-specific paths outside our fixtures.
+install() {{
+  local -a arguments=()
+  while (( $# )); do
+    case "$1" in
+      -o|-g) shift 2 ;;
+      *) arguments+=("$1"); shift ;;
+    esac
+  done
+  command install "${{arguments[@]}}"
+}}
+eval "$(declare -f snapshot_recovery_path | sed '1s/snapshot_recovery_path/snapshot_test_path/')"
+snapshot_recovery_path() {{
+  case "$1" in
+    "$TARGET"|"$CONFIG_DIR") snapshot_test_path "$1" ;;
+  esac
+}}
+timedatectl() {{ printf '%s\\n' UTC; }}
+UPGRADE_MODE=1
+prepare_upgrade_recovery
+printf changed > "$TARGET/executable"
+chmod 0600 "$TARGET/executable" "$TARGET/service-unit"
+printf changed > "$CONFIG_DIR/secret.key"
+restore_recovery_files "$RECOVERY_DIR/files" "$RECOVERY_DIR/path-state" /
+"""
+
+    subprocess.run(["bash", "-c", command], check=True, capture_output=True, text=True)
+
+    for path, (content, mode) in expected.items():
+        assert path.read_text(encoding="utf-8") == content
+        assert path.stat().st_mode & 0o777 == mode
+    snapshot = next(recovery.glob("pre-upgrade.*"))
+    for directory in (recovery, snapshot, snapshot / "files"):
+        assert directory.stat().st_mode & 0o777 == 0o700
+    for name in ("target-version", "system-timezone", "path-state"):
+        assert (snapshot / name).stat().st_mode & 0o777 == 0o600
 
 
 def test_clean_installer_creates_the_systemd_service_home():

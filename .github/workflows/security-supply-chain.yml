@@ -52,4 +52,5 @@ jobs:
           cache: pip
           cache-dependency-path: backend/pyproject.toml
       - run: python -m pip install -e ".[dev]"
-      - run: pip-audit
+      # The local editable ExitLane source has no PyPI advisory record.
+      - run: pip-audit --skip-editable
