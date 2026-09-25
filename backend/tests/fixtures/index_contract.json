@@ -169,6 +169,7 @@
     "provider-deferred-status",
     "provider-description",
     "provider-end-session",
+    "provider-help-link",
     "provider-install",
     "provider-install-context",
     "provider-install-detail-label",
@@ -439,6 +440,7 @@
     "wizard-provider-configuration",
     "wizard-provider-logo",
     "wizard-provider-name",
+    "wizard-provider-tabs",
     "wizard-steps"
   ],
   "data-view": [
@@ -815,6 +817,7 @@
     "step2.username",
     "step3.active_provider_description",
     "step3.active_provider_title",
+    "step3.choose_providers",
     "step3.defer_action",
     "step3.defer_description",
     "step3.defer_title",
@@ -822,6 +825,7 @@
     "step3.deferred_title",
     "step3.description",
     "step3.kicker",
+    "step3.selection_hint",
     "step3.title",
     "step4.description",
     "step4.kicker",
@@ -902,10 +906,12 @@
     "diagnostics.flow_label",
     "diagnostics.speedtest.progress_label",
     "help.breadcrumb_label",
+    "provider.sign_in_method",
     "settings.authentication.mfa.copy_setup_key",
     "settings.authentication.mfa.qr_description",
     "settings.authentication.mfa.recovery_title",
     "settings.authentication.mfa.setup_key",
+    "step3.configuration_tabs",
     "wizard.steps_aria"
   ],
   "forms": [

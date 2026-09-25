@@ -15,6 +15,16 @@ let indexData = null;
 let indexRequest = null;
 let activeDocument = null;
 
+export function renderProviderGuide(metadata) {
+  const link = document.querySelector("#provider-help-link");
+  const slug = ["nordvpn", "mullvad"].includes(metadata.id) ? metadata.id : null;
+  link.hidden = !slug;
+  link.dataset.helpDocument = slug || "";
+  link.href = slug ? `#help/${slug}` : "#help";
+  link.textContent = t("help.context.provider", { provider: metadata.display_name },
+    `Open the ${metadata.display_name} guide`);
+}
+
 function documentLabel(document) {
   return t(`help.documents.${document.slug}`, {}, document.title);
 }

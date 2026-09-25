@@ -15,8 +15,13 @@
          Status ophalen&hellip;
         </span>
        </div>
-       <div aria-label="VPN providers" class="provider-choice-list" id="wizard-provider-choices" role="list"></div>
-       <section class="provider-card" id="wizard-provider-configuration">
+       <fieldset class="wizard-provider-selection">
+        <legend data-i18n="step3.choose_providers">Select providers to set up</legend>
+        <p data-i18n="step3.selection_hint">Select one or both, then use the tabs below to configure each provider.</p>
+        <div class="provider-choice-list" id="wizard-provider-choices"></div>
+       </fieldset>
+       <div aria-label="Provider setup" class="wizard-provider-tabs" data-i18n-aria-label="step3.configuration_tabs" hidden="" id="wizard-provider-tabs" role="tablist"></div>
+       <section class="provider-card" id="wizard-provider-configuration" role="tabpanel" aria-labelledby="wizard-provider-name">
         <div class="provider-header">
          <span aria-hidden="true" class="provider-logo" data-provider-logo="" id="wizard-provider-logo"></span>
          <div>
@@ -75,7 +80,7 @@
            </p>
           </div>
          </div>
-         <div class="login-method-tabs" role="tablist">
+         <div class="login-method-tabs" aria-label="NordVPN sign-in method" data-i18n-aria-label="provider.sign_in_method" role="tablist">
           <button aria-controls="login-panel-token" aria-selected="true" class="login-method-tab active" data-login-method="token" id="login-method-token" role="tab" type="button">
            <span data-i18n="provider.access_token">
             Access token
@@ -84,7 +89,7 @@
             Aanbevolen
            </small>
           </button>
-          <button aria-controls="login-panel-browser" aria-selected="false" class="login-method-tab" data-login-method="browser" id="login-method-browser" role="tab" type="button">
+          <button aria-controls="login-panel-browser" aria-selected="false" class="login-method-tab" data-login-method="browser" id="login-method-browser" role="tab" tabindex="-1" type="button">
            <span data-i18n="provider.browser_login">
             Browserlogin
            </span>
@@ -228,6 +233,7 @@
           </form>
          </section>
         </section>
+       </section>
         <section class="notice-card" hidden="" id="wizard-active-provider-selection">
          <strong data-i18n="step3.active_provider_title">Kies de actieve provider</strong>
          <p data-i18n="step3.active_provider_description">Beide providers zijn aangemeld. Kies welke provider de VPN-egress beheert.</p>
@@ -252,5 +258,4 @@
           Volgende
          </button>
         </div>
-       </section>
       </article>

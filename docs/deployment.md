@@ -67,8 +67,10 @@ selects which traffic uses Exitlane. See [Router integrations](router-integratio
 
 1. Create the local administrator and enable MFA after completing setup. Store recovery codes
    somewhere other than the appliance.
-2. Choose NordVPN, Mullvad or direct egress. For Mullvad, follow the
-   [account and device setup](mullvad.md#set-up-and-connect) instructions; the Mullvad app is not required.
+2. Choose NordVPN, Mullvad or direct egress. For NordVPN, follow the
+   [client installation and token sign-in](nordvpn.md#install-and-sign-in) instructions. For Mullvad,
+   follow the [account and device setup](mullvad.md#set-up-and-connect) instructions; the Mullvad app
+   is not required. You can configure both providers, then select one for active egress.
 3. Choose the WireGuard ingress name before provisioning. A configured interface cannot be renamed
    through the API; regeneration retains its name and replaces the client identity.
 4. Import the generated profile on the router, then apply the router's routing policy to a test

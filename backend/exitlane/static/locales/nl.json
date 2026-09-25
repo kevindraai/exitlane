@@ -317,6 +317,9 @@
     "create_admin": "Beheerder aanmaken"
   },
   "step3": {
+    "choose_providers": "Kies providers om in te stellen",
+    "selection_hint": "Selecteer één of beide. Stel elke geselecteerde provider in via de tabbladen hieronder.",
+    "configuration_tabs": "Provider instellen",
     "kicker": "Stap 3",
     "title": "VPN-providers",
     "description": "Kies een of meer VPN-providers om te configureren. Er kan slechts één provider tegelijk actief zijn.",
@@ -335,6 +338,7 @@
     "deferred_message": "Providerconfiguratie uitgesteld. Je kunt later vanuit VPN-beheer alsnog een provider configureren."
   },
   "provider": {
+    "sign_in_method": "NordVPN-aanmeldmethode",
     "active": "Actief",
     "inactive": "Inactief",
     "make_active": "{provider} actief maken",
@@ -786,6 +790,7 @@
     "other": "Overig"
   },
   "documents": {
+    "nordvpn": "NordVPN-provider",
     "deployment": "Implementatie",
     "proxmox-lxc": "Proxmox LXC",
     "router-integrations": "Routerintegraties",
@@ -802,6 +807,7 @@
     "activity-log": "Activiteitenlog"
   },
   "context": {
+    "provider": "Open de handleiding voor {provider}",
     "diagnostics": "Open de diagnostiekhandleiding",
     "wireguard": "Open de WireGuard-configuratiehandleiding",
     "reverse_proxy": "Open de reverse-proxyhandleiding",

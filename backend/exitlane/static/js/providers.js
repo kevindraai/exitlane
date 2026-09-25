@@ -1,3 +1,4 @@
+import { renderProviderGuide } from "./documentation.js";
 import { api } from "./api.js";
 import { localisedCountryName } from "./country-format.js";
 import { createIcon, renderIcon, resolveIconName, statusIconName } from "./icons.js";
@@ -485,6 +486,7 @@ export function renderProviderManagement(status = {}) {
   status = context.status || {};
   const name = metadata.display_name;
   select("#vpn-provider-title").textContent = name;
+  renderProviderGuide(metadata);
   select("#vpn-provider-description").textContent = metadata.description || "";
   const view = providerManagementView(status);
   const active = metadata.active === true && status.is_active !== false;

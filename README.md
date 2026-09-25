@@ -157,7 +157,7 @@ Use the tagged installation command once the candidate is published on the
 [Releases page](https://github.com/kevindraai/exitlane/releases). For an existing appliance,
 [create and verify a backup before upgrading](docs/upgrade-and-recovery.md).
 
-Read the [deployment guide](docs/deployment.md), [Mullvad provider guide](docs/mullvad.md), [backup and restore guide](docs/backup-and-restore.md), [upgrade and recovery guide](docs/upgrade-and-recovery.md), and [Proxmox LXC notes](docs/proxmox-lxc.md) before using ExitLane outside a development environment.
+Read the [deployment guide](docs/deployment.md), [NordVPN provider guide](docs/nordvpn.md), [Mullvad provider guide](docs/mullvad.md), [backup and restore guide](docs/backup-and-restore.md), [upgrade and recovery guide](docs/upgrade-and-recovery.md), and [Proxmox LXC notes](docs/proxmox-lxc.md) before using ExitLane outside a development environment.
 
 Direct HTTP remains available on a trusted local network. For HTTPS termination, follow the [reverse-proxy guide](docs/deployment/reverse-proxy.md); ExitLane does not terminate TLS itself.
 

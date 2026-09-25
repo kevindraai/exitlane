@@ -35,6 +35,34 @@ def test_document_projection_is_structured_and_contains_no_rendered_html():
     assert "html" not in repr(payload).lower()
 
 
+def test_both_provider_manuals_are_discoverable_and_linked_inside_help():
+    index = documentation_index(DOCS_ROOT)
+    for slug, title in (("nordvpn", "NordVPN provider"), ("mullvad", "Mullvad VPN provider")):
+        assert {
+            "slug": slug,
+            "category": "vpn",
+            "title": title,
+            "source": f"docs/{slug}.md",
+        } in index["documents"]
+        payload = documentation_document(slug, DOCS_ROOT)
+        assert payload["title"] == title
+        assert payload["blocks"]
+
+    for source_slug in ("deployment", "authentication"):
+        payload = documentation_document(source_slug, DOCS_ROOT)
+        links = []
+        for block in payload["blocks"]:
+            token_groups = [block.get("content", []), *block.get("items", [])]
+            links.extend(
+                token for group in token_groups for token in group if token["type"] == "link"
+            )
+        assert any(
+            link["href"].removeprefix("#").split("#")[0] == "help/nordvpn"
+            and link["external"] is False
+            for link in links
+        )
+
+
 def test_markdown_projection_keeps_hostile_markup_as_text_and_rejects_unsafe_urls():
     source = DocumentDefinition("diagnostics", "diagnostics", "diagnostics.md")
     blocks = parse_markdown(
