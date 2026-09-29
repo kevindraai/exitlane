@@ -9,7 +9,7 @@ import pytest
 
 from exitlane import cli, core, lifecycle
 from exitlane.services import auth_security, killswitch, provider_secrets
-from exitlane.services.provider_wireguard import ProviderWireGuardError
+from exitlane.services.provider_wireguard import ProviderWireGuard, ProviderWireGuardError
 
 
 @pytest.fixture
@@ -415,3 +415,70 @@ def test_reset_removes_owned_egress_policy_before_unregistering_ingress(
         "remove-stale-secret",
         "stop-ingress",
     ]
+
+
+def test_reset_cleans_every_registered_direct_interface(
+    appliance: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    actions: list[tuple[str, str]] = []
+    configs = appliance["data"] / "provider-egress"
+    configs.mkdir(mode=0o700)
+    for interface in ("wg-mullvad", "wg-pia"):
+        (configs / f"{interface}.conf").write_text("PrivateKey = test\n", encoding="utf-8")
+
+    class DirectProvider:
+        def __init__(self, provider_id: str):
+            self.id = provider_id
+            self.direct_egress_interface = f"wg-{provider_id}"
+
+        def direct_egress_intent(self):
+            return None
+
+    class Registry:
+        default_id = "mullvad"
+
+        def __init__(self):
+            self.providers = (DirectProvider("mullvad"), DirectProvider("pia"))
+
+        def get(self, provider_id: str):
+            return next(item for item in self.providers if item.id == provider_id)
+
+        def direct_egress_providers(self):
+            return self.providers
+
+    class Egress(ProviderWireGuard):
+        def __init__(self):
+            super().__init__(root=configs)
+
+        async def arm(self, ingress, interface, *, source_address=None):
+            actions.append(("arm", interface))
+
+        async def stop_interface(self, interface):
+            actions.append(("stop", interface))
+
+        async def disarm(self, ingress, interface):
+            actions.append(("disarm", interface))
+
+        def remove_config(self, interface):
+            super().remove_config(interface)
+            actions.append(("remove_config", interface))
+
+    core.set_setting("vpn.provider_id", "pia")
+    monkeypatch.setattr(cli, "provider_registry", Registry())
+    monkeypatch.setattr(cli, "ProviderWireGuard", Egress)
+    monkeypatch.setattr(
+        cli, "_restore_ingress_service", lambda **kwargs: actions.append(("stop_ingress", "wg0"))
+    )
+
+    cli._systemd_service_action("reset-egress")
+
+    assert actions == [
+        ("arm", "wg-pia"),
+        ("stop", "wg-mullvad"),
+        ("stop", "wg-pia"),
+        ("disarm", "wg-pia"),
+        ("remove_config", "wg-mullvad"),
+        ("remove_config", "wg-pia"),
+        ("stop_ingress", "wg0"),
+    ]
+    assert list(configs.iterdir()) == []

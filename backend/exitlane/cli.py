@@ -517,10 +517,15 @@ def _systemd_service_action(action: str) -> None:
             # Ownership preflight must pass before touching any old direct tunnel.
             # The independent restore guard holds forwarding throughout teardown.
             direct = _reset_egress_state()
+            interfaces = tuple(
+                item.direct_egress_interface for item in provider_registry.direct_egress_providers()
+            )
             await egress.arm(ingress, direct.interface, source_address=direct.source_address)
-            await egress.stop_interface(direct.interface)
+            for interface in interfaces:
+                await egress.stop_interface(interface)
             await egress.disarm(ingress, direct.interface)
-            egress.remove_config(direct.interface)
+            for interface in interfaces:
+                egress.remove_config(interface)
 
         try:
             asyncio.run(reset_egress())
