@@ -340,6 +340,51 @@ def test_ipv6_or_rule_collision_is_rejected_before_any_route_mutation(tmp_path):
     assert not any("replace" in call for call in runner.calls)
 
 
+def test_restore_preflight_accepts_only_registered_direct_interface_residue(tmp_path):
+    calls = []
+    stale_route = {"dst": "default", "dev": "wg-mullvad", "metric": 10, "protocol": 196}
+    stale_probe = {
+        "priority": 19999,
+        "src": "all",
+        "oif": "wg-mullvad",
+        "table": 51820,
+        "protocol": 196,
+    }
+
+    async def runner(*args, timeout):
+        calls.append(args)
+        if args == ("ip", "-j", "-4", "route", "show", "table", "51820"):
+            return 0, json.dumps([stale_route]), ""
+        if args == ("ip", "-j", "-4", "rule", "show"):
+            return (
+                0,
+                json.dumps(
+                    [
+                        {"priority": 0, "src": "all", "table": "local", "protocol": "kernel"},
+                        stale_probe,
+                    ]
+                ),
+                "",
+            )
+        if args[:2] == ("ip", "-j"):
+            return 0, "[]", ""
+        return 0, "", ""
+
+    service = ProviderWireGuard(runner, root=tmp_path)
+    with pytest.raises(ProviderWireGuardError, match="provider_egress_resource_conflict"):
+        asyncio.run(service.arm(("wg0",), "wg-pia"))
+    assert not any("replace" in call for call in calls)
+
+    asyncio.run(service.arm_for_restore(("wg0",), "wg-pia", ("wg-mullvad", "wg-pia")))
+    assert any("replace" in call and "unreachable" in call for call in calls)
+
+    calls.clear()
+    stale_route["dev"] = "wg-foreign"
+    with pytest.raises(ProviderWireGuardError, match="provider_egress_resource_conflict"):
+        asyncio.run(service.arm_for_restore(("wg0",), "wg-pia", ("wg-mullvad", "wg-pia")))
+    assert not any("replace" in call for call in calls)
+
+
 def test_start_preflight_conflict_performs_no_mutating_cleanup(tmp_path):
     runner = Runner()
 
@@ -449,8 +494,11 @@ def test_boot_guard_rejects_two_direct_generations_before_routing_mutation(monke
 
         def direct_egress_intent(self):
             return DirectEgressIntent(
-                self.id, f"provider:{self.id}", self.direct_egress_interface,
-                "10.4.2.3/32", "next",
+                self.id,
+                f"provider:{self.id}",
+                self.direct_egress_interface,
+                "10.4.2.3/32",
+                "next",
             )
 
     class Registry:
@@ -485,11 +533,18 @@ def test_cli_killswitch_status_uses_selected_provider(monkeypatch, capsys):
 
     async def status(facts):
         assert facts.interface == "wg-pia"
-        return type("Status", (), {
-            "state": "enabled_protected", "configured": True, "effective": True,
-            "tunnel_available": True, "firewall_rules_installed": True,
-            "reason": "tunnel_available",
-        })()
+        return type(
+            "Status",
+            (),
+            {
+                "state": "enabled_protected",
+                "configured": True,
+                "effective": True,
+                "tunnel_available": True,
+                "firewall_rules_installed": True,
+                "reason": "tunnel_available",
+            },
+        )()
 
     monkeypatch.setattr(cli, "provider_registry", Registry())
     monkeypatch.setattr(cli.core, "setting", lambda *_args: "pia")

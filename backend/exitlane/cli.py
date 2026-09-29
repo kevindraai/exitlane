@@ -520,10 +520,15 @@ def _systemd_service_action(action: str) -> None:
             interfaces = tuple(
                 item.direct_egress_interface for item in provider_registry.direct_egress_providers()
             )
-            await egress.arm(ingress, direct.interface, source_address=direct.source_address)
+            await egress.arm_for_restore(
+                ingress, direct.interface, interfaces, source_address=direct.source_address
+            )
             for interface in interfaces:
                 await egress.stop_interface(interface)
             await egress.disarm(ingress, direct.interface)
+            for interface in interfaces:
+                if interface != direct.interface:
+                    await egress.disarm((), interface)
             for interface in interfaces:
                 egress.remove_config(interface)
 

@@ -270,6 +270,11 @@ def test_active_mullvad_restore_guards_before_start_and_recovers_original_files(
                 raise ProviderWireGuardError("provider_egress_apply_failed")
             guard["provider"] = True
 
+        async def arm_for_restore(
+            self, ingress, interface, registered_interfaces, *, source_address=None
+        ) -> None:
+            await self.arm(ingress, interface, source_address=source_address)
+
         async def stop_interface(self, interface: str) -> None:
             assert guard["held"]
 
@@ -389,8 +394,13 @@ def test_reset_removes_owned_egress_policy_before_unregistering_ingress(
     actions: list[str] = []
 
     class Egress:
-        async def arm(
-            self, ingress: tuple[str, ...], interface: str, *, source_address=None
+        async def arm_for_restore(
+            self,
+            ingress: tuple[str, ...],
+            interface: str,
+            registered_interfaces,
+            *,
+            source_address=None,
         ) -> None:
             actions.append("preflight-and-arm")
 
@@ -450,7 +460,9 @@ def test_reset_cleans_every_registered_direct_interface(
         def __init__(self):
             super().__init__(root=configs)
 
-        async def arm(self, ingress, interface, *, source_address=None):
+        async def arm_for_restore(
+            self, ingress, interface, registered_interfaces, *, source_address=None
+        ):
             actions.append(("arm", interface))
 
         async def stop_interface(self, interface):
@@ -477,6 +489,7 @@ def test_reset_cleans_every_registered_direct_interface(
         ("stop", "wg-mullvad"),
         ("stop", "wg-pia"),
         ("disarm", "wg-pia"),
+        ("disarm", "wg-mullvad"),
         ("remove_config", "wg-mullvad"),
         ("remove_config", "wg-pia"),
         ("stop_ingress", "wg0"),
