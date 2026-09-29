@@ -104,6 +104,8 @@
       "authentication": {
         "signed_in": "Aangemeld",
         "signed_out": "Afgemeld",
+        "configured": "Geconfigureerd",
+        "unconfigured": "Niet geconfigureerd",
         "unknown": "Onbekend",
         "unavailable": "Niet beschikbaar"
       },
@@ -403,6 +405,17 @@
       "sign_in": "Aanmelden bij PIA",
       "errors": { "invalid_credential_payload": "Voer een geldige PIA-gebruikersnaam en wachtwoord in.", "invalid_credentials": "PIA heeft deze gegevens geweigerd.", "provider_api_timeout": "De PIA-API reageerde niet op tijd.", "provider_api_unavailable": "De PIA-API is niet beschikbaar.", "provider_api_invalid_response": "PIA gaf een niet-ondersteund antwoord.", "provider_secret_key_unavailable": "De appliancesleutel voor PIA-status is niet beschikbaar.", "provider_secret_storage_failed": "Versleutelde PIA-status kon niet worden opgeslagen.", "provider_error": "Aanmelden bij PIA is niet gelukt." }
     },
+    "proton": {
+      "setup_title": "Proton-profielen importeren",
+      "setup_description": "Importeer nu een Proton WireGuard-profiel, of sla deze provider over en configureer hem later. Er wordt geen accountsessie aangemaakt.",
+      "import_hint": "Importeer een WireGuard-profiel uit je Proton VPN-account. Sleutels worden op deze appliance versleuteld opgeslagen.",
+      "profile_name": "Profielnaam", "country_code": "Landcode (optioneel)", "config_file": "WireGuard .conf-bestand",
+      "import_action": "Profiel importeren", "importing": "Importeren…", "imported": "Profiel geïmporteerd.",
+      "rename": "Hernoemen", "delete": "Verwijderen", "connect": "Verbinden",
+      "configured": "WireGuard-profielen geconfigureerd.", "unconfigured": "Importeer een Proton WireGuard-profiel om deze provider te configureren.",
+      "unconfigured_title": "Proton-profiel vereist", "invalid_file": "Kies een geldig WireGuard-profiel kleiner dan 16 KB.",
+      "action_failed": "De profielactie is mislukt.", "delete_failed": "Verbreek de verbinding met dit profiel voordat je het verwijdert."
+    },
     "mullvad": {
       "sign_in_title": "Aanmelden bij Mullvad",
       "sign_in_description": "Gebruik het 16-cijferige nummer van je Mullvad-account. ExitLane registreert een eigen versleuteld WireGuard-apparaat bij Mullvad.",
@@ -649,7 +662,7 @@
       "not_available": "Niet beschikbaar",
       "states": {
         "connected": "Verbonden", "disconnected": "Niet verbonden", "connecting": "Verbinden…",
-        "disconnecting": "Verbinding verbreken…", "signed_in": "Aangemeld", "signed_out": "Afgemeld",
+        "disconnecting": "Verbinding verbreken…", "signed_in": "Aangemeld", "signed_out": "Afgemeld", "unconfigured": "Niet geconfigureerd",
         "unavailable": "Niet beschikbaar", "error": "Statusfout", "unknown": "Onbekend"
       },
       "fields": {
@@ -674,7 +687,7 @@
     "auth": { "login_succeeded": "Beheerder aangemeld", "login_failed": "Aanmeldpoging mislukt", "logout": "Beheerder afgemeld", "session_expired": "Sessie verlopen", "session_revoked": "Sessie ingetrokken", "password_changed": "Beheerderswachtwoord gewijzigd", "password_reset": "Beheerderswachtwoord lokaal hersteld", "mfa_enrollment_started": "MFA-activering gestart", "mfa_enabled": "MFA ingeschakeld", "mfa_disabled": "MFA uitgeschakeld", "mfa_disabled_locally": "MFA lokaal uitgeschakeld", "recovery_codes_generated": "Herstelcodes gegenereerd", "recovery_codes_regenerated": "Herstelcodes opnieuw gegenereerd", "recovery_code_used": "Herstelcode gebruikt", "other_sessions_revoked": "Andere sessies ingetrokken" },
     "settings": { "updated": "Instellingen bijgewerkt: {fields}", "timezone_changed": "Appliance-tijdzone gewijzigd van {from_timezone} naar {to_timezone}", "timezone_reconciled": "Appliance-tijdzone gereconcilieerd van {from_timezone} naar {to_timezone}", "timezone_change_failed": "Wijzigen van appliance-tijdzone mislukt", "timezone_rolled_back": "Appliance-tijdzonewijziging teruggedraaid" },
     "network": { "security_settings_updated": "Netwerkbeveiligingsinstellingen bijgewerkt", "security_settings_reset_locally": "Netwerkbeveiligingsinstellingen lokaal hersteld", "management_routing_error": "Beveiliging van beheerrouting vereist aandacht" },
-    "provider": { "connect_started": "Verbinden met {target}", "connected": "Verbonden met {country} {server}", "connect_failed": "Kon niet verbinden met {target}", "recovery_started": "NordVPN-herstel gestart", "recovered": "NordVPN hersteld", "recovery_failed": "NordVPN-herstel mislukt", "recovery_rate_limited": "NordVPN-herstel tijdelijk begrensd", "retry_started": "Verbinding opnieuw proberen", "disconnect_started": "VPN-verbinding verbreken", "disconnected": "VPN-verbinding verbroken", "disconnect_failed": "VPN-verbinding kon niet worden verbroken", "session_started": "NordVPN-sessie gestart", "session_ended": "NordVPN-sessie beëindigd", "session_end_failed": "NordVPN-sessie kon niet worden beëindigd" },
+    "provider": { "connect_started": "Verbinden met {target}", "connected": "Verbonden met {country} {server}", "connect_failed": "Kon niet verbinden met {target}", "recovery_started": "NordVPN-herstel gestart", "recovered": "NordVPN hersteld", "recovery_failed": "NordVPN-herstel mislukt", "recovery_rate_limited": "NordVPN-herstel tijdelijk begrensd", "retry_started": "Verbinding opnieuw proberen", "disconnect_started": "VPN-verbinding verbreken", "disconnected": "VPN-verbinding verbroken", "disconnect_failed": "VPN-verbinding kon niet worden verbroken", "session_started": "NordVPN-sessie gestart", "session_ended": "NordVPN-sessie beëindigd", "session_end_failed": "NordVPN-sessie kon niet worden beëindigd" , "profile_imported": "Proton-profiel geïmporteerd", "profile_renamed": "Proton-profiel hernoemd", "profile_deleted": "Proton-profiel verwijderd"},
     "wireguard": { "configuration_generated": "WireGuard-configuratie gegenereerd voor {client_name}", "configuration_regenerated": "WireGuard-configuratie vervangen voor {client_name}", "interface_active": "WireGuard-interface {interface} is actief geworden", "interface_inactive": "WireGuard-interface {interface} is inactief geworden", "handshake_received": "WireGuard-handshake ontvangen voor {client_name}" },
     "notifications": { "webhook_added": "Webhook {name} toegevoegd" }
   },
@@ -804,6 +817,7 @@
     "router-integrations": "Routerintegraties",
       "mullvad": "Mullvad VPN-provider",
       "pia": "PIA-provider",
+      "proton": "Proton VPN-provider",
       "killswitch": "ExitLane-killswitch",
     "wireguard-configuration": "WireGuard-configuratie",
     "diagnostics": "Verbindingsdiagnostiek",

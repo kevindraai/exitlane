@@ -56,7 +56,7 @@ test("signed-out action stays on the provider route and focuses authentication",
   ]);
   assert.match(source, /vpn-provider-go-to-sign-in"\)\.addEventListener\("click"/);
   assert.match(source, /provider-authentication-card"\)\.scrollIntoView/);
-  assert.match(source, /provider-credential"\)\?\.focus\(\)/);
+  assert.match(source, /provider-proton-file"\)[\s\S]+provider-credential"\)\)\?\.focus\(\)/);
   assert.doesNotMatch(source, /vpn-provider-go-to-sign-in[\s\S]{0,400}(showView|history|location\.)/);
   assert.equal(english.provider.access.go_to_sign_in, "Go to sign in");
   assert.equal(dutch.provider.access.go_to_sign_in, "Naar aanmelden");

@@ -24,6 +24,7 @@ DOCUMENTS = (
     DocumentDefinition("nordvpn", "vpn", "nordvpn.md"),
     DocumentDefinition("mullvad", "vpn", "mullvad.md"),
     DocumentDefinition("pia", "vpn", "pia.md"),
+    DocumentDefinition("proton", "vpn", "proton.md"),
     DocumentDefinition("killswitch", "vpn", "killswitch.md"),
     DocumentDefinition("wireguard-configuration", "wireguard", "wireguard-configuration.md"),
     DocumentDefinition("diagnostics", "diagnostics", "diagnostics.md"),

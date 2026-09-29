@@ -7,7 +7,7 @@ readonly NAMESPACE="exitlane-egress-test-$$"
 readonly TABLE_ID="51820"
 readonly PROTOCOL="196"
 readonly EGRESS_INTERFACE="${EXITLANE_EGRESS_INTERFACE:-wg-mullvad}"
-if [[ "${EGRESS_INTERFACE}" != "wg-mullvad" && "${EGRESS_INTERFACE}" != "wg-pia" ]]; then
+if [[ "${EGRESS_INTERFACE}" != "wg-mullvad" && "${EGRESS_INTERFACE}" != "wg-pia" && "${EGRESS_INTERFACE}" != "wg-proton" ]]; then
   echo "Unsupported test egress interface." >&2
   exit 2
 fi

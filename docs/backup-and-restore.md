@@ -13,6 +13,7 @@ The encrypted backup contains:
 - `/etc/exitlane/secret.key`, which decrypts MFA and ExitLane-owned provider state;
 - encrypted Mullvad account, registered-device and WireGuard key state stored in SQLite;
 - encrypted PIA username, password and active WireGuard generation state stored in SQLite;
+- encrypted Proton imported profile keys and active WireGuard generation state stored in SQLite;
 - regular WireGuard configuration files owned by ExitLane;
 - a versioned manifest with logical file types, sizes, modes, and SHA-256
   checksums.

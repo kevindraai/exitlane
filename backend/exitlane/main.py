@@ -70,6 +70,7 @@ from exitlane.providers.base import ProviderActionUnsupported, ProviderFailureCl
 from exitlane.providers.catalog import provider_registry
 from exitlane.providers.mullvad import provider as mullvad_provider  # noqa: F401 - compatibility
 from exitlane.providers.nordvpn import provider
+from exitlane.providers.proton import provider as proton_provider
 from exitlane.providers.registry import ProviderNotFound
 from exitlane.proxy import deployment_status, normalized_origin, request_security, trusted_origin
 from exitlane.services import (
@@ -206,6 +207,16 @@ class ProviderCredential(BaseModel):
     token: str | None = Field(default=None, min_length=0, max_length=512)
     username: str | None = Field(default=None, min_length=1, max_length=80)
     password: str | None = Field(default=None, min_length=1, max_length=400)
+
+
+class ProtonProfileImport(BaseModel):
+    config: str = Field(min_length=1, max_length=16_384)
+    display_name: str = Field(min_length=1, max_length=80)
+    country_code: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")
+
+
+class ProtonProfileRename(BaseModel):
+    display_name: str = Field(min_length=1, max_length=80)
 
 
 class SetupProviders(BaseModel):
@@ -1894,7 +1905,7 @@ def _provider_activation_state(
         and status.get("available") is True
         and status.get("daemon_active") is not False
     )
-    authenticated = authentication_state == "signed_in"
+    authenticated = authentication_state in {"signed_in", "configured"}
     blockers = []
     if not installed:
         blockers.append({"code": "provider_not_installed", "provider": provider_instance.id})
@@ -1906,7 +1917,7 @@ def _provider_activation_state(
         blockers.append({"code": "provider_daemon_unavailable", "provider": provider_instance.id})
     elif installation_state != "available" or status.get("available") is not True:
         blockers.append({"code": "provider_status_unavailable", "provider": provider_instance.id})
-    elif authentication_state == "signed_out":
+    elif authentication_state in {"signed_out", "unconfigured"}:
         blockers.append(
             {
                 "code": "provider_authentication_required",
@@ -2259,6 +2270,49 @@ async def sign_out_vpn_provider(provider_id: str, request: Request) -> dict:
     return await _end_provider_session(_provider_or_404(provider_id), request)
 
 
+@app.get("/api/vpn/providers/proton/profiles")
+async def proton_profiles() -> dict:
+    return {"profiles": await proton_provider.list_profiles()}
+
+
+@app.post("/api/vpn/providers/proton/profiles")
+async def import_proton_profile(payload: ProtonProfileImport, request: Request) -> dict:
+    if vpn_operations.active_snapshot():
+        raise HTTPException(status_code=409, detail="vpn_action_in_progress")
+    result = await proton_provider.import_profile(
+        payload.config, payload.display_name, payload.country_code
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=422, detail=result["error_code"])
+    record_event(
+        "provider.profile_imported",
+        actor=request_actor(request),
+        metadata={"provider": "proton"},
+    )
+    await _after_provider_authenticated(proton_provider)
+    return result
+
+
+@app.patch("/api/vpn/providers/proton/profiles/{profile_id}")
+async def rename_proton_profile(profile_id: str, payload: ProtonProfileRename, request: Request) -> dict:
+    result = await proton_provider.rename_profile(profile_id, payload.display_name)
+    if not result.get("ok"):
+        raise HTTPException(status_code=422, detail=result["error_code"])
+    record_event("provider.profile_renamed", actor=request_actor(request), metadata={"provider": "proton"})
+    return result
+
+
+@app.delete("/api/vpn/providers/proton/profiles/{profile_id}")
+async def delete_proton_profile(profile_id: str, request: Request) -> dict:
+    if vpn_operations.active_snapshot():
+        raise HTTPException(status_code=409, detail="vpn_action_in_progress")
+    result = await proton_provider.delete_profile(profile_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=409, detail=result["error_code"])
+    record_event("provider.profile_deleted", actor=request_actor(request), metadata={"provider": "proton"})
+    return result
+
+
 @app.get("/api/vpn/providers/{provider_id}/locations")
 async def vpn_provider_locations(provider_id: str) -> dict:
     provider_instance = _provider_or_404(provider_id)
@@ -2408,9 +2462,9 @@ async def _require_provider_authentication(provider_instance=None) -> dict:
     provider_instance = provider_instance or _active_provider()
     status = await _fresh_status_for(provider_instance)
     authentication_state = _provider_authentication_state(status)
-    if authentication_state == "signed_out":
+    if authentication_state in {"signed_out", "unconfigured"}:
         raise HTTPException(status_code=409, detail="provider_authentication_required")
-    if authentication_state != "signed_in":
+    if authentication_state not in {"signed_in", "configured"}:
         raise HTTPException(status_code=409, detail="provider_state_unknown")
     return status
 

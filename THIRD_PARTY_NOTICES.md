@@ -78,3 +78,7 @@ SOFTWARE.
 ## Private Internet Access manual connections CA
 
 ExitLane includes `backend/exitlane/providers/pia_ca.pem` from the [PIA manual-connections repository](https://github.com/pia-foss/manual-connections/blob/master/ca.rsa.4096.crt) to verify TLS identity for the selected WireGuard server's `addKey` endpoint. The upstream repository's scripts are MIT licensed; no upstream script code is copied into ExitLane.
+
+## Proton VPN profile import
+
+ExitLane does not bundle Proton VPN client code or logo artwork. Proton VPN is a trademark of its respective owner. Users supply their own WireGuard configuration generated through the [official Proton VPN account flow](https://protonvpn.com/support/wireguard-configurations).

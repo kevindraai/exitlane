@@ -30,13 +30,48 @@ def test_measurements_are_cached_and_best_reachable_server_is_selected(tmp_path,
     assert calls == ["nl1.example", "nl2.example"]
 
 
+def test_deleted_server_is_not_selected_from_latency_cache(tmp_path, monkeypatch):
+    initialise_database(tmp_path, monkeypatch)
+
+    async def measure(_hostname):
+        return {"latency_ms": 12, "status": "reachable"}
+
+    asyncio.run(vpn_selection.measure_servers(
+        "NL", [{"hostname": "removed.example"}], provider_id="proton", measurer=measure,
+    ))
+    monkeypatch.setattr(vpn_selection, "measure_latency", measure)
+    selected = asyncio.run(vpn_selection.select_server(
+        "NL", [{"hostname": "remaining.example", "station": "185.1.2.3"}], provider_id="proton",
+    ))
+    assert selected["server"] == "remaining.example"
+
+
+def test_new_server_is_measured_when_cached_country_is_incomplete(tmp_path, monkeypatch):
+    initialise_database(tmp_path, monkeypatch)
+    calls = []
+
+    async def measure(hostname):
+        calls.append(hostname)
+        return {"latency_ms": {"old.example": 30, "new.example": 10}[hostname], "status": "reachable"}
+
+    asyncio.run(vpn_selection.measure_servers(
+        "NL", [{"hostname": "old.example"}], provider_id="proton", measurer=measure,
+    ))
+    result = asyncio.run(vpn_selection.measure_servers(
+        "NL", [{"hostname": "old.example"}, {"hostname": "new.example"}],
+        provider_id="proton", measurer=measure,
+    ))
+    assert result[0]["server"] == "new.example"
+    assert "new.example" in calls
+
+
 def test_unreachable_candidates_fall_back_to_provider_recommendation(tmp_path, monkeypatch):
     initialise_database(tmp_path, monkeypatch)
 
     async def unreachable(_hostname):
         return {"latency_ms": None, "status": "unreachable"}
 
-    monkeypatch.setattr(vpn_selection, "tcp_latency", unreachable)
+    monkeypatch.setattr(vpn_selection, "measure_latency", unreachable)
     servers = [{"hostname": "be1.example"}, {"hostname": "be2.example"}]
     selected = asyncio.run(vpn_selection.select_server("BE", servers))
 
@@ -173,6 +208,37 @@ def test_invalid_latency_endpoint_is_not_executed(monkeypatch):
     result = asyncio.run(vpn_selection.measure_latency("server; reboot"))
 
     assert result == {"latency_ms": None, "status": "unknown", "method": None}
+
+
+def test_hostname_latency_resolves_only_public_ipv4(monkeypatch):
+    calls = []
+
+    async def run_resolver(function, *args):
+        return function(*args)
+
+    def resolve(host, port, family, kind):
+        assert (host, port, family, kind) == (
+            "nl.protonvpn.example", None, vpn_selection.socket.AF_INET, vpn_selection.socket.SOCK_DGRAM,
+        )
+        return [(family, kind, 0, "", ("185.1.2.3", 0))]
+
+    async def command(*args, **_kwargs):
+        calls.append(args)
+        return 0, "64 bytes: time=17.2 ms", ""
+
+    monkeypatch.setattr(vpn_selection.socket, "getaddrinfo", resolve)
+    monkeypatch.setattr(vpn_selection.asyncio, "to_thread", run_resolver)
+    monkeypatch.setattr(vpn_selection.shutil, "which", lambda _name: "/usr/bin/ping")
+    monkeypatch.setattr(core, "command", command)
+    result = asyncio.run(vpn_selection.measure_latency("nl.protonvpn.example"))
+    assert result["latency_ms"] == 17
+    assert calls[0][-1] == "185.1.2.3"
+
+    monkeypatch.setattr(vpn_selection.socket, "getaddrinfo", lambda *_args: [
+        (vpn_selection.socket.AF_INET, vpn_selection.socket.SOCK_DGRAM, 0, "", ("10.0.0.1", 0))
+    ])
+    assert asyncio.run(vpn_selection.measure_latency("nl.protonvpn.example"))["status"] == "unknown"
+    assert len(calls) == 1
 
 
 def test_tcp_fallback_uses_validated_station_ip(monkeypatch):

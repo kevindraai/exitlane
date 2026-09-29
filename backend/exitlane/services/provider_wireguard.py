@@ -81,6 +81,7 @@ class EgressConfig:
     endpoint_port: int = 51820
     mtu: int = 1380
     dns_probe_hostname: str = "example.com"
+    preshared_key: str | None = None
 
     def validated(self) -> EgressConfig:
         if PROVIDER_PATTERN.fullmatch(self.provider_id) is None:
@@ -91,6 +92,8 @@ class EgressConfig:
             raise ProviderWireGuardError("provider_egress_configuration_invalid")
         _wireguard_key(self.private_key)
         _wireguard_key(self.peer_public_key)
+        if self.preshared_key is not None:
+            _wireguard_key(self.preshared_key)
         try:
             assigned = ipaddress.ip_interface(self.address)
             endpoint = ipaddress.ip_address(self.endpoint_address)
@@ -163,6 +166,7 @@ class ProviderWireGuard:
     @staticmethod
     def render(config: EgressConfig) -> str:
         item = config.validated()
+        preshared = f"PresharedKey = {item.preshared_key}\n" if item.preshared_key else ""
         return (
             "[Interface]\n"
             f"# ExitLane provider={item.provider_id} generation={item.generation}\n"
@@ -172,6 +176,7 @@ class ProviderWireGuard:
             "Table = off\n\n"
             "[Peer]\n"
             f"PublicKey = {item.peer_public_key}\n"
+            f"{preshared}"
             f"Endpoint = {item.endpoint_address}:{item.endpoint_port}\n"
             "AllowedIPs = 0.0.0.0/0\n"
             "PersistentKeepalive = 25\n"

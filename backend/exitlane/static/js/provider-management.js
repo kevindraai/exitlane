@@ -14,6 +14,14 @@ export function providerRequestIsCurrent(providerId, application = {}, status = 
   return status === null || providerStatusId(status) === providerId;
 }
 
+export function providerConnectFailureCode(result = {}) {
+  if (result?.success === true) return null;
+  const code = result?.error || result?.error_code;
+  return typeof code === "string" && /^[a-z][a-z0-9_]{0,79}$/.test(code)
+    ? code
+    : "provider_connect_failed";
+}
+
 export function providerViewContext(application = {}, providersData = {}, status = {}) {
   const viewedProviderId = application.providerId || providersData.activeProviderId || null;
   const activeProviderId = providersData.activeProviderId || null;
@@ -71,15 +79,15 @@ export function vpnProviderAccess(status = {}) {
   const transient = new Set(["signing_in", "signing_out"]);
   let state = view.authenticationState;
   if (view.errorCode === "daemon_unavailable" || state === "unavailable") state = "unavailable";
-  if (!["signed_in", "signed_out", "unavailable", "unknown", "signing_in", "signing_out"].includes(state)) {
+  if (!["signed_in", "signed_out", "configured", "unconfigured", "unavailable", "unknown", "signing_in", "signing_out"].includes(state)) {
     state = "unknown";
   }
-  const inconsistent = state === "signed_out" && view.connectionState === "connected";
+  const inconsistent = ["signed_out", "unconfigured"].includes(state) && view.connectionState === "connected";
   const inactive = view.isActive === false;
   return {
     ...view,
-    state: inconsistent ? "unknown" : inactive && state === "signed_in" ? "inactive" : state,
-    blocked: state !== "signed_in" || inconsistent || inactive,
+    state: inconsistent ? "unknown" : inactive && ["signed_in", "configured"].includes(state) ? "inactive" : state,
+    blocked: !["signed_in", "configured"].includes(state) || inconsistent || inactive,
     busy: transient.has(state),
   };
 }

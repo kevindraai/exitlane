@@ -11,7 +11,7 @@ test("PIA authentication has its own username and password form in both flows", 
     id: "pia", display_name: "Private Internet Access", authentication_method: "username_password",
   }), {
     providerId: "pia", providerName: "Private Internet Access", method: "username_password",
-    nordControls: false, mullvadControls: false, piaControls: true,
+    nordControls: false, mullvadControls: false, piaControls: true, protonControls: false,
   });
   assert.equal(providerAuthenticationErrorCode({ error: "invalid_credentials" }), "invalid_credentials");
   const [wizard, management, wizardSource, managementSource] = await Promise.all([

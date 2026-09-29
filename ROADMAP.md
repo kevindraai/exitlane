@@ -80,7 +80,8 @@ Beta.5 inherits the beta.4 UX, accessibility, design-system and integrated-docum
 
 ## Next
 
-- PIA direct WireGuard provider: code and synthetic Debian 13 qualification are in progress; live account proof remains outstanding.
+- PIA direct WireGuard provider: synthetic Debian 13 qualification passed; live account proof remains outstanding.
+- Proton imported WireGuard profiles: synthetic Debian 13 qualification passed; live provider proof remains outstanding.
 - UX and visual consistency polish
 - Provider abstraction hardening
 - Further VPN providers and broader relay-availability testing
