@@ -61,10 +61,11 @@ The package now requires AnyIO `>=4.14.2,<5`, so the installer's normal pip upgr
 older vulnerable AnyIO versions. Updating the development lockfile alone would not protect an
 existing appliance installation.
 
-## Mullvad and WireGuard changes
+## Direct provider and WireGuard changes
 
 The direct Mullvad integration owns `wg-mullvad` and policy table `51820`. It does not install the
-Mullvad app. Retire any existing app daemon or conflicting provider firewall state deliberately
+Mullvad app. PIA uses the separate `wg-pia` interface and the same guarded table, with only one
+direct provider active at a time. Retire any existing Mullvad app daemon or conflicting provider firewall state deliberately
 before activation; follow the [Mullvad conflict procedure](mullvad.md#legacy-mullvad-app-conflict).
 
 On startup, an older ingress profile with fixed NordVPN forwarding rules is migrated to
@@ -72,7 +73,7 @@ provider-neutral forwarding. Its existing keys, peer configuration and client pr
 unchanged. Changing VPN providers does not require replacing the router's ingress profile.
 
 Choose a new ingress name only during initial provisioning. Renaming an already configured
-interface is rejected; profile regeneration keeps its name. With a stored active or pending Mullvad
+interface is rejected; profile regeneration keeps its name. With a stored active or pending direct-provider
 generation, reboot and restore establish the mandatory routing guard before ingress starts.
 Reconnect explicitly after recovery and verify the client path.
 

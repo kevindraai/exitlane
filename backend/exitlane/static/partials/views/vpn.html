@@ -36,7 +36,9 @@
         </div>
         <form class="form-grid" id="provider-credential-form" method="post">
          <p class="inline-error" hidden="" id="provider-credential-error" role="alert"></p>
-         <label><span id="provider-credential-label">Provider credential</span><input autocomplete="off" id="provider-credential" required="" type="password"/><small id="provider-credential-hint">The credential is used only for local provider sign-in and is never displayed.</small></label>
+         <label id="provider-credential-field"><span id="provider-credential-label">Provider credential</span><input autocomplete="off" id="provider-credential" required="" type="password"/><small id="provider-credential-hint">The credential is used only for local provider sign-in and is never displayed.</small></label>
+         <label hidden="" id="provider-pia-username-field"><span data-i18n="provider.pia.username">PIA username</span><input autocomplete="username" id="provider-pia-username" maxlength="80" type="text"/></label>
+         <label hidden="" id="provider-pia-password-field"><span data-i18n="provider.pia.password">PIA password</span><input autocomplete="current-password" id="provider-pia-password" maxlength="400" type="password"/></label>
          <div class="form-submit"><button class="button button-primary" id="provider-credential-save" type="submit">Sign in</button></div>
         </form>
         <div hidden="" id="provider-unavailable">

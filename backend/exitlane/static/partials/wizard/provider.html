@@ -232,6 +232,15 @@
            <button class="button button-primary" data-i18n="provider.mullvad.sign_in" type="submit">Aanmelden bij Mullvad</button>
           </form>
          </section>
+         <section hidden="" id="provider-auth-pia">
+          <strong data-i18n="provider.pia.sign_in_title">Sign in to PIA</strong>
+          <p data-i18n="provider.pia.sign_in_description">Use your PIA account username and password. ExitLane stores them encrypted to renew short-lived tokens.</p>
+          <form class="form-card form-compact" id="pia-form" method="post">
+           <label><span data-i18n="provider.pia.username">PIA username</span><input autocomplete="username" id="pia-username" maxlength="80" required="" type="text"/></label>
+           <label><span data-i18n="provider.pia.password">PIA password</span><input autocomplete="current-password" id="pia-password" maxlength="400" required="" type="password"/></label>
+           <button class="button button-primary" data-i18n="provider.pia.sign_in" type="submit">Sign in to PIA</button>
+          </form>
+         </section>
         </section>
        </section>
         <section class="notice-card" hidden="" id="wizard-active-provider-selection">

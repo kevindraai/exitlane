@@ -395,6 +395,14 @@
       "success": "Aanmelden bij {provider} is geslaagd.",
       "errors": { "invalid_token_format": "Vul een niet-leeg NordVPN-access token met een geldig formaat in.", "invalid_token": "De opgegeven toegangstoken is ongeldig. Maak in je Nord Account een nieuwe toegangstoken aan en probeer het opnieuw.", "token_expired": "De opgegeven toegangstoken is verlopen. Maak in je Nord Account een nieuwe toegangstoken aan en probeer het opnieuw.", "token_revoked": "De opgegeven toegangstoken is ingetrokken. Maak in je Nord Account een nieuwe toegangstoken aan en probeer het opnieuw.", "daemon_unavailable": "De NordVPN-daemon is niet beschikbaar.", "command_unavailable": "De NordVPN-client is niet beschikbaar.", "timeout": "De NordVPN-tokenaanmelding duurde te lang.", "already_logged_in": "NordVPN is al aangemeld.", "token_replacement_unsupported": "Beëindig de huidige NordVPN-sessie voordat je een ander token gebruikt.", "provider_error": "NordVPN kon de aanmelding niet voltooien." }
     },
+    "pia": {
+      "sign_in_title": "Aanmelden bij PIA",
+      "sign_in_description": "Gebruik je PIA-gebruikersnaam en wachtwoord. ExitLane bewaart ze versleuteld om tokens van 24 uur te vernieuwen voor automatisch herstel.",
+      "username": "PIA-gebruikersnaam",
+      "password": "PIA-wachtwoord",
+      "sign_in": "Aanmelden bij PIA",
+      "errors": { "invalid_credential_payload": "Voer een geldige PIA-gebruikersnaam en wachtwoord in.", "invalid_credentials": "PIA heeft deze gegevens geweigerd.", "provider_api_timeout": "De PIA-API reageerde niet op tijd.", "provider_api_unavailable": "De PIA-API is niet beschikbaar.", "provider_api_invalid_response": "PIA gaf een niet-ondersteund antwoord.", "provider_secret_key_unavailable": "De appliancesleutel voor PIA-status is niet beschikbaar.", "provider_secret_storage_failed": "Versleutelde PIA-status kon niet worden opgeslagen.", "provider_error": "Aanmelden bij PIA is niet gelukt." }
+    },
     "mullvad": {
       "sign_in_title": "Aanmelden bij Mullvad",
       "sign_in_description": "Gebruik het 16-cijferige nummer van je Mullvad-account. ExitLane registreert een eigen versleuteld WireGuard-apparaat bij Mullvad.",
@@ -795,6 +803,7 @@
     "proxmox-lxc": "Proxmox LXC",
     "router-integrations": "Routerintegraties",
       "mullvad": "Mullvad VPN-provider",
+      "pia": "PIA-provider",
       "killswitch": "ExitLane-killswitch",
     "wireguard-configuration": "WireGuard-configuratie",
     "diagnostics": "Verbindingsdiagnostiek",

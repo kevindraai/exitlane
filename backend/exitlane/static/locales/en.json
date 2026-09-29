@@ -395,6 +395,14 @@
       "success": "Signed in to {provider} successfully.",
       "errors": { "invalid_token_format": "Enter a non-empty NordVPN access token in the expected format.", "invalid_token": "The supplied access token is invalid. Generate a new access token in your Nord Account and try again.", "token_expired": "The supplied access token has expired. Generate a new access token in your Nord Account and try again.", "token_revoked": "The supplied access token has been revoked. Generate a new access token in your Nord Account and try again.", "daemon_unavailable": "The NordVPN daemon is unavailable.", "command_unavailable": "The NordVPN client is unavailable.", "timeout": "NordVPN token sign-in timed out.", "already_logged_in": "NordVPN is already signed in.", "token_replacement_unsupported": "End the current NordVPN session before using another token.", "provider_error": "NordVPN could not complete sign-in." }
     },
+    "pia": {
+      "sign_in_title": "Sign in to PIA",
+      "sign_in_description": "Use your PIA username and password. ExitLane stores them encrypted to renew 24-hour tokens for unattended recovery.",
+      "username": "PIA username",
+      "password": "PIA password",
+      "sign_in": "Sign in to PIA",
+      "errors": { "invalid_credential_payload": "Enter a valid PIA username and password.", "invalid_credentials": "PIA rejected these credentials.", "provider_api_timeout": "The PIA API timed out.", "provider_api_unavailable": "The PIA API is unavailable.", "provider_api_invalid_response": "PIA returned an unsupported response.", "provider_secret_key_unavailable": "The appliance key for PIA state is unavailable.", "provider_secret_storage_failed": "Encrypted PIA state could not be stored.", "provider_error": "PIA could not complete sign-in." }
+    },
     "mullvad": {
       "sign_in_title": "Sign in to Mullvad",
       "sign_in_description": "Use the 16-digit number from your Mullvad account. ExitLane registers its own encrypted WireGuard device with Mullvad.",
@@ -795,6 +803,7 @@
     "proxmox-lxc": "Proxmox LXC",
     "router-integrations": "Router integrations",
       "mullvad": "Mullvad VPN provider",
+      "pia": "PIA provider",
       "killswitch": "ExitLane killswitch",
     "wireguard-configuration": "WireGuard configuration",
     "diagnostics": "Connection diagnostics",

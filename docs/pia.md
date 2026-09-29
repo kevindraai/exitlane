@@ -1,0 +1,11 @@
+# Private Internet Access (PIA)
+
+ExitLane connects to PIA with a dedicated, ExitLane-owned WireGuard egress interface. It does not install or run the PIA desktop client. Select PIA in the provider setup or management page and enter your PIA account username and password. ExitLane verifies them with PIA's token endpoint, then stores them encrypted with the appliance master key so it can renew the approximately 24-hour token after a restart. Tokens stay in process memory and are never shown in the API or Activity log.
+
+The public PIA catalog provides regions, WireGuard server IPs and certificate names. ExitLane measures up to five server endpoints per country using its normal latency service. A connection generates a fresh WireGuard keypair, calls that server's `addKey` endpoint over HTTPS with PIA's published CA and verified server name, and validates the assigned address, peer key, port and DNS server. ExitLane arms its fail-closed route table before applying the configuration and only reports a connection after the handshake, dataplane and DNS probes succeed. IPv4 egress is supported; IPv6 forwarding stays blocked.
+
+Disconnect keeps the protected source route armed for late replies. Sign out requires a disconnected tunnel and deletes the encrypted account state. A failed switch restores the last proven generation where possible and otherwise leaves protected forwarding closed. On boot, local generation intent restores the unreachable route before provider traffic can flow. PIA's manual API does not expose a device-revocation operation for these keys; old registrations expire according to PIA policy.
+
+The PIA integration is tested with sanitized provider-boundary fixtures and the real ExitLane lifecycle. Live PIA account and dataplane qualification remains outstanding until safe QA credentials are available. Do not use personal credentials in tests, logs or issue comments.
+
+Protocol references: [PIA manual connections](https://github.com/pia-foss/manual-connections), [token script](https://github.com/pia-foss/manual-connections/blob/master/get_token.sh), [region script](https://github.com/pia-foss/manual-connections/blob/master/get_region.sh), and [WireGuard addKey script](https://github.com/pia-foss/manual-connections/blob/master/connect_to_wireguard_with_token.sh).

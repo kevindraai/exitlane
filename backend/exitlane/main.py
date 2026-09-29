@@ -11,7 +11,7 @@ import time
 import uuid
 from collections import defaultdict, deque
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager, suppress
+from contextlib import AsyncExitStack, asynccontextmanager, suppress
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
@@ -68,7 +68,7 @@ from exitlane.events import (
 from exitlane.html import render_index
 from exitlane.providers.base import ProviderActionUnsupported, ProviderFailureClass
 from exitlane.providers.catalog import provider_registry
-from exitlane.providers.mullvad import provider as mullvad_provider
+from exitlane.providers.mullvad import provider as mullvad_provider  # noqa: F401 - compatibility
 from exitlane.providers.nordvpn import provider
 from exitlane.providers.registry import ProviderNotFound
 from exitlane.proxy import deployment_status, normalized_origin, request_security, trusted_origin
@@ -204,6 +204,8 @@ class Token(BaseModel):
 class ProviderCredential(BaseModel):
     credential: str | None = Field(default=None, min_length=0, max_length=512)
     token: str | None = Field(default=None, min_length=0, max_length=512)
+    username: str | None = Field(default=None, min_length=1, max_length=80)
+    password: str | None = Field(default=None, min_length=1, max_length=400)
 
 
 class SetupProviders(BaseModel):
@@ -1691,7 +1693,7 @@ async def _after_provider_authenticated(provider_instance) -> None:
 
 async def _authenticate_provider(
     provider_instance,
-    credential: str,
+    credential: str | tuple[str, str],
     request: Request,
     *,
     legacy_token: bool = False,
@@ -1707,7 +1709,11 @@ async def _authenticate_provider(
             ),
         )
     try:
-        result = await provider_instance.authenticate(credential)
+        result = (
+            await provider_instance.authenticate_credentials(*credential)
+            if provider_instance.id == "pia" and isinstance(credential, tuple)
+            else await provider_instance.authenticate(credential)
+        )
     except asyncio.CancelledError:
         raise
     except Exception:  # noqa: BLE001 - provider exceptions may contain credential-bearing output.
@@ -2233,8 +2239,17 @@ async def authenticate_vpn_provider(
     provider_id: str, req: ProviderCredential, request: Request
 ) -> dict:
     provider_instance = _provider_or_404(provider_id)
+    pia_pair = req.username is not None and req.password is not None
+    if provider_instance.id == "pia" and pia_pair and req.credential is None and req.token is None:
+        return await _authenticate_provider(provider_instance, (req.username, req.password), request)
     supplied = [value for value in (req.credential, req.token) if value is not None]
-    if len(supplied) != 1 or (req.token is not None and provider_instance.id != "nordvpn"):
+    if (
+        len(supplied) != 1
+        or req.username is not None
+        or req.password is not None
+        or provider_instance.id == "pia"
+        or (req.token is not None and provider_instance.id != "nordvpn")
+    ):
         raise HTTPException(status_code=422, detail="invalid_credential_payload")
     return await _authenticate_provider(provider_instance, supplied[0], request)
 
@@ -3750,19 +3765,23 @@ async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
             return JSONResponse(
                 status_code=409, content={"error": "wireguard_generation_in_progress"}
             )
-        if mullvad_provider._operation_lock.locked():
+        if any(item._operation_lock.locked() for item in provider_registry.direct_egress_providers()):
             return JSONResponse(status_code=409, content={"error": "vpn_action_in_progress"})
         # Keep provider connection attempts out until the ingress name is saved;
         # their fail-closed rules are derived from that persisted name.
-        async with generation_lock, mullvad_provider._operation_lock:
+        async with generation_lock, AsyncExitStack() as provider_locks:
+            for item in provider_registry.direct_egress_providers():
+                await provider_locks.enter_async_context(item._operation_lock)
             if req.interface != setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE):
                 if setting("wireguard_configured", False):
                     return JSONResponse(
                         status_code=409,
                         content={"error": "wireguard_interface_change_unsupported"},
                     )
-                state = provider_secrets.load("mullvad") or {}
-                if any(key in state for key in ("active", "pending")):
+                if any(
+                    any(key in (provider_secrets.load(item.id) or {}) for key in ("active", "pending"))
+                    for item in provider_registry.direct_egress_providers()
+                ):
                     return JSONResponse(
                         status_code=409,
                         content={"error": "wireguard_interface_change_requires_disconnect"},

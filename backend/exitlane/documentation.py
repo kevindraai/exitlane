@@ -23,6 +23,7 @@ DOCUMENTS = (
     DocumentDefinition("router-integrations", "getting-started", "router-integrations.md"),
     DocumentDefinition("nordvpn", "vpn", "nordvpn.md"),
     DocumentDefinition("mullvad", "vpn", "mullvad.md"),
+    DocumentDefinition("pia", "vpn", "pia.md"),
     DocumentDefinition("killswitch", "vpn", "killswitch.md"),
     DocumentDefinition("wireguard-configuration", "wireguard", "wireguard-configuration.md"),
     DocumentDefinition("diagnostics", "diagnostics", "diagnostics.md"),

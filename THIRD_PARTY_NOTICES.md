@@ -74,3 +74,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Private Internet Access manual connections CA
+
+ExitLane includes `backend/exitlane/providers/pia_ca.pem` from the [PIA manual-connections repository](https://github.com/pia-foss/manual-connections/blob/master/ca.rsa.4096.crt) to verify TLS identity for the selected WireGuard server's `addKey` endpoint. The upstream repository's scripts are MIT licensed; no upstream script code is copied into ExitLane.
