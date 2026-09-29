@@ -421,7 +421,10 @@ def test_reset_removes_owned_egress_policy_before_unregistering_ingress(
     assert actions == [
         "preflight-and-arm",
         "stop-egress",
+        "stop-egress",
         "remove-owned-policy",
+        "remove-owned-policy",
+        "remove-stale-secret",
         "remove-stale-secret",
         "stop-ingress",
     ]

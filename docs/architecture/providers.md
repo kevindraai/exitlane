@@ -1,6 +1,6 @@
 # VPN provider architecture
 
-ExitLane ships NordVPN and Mullvad VPN integrations. Either or both may be installed and signed in,
+ExitLane ships NordVPN, Mullvad VPN and PIA integrations. Any combination may be signed in,
 but exactly one registered provider can be selected as active egress. Only that active provider may
 receive a connect, reconnect, location-selection, or latency-selection mutation from ExitLane.
 
@@ -86,6 +86,15 @@ master key. Pending device intent is durable before remote mutation and reconcil
 key. Secrets are never included in Activity metadata. Provider-specific authentication controls live in
 small rendering boundaries selected by `authentication_method`; navigation, installation,
 connection, and location UI remain generic.
+
+PIA uses a typed username/password authentication request, encrypts the minimum credentials needed
+for unattended token renewal, and keeps access tokens only in memory. Its public catalog is parsed
+into validated region and server identities. Server-specific `addKey` calls connect to a catalog IP
+while TLS verifies the catalog certificate name against PIA's published CA. A new keypair and
+generation are validated and persisted before the generic direct-egress layer starts `wg-pia`.
+The active generation is committed only after the exact-peer handshake and dataplane proof. Live
+PIA account qualification remains outstanding; synthetic provider-boundary fixtures and Debian 13
+kernel routing tests are the current evidence boundary.
 
 The provider owns tunnel-interface discovery. NordVPN maps its verified client contract. Direct
 providers use a generic ExitLane-owned egress layer with a dedicated interface, ingress-selected

@@ -443,7 +443,8 @@ def test_boot_guard_arms_unreachable_provider_table_for_persisted_active_tunnel(
     monkeypatch.setattr(
         cli.provider_secrets,
         "load",
-        lambda provider_id: {"active": {}, "ipv4_address": "10.67.12.34/32"},
+        lambda provider_id: {"active": {}, "ipv4_address": "10.67.12.34/32"}
+        if provider_id == "mullvad" else None,
     )
     monkeypatch.setattr(cli.killswitch, "configuration", lambda: (("wg0", "lan0"), ()))
     monkeypatch.setattr(cli, "ProviderWireGuard", Guard)
@@ -585,7 +586,8 @@ def test_boot_guard_also_restores_crashed_pending_connection(monkeypatch):
     monkeypatch.setattr(
         cli.provider_secrets,
         "load",
-        lambda provider_id: {"pending": {}, "ipv4_address": "10.67.12.34/32"},
+        lambda provider_id: {"pending": {}, "ipv4_address": "10.67.12.34/32"}
+        if provider_id == "mullvad" else None,
     )
     monkeypatch.setattr(cli.killswitch, "configuration", lambda: (("wg0",), ()))
     monkeypatch.setattr(cli, "ProviderWireGuard", Guard)
@@ -605,7 +607,8 @@ def test_boot_guard_failure_propagates_when_route_and_firewall_guards_fail(monke
     monkeypatch.setattr(
         cli.provider_secrets,
         "load",
-        lambda provider_id: {"pending": {}, "ipv4_address": "10.67.12.34/32"},
+        lambda provider_id: {"pending": {}, "ipv4_address": "10.67.12.34/32"}
+        if provider_id == "mullvad" else None,
     )
     monkeypatch.setattr(cli.killswitch, "configuration", lambda: (("wg0",), ()))
     monkeypatch.setattr(cli, "ProviderWireGuard", Guard)

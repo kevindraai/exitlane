@@ -17,7 +17,7 @@ let activeDocument = null;
 
 export function renderProviderGuide(metadata) {
   const link = document.querySelector("#provider-help-link");
-  const slug = ["nordvpn", "mullvad"].includes(metadata.id) ? metadata.id : null;
+  const slug = ["nordvpn", "mullvad", "pia"].includes(metadata.id) ? metadata.id : null;
   link.hidden = !slug;
   link.dataset.helpDocument = slug || "";
   link.href = slug ? `#help/${slug}` : "#help";

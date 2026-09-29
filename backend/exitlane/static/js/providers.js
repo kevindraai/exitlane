@@ -24,6 +24,7 @@ let providerInstallationPollTimer = null;
 let providerInstallationStatusLoadedFor = null;
 let killswitchStatus = null;
 let killswitchDialogTrigger = null;
+let credentialProviderId = null;
 const KNOWN_KILLSWITCH_STATES = new Set([
   "disabled",
   "enabled_protected",
@@ -181,6 +182,8 @@ function providerMetadata() {
 function providerCredentialErrorMessage(code, metadata = providerMetadata()) {
   const prefix = metadata?.authentication_method === "account_number"
     ? "provider.mullvad.errors"
+    : metadata?.authentication_method === "username_password"
+    ? "provider.pia.errors"
     : "provider.authentication.errors";
   return t(
     `${prefix}.${code}`,
@@ -476,6 +479,13 @@ function providerActivationErrorMessage(error) {
 }
 
 export function renderProviderManagement(status = {}) {
+  const currentProviderId = viewedProviderId();
+  if (currentProviderId !== credentialProviderId) {
+    select("#provider-credential").value = "";
+    select("#provider-pia-username").value = "";
+    select("#provider-pia-password").value = "";
+    credentialProviderId = currentProviderId;
+  }
   const context = providerViewContext(
     getSlice("application"),
     getSlice("providers").data || {},
@@ -522,7 +532,14 @@ export function renderProviderManagement(status = {}) {
   const credentialForm = select("#provider-credential-form");
   credentialForm.hidden = !(signedOut && view.canSignIn);
   const accountNumber = metadata.authentication_method === "account_number";
+  const pia = metadata.authentication_method === "username_password";
   const credential = select("#provider-credential");
+  select("#provider-credential-field").hidden = pia;
+  credential.required = !pia;
+  select("#provider-pia-username-field").hidden = !pia;
+  select("#provider-pia-password-field").hidden = !pia;
+  select("#provider-pia-username").required = pia;
+  select("#provider-pia-password").required = pia;
   select("#provider-credential-label").textContent = accountNumber
     ? t("provider.mullvad.account_number", {}, "Mullvad account number")
     : t("provider.management.token", {}, "Access token");
@@ -531,6 +548,7 @@ export function renderProviderManagement(status = {}) {
     : t("provider.management.token_hidden", {}, "The token is used only for local provider sign-in and is never displayed.");
   select("#provider-credential-save").textContent = accountNumber
     ? t("provider.mullvad.sign_in", {}, "Sign in to Mullvad")
+    : pia ? t("provider.pia.sign_in", {}, "Sign in to PIA")
     : t("provider.management.sign_in", {}, "Sign in with token");
   applyProviderCredentialConstraints(credential, accountNumber);
   credential.placeholder = accountNumber ? "1234 1234 1234 1234" : "";
@@ -743,15 +761,22 @@ async function authenticateProvider(event) {
   event.preventDefault();
   const providerId = viewedProviderId();
   const field = select("#provider-credential");
+  const username = select("#provider-pia-username");
+  const password = select("#provider-pia-password");
+  const pia = providerMetadata()?.authentication_method === "username_password";
   const button = select("#provider-credential-save");
   clearInlineError("#provider-credential-error");
   setBusy(button, true, t("settings.vpn.updating", {}, "Validating…"));
   try {
     const request = api(`/api/vpn/providers/${encodeURIComponent(providerId)}/authenticate`, {
       method: "POST",
-      body: JSON.stringify({ credential: field.value }),
+      body: JSON.stringify(pia
+        ? { username: username.value, password: password.value }
+        : { credential: field.value }),
     });
     field.value = "";
+    username.value = "";
+    password.value = "";
     await request;
     await loadProviders();
     await refreshProviderState({ deduplicate: false });
@@ -765,6 +790,8 @@ async function authenticateProvider(event) {
     showInlineError(providerCredentialErrorMessage(code), "#provider-credential-error");
   } finally {
     field.value = "";
+    username.value = "";
+    password.value = "";
     setBusy(button, false);
   }
 }
@@ -870,6 +897,13 @@ export function initialiseProviders() {
   loadKillswitch();
   subscribe("providers", renderProviderNavigation, { immediate: true });
   subscribe("provider", (slice) => renderProviderManagement(slice.data || {}), { immediate: true });
+  subscribe("auth", (slice) => {
+    if (slice.data?.authenticated !== true) {
+      select("#provider-credential").value = "";
+      select("#provider-pia-username").value = "";
+      select("#provider-pia-password").value = "";
+    }
+  });
   subscribe("application", (application) => {
     if (!["vpn", "vpn-provider"].includes(application.activeView)) return;
     renderProviderNavigation();

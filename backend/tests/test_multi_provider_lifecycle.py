@@ -187,7 +187,7 @@ def test_catalog_has_both_unique_ids_and_backward_compatible_active_default(clie
     assert response.status_code == 200
     payload = response.json()
     providers = {item["id"]: item for item in payload["providers"]}
-    assert set(providers) == {"nordvpn", "mullvad"}
+    assert set(providers) == {"nordvpn", "mullvad", "pia"}
     assert payload["active_provider_id"] == "nordvpn"
     assert providers["nordvpn"]["active"] is True
     assert providers["mullvad"]["active"] is False

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import gzip
 import io
 import ipaddress
@@ -14,9 +13,6 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
-
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 
 from exitlane.core import command
 from exitlane.services import killswitch, provider_secrets, vpn_operations
@@ -36,6 +32,7 @@ from .base import (
     ProviderFailureClass,
     ProviderMetadata,
 )
+from .wireguard_keys import _public_key_for_private, _valid_wireguard_key, _wireguard_keypair
 
 API_ORIGIN = "https://api.mullvad.net"
 # This is a fixed API path, not a credential.
@@ -103,47 +100,6 @@ def normalize_account_number(value: str) -> str | None:
         return None
     normalized = "".join(value.split())
     return normalized if ACCOUNT_NUMBER_PATTERN.fullmatch(normalized) else None
-
-
-def _wireguard_keypair() -> tuple[str, str]:
-    private = X25519PrivateKey.generate()
-    private_raw = private.private_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PrivateFormat.Raw,
-        encryption_algorithm=serialization.NoEncryption(),
-    )
-    public_raw = private.public_key().public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw,
-    )
-    return base64.b64encode(private_raw).decode("ascii"), base64.b64encode(public_raw).decode(
-        "ascii"
-    )
-
-
-def _valid_wireguard_key(value: object) -> str | None:
-    if not isinstance(value, str) or len(value) != 44:
-        return None
-    try:
-        decoded = base64.b64decode(value, validate=True)
-    except (TypeError, ValueError):
-        return None
-    return value if len(decoded) == 32 else None
-
-
-def _public_key_for_private(private_key: object) -> str | None:
-    private = _valid_wireguard_key(private_key)
-    if private is None:
-        return None
-    try:
-        key = X25519PrivateKey.from_private_bytes(base64.b64decode(private))
-    except ValueError:
-        return None
-    public = key.public_key().public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw,
-    )
-    return base64.b64encode(public).decode("ascii")
 
 
 def _safe_label(value: object, maximum: int = 80) -> str | None:

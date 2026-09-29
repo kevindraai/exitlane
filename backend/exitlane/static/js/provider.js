@@ -35,6 +35,8 @@ const PROVIDER_AUTHENTICATION_ERROR_CODES = new Set([
   "credential_replacement_unsupported",
   "invalid_account_format",
   "invalid_account",
+  "invalid_credentials",
+  "invalid_credential_payload",
   "too_many_devices",
   "device_key_in_use",
   "account_expired",
@@ -62,6 +64,8 @@ export function providerAuthenticationErrorMessage(value, metadata = wizardProvi
   const code = providerAuthenticationErrorCode(value);
   const prefix = metadata?.authentication_method === "account_number"
     ? "provider.mullvad.errors"
+    : metadata?.authentication_method === "username_password"
+    ? "provider.pia.errors"
     : "provider.authentication.errors";
   return t(
     `${prefix}.${code}`,
@@ -229,12 +233,14 @@ function renderPendingProviderStatus() {
 
 export function providerAuthenticationView(metadata = {}) {
   const accountNumber = metadata.authentication_method === "account_number";
+  const usernamePassword = metadata.authentication_method === "username_password";
   return {
     providerId: metadata.id || null,
     providerName: metadata.display_name || "",
-    method: accountNumber ? "account_number" : "token",
+    method: accountNumber ? "account_number" : usernamePassword ? "username_password" : "token",
     nordControls: metadata.id === "nordvpn" && !accountNumber,
     mullvadControls: accountNumber,
+    piaControls: usernamePassword,
   };
 }
 
@@ -242,6 +248,7 @@ function renderWizardAuthentication(metadata) {
   const view = providerAuthenticationView(metadata || {});
   select("#provider-auth-nordvpn").hidden = !view.nordControls;
   select("#provider-auth-mullvad").hidden = !view.mullvadControls;
+  select("#provider-auth-pia").hidden = !view.piaControls;
   if (view.nordControls) {
     select("#provider-sign-in-title").textContent = t(
       "provider.sign_in_title",
@@ -863,7 +870,9 @@ function renderInstallationStatus(status, { focusSignIn = false } = {}) {
     clearInlineError();
     select("#provider-login-methods").hidden = false;
     if (focusSignIn) {
-      const input = providerAuthenticationView(metadata || {}).mullvadControls
+      const input = providerAuthenticationView(metadata || {}).piaControls
+        ? select("#pia-username")
+        : providerAuthenticationView(metadata || {}).mullvadControls
         ? select("#mullvad-account-number")
         : select("#nord-token");
       window.requestAnimationFrame(() => input?.focus());
@@ -1120,6 +1129,37 @@ async function loginWithCredential(event) {
   }
 }
 
+async function loginWithPiaCredentials(event) {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector('button[type="submit"]');
+  const username = select("#pia-username");
+  const password = select("#pia-password");
+  const metadata = wizardProviderMetadata();
+  setBusy(button, true, t("busy.signing_in", {}, "Signing in…"));
+  clearInlineError();
+  try {
+    const request = postJson(providerApiPath("/authenticate"), {
+      username: username.value, password: password.value,
+    });
+    username.value = "";
+    password.value = "";
+    const result = await request;
+    if (!result.ok) {
+      const failure = new Error("provider_authentication_failed");
+      failure.code = providerAuthenticationErrorCode(result);
+      throw failure;
+    }
+    showMessage(t("provider.authentication.success", { provider: metadata.display_name }, "Signed in."), "success");
+    await Promise.all([refreshProvider(), refreshSetup()]);
+  } catch (error) {
+    showInlineError(providerAuthenticationErrorMessage(error, metadata));
+  } finally {
+    username.value = "";
+    password.value = "";
+    setBusy(button, false);
+  }
+}
+
 async function loginWithCallback(event) {
   event.preventDefault();
   const button = event.currentTarget.querySelector('button[type="submit"]');
@@ -1226,6 +1266,7 @@ export function initialiseProviderControls() {
     "submit",
     loginWithCredential,
   );
+  select("#pia-form").addEventListener("submit", loginWithPiaCredentials);
 
   select("#callback-form").addEventListener(
     "submit",
@@ -1282,6 +1323,8 @@ export function initialiseProviderControls() {
     select("#provider-install-retry").hidden = true;
     select("#nord-token").value = "";
     select("#mullvad-account-number").value = "";
+    select("#pia-username").value = "";
+    select("#pia-password").value = "";
     select("#nord-callback").value = "";
     select("#browser-login-url").value = "";
     select("#browser-login-open").href = "#";

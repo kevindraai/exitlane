@@ -104,7 +104,7 @@ def test_provider_catalog_exposes_safe_metadata_and_capabilities(client, monkeyp
     catalog = client.get("/api/vpn/providers")
     assert catalog.status_code == 200
     items = {item["id"]: item for item in catalog.json()["providers"]}
-    assert set(items) == {"nordvpn", "mullvad"}
+    assert set(items) == {"nordvpn", "mullvad", "pia"}
     item = items["nordvpn"]
     assert item["id"] == "nordvpn"
     assert item["icon"] == "shield-check"

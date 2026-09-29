@@ -12,6 +12,7 @@ The encrypted backup contains:
 - the ExitLane application version;
 - `/etc/exitlane/secret.key`, which decrypts MFA and ExitLane-owned provider state;
 - encrypted Mullvad account, registered-device and WireGuard key state stored in SQLite;
+- encrypted PIA username, password and active WireGuard generation state stored in SQLite;
 - regular WireGuard configuration files owned by ExitLane;
 - a versioned manifest with logical file types, sizes, modes, and SHA-256
   checksums.
@@ -20,8 +21,8 @@ It excludes sessions as useful recovery credentials (all restored sessions are
 revoked), filesystem caches, logs, sockets, PID files, temporary state, provider output,
 NordVPN host-wide state, and provider credentials that ExitLane does not own. Application packages,
 OS packages, `/etc/default/exitlane`, custom systemd overrides and router-side policies are also
-outside this backup. Record their required configuration separately. The active Mullvad egress
-configuration is recreated from the restored encrypted provider state during explicit reconnect.
+outside this backup. Record their required configuration separately. Active direct-provider egress
+configurations are recreated from restored encrypted provider state during explicit reconnect.
 The SQLite snapshot includes database cache rows, such as VPN latency results.
 It also contains session rows while it is being created,
 but restore deletes every session, pending MFA enrollment, and MFA challenge
