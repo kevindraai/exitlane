@@ -279,7 +279,12 @@ def killswitch_status(*, effective_user_id: int | None = None) -> int:
         active_id = core.setting("vpn.provider_id", provider_registry.default_id)
         facts = asyncio.run(provider_registry.get(active_id).network_facts())
         current = asyncio.run(killswitch.status(facts))
-    except (ProviderNotFound, TypeError, killswitch.KillswitchError):
+    except (
+        ProviderNotFound,
+        TypeError,
+        killswitch.KillswitchError,
+        provider_secrets.ProviderSecretError,
+    ):
         print("Killswitch status unavailable.", file=sys.stderr)
         return 1
     print(f"State: {current.state}")

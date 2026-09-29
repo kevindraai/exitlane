@@ -554,6 +554,27 @@ def test_cli_killswitch_status_uses_selected_provider(monkeypatch, capsys):
     assert "Tunnel available: yes" in capsys.readouterr().out
 
 
+def test_cli_killswitch_status_redacts_provider_secret_failure(monkeypatch, capsys):
+    class DirectProvider:
+        async def network_facts(self):
+            raise cli.provider_secrets.ProviderSecretError("provider_secret_key_unavailable")
+
+    class Registry:
+        default_id = "nordvpn"
+
+        def get(self, provider_id):
+            assert provider_id == "mullvad"
+            return DirectProvider()
+
+    monkeypatch.setattr(cli, "provider_registry", Registry())
+    monkeypatch.setattr(cli.core, "setting", lambda *_args: "mullvad")
+
+    assert cli.killswitch_status(effective_user_id=0) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "Killswitch status unavailable.\n"
+
+
 def test_boot_guard_also_restores_crashed_pending_connection(monkeypatch):
     calls = []
 
