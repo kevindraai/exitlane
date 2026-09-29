@@ -42,6 +42,24 @@ def test_registry_lookup_is_deterministic_and_rejects_duplicates():
         registry.register(StubProvider())
 
 
+def test_registry_requires_unique_safe_direct_interfaces():
+    class DirectA(StubProvider):
+        id = "direct_a"
+        direct_egress_interface = "wg-direct-a"
+
+    class DirectB(StubProvider):
+        id = "direct_b"
+        direct_egress_interface = "wg-direct-a"
+
+    registry = ProviderRegistry([StubProvider(), DirectA()], default_id="stub")
+    assert tuple(item.id for item in registry.direct_egress_providers()) == ("direct_a",)
+    with pytest.raises(ValueError, match="already registered"):
+        registry.register(DirectB())
+    DirectB.direct_egress_interface = "wg-b;echo"
+    with pytest.raises(ValueError, match="Invalid direct egress interface"):
+        registry.register(DirectB())
+
+
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     data = tmp_path / "data"

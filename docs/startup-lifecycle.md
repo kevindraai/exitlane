@@ -31,12 +31,13 @@ start replaces it after interface creation. Application startup and its periodic
 reconcile. Together these restore owned routes after provider-table reconstruction without
 assuming interface or table names.
 
-When encrypted Mullvad state records an active direct-WireGuard generation, a separate early-boot
-unit restores its ingress-selected provider table with an unreachable default. The application may
+When encrypted state for a registered direct provider records an active or pending WireGuard
+generation, a separate early-boot unit restores its ingress-selected provider table with an
+unreachable default using that provider's declared interface. The application may
 later reconnect that generation, but protected forwarding cannot fall through to the host default
-route. Pending recovery generations receive the same guard, and every systemd-managed `wg-quick`
+route. Conflicting direct-provider intents fail closed. Pending recovery generations receive the
+same guard, and every systemd-managed `wg-quick`
 ingress requires successful completion of this unit before it can start.
-route while the tunnel interface is absent.
 
 ## Wizard
 

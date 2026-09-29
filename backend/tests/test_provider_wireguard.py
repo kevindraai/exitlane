@@ -6,6 +6,7 @@ import time
 import pytest
 
 from exitlane import cli
+from exitlane.providers.base import DirectEgressIntent
 from exitlane.services.provider_wireguard import (
     EgressConfig,
     ProviderWireGuard,
@@ -33,9 +34,23 @@ def config(**changes):
     return EgressConfig(**values)
 
 
+def test_non_mullvad_generation_uses_its_own_interface_and_identity(tmp_path):
+    runner = Runner(interface_name="wg-pia")
+    service = ProviderWireGuard(runner, root=tmp_path)
+    direct = config(provider_id="pia", interface="wg-pia", generation="pia-generation")
+
+    asyncio.run(service.start(direct, ("wg0",)))
+
+    rendered = (tmp_path / "wg-pia.conf").read_text()
+    assert "provider=pia generation=pia-generation" in rendered
+    assert ("wg-quick", "up", str(tmp_path / "wg-pia.conf")) in runner.calls
+    assert not (tmp_path / "wg-mullvad.conf").exists()
+
+
 class Runner:
-    def __init__(self):
+    def __init__(self, interface_name="wg-mullvad"):
         self.calls = []
+        self.interface_name = interface_name
         self.interface = False
         self.handshake = 0
         self.source_rules = []
@@ -74,7 +89,7 @@ class Runner:
                 {"priority": 0, "src": args[7], "table": 51820, "protocol": 196}
             )
             return 0, "", ""
-        if args[:5] == ("ip", "link", "show", "dev", "wg-mullvad"):
+        if args[:5] == ("ip", "link", "show", "dev", self.interface_name):
             return (0 if self.interface else 1), "", ""
         if args[:2] == ("wg-quick", "up"):
             self.interface = True
@@ -83,10 +98,10 @@ class Runner:
             self.interface = False
             return 0, "", ""
         if args[:4] == ("ip", "-4", "route", "get"):
-            return 0, "1.1.1.1 dev wg-mullvad table 51820", ""
+            return 0, f"1.1.1.1 dev {self.interface_name} table 51820", ""
         if args[0] == "ip" and args[1] in {"-4", "-6"} and args[2:4] == ("rule", "del"):
             return 1, "", "not found"
-        if args[:3] == ("wg", "show", "wg-mullvad"):
+        if args[:3] == ("wg", "show", self.interface_name):
             if args[3] == "endpoints":
                 return 0, f"{PEER_KEY}\t193.138.218.78:51820\n", ""
             return 0, f"{PEER_KEY}\t{self.handshake}\n", ""
@@ -398,6 +413,90 @@ def test_boot_guard_is_noop_after_intentional_disconnect(monkeypatch):
     )
 
     assert cli.restore_provider_egress_guard(effective_user_id=0) == 0
+
+
+def test_boot_guard_uses_registered_direct_provider_identity(monkeypatch):
+    calls = []
+
+    class DirectProvider:
+        id = "pia"
+        direct_egress_interface = "wg-pia"
+
+        def direct_egress_intent(self):
+            return DirectEgressIntent("pia", "provider:pia", "wg-pia", "10.4.2.3/32", "next")
+
+    class Registry:
+        def direct_egress_providers(self):
+            return (DirectProvider(),)
+
+    class Guard:
+        async def arm(self, ingress, egress, *, source_address=None):
+            calls.append((tuple(ingress), egress, source_address))
+
+    monkeypatch.setattr(cli, "provider_registry", Registry())
+    monkeypatch.setattr(cli.killswitch, "configuration", lambda: (("wg0",), ()))
+    monkeypatch.setattr(cli, "ProviderWireGuard", Guard)
+
+    assert cli.restore_provider_egress_guard(effective_user_id=0) == 0
+    assert calls == [(("wg0",), "wg-pia", "10.4.2.3/32")]
+
+
+def test_boot_guard_rejects_two_direct_generations_before_routing_mutation(monkeypatch):
+    class DirectProvider:
+        def __init__(self, provider_id):
+            self.id = provider_id
+            self.direct_egress_interface = f"wg-{provider_id}"
+
+        def direct_egress_intent(self):
+            return DirectEgressIntent(
+                self.id, f"provider:{self.id}", self.direct_egress_interface,
+                "10.4.2.3/32", "next",
+            )
+
+    class Registry:
+        def direct_egress_providers(self):
+            return (DirectProvider("pia"), DirectProvider("proton"))
+
+    class Guard:
+        async def arm(self, *_args, **_kwargs):
+            raise AssertionError("ambiguous direct ownership must fail before routing mutation")
+
+    async def fallback():
+        return None
+
+    monkeypatch.setattr(cli, "provider_registry", Registry())
+    monkeypatch.setattr(cli, "ProviderWireGuard", Guard)
+    monkeypatch.setattr(cli.killswitch, "arm_provider_transition", fallback)
+
+    assert cli.restore_provider_egress_guard(effective_user_id=0) == 1
+
+
+def test_cli_killswitch_status_uses_selected_provider(monkeypatch, capsys):
+    class DirectProvider:
+        async def network_facts(self):
+            return cli.killswitch.TunnelFacts(True, interface="wg-pia")
+
+    class Registry:
+        default_id = "nordvpn"
+
+        def get(self, provider_id):
+            assert provider_id == "pia"
+            return DirectProvider()
+
+    async def status(facts):
+        assert facts.interface == "wg-pia"
+        return type("Status", (), {
+            "state": "enabled_protected", "configured": True, "effective": True,
+            "tunnel_available": True, "firewall_rules_installed": True,
+            "reason": "tunnel_available",
+        })()
+
+    monkeypatch.setattr(cli, "provider_registry", Registry())
+    monkeypatch.setattr(cli.core, "setting", lambda *_args: "pia")
+    monkeypatch.setattr(cli.killswitch, "status", status)
+
+    assert cli.killswitch_status(effective_user_id=0) == 0
+    assert "Tunnel available: yes" in capsys.readouterr().out
 
 
 def test_boot_guard_also_restores_crashed_pending_connection(monkeypatch):

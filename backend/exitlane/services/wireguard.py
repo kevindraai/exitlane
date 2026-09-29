@@ -18,6 +18,7 @@ from exitlane.config import (
     DEFAULT_WIREGUARD_SUBNET,
 )
 from exitlane.core import WG_DIR, command
+from exitlane.providers.catalog import provider_registry
 
 
 class WireGuardConfigurationError(RuntimeError):
@@ -29,7 +30,9 @@ class WireGuardConfigurationError(RuntimeError):
 def _validate_ingress_interface(interface: str) -> None:
     if re.fullmatch(r"[A-Za-z0-9-]{1,15}", interface) is None:
         raise ValueError("De WireGuard-interfacenaam is ongeldig.")
-    if interface == "wg-mullvad":
+    if interface in {
+        item.direct_egress_interface for item in provider_registry.direct_egress_providers()
+    }:
         raise ValueError("wireguard_interface_reserved")
 
 
@@ -82,7 +85,7 @@ def _forwarding_rules(
                 f"PostDown = iptables -t nat -D POSTROUTING -o {vpn_interface} -j MASQUERADE",
             )
         )
-    # Routing decides whether the active path is direct, NordVPN, or Mullvad.
+    # Routing decides whether the active path is direct or provider-managed.
     # Restrict NAT to this WireGuard subnet and never reflect traffic back into
     # the ingress interface. The optional ExitLane nftables killswitch remains
     # the fail-closed policy layer above these baseline forwarding rules.

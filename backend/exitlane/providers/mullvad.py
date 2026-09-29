@@ -28,6 +28,7 @@ from exitlane.services.provider_wireguard import (
 )
 
 from .base import (
+    DirectEgressIntent,
     InstallationState,
     Provider,
     ProviderActionUnsupported,
@@ -381,6 +382,7 @@ class MullvadApi:
 
 
 class Mullvad(Provider):
+    direct_egress_interface = INTERFACE
     id = "mullvad"
     display_name = "Mullvad VPN"
     authentication_error_codes = AUTHENTICATION_ERROR_CODES
@@ -411,6 +413,26 @@ class Mullvad(Provider):
     @staticmethod
     def _state() -> dict[str, object] | None:
         return provider_secrets.load("mullvad")
+
+    def direct_egress_intent(self) -> DirectEgressIntent | None:
+        state = self._state()
+        if not state:
+            return None
+        generation = (
+            state.get("pending")
+            if isinstance(state.get("pending"), dict)
+            else state.get("active")
+        )
+        if not isinstance(generation, dict):
+            return None
+        value = generation.get("generation")
+        return DirectEgressIntent(
+            provider_id=self.id,
+            connection_id=f"provider:{self.id}",
+            interface=INTERFACE,
+            source_address=state.get("ipv4_address"),
+            generation=value if isinstance(value, str) else None,
+        )
 
     @staticmethod
     def _save(state: dict[str, object]) -> None:
@@ -660,6 +682,7 @@ class Mullvad(Provider):
             dns_address=DNS_ADDRESS,
             endpoint_port=DEFAULT_PORT,
             mtu=DEFAULT_MTU,
+            dns_probe_hostname="mullvad.net",
         ).validated()
 
     async def _complete_owned_transition(self) -> bool:

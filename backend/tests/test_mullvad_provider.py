@@ -261,6 +261,7 @@ def test_connect_uses_dedicated_interface_and_forwarded_ingress_rules(monkeypatc
     assert config.address == "10.67.12.34/32"
     assert config.endpoint_address == "193.138.218.78"
     assert config.mtu == 1380
+    assert config.dns_probe_hostname == "mullvad.net"
     assert ingress == ("wg0", "lan0")
     state = provider_secrets.load("mullvad")
     assert "pending" not in state

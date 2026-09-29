@@ -28,7 +28,7 @@ PROBE_ADDRESS = "1.1.1.1"
 HANDSHAKE_MAX_AGE_SECONDS = 180
 
 Runner = Callable[..., Awaitable[tuple[int, str, str]]]
-DnsProbe = Callable[[str, str, float], Awaitable[bool]]
+DnsProbe = Callable[[str, str, str, float], Awaitable[bool]]
 
 
 class ProviderWireGuardError(RuntimeError):
@@ -80,6 +80,7 @@ class EgressConfig:
     dns_address: str
     endpoint_port: int = 51820
     mtu: int = 1380
+    dns_probe_hostname: str = "example.com"
 
     def validated(self) -> EgressConfig:
         if PROVIDER_PATTERN.fullmatch(self.provider_id) is None:
@@ -102,12 +103,24 @@ class EgressConfig:
             raise ProviderWireGuardError("provider_egress_configuration_invalid")
         if not 1 <= self.endpoint_port <= 65535 or not 1280 <= self.mtu <= 1420:
             raise ProviderWireGuardError("provider_egress_configuration_invalid")
+        if (
+            not isinstance(self.dns_probe_hostname, str)
+            or len(self.dns_probe_hostname) > 253
+            or any(
+                re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label)
+                is None
+                for label in self.dns_probe_hostname.split(".")
+            )
+        ):
+            raise ProviderWireGuardError("provider_egress_configuration_invalid")
         return self
 
 
-def _dns_query(interface: str, address: str, timeout: float) -> bool:
+def _dns_query(interface: str, address: str, hostname: str, timeout: float) -> bool:
     transaction = os.urandom(2)
-    labels = b"".join(bytes((len(label),)) + label for label in b"mullvad.net".split(b"."))
+    labels = b"".join(
+        bytes((len(label),)) + label.encode("ascii") for label in hostname.split(".")
+    )
     packet = transaction + struct.pack("!HHHHH", 0x0100, 1, 0, 0, 0) + labels + b"\0\0\1\0\1"
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
@@ -123,8 +136,8 @@ def _dns_query(interface: str, address: str, timeout: float) -> bool:
     return bool(flags & 0x8000) and flags & 0x000F == 0 and questions == 1 and answers > 0
 
 
-async def _default_dns_probe(interface: str, address: str, timeout: float) -> bool:
-    return await asyncio.to_thread(_dns_query, interface, address, timeout)
+async def _default_dns_probe(interface: str, address: str, hostname: str, timeout: float) -> bool:
+    return await asyncio.to_thread(_dns_query, interface, address, hostname, timeout)
 
 
 class ProviderWireGuard:
@@ -724,7 +737,9 @@ class ProviderWireGuard:
             PROBE_ADDRESS,
             timeout=timeout + 1,
         )
-        dns_ready = await self.dns_probe(item.interface, item.dns_address, timeout)
+        dns_ready = await self.dns_probe(
+            item.interface, item.dns_address, item.dns_probe_hostname, timeout
+        )
         handshake = await self._handshake(item)
         peer_matches = await self._peer_matches(item)
         return {

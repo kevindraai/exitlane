@@ -32,6 +32,15 @@ class ProviderControlPlaneFailure:
 
 
 @dataclass(frozen=True)
+class DirectEgressIntent:
+    provider_id: str
+    connection_id: str
+    interface: str
+    source_address: str | None
+    generation: str | None
+
+
+@dataclass(frozen=True)
 class ProviderMetadata:
     id: str
     display_name: str
@@ -53,6 +62,12 @@ class Provider(ABC):
     authentication_error_codes = frozenset({"provider_error"})
     sign_out_error_codes = frozenset({"provider_error"})
     supports_timeout_recovery = False
+    # Direct egress providers declare a stable, dedicated local interface.
+    direct_egress_interface: str | None = None
+
+    def direct_egress_intent(self) -> DirectEgressIntent | None:
+        """Read local active or pending generation for fail-closed boot recovery."""
+        return None
 
     @abstractmethod
     async def status(self): ...
