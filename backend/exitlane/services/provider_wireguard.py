@@ -28,7 +28,7 @@ PROBE_ADDRESS = "1.1.1.1"
 HANDSHAKE_MAX_AGE_SECONDS = 180
 
 Runner = Callable[..., Awaitable[tuple[int, str, str]]]
-DnsProbe = Callable[[str, str, float], Awaitable[bool]]
+DnsProbe = Callable[[str, str, str, float], Awaitable[bool]]
 
 
 class ProviderWireGuardError(RuntimeError):
@@ -80,6 +80,7 @@ class EgressConfig:
     dns_address: str
     endpoint_port: int = 51820
     mtu: int = 1380
+    dns_probe_hostname: str = "example.com"
 
     def validated(self) -> EgressConfig:
         if PROVIDER_PATTERN.fullmatch(self.provider_id) is None:
@@ -102,12 +103,21 @@ class EgressConfig:
             raise ProviderWireGuardError("provider_egress_configuration_invalid")
         if not 1 <= self.endpoint_port <= 65535 or not 1280 <= self.mtu <= 1420:
             raise ProviderWireGuardError("provider_egress_configuration_invalid")
+        if (
+            not isinstance(self.dns_probe_hostname, str)
+            or len(self.dns_probe_hostname) > 253
+            or any(
+                re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label) is None
+                for label in self.dns_probe_hostname.split(".")
+            )
+        ):
+            raise ProviderWireGuardError("provider_egress_configuration_invalid")
         return self
 
 
-def _dns_query(interface: str, address: str, timeout: float) -> bool:
+def _dns_query(interface: str, address: str, hostname: str, timeout: float) -> bool:
     transaction = os.urandom(2)
-    labels = b"".join(bytes((len(label),)) + label for label in b"mullvad.net".split(b"."))
+    labels = b"".join(bytes((len(label),)) + label.encode("ascii") for label in hostname.split("."))
     packet = transaction + struct.pack("!HHHHH", 0x0100, 1, 0, 0, 0) + labels + b"\0\0\1\0\1"
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
@@ -123,8 +133,8 @@ def _dns_query(interface: str, address: str, timeout: float) -> bool:
     return bool(flags & 0x8000) and flags & 0x000F == 0 and questions == 1 and answers > 0
 
 
-async def _default_dns_probe(interface: str, address: str, timeout: float) -> bool:
-    return await asyncio.to_thread(_dns_query, interface, address, timeout)
+async def _default_dns_probe(interface: str, address: str, hostname: str, timeout: float) -> bool:
+    return await asyncio.to_thread(_dns_query, interface, address, hostname, timeout)
 
 
 class ProviderWireGuard:
@@ -228,7 +238,13 @@ class ProviderWireGuard:
             )
         )
 
-    async def _check_table_ownership(self, family: int, egress_interface: str | None) -> None:
+    async def _check_table_ownership(
+        self,
+        family: int,
+        egress_interface: str | None,
+        *,
+        other_interfaces: tuple[str, ...] = (),
+    ) -> None:
         arguments = ("ip", "-j", f"-{family}", "route", "show", "table", str(TABLE_ID))
         rc, output, error = await self.runner(*arguments, timeout=5)
         if rc != 0:
@@ -245,7 +261,13 @@ class ProviderWireGuard:
             raise ProviderWireGuardError("provider_egress_apply_failed") from error
         if not isinstance(routes, list) or not all(isinstance(route, dict) for route in routes):
             raise ProviderWireGuardError("provider_egress_apply_failed")
-        if any(not self._owned_route(route, egress_interface) for route in routes):
+        if any(
+            not any(
+                self._owned_route(route, interface)
+                for interface in (egress_interface, *other_interfaces)
+            )
+            for route in routes
+        ):
             raise ProviderWireGuardError("provider_egress_resource_conflict")
 
     async def _ensure_rule(
@@ -376,14 +398,19 @@ class ProviderWireGuard:
         ingress_interfaces: tuple[str, ...],
         egress_interface: str | None,
         source_address: str | None = None,
+        *,
+        other_interfaces: tuple[str, ...] = (),
     ) -> None:
         if source_address is not None:
             await self._check_source_assignment(source_address, egress_interface)
         expected = {(RULE_PRIORITY, "iif", item) for item in ingress_interfaces}
-        if egress_interface is not None:
-            expected.add((PROBE_RULE_PRIORITY, "oif", egress_interface))
+        for interface in (egress_interface, *other_interfaces):
+            if interface is not None:
+                expected.add((PROBE_RULE_PRIORITY, "oif", interface))
         for family in (4, 6):
-            await self._check_table_ownership(family, egress_interface)
+            await self._check_table_ownership(
+                family, egress_interface, other_interfaces=other_interfaces
+            )
             rules = await self._json(f"-{family}", "rule", "show")
             if family == 4:
                 self._check_source_rule_order(rules, required=source_address is not None)
@@ -490,6 +517,32 @@ class ProviderWireGuard:
         if egress_interface is not None and INTERFACE_PATTERN.fullmatch(egress_interface) is None:
             raise ProviderWireGuardError("provider_egress_configuration_invalid")
         await self._preflight(ingress, egress_interface, source)
+        await self._apply_guard(ingress, egress_interface, source)
+
+    async def arm_for_restore(
+        self,
+        ingress_interfaces: Iterable[str],
+        egress_interface: str,
+        registered_interfaces: Iterable[str],
+        *,
+        source_address: str | None = None,
+    ) -> None:
+        """Guard backup restore while accepting only registered direct-interface residue."""
+        ingress = tuple(dict.fromkeys(ingress_interfaces))
+        registered = tuple(dict.fromkeys(registered_interfaces))
+        if (
+            not registered
+            or egress_interface not in registered
+            or any(
+                not isinstance(item, str) or INTERFACE_PATTERN.fullmatch(item) is None
+                for item in (*ingress, *registered)
+            )
+            or any(item in ingress for item in registered)
+        ):
+            raise ProviderWireGuardError("provider_egress_configuration_invalid")
+        source = _source_address(source_address) if source_address is not None else None
+        others = tuple(item for item in registered if item != egress_interface)
+        await self._preflight(ingress, egress_interface, source, other_interfaces=others)
         await self._apply_guard(ingress, egress_interface, source)
 
     async def _check_removal_ownership(
@@ -724,7 +777,9 @@ class ProviderWireGuard:
             PROBE_ADDRESS,
             timeout=timeout + 1,
         )
-        dns_ready = await self.dns_probe(item.interface, item.dns_address, timeout)
+        dns_ready = await self.dns_probe(
+            item.interface, item.dns_address, item.dns_probe_hostname, timeout
+        )
         handshake = await self._handshake(item)
         peer_matches = await self._peer_matches(item)
         return {

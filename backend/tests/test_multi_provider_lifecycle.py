@@ -6,6 +6,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from exitlane import core, main
+from exitlane.providers.base import Provider, ProviderMetadata
+from exitlane.providers.registry import ProviderRegistry
 from exitlane.services import vpn_operations
 
 PASSWORD = "correct horse battery staple"
@@ -320,6 +322,71 @@ def test_connected_provider_switch_is_transactional_and_defers_remote_target_sta
         "target_connected",
     ]
     assert order[-1] == "transition_completed"
+
+
+def test_direct_to_direct_switch_uses_protected_transaction(client, monkeypatch):
+    events = []
+
+    class DirectProvider(Provider):
+        def __init__(self, provider_id, connected):
+            self.id = provider_id
+            self.display_name = provider_id
+            self.direct_egress_interface = f"wg-{provider_id}"
+            self.metadata = ProviderMetadata(
+                id=provider_id, display_name=provider_id, short_name=provider_id,
+                description="Synthetic direct provider", icon="shield-check",
+            )
+            self.connected = connected
+
+        async def local_status(self, *, timeout=6):
+            return {
+                "installed": True, "daemon_active": True,
+                "local_control_available": True, "connected": self.connected,
+                "connection_state": "connected" if self.connected else "disconnected",
+                "error_code": None,
+            }
+
+        async def status(self, *, timeout=8):
+            if self.id == "pia":
+                assert source.connected is False
+                events.append("target_status")
+            result = provider_status(self, connected=self.connected)
+            result["tunnel_interface"] = self.direct_egress_interface if self.connected else None
+            return result
+
+        async def connect(self, target=None, *, timeout=40):
+            assert core.setting(main.killswitch.SETTING_TRANSITION) is True
+            events.append("target_connect")
+            self.connected = True
+            return {"ok": True, "error_code": None}
+
+        async def disconnect(self, *, timeout=15):
+            assert core.setting(main.killswitch.SETTING_TRANSITION) is True
+            events.append("source_disconnect")
+            self.connected = False
+            return {"ok": True, "error_code": None}
+
+        async def network_facts(self):
+            return main.killswitch.TunnelFacts(
+                available=self.connected, interface=self.direct_egress_interface,
+                supports_ipv4=self.connected, protected_egress=self.connected,
+            )
+
+    source = DirectProvider("mullvad", True)
+    target = DirectProvider("pia", False)
+    monkeypatch.setattr(
+        main, "provider_registry", ProviderRegistry([source, target], default_id="mullvad")
+    )
+    core.set_setting("vpn.provider_id", "mullvad")
+
+    response = client.post("/api/vpn/providers/pia/activate")
+
+    assert response.status_code == 200
+    assert response.json()["active_provider_id"] == "pia"
+    assert core.setting("vpn.provider_id") == "pia"
+    assert events.index("source_disconnect") < events.index("target_status")
+    assert events.index("target_status") < events.index("target_connect")
+    assert core.setting(main.killswitch.SETTING_TRANSITION) is False
 
 
 def test_connected_source_is_not_disconnected_when_target_local_preflight_is_broken(

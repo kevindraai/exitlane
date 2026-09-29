@@ -67,9 +67,10 @@ from exitlane.events import (
 )
 from exitlane.html import render_index
 from exitlane.providers.base import ProviderActionUnsupported, ProviderFailureClass
+from exitlane.providers.catalog import provider_registry
 from exitlane.providers.mullvad import provider as mullvad_provider
 from exitlane.providers.nordvpn import provider
-from exitlane.providers.registry import ProviderNotFound, ProviderRegistry
+from exitlane.providers.registry import ProviderNotFound
 from exitlane.proxy import deployment_status, normalized_origin, request_security, trusted_origin
 from exitlane.services import (
     auth_security,
@@ -128,7 +129,6 @@ SECURITY_REJECTION_LOG_ATTEMPTS = 5
 SECURITY_REJECTION_LOG_WINDOW_SECONDS = 60
 NETWORK_REAUTH_ATTEMPTS = 5
 NETWORK_REAUTH_WINDOW_SECONDS = 300
-provider_registry = ProviderRegistry([provider, mullvad_provider], default_id=provider.id)
 SYSTEM_ACTION_COMMANDS = {
     "restart": ("/usr/bin/systemctl", "restart", "exitlane.service"),
     "reboot": ("/usr/bin/systemctl", "reboot"),

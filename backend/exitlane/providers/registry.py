@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 
 from .base import Provider
@@ -23,6 +24,12 @@ class ProviderRegistry:
     def register(self, provider: Provider) -> None:
         if provider.id in self._providers:
             raise ValueError(f"Provider already registered: {provider.id}")
+        interface = provider.direct_egress_interface
+        if interface is not None:
+            if not isinstance(interface, str) or re.fullmatch(r"[A-Za-z0-9_.-]{1,15}", interface) is None:
+                raise ValueError("Invalid direct egress interface")
+            if any(item.direct_egress_interface == interface for item in self._providers.values()):
+                raise ValueError("Direct egress interface already registered")
         self._providers[provider.id] = provider
 
     def get(self, provider_id: str) -> Provider:
@@ -33,3 +40,6 @@ class ProviderRegistry:
 
     def all(self) -> tuple[Provider, ...]:
         return tuple(self._providers[key] for key in sorted(self._providers))
+
+    def direct_egress_providers(self) -> tuple[Provider, ...]:
+        return tuple(item for item in self.all() if item.direct_egress_interface is not None)

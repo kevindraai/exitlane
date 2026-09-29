@@ -15,7 +15,9 @@ from pathlib import Path
 
 from exitlane import core, lifecycle
 from exitlane.events import record_event
-from exitlane.providers.nordvpn import provider
+from exitlane.providers.base import DirectEgressIntent
+from exitlane.providers.catalog import provider_registry
+from exitlane.providers.registry import ProviderNotFound
 from exitlane.services import killswitch, management_routing, network_security, provider_secrets
 from exitlane.services.auth_security import disable_mfa as disable_administrator_mfa
 from exitlane.services.credentials import CredentialError, reset_administrator_password
@@ -27,6 +29,47 @@ from exitlane.services.network_security import (
     update_config,
 )
 from exitlane.services.provider_wireguard import ProviderWireGuard, ProviderWireGuardError
+
+
+def _direct_egress_state() -> DirectEgressIntent | None:
+    """Locate persisted direct intent without contacting a provider at boot."""
+    candidates = []
+    for item in provider_registry.direct_egress_providers():
+        intent = item.direct_egress_intent()
+        if intent is not None:
+            if (
+                intent.provider_id != item.id
+                or intent.connection_id != f"provider:{item.id}"
+                or intent.interface != item.direct_egress_interface
+            ):
+                raise ProviderWireGuardError("provider_egress_configuration_invalid")
+            candidates.append(intent)
+    if len(candidates) > 1:
+        # The shared policy table has exactly one live owner.
+        raise ProviderWireGuardError("provider_egress_resource_conflict")
+    return candidates[0] if candidates else None
+
+
+def _reset_egress_state() -> DirectEgressIntent:
+    current = _direct_egress_state()
+    if current is not None:
+        return current
+    selected = core.setting("vpn.provider_id", provider_registry.default_id)
+    try:
+        item = provider_registry.get(selected)
+    except (TypeError, ValueError, LookupError):
+        item = provider_registry.get(provider_registry.default_id)
+    if item.direct_egress_interface is None:
+        # Backward-compatible cleanup of the original direct interface after
+        # a managed-provider backup or an intentional disconnect.
+        item = provider_registry.direct_egress_providers()[0]
+    return DirectEgressIntent(
+        provider_id=item.id,
+        connection_id=f"provider:{item.id}",
+        interface=item.direct_egress_interface,
+        source_address=None,
+        generation=None,
+    )
 
 
 def reset_password(
@@ -233,10 +276,16 @@ def killswitch_status(*, effective_user_id: int | None = None) -> int:
         print("This command must be run as root or with sudo.", file=sys.stderr)
         return 77
     try:
-        facts = asyncio.run(provider.network_facts())
+        active_id = core.setting("vpn.provider_id", provider_registry.default_id)
+        facts = asyncio.run(provider_registry.get(active_id).network_facts())
         current = asyncio.run(killswitch.status(facts))
-    except killswitch.KillswitchError as error:
-        print(f"Killswitch status unavailable: {error.code}", file=sys.stderr)
+    except (
+        ProviderNotFound,
+        TypeError,
+        killswitch.KillswitchError,
+        provider_secrets.ProviderSecretError,
+    ):
+        print("Killswitch status unavailable.", file=sys.stderr)
         return 1
     print(f"State: {current.state}")
     print(f"Configured: {'yes' if current.configured else 'no'}")
@@ -296,22 +345,20 @@ def restore_provider_egress_guard(*, effective_user_id: int | None = None) -> in
     if (os.geteuid() if effective_user_id is None else effective_user_id) != 0:
         return 77
     try:
-        state = provider_secrets.load("mullvad")
-        if not state or not any(
-            isinstance(state.get(field), dict) for field in ("pending", "active")
-        ):
+        direct = _direct_egress_state()
+        if direct is None:
             return 0
         ingress, _ = killswitch.configuration()
-        source = state.get("ipv4_address")
+        source = direct.source_address
         if not isinstance(source, str):
             raise ProviderWireGuardError("provider_egress_configuration_invalid")
-        asyncio.run(ProviderWireGuard().arm(ingress, "wg-mullvad", source_address=source))
+        asyncio.run(ProviderWireGuard().arm(ingress, direct.interface, source_address=source))
     except (
         provider_secrets.ProviderSecretError,
         ProviderWireGuardError,
         killswitch.KillswitchError,
     ):
-        record_event("network.provider_egress_guard_error", metadata={"provider": "mullvad"})
+        record_event("network.provider_egress_guard_error")
         try:
             asyncio.run(killswitch.arm_provider_transition())
         except killswitch.KillswitchError:
@@ -474,12 +521,21 @@ def _systemd_service_action(action: str) -> None:
             egress = ProviderWireGuard()
             # Ownership preflight must pass before touching any old direct tunnel.
             # The independent restore guard holds forwarding throughout teardown.
-            state = provider_secrets.load("mullvad")
-            source = state.get("ipv4_address") if state else None
-            await egress.arm(ingress, "wg-mullvad", source_address=source)
-            await egress.stop_interface("wg-mullvad")
-            await egress.disarm(ingress, "wg-mullvad")
-            egress.remove_config("wg-mullvad")
+            direct = _reset_egress_state()
+            interfaces = tuple(
+                item.direct_egress_interface for item in provider_registry.direct_egress_providers()
+            )
+            await egress.arm_for_restore(
+                ingress, direct.interface, interfaces, source_address=direct.source_address
+            )
+            for interface in interfaces:
+                await egress.stop_interface(interface)
+            await egress.disarm(ingress, direct.interface)
+            for interface in interfaces:
+                if interface != direct.interface:
+                    await egress.disarm((), interface)
+            for interface in interfaces:
+                egress.remove_config(interface)
 
         try:
             asyncio.run(reset_egress())

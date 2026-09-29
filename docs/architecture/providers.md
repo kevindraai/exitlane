@@ -104,7 +104,9 @@ discovered provider default interface. Destination rules normally select `main`;
 provider-owned policy table would win, only ExitLane-owned `proto 196` copies of the derived path
 are placed in that table. NordVPN rule priorities, table identifiers and tunnel interfaces remain
 provider-owned and dynamically discovered. Direct-provider egress uses ExitLane route protocol
-`196`, fixed table `51820`, interface `wg-mullvad`, and rules scoped only to protected ingress.
+`196`, fixed table `51820`, a provider-declared dedicated interface, and rules scoped only to
+protected ingress. The shared registry validates direct-interface names and uniqueness; WireGuard
+ingress reserves every registered direct interface. Mullvad retains `wg-mullvad`.
 
 An unavailable configured local path is represented by an exact owned `unreachable` route in
 `main` and any relevant earlier provider table. That is a successful safety transition but remains
@@ -121,6 +123,12 @@ provider interface/table/rules. Host management and API traffic stay in `main`. 
 armed unreachable before interface replacement and restored at early boot when an active
 generation is persisted. An active legacy Mullvad daemon or `table inet mullvad` blocks activation;
 no ExitLane code deletes provider-owned firewall state automatically.
+
+Early-boot recovery asks each registered direct provider for local active or pending generation
+intent, including provider, connection, interface, and source-address identity. It never contacts
+a remote provider. More than one such intent is an ownership conflict and leaves forwarding closed.
+Existing encrypted Mullvad generations need no migration; their original `wg-mullvad` interface
+and state layout remain valid.
 
 ## Adding a provider
 
