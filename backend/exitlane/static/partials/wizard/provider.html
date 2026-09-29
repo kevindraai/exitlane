@@ -241,6 +241,16 @@
            <button class="button button-primary" data-i18n="provider.pia.sign_in" type="submit">Sign in to PIA</button>
           </form>
          </section>
+         <section hidden="" id="provider-auth-proton">
+          <strong data-i18n="provider.proton.setup_title">Proton profile import</strong>
+          <p data-i18n="provider.proton.setup_description">Import a Proton WireGuard profile now, or skip this provider and configure it later. No account session is created.</p>
+          <form class="form-card form-compact" id="proton-import-form" method="post">
+           <label><span data-i18n="provider.proton.profile_name">Profile name</span><input id="proton-profile-name" maxlength="80" required="" type="text"/></label>
+           <label><span data-i18n="provider.proton.country_code">Country code (optional)</span><input id="proton-country-code" maxlength="2" pattern="[A-Za-z]{2}" type="text"/></label>
+           <label><span data-i18n="provider.proton.config_file">WireGuard .conf file</span><input accept=".conf,text/plain" id="proton-profile-file" required="" type="file"/></label>
+           <button class="button button-primary" data-i18n="provider.proton.import_action" type="submit">Import profile</button>
+          </form>
+         </section>
         </section>
        </section>
         <section class="notice-card" hidden="" id="wizard-active-provider-selection">

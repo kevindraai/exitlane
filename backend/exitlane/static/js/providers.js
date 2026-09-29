@@ -4,7 +4,7 @@ import { localisedCountryName } from "./country-format.js";
 import { createIcon, renderIcon, resolveIconName, statusIconName } from "./icons.js";
 import { getCurrentLanguage, t } from "./i18n.js";
 import { showProviderView, showView } from "./navigation.js";
-import { providerManagementView, providerViewContext } from "./provider-management.js";
+import { providerConnectFailureCode, providerManagementView, providerViewContext } from "./provider-management.js";
 import { refreshProviderState, refreshProvidersState } from "./lifecycle.js";
 import { getSlice, subscribe, updateSlice } from "./state.js";
 import {
@@ -25,6 +25,7 @@ let providerInstallationStatusLoadedFor = null;
 let killswitchStatus = null;
 let killswitchDialogTrigger = null;
 let credentialProviderId = null;
+let protonProfiles = [];
 const KNOWN_KILLSWITCH_STATES = new Set([
   "disabled",
   "enabled_protected",
@@ -198,6 +199,7 @@ const KNOWN_OVERVIEW_STATES = new Set([
   "connecting",
   "disconnecting",
   "signed_out",
+  "unconfigured",
   "unavailable",
   "error",
   "unknown",
@@ -213,15 +215,15 @@ export function providerOverviewView(provider = {}) {
   if (!KNOWN_OVERVIEW_STATES.has(connectionDisplayState)) connectionDisplayState = "unknown";
   let state = ["connecting", "disconnecting"].includes(operationState)
     ? operationState
-    : management.authenticationState === "signed_out"
-      ? "signed_out"
+    : ["signed_out", "unconfigured"].includes(management.authenticationState)
+      ? management.authenticationState
       : management.authenticationState === "unavailable"
         || status.available === false
         ? "unavailable"
         : management.connectionState;
   if (
     management.errorCode
-    && !["signed_out", "connecting", "disconnecting", "unavailable"].includes(state)
+    && !["signed_out", "unconfigured", "connecting", "disconnecting", "unavailable"].includes(state)
   ) {
     state = "error";
   }
@@ -265,7 +267,7 @@ export function providerOverviewView(provider = {}) {
     canOpen: Boolean(provider.id) && provider.enabled !== false,
     canActivate: provider.active !== true
       && management.installationState === "available"
-      && management.authenticationState === "signed_in"
+      && ["signed_in", "configured"].includes(management.authenticationState)
       && status.available === true,
   };
 }
@@ -428,6 +430,12 @@ function providerStatusText(view, name) {
   if (view.installationState === "not_installed") {
     return t("settings.vpn.states.not_installed", { provider: name }, `${name} is not installed.`);
   }
+  if (view.authenticationState === "configured") {
+    return t("provider.proton.configured", {}, "WireGuard profiles configured.");
+  }
+  if (view.authenticationState === "unconfigured") {
+    return t("provider.proton.unconfigured", {}, "Import a Proton WireGuard profile to configure this provider.");
+  }
   if (view.authenticationState === "signed_in") {
     return t(
       "provider.management.authentication_ready",
@@ -443,6 +451,120 @@ function providerStatusText(view, name) {
     );
   }
   return t("settings.vpn.states.unknown", { provider: name }, `${name} authentication is unknown.`);
+}
+
+function renderProtonProfiles() {
+  const list = select("#provider-proton-list");
+  const signature = JSON.stringify([getCurrentLanguage(), protonProfiles]);
+  if (list.dataset.profileSignature === signature) {
+    for (const button of list.querySelectorAll(".proton-profile-connect")) {
+      button.hidden = providerMetadata()?.active !== true;
+    }
+    return;
+  }
+  list.dataset.profileSignature = signature;
+  list.replaceChildren();
+  for (const profile of protonProfiles) {
+    const row = document.createElement("div");
+    row.className = "view-actions";
+    const name = document.createElement("input");
+    name.value = profile.display_name;
+    name.maxLength = 80;
+    name.setAttribute("aria-label", t("provider.proton.profile_name", {}, "Profile name"));
+    const detail = document.createElement("span");
+    detail.textContent = `${profile.country_code || "—"} · ${profile.endpoint}:${profile.port}`;
+    const rename = document.createElement("button");
+    rename.type = "button";
+    rename.textContent = t("provider.proton.rename", {}, "Rename");
+    rename.addEventListener("click", async () => {
+      try {
+        await api(`/api/vpn/providers/proton/profiles/${encodeURIComponent(profile.id)}`, {
+          method: "PATCH", body: JSON.stringify({ display_name: name.value }),
+        });
+        await refreshProtonProfiles();
+      } catch (_) {
+        showInlineError(t("provider.proton.action_failed", {}, "The profile action failed."), "#provider-proton-error");
+      }
+    });
+    const connect = document.createElement("button");
+    connect.type = "button";
+    connect.className = "button button-primary proton-profile-connect";
+    connect.hidden = providerMetadata()?.active !== true;
+    connect.textContent = t("provider.proton.connect", {}, "Connect");
+    connect.addEventListener("click", async () => {
+      try {
+        const result = await api("/api/vpn/providers/proton/connect", {
+          method: "POST", body: JSON.stringify({ target: profile.id }), timeoutMilliseconds: 130000,
+        });
+        await refreshProviderState({ deduplicate: false });
+        const errorCode = providerConnectFailureCode(result);
+        if (errorCode) {
+          showInlineError(`${t("provider.proton.action_failed", {}, "The profile action failed.")} (${errorCode})`, "#provider-proton-error");
+        }
+      } catch (error) {
+        const errorCode = providerConnectFailureCode({ error: error.code });
+        showInlineError(`${t("provider.proton.action_failed", {}, "The profile action failed.")} (${errorCode})`, "#provider-proton-error");
+      }
+    });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "button button-danger";
+    remove.textContent = t("provider.proton.delete", {}, "Delete");
+    remove.addEventListener("click", async () => {
+      try {
+        await api(`/api/vpn/providers/proton/profiles/${encodeURIComponent(profile.id)}`, { method: "DELETE" });
+        await refreshProtonProfiles();
+        await refreshProviderState({ deduplicate: false });
+      } catch (_) {
+        showInlineError(t("provider.proton.delete_failed", {}, "Disconnect this profile before deleting it."), "#provider-proton-error");
+      }
+    });
+    row.append(name, detail, connect, rename, remove);
+    list.append(row);
+  }
+}
+
+async function refreshProtonProfiles() {
+  if (viewedProviderId() !== "proton") return;
+  try {
+    const result = await api("/api/vpn/providers/proton/profiles", { deduplicate: false });
+    if (viewedProviderId() !== "proton") return;
+    protonProfiles = result.profiles || [];
+    renderProtonProfiles();
+  } catch (_) {
+    showInlineError(t("provider.proton.action_failed", {}, "The profile action failed."), "#provider-proton-error");
+  }
+}
+
+async function importProtonProfile(event) {
+  event.preventDefault();
+  const fileInput = select("#provider-proton-file");
+  const file = fileInput.files?.[0];
+  const button = select("#provider-proton-import");
+  if (!file || file.size > 16_384) {
+    showInlineError(t("provider.proton.invalid_file", {}, "Select a valid WireGuard profile under 16 KB."), "#provider-proton-error");
+    return;
+  }
+  setBusy(button, true, t("provider.proton.importing", {}, "Importing…"));
+  try {
+    const config = await file.text();
+    fileInput.value = "";
+    await api("/api/vpn/providers/proton/profiles", {
+      method: "POST",
+      body: JSON.stringify({
+        config,
+        display_name: select("#provider-proton-name").value,
+        country_code: select("#provider-proton-country").value || null,
+      }),
+    });
+    await Promise.all([refreshProtonProfiles(), refreshProvidersState(), refreshProviderState({ deduplicate: false })]);
+    showMessage(t("provider.proton.imported", {}, "Profile imported."), "success");
+  } catch (_) {
+    showInlineError(t("provider.proton.invalid_file", {}, "Select a valid WireGuard profile under 16 KB."), "#provider-proton-error");
+  } finally {
+    fileInput.value = "";
+    setBusy(button, false);
+  }
 }
 
 export function providerActivationFailure(error) {
@@ -500,12 +622,14 @@ export function renderProviderManagement(status = {}) {
   select("#vpn-provider-description").textContent = metadata.description || "";
   const view = providerManagementView(status);
   const active = metadata.active === true && status.is_active !== false;
+  const proton = metadata.authentication_method === "profile_import";
   const signedIn = view.authenticationState === "signed_in";
+  const configured = view.authenticationState === "configured";
   const signedOut = view.authenticationState === "signed_out";
   setStatusPill(
     select("#provider-authentication-state"),
     t(`settings.vpn.authentication.${view.authenticationState}`, {}, view.authenticationState),
-    signedIn ? "success" : signedOut ? "neutral" : "danger",
+    signedIn || configured ? "success" : signedOut || proton ? "neutral" : "danger",
   );
   select("#provider-status-message").textContent = providerStatusText(view, name);
   setStatusPill(
@@ -516,21 +640,23 @@ export function renderProviderManagement(status = {}) {
     active ? "success" : "neutral",
   );
   const activate = select("#provider-activate");
-  activate.hidden = active || !(signedIn && status.available === true);
+  activate.hidden = active || !((signedIn || configured) && status.available === true);
   activate.disabled = signingOut;
   activate.textContent = t(
     "provider.make_active",
     { provider: name },
     `Make ${name} active`,
   );
-  select("#provider-signed-in").hidden = !signedIn;
+  select("#provider-signed-in").hidden = !signedIn || proton;
   select("#provider-signed-in-limitation").textContent = t(
     "provider.management.signed_in_limitation",
     { provider: name },
     `${name} is signed in. End the current session before supplying another credential.`,
   );
   const credentialForm = select("#provider-credential-form");
-  credentialForm.hidden = !(signedOut && view.canSignIn);
+  credentialForm.hidden = proton || !(signedOut && view.canSignIn);
+  select("#provider-proton-profiles").hidden = !proton;
+  if (proton) renderProtonProfiles();
   const accountNumber = metadata.authentication_method === "account_number";
   const pia = metadata.authentication_method === "username_password";
   const credential = select("#provider-credential");
@@ -552,7 +678,7 @@ export function renderProviderManagement(status = {}) {
     : t("provider.management.sign_in", {}, "Sign in with token");
   applyProviderCredentialConstraints(credential, accountNumber);
   credential.placeholder = accountNumber ? "1234 1234 1234 1234" : "";
-  select("#provider-unavailable").hidden = signedIn || signedOut;
+  select("#provider-unavailable").hidden = signedIn || signedOut || proton;
   const installation = select("#provider-management-installation");
   const installButton = select("#provider-management-install");
   const installable = view.canInstall || providerInstallationActive;
@@ -854,6 +980,7 @@ export function initialiseProviders() {
     );
   });
   select("#provider-credential-form").addEventListener("submit", authenticateProvider);
+  select("#provider-proton-import-form").addEventListener("submit", importProtonProfile);
   select("#provider-activate").addEventListener("click", () => (
     activateProvider(viewedProviderId())
   ));
@@ -909,6 +1036,7 @@ export function initialiseProviders() {
     renderProviderNavigation();
     if (application.activeView === "vpn-provider") {
       renderProviderManagement(getSlice("provider").data || {});
+      if (application.providerId === "proton") void refreshProtonProfiles();
     }
   });
   window.addEventListener("exitlane:languagechange", () => renderProviderNavigation());

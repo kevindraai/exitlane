@@ -4,6 +4,7 @@ import asyncio
 import ipaddress
 import re
 import shutil
+import socket
 import sqlite3
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
@@ -252,7 +253,23 @@ async def measure_latency(endpoint: str, *, attempts: int = 3, timeout: float = 
     try:
         ipaddress.ip_address(endpoint)
     except ValueError:
-        return {"latency_ms": None, "status": "unknown", "method": None}
+        unknown = {"latency_ms": None, "status": "unknown", "method": None}
+        if not isinstance(endpoint, str) or not SAFE_SERVER_PATTERN.fullmatch(endpoint) or "." not in endpoint:
+            return unknown
+        try:
+            answers = await asyncio.wait_for(
+                asyncio.to_thread(socket.getaddrinfo, endpoint, None, socket.AF_INET, socket.SOCK_DGRAM),
+                timeout=5,
+            )
+        except (OSError, TimeoutError):
+            return unknown
+        candidates = sorted({item[4][0] for item in answers})
+        if not candidates:
+            return unknown
+        address = ipaddress.ip_address(candidates[0])
+        if not address.is_global:
+            return unknown
+        endpoint = str(address)
 
     if shutil.which("ping"):
         rc, output, _error = await core.command(
@@ -285,16 +302,22 @@ async def measure_servers(
     measurer: Callable[[str], Awaitable[dict]] | None = None,
 ) -> list[dict]:
     code = country_code.upper()
-    if not force:
-        cached = _cached(code, provider_id=provider_id)
-        if cached:
-            return cached
-
     candidates = [
         {**item, "hostname": normalize_server_hostname(item.get("hostname"))}
         for item in servers
         if normalize_server_hostname(item.get("hostname"))
     ][:5]
+    if not force:
+        available = {
+            normalize_server_hostname(item.get("hostname")) for item in servers
+        }
+        cached = [
+            item for item in _cached(code, provider_id=provider_id)
+            if normalize_server_hostname(item["server"]) in available
+        ]
+        measured = {normalize_server_hostname(item["server"]) for item in cached}
+        if cached and {item["hostname"] for item in candidates} <= measured:
+            return cached
     measurer = measurer or measure_latency
     results = await asyncio.gather(
         *(measurer(item.get("station") or item["hostname"]) for item in candidates)

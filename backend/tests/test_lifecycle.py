@@ -422,8 +422,11 @@ def test_reset_removes_owned_egress_policy_before_unregistering_ingress(
         "preflight-and-arm",
         "stop-egress",
         "stop-egress",
+        "stop-egress",
         "remove-owned-policy",
         "remove-owned-policy",
+        "remove-owned-policy",
+        "remove-stale-secret",
         "remove-stale-secret",
         "remove-stale-secret",
         "stop-ingress",
@@ -436,7 +439,7 @@ def test_reset_cleans_every_registered_direct_interface(
     actions: list[tuple[str, str]] = []
     configs = appliance["data"] / "provider-egress"
     configs.mkdir(mode=0o700)
-    for interface in ("wg-mullvad", "wg-pia"):
+    for interface in ("wg-mullvad", "wg-pia", "wg-proton"):
         (configs / f"{interface}.conf").write_text("PrivateKey = test\n", encoding="utf-8")
 
     class DirectProvider:
@@ -451,7 +454,7 @@ def test_reset_cleans_every_registered_direct_interface(
         default_id = "mullvad"
 
         def __init__(self):
-            self.providers = (DirectProvider("mullvad"), DirectProvider("pia"))
+            self.providers = (DirectProvider("mullvad"), DirectProvider("pia"), DirectProvider("proton"))
 
         def get(self, provider_id: str):
             return next(item for item in self.providers if item.id == provider_id)
@@ -491,10 +494,13 @@ def test_reset_cleans_every_registered_direct_interface(
         ("arm", "wg-pia"),
         ("stop", "wg-mullvad"),
         ("stop", "wg-pia"),
+        ("stop", "wg-proton"),
         ("disarm", "wg-pia"),
         ("disarm", "wg-mullvad"),
+        ("disarm", "wg-proton"),
         ("remove_config", "wg-mullvad"),
         ("remove_config", "wg-pia"),
+        ("remove_config", "wg-proton"),
         ("stop_ingress", "wg0"),
     ]
     assert list(configs.iterdir()) == []

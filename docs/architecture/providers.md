@@ -1,6 +1,6 @@
 # VPN provider architecture
 
-ExitLane ships NordVPN, Mullvad VPN and PIA integrations. Any combination may be signed in,
+ExitLane ships NordVPN, Mullvad VPN, PIA and imported Proton VPN profiles. Any combination may be configured,
 but exactly one registered provider can be selected as active egress. Only that active provider may
 receive a connect, reconnect, location-selection, or latency-selection mutation from ExitLane.
 
@@ -16,6 +16,11 @@ infer support from a method name or provider brand.
 created before this setting existed; that backward-compatible default remains NordVPN.
 Registration, installation, authentication, active selection, and connection are separate states.
 WireGuard is ingress and is deliberately outside this registry.
+
+Proton profile import has a local `configured` or `unconfigured` state rather than an account
+session. Profiles are parsed through an allowlist and encrypted with the appliance master key.
+The API exposes only safe profile metadata. A selected profile uses `wg-proton` and the shared
+direct-provider policy table; its imported IPv6 fields are validated but IPv6 egress remains blocked.
 
 Generic authenticated routes live below `/api/vpn/providers/{provider_id}`. The older
 `/api/vpn/*` and `/api/providers/nordvpn/*` routes remain compatibility aliases during migration.

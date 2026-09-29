@@ -104,6 +104,8 @@
       "authentication": {
         "signed_in": "Signed in",
         "signed_out": "Signed out",
+        "configured": "Configured",
+        "unconfigured": "Unconfigured",
         "unknown": "Unknown",
         "unavailable": "Unavailable"
       },
@@ -403,6 +405,17 @@
       "sign_in": "Sign in to PIA",
       "errors": { "invalid_credential_payload": "Enter a valid PIA username and password.", "invalid_credentials": "PIA rejected these credentials.", "provider_api_timeout": "The PIA API timed out.", "provider_api_unavailable": "The PIA API is unavailable.", "provider_api_invalid_response": "PIA returned an unsupported response.", "provider_secret_key_unavailable": "The appliance key for PIA state is unavailable.", "provider_secret_storage_failed": "Encrypted PIA state could not be stored.", "provider_error": "PIA could not complete sign-in." }
     },
+    "proton": {
+      "setup_title": "Proton profile import",
+      "setup_description": "Import a Proton WireGuard profile now, or skip this provider and configure it later. No account session is created.",
+      "import_hint": "Import a WireGuard profile downloaded from your Proton VPN account. Keys are encrypted on this appliance.",
+      "profile_name": "Profile name", "country_code": "Country code (optional)", "config_file": "WireGuard .conf file",
+      "import_action": "Import profile", "importing": "Importing…", "imported": "Profile imported.",
+      "rename": "Rename", "delete": "Delete", "connect": "Connect",
+      "configured": "WireGuard profiles configured.", "unconfigured": "Import a Proton WireGuard profile to configure this provider.",
+      "unconfigured_title": "Proton profile required", "invalid_file": "Select a valid WireGuard profile under 16 KB.",
+      "action_failed": "The profile action failed.", "delete_failed": "Disconnect this profile before deleting it."
+    },
     "mullvad": {
       "sign_in_title": "Sign in to Mullvad",
       "sign_in_description": "Use the 16-digit number from your Mullvad account. ExitLane registers its own encrypted WireGuard device with Mullvad.",
@@ -649,7 +662,7 @@
       "not_available": "Not available",
       "states": {
         "connected": "Connected", "disconnected": "Disconnected", "connecting": "Connecting…",
-        "disconnecting": "Disconnecting…", "signed_in": "Signed in", "signed_out": "Signed out",
+        "disconnecting": "Disconnecting…", "signed_in": "Signed in", "signed_out": "Signed out", "unconfigured": "Unconfigured",
         "unavailable": "Unavailable", "error": "Status error", "unknown": "Unknown"
       },
       "fields": {
@@ -674,7 +687,7 @@
     "auth": { "login_succeeded": "Administrator signed in", "login_failed": "Sign-in attempt failed", "logout": "Administrator signed out", "session_expired": "Session expired", "session_revoked": "Session revoked", "password_changed": "Administrator password changed", "password_reset": "Administrator password reset locally", "mfa_enrollment_started": "MFA enrollment started", "mfa_enabled": "MFA enabled", "mfa_disabled": "MFA disabled", "mfa_disabled_locally": "MFA disabled locally", "recovery_codes_generated": "Recovery codes generated", "recovery_codes_regenerated": "Recovery codes regenerated", "recovery_code_used": "Recovery code used", "other_sessions_revoked": "Other sessions revoked" },
     "settings": { "updated": "Settings updated: {fields}", "timezone_changed": "Appliance timezone changed from {from_timezone} to {to_timezone}", "timezone_reconciled": "Appliance timezone reconciled from {from_timezone} to {to_timezone}", "timezone_change_failed": "Appliance timezone change failed", "timezone_rolled_back": "Appliance timezone change rolled back" },
     "network": { "security_settings_updated": "Network security settings updated", "security_settings_reset_locally": "Network security settings reset locally", "management_routing_error": "Management routing protection needs attention" },
-    "provider": { "connect_started": "Connecting to {target}", "connected": "Connected to {country} {server}", "connect_failed": "Could not connect to {target}", "recovery_started": "NordVPN recovery started", "recovered": "NordVPN recovered", "recovery_failed": "NordVPN recovery failed", "recovery_rate_limited": "NordVPN recovery temporarily rate-limited", "retry_started": "Retrying connection", "disconnect_started": "Disconnecting VPN", "disconnected": "VPN disconnected", "disconnect_failed": "Could not disconnect VPN", "session_started": "NordVPN session started", "session_ended": "NordVPN session ended", "session_end_failed": "NordVPN session could not be ended" },
+    "provider": { "connect_started": "Connecting to {target}", "connected": "Connected to {country} {server}", "connect_failed": "Could not connect to {target}", "recovery_started": "NordVPN recovery started", "recovered": "NordVPN recovered", "recovery_failed": "NordVPN recovery failed", "recovery_rate_limited": "NordVPN recovery temporarily rate-limited", "retry_started": "Retrying connection", "disconnect_started": "Disconnecting VPN", "disconnected": "VPN disconnected", "disconnect_failed": "Could not disconnect VPN", "session_started": "NordVPN session started", "session_ended": "NordVPN session ended", "session_end_failed": "NordVPN session could not be ended" , "profile_imported": "Proton profile imported", "profile_renamed": "Proton profile renamed", "profile_deleted": "Proton profile deleted"},
     "wireguard": { "configuration_generated": "WireGuard configuration generated for {client_name}", "configuration_regenerated": "WireGuard configuration replaced for {client_name}", "interface_active": "WireGuard interface {interface} became active", "interface_inactive": "WireGuard interface {interface} became inactive", "handshake_received": "WireGuard handshake received for {client_name}" },
     "notifications": { "webhook_added": "Webhook {name} added" }
   },
@@ -804,6 +817,7 @@
     "router-integrations": "Router integrations",
       "mullvad": "Mullvad VPN provider",
       "pia": "PIA provider",
+      "proton": "Proton VPN provider",
       "killswitch": "ExitLane killswitch",
     "wireguard-configuration": "WireGuard configuration",
     "diagnostics": "Connection diagnostics",

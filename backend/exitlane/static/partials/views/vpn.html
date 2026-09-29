@@ -41,6 +41,17 @@
          <label hidden="" id="provider-pia-password-field"><span data-i18n="provider.pia.password">PIA password</span><input autocomplete="current-password" id="provider-pia-password" maxlength="400" type="password"/></label>
          <div class="form-submit"><button class="button button-primary" id="provider-credential-save" type="submit">Sign in</button></div>
         </form>
+        <section hidden="" id="provider-proton-profiles">
+         <p data-i18n="provider.proton.import_hint">Import a WireGuard profile downloaded from your Proton VPN account. Keys are encrypted on this appliance.</p>
+         <form class="form-grid" id="provider-proton-import-form" method="post">
+          <label><span data-i18n="provider.proton.profile_name">Profile name</span><input id="provider-proton-name" maxlength="80" required="" type="text"/></label>
+          <label><span data-i18n="provider.proton.country_code">Country code (optional)</span><input id="provider-proton-country" maxlength="2" pattern="[A-Za-z]{2}" type="text"/></label>
+          <label><span data-i18n="provider.proton.config_file">WireGuard .conf file</span><input accept=".conf,text/plain" id="provider-proton-file" required="" type="file"/></label>
+          <div class="form-submit"><button class="button button-primary" data-i18n="provider.proton.import_action" id="provider-proton-import" type="submit">Import profile</button></div>
+         </form>
+         <p class="inline-error" hidden="" id="provider-proton-error" role="alert"></p>
+         <div id="provider-proton-list"></div>
+        </section>
         <div hidden="" id="provider-unavailable">
          <div hidden="" id="provider-management-installation">
           <p id="provider-management-install-description"></p>

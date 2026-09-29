@@ -64,7 +64,7 @@ existing appliance installation.
 ## Direct provider and WireGuard changes
 
 The direct Mullvad integration owns `wg-mullvad` and policy table `51820`. It does not install the
-Mullvad app. PIA uses the separate `wg-pia` interface and the same guarded table, with only one
+Mullvad app. PIA uses `wg-pia`, and imported Proton profiles use `wg-proton`, with the same guarded table and only one
 direct provider active at a time. Retire any existing Mullvad app daemon or conflicting provider firewall state deliberately
 before activation; follow the [Mullvad conflict procedure](mullvad.md#legacy-mullvad-app-conflict).
 

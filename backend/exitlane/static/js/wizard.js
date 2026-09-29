@@ -200,10 +200,13 @@ export function renderWizardProviders(setup) {
     const name = document.createElement("strong");
     name.textContent = provider.display_name;
     const state = document.createElement("small");
+    const proton = provider.authentication_method === "profile_import";
     const status = provider.status?.authenticated
-      ? t("vpn.overview.states.signed_in", {}, "Signed in")
+      ? proton ? t("settings.vpn.authentication.configured", {}, "Configured")
+        : t("vpn.overview.states.signed_in", {}, "Signed in")
       : provider.status?.installed
-        ? t("vpn.overview.states.signed_out", {}, "Signed out")
+        ? proton ? t("settings.vpn.authentication.unconfigured", {}, "Unconfigured")
+          : t("vpn.overview.states.signed_out", {}, "Signed out")
         : t("provider.status.not_installed", {}, "Not installed");
     state.textContent = status;
     copy.append(name, state);

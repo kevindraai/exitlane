@@ -44,6 +44,7 @@ test("NordVPN and Mullvad select isolated authentication renderers from metadata
     nordControls: true,
     mullvadControls: false,
     piaControls: false,
+    protonControls: false,
   });
   assert.deepEqual(providerAuthenticationView({
     id: "mullvad",
@@ -56,6 +57,7 @@ test("NordVPN and Mullvad select isolated authentication renderers from metadata
     nordControls: false,
     mullvadControls: true,
     piaControls: false,
+    protonControls: false,
   });
   assert.equal(providerAuthenticationErrorCode({ error: "too_many_devices" }), "too_many_devices");
   assert.equal(providerAuthenticationErrorCode({ error: "invalid_account" }), "invalid_account");

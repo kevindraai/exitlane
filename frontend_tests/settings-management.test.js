@@ -378,8 +378,8 @@ test("provider page has state regions and no killswitch control", async () => {
   const signedInRegion = markup.indexOf('id="provider-signed-in"');
   const tokenForm = markup.indexOf('id="provider-credential-form"');
   assert.ok(statusRegion > -1 && statusRegion < signedInRegion && signedInRegion < tokenForm);
-  assert.match(source, /provider-signed-in"\)\.hidden = !signedIn/);
-  assert.match(source, /credentialForm\.hidden = !\(signedOut && view\.canSignIn\)/);
+  assert.match(source, /provider-signed-in"\)\.hidden = !signedIn \|\| proton/);
+  assert.match(source, /credentialForm\.hidden = proton \|\| !\(signedOut && view\.canSignIn\)/);
   assert.match(source, /provider-end-session"\)\.hidden = !view\.canSignOut/);
   assert.match(source, /provider-management-install"\)\.addEventListener[\s\S]+installProviderFromManagement/);
   assert.match(source, /\/api\/vpn\/providers\/\$\{encodeURIComponent\(providerId\)\}\/installation/);
