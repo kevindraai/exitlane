@@ -62,6 +62,26 @@ High-impact issues with substantial prerequisites plus bounded availability and 
 Sensitive High-impact reproduction detail is retained in private draft advisories. This work is
 not an independent penetration test.
 
+## Proxmox installer access boundary
+
+The public launcher verifies the selected published helper and negotiates its UI capability
+without provisioning mutation. New helpers separate optional Linux console-root credentials from
+ExitLane web onboarding and from SSH authentication. Passwords are masked and confirmed, transferred
+through stdin, and omitted from argv, environment, canonical plans, host logs and failure output.
+Public keys are structurally validated; private material and option-prefixed authorized-key entries
+are rejected rather than removing restrictions. SSH key-only policy is the default when SSH is
+requested; password SSH requires explicit advanced selection. Skipping all guest credentials keeps
+PVE-managed access as the recovery path, with an explicit operator acknowledgement.
+
+Installer logging is root-only and streams subprocess output with bounded diagnostic tails.
+Credential-configuration subprocess output is suppressed even on failure. A root-equivalent PVE
+operator can inspect live memory or change guest configuration; this boundary does not defend
+against the operator who owns the provisioning host. The helper still creates new guests only,
+requires one canonical confirmation, rechecks frozen resources and never destroys partial guests.
+
+The new UI/access/logging path is only available after inclusion in a published helper tag;
+the public moving bootstrap preserves compatible behavior for older published helpers.
+
 ## Docker deployment boundary
 
 The Docker image remains a development WebUI/API surface, not a VPN appliance. Its private
