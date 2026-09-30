@@ -20,6 +20,11 @@ from exitlane.config import (
 from exitlane.core import WG_DIR, command
 from exitlane.providers.catalog import provider_registry
 
+ENDPOINT_HOSTNAME = re.compile(
+    r"(?=.{1,253}\Z)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*"
+)
+
 
 class WireGuardConfigurationError(RuntimeError):
     def __init__(self, code: str):
@@ -34,6 +39,56 @@ def _validate_ingress_interface(interface: str) -> None:
         item.direct_egress_interface for item in provider_registry.direct_egress_providers()
     }:
         raise ValueError("wireguard_interface_reserved")
+
+
+def _safe_ascii_value(value: str) -> bool:
+    return (
+        isinstance(value, str)
+        and value.isascii()
+        and value == value.strip()
+        and all(character.isprintable() and not character.isspace() for character in value)
+    )
+
+
+def _validated_endpoint(endpoint: str) -> str:
+    if not _safe_ascii_value(endpoint):
+        raise ValueError("Het WireGuard-endpoint is ongeldig.")
+    if endpoint.startswith("[") and endpoint.endswith("]"):
+        endpoint = endpoint[1:-1]
+    try:
+        address = ipaddress.ip_address(endpoint)
+    except ValueError:
+        if ENDPOINT_HOSTNAME.fullmatch(endpoint) is None:
+            raise ValueError("Het WireGuard-endpoint is ongeldig.") from None
+        return endpoint.lower()
+    if isinstance(address, ipaddress.IPv6Address) and address.scope_id is not None:
+        raise ValueError("Het WireGuard-endpoint is ongeldig.")
+    return str(address)
+
+
+def _validated_dns_address(dns: str) -> str:
+    if not _safe_ascii_value(dns):
+        raise ValueError("De DNS-server moet een geldig IP-adres zijn.")
+    try:
+        address = ipaddress.ip_address(dns)
+    except ValueError as error:
+        raise ValueError("De DNS-server moet een geldig IP-adres zijn.") from error
+    if isinstance(address, ipaddress.IPv6Address) and address.scope_id is not None:
+        raise ValueError("De DNS-server moet een geldig IP-adres zijn.")
+    return str(address)
+
+
+def _validated_ingress_network(subnet: str) -> ipaddress.IPv4Network:
+    try:
+        network = ipaddress.ip_network(subnet, strict=True)
+    except ValueError as error:
+        raise ValueError("Het WireGuard-tunnelnetwerk is ongeldig.") from error
+    if (
+        network.version != 4
+        or network.prefixlen > 31
+    ):
+        raise ValueError("Het WireGuard-tunnelnetwerk moet minimaal twee IPv4-adressen bevatten.")
+    return network
 
 
 def _configuration_path(name: str) -> Path:
@@ -169,6 +224,7 @@ async def parameters_from_current(interface: str, client: str) -> dict:
     )
     try:
         subnet = str(ipaddress.ip_interface(server_address or "").network)
+        endpoint = _validated_endpoint(endpoint)
         port = int(port_value)
         keepalive_value = int(keepalive or DEFAULT_WIREGUARD_KEEPALIVE)
     except (ValueError, TypeError) as error:
@@ -222,19 +278,7 @@ async def create(
     allowed_ips: str = DEFAULT_WIREGUARD_ALLOWED_IPS,
     keepalive: int = DEFAULT_WIREGUARD_KEEPALIVE,
 ) -> dict:
-    try:
-        network = ipaddress.ip_network(
-            subnet,
-            strict=True,
-        )
-    except ValueError as error:
-        raise ValueError("Het WireGuard-tunnelnetwerk is ongeldig.") from error
-
-    hosts = list(network.hosts())
-
-    if network.version != 4 or len(hosts) < 2:
-        raise ValueError("Het WireGuard-tunnelnetwerk moet minimaal twee IPv4-adressen bevatten.")
-
+    network = _validated_ingress_network(subnet)
     _validate_ingress_interface(interface)
 
     if not re.fullmatch(
@@ -242,14 +286,18 @@ async def create(
         client,
     ):
         raise ValueError("De WireGuard-clientnaam is ongeldig.")
+    if client == interface:
+        raise ValueError("De WireGuard-clientnaam moet verschillen van de interfacenaam.")
+
+    validated_endpoint = _validated_endpoint(endpoint)
+    rendered_endpoint = (
+        f"[{validated_endpoint}]" if ":" in validated_endpoint else validated_endpoint
+    )
 
     if vpn_interface is not None and not re.fullmatch(r"[A-Za-z0-9_.-]{1,15}", vpn_interface):
         raise ValueError("De VPN-interfacenaam is ongeldig.")
 
-    try:
-        ipaddress.ip_address(dns)
-    except ValueError as error:
-        raise ValueError("De DNS-server moet een geldig IP-adres zijn.") from error
+    rendered_dns = _validated_dns_address(dns)
 
     if not 1 <= port <= 65535:
         raise ValueError("De WireGuard-poort moet tussen 1 en 65535 liggen.")
@@ -257,11 +305,15 @@ async def create(
     if not 0 <= keepalive <= 65535:
         raise ValueError("De WireGuard keepalive-waarde is ongeldig.")
 
+    hosts = network.hosts()
+    server_host = next(hosts)
+    client_host = next(hosts)
+
     server_private_key, server_public_key = await keypair()
     client_private_key, client_public_key = await keypair()
 
-    server_address = f"{hosts[0]}/{network.prefixlen}"
-    client_address = f"{hosts[1]}/32"
+    server_address = f"{server_host}/{network.prefixlen}"
+    client_address = f"{client_host}/32"
 
     forwarding_rules = _forwarding_rules(interface, str(network), vpn_interface)
     server_config = f"""[Interface]
@@ -280,11 +332,11 @@ PersistentKeepalive = {keepalive}
     client_config = f"""[Interface]
 PrivateKey = {client_private_key}
 Address = {client_address}
-DNS = {dns}
+DNS = {rendered_dns}
 
 [Peer]
 PublicKey = {server_public_key}
-Endpoint = {endpoint}:{port}
+Endpoint = {rendered_endpoint}:{port}
 AllowedIPs = {allowed_ips}
 PersistentKeepalive = {keepalive}
 """
@@ -324,6 +376,8 @@ async def provision(
     keepalive: int = DEFAULT_WIREGUARD_KEEPALIVE,
 ) -> dict:
     _validate_ingress_interface(interface)
+    if client == interface:
+        raise ValueError("De WireGuard-clientnaam moet verschillen van de interfacenaam.")
     paths = (_configuration_path(interface), _configuration_path(client))
     previous: dict[Path, str | None] = {}
     for path in paths:
