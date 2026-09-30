@@ -14,6 +14,7 @@ import os
 import re
 import signal
 import stat
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -173,6 +174,16 @@ class ContainerWireGuardLifecycle:
         self.active = False
         self.owned_ifindex: int | None = None
         self.uncertain_creation = False
+        self.policy_interface: str | None = None
+        self.provider_interfaces = ("wg-mullvad", "wg-pia", "wg-proton")
+        self.mutation_lock = asyncio.Lock()
+        self.policy_lock = asyncio.Lock()
+        self.policy_epoch = 0
+        self.policy_candidate = None
+        self.policy_proof = None
+        self.policy_committed = None
+        self.source_addresses: tuple[str, ...] = ()
+        self.probe_interface: str | None = None
 
     async def checked(self, *arguments: str, input_text: str | None = None, timeout: float = 10):
         rc, output, _ = await self.runner(*arguments, input_text=input_text, timeout=timeout)
@@ -206,7 +217,67 @@ class ContainerWireGuardLifecycle:
         ]
         return interface, source
 
-    def validate_nft_guard(self, data: dict) -> None:
+    def forward_expressions(self, interface: str | None = None) -> list[list[dict]]:
+        blocks = list(self.expressions())
+        if interface is None:
+            return blocks
+        return [
+            [
+                blocks[0][0],
+                {"match": {"op": "==", "left": {"meta": {"key": "nfproto"}}, "right": "ipv4"}},
+                {"match": {"op": "==", "left": {"meta": {"key": "oifname"}}, "right": interface}},
+                {"accept": None},
+            ],
+            *blocks,
+        ]
+
+    def input_expressions(self) -> list[list[dict]]:
+        return [
+            [
+                selector,
+                {
+                    "match": {
+                        "op": "==",
+                        "left": {"payload": {"protocol": protocol, "field": "dport"}},
+                        "right": 53,
+                    }
+                },
+                {"drop": None},
+            ]
+            for selector in (self.expressions()[0][0], self.expressions()[1][0])
+            for protocol in ("udp", "tcp")
+        ]
+
+    def nat_expressions(self, interface: str) -> list[list[dict]]:
+        return [
+            [
+                self.expressions()[0][0],
+                {"match": {"op": "==", "left": {"meta": {"key": "nfproto"}}, "right": "ipv4"}},
+                {"match": {"op": "==", "left": {"meta": {"key": "oifname"}}, "right": interface}},
+                {"masquerade": None},
+            ]
+        ]
+
+    def output_expressions(self, *, sources=None, probe_interface=...) -> list[list[dict]]:
+        sources = self.source_addresses if sources is None else sources
+        interface = self.probe_interface if probe_interface is ... else probe_interface
+        rules = []
+        for address in sources:
+            selector = {"match": {"op": "==", "left": {"payload": {"protocol": "ip", "field": "saddr"}}, "right": address}}
+            if interface is not None:
+                rules.append([selector, {"match": {"op": "==", "left": {"meta": {"key": "oifname"}}, "right": interface}}, {"accept": None}])
+            rules.append([selector, {"drop": None}])
+        return rules
+
+    def validate_nft_guard(self, data: dict, *, policy_interface=..., sources=None, probe_interface=...) -> None:
+        interface = self.policy_interface if policy_interface is ... else policy_interface
+        source_inventory = self.source_addresses if sources is None else sources
+        probe = self.probe_interface if probe_interface is ... else probe_interface
+        require(
+            interface is None or interface in self.provider_interfaces, "container_guard_unproven"
+        )
+        require(probe is None or probe in self.provider_interfaces, "container_guard_unproven")
+        require(interface is None or (interface == probe and bool(source_inventory)), "container_guard_unproven")
         require(
             isinstance(data, dict) and isinstance(data.get("nftables"), list),
             "container_guard_unproven",
@@ -231,31 +302,175 @@ class ContainerWireGuardLifecycle:
         )
         chains = [item["chain"] for item in objects if "chain" in item]
         rules = [item["rule"] for item in objects if "rule" in item]
+        expected = {
+            "forward": ("filter", -200, self.forward_expressions(interface)),
+            "input": ("filter", -200, self.input_expressions()),
+            "output": ("filter", 0, self.output_expressions(sources=sources, probe_interface=probe_interface)),
+        }
+        if interface is not None:
+            expected["postrouting"] = ("nat", 100, self.nat_expressions(interface))
+        require(len(chains) == len(expected), "container_guard_unproven")
         require(
-            len(chains) == 1
-            and chains[0].get("family") == "inet"
-            and chains[0].get("table") == TABLE
-            and chains[0].get("name") == "forward"
-            and chains[0].get("type") == "filter"
-            and chains[0].get("hook") == "forward"
-            and chains[0].get("prio") == -200
-            and chains[0].get("policy") == "accept",
+            len(rules) == sum(len(value[2]) for value in expected.values()),
             "container_guard_unproven",
         )
+        for name, (kind, priority, expressions) in expected.items():
+            matched = [chain for chain in chains if chain.get("name") == name]
+            require(len(matched) == 1, "container_guard_unproven")
+            chain = matched[0]
+            require(
+                chain.get("family") == "inet"
+                and chain.get("table") == TABLE
+                and chain.get("type") == kind
+                and chain.get("hook") == name
+                and chain.get("prio") == priority
+                and chain.get("policy") == "accept",
+                "container_guard_unproven",
+            )
+            chain_rules = [rule for rule in rules if rule.get("chain") == name]
+            require(
+                all(
+                    rule.get("family") == "inet" and rule.get("table") == TABLE
+                    for rule in chain_rules
+                ),
+                "container_guard_unproven",
+            )
+            require(
+                [rule.get("expr") for rule in chain_rules] == expressions,
+                "container_guard_unproven",
+            )
+
+    def validate_previous_policy(self, data: dict) -> None:
+        # Startup may revoke a structurally exact previously committed policy.
+        # Recognition grants no forwarding permission and never adopts foreign
+        # chains/rules, even in our reserved table.
+        # Infer only literal historical /32 addresses; the complete exact shape
+        # is then verified, including all rules, selectors, verdicts and chains.
+        sources = set()
+        try:
+            for item in data["nftables"]:
+                rule = item.get("rule", {})
+                if rule.get("chain") != "output":
+                    continue
+                selector = rule["expr"][0]["match"]
+                require(selector["op"] == "==" and selector["left"] == {"payload": {"protocol": "ip", "field": "saddr"}}, "container_guard_resource_conflict")
+                address = selector["right"]
+                parsed = ipaddress.IPv4Address(address)
+                require(isinstance(address, str) and str(parsed) == address and not (parsed.is_unspecified or parsed.is_multicast or parsed.is_loopback or parsed.is_reserved or parsed.is_link_local or parsed in ipaddress.IPv4Network("0.0.0.0/8")), "container_guard_resource_conflict")
+                sources.add(address)
+            require(len(sources) <= 64, "container_guard_resource_conflict")
+        except (ValueError, KeyError, TypeError, AttributeError, IndexError):
+            raise ContainerLifecycleError("container_guard_resource_conflict") from None
+        sources = tuple(sorted(sources))
+        for interface in (None, *self.provider_interfaces):
+            for probe in (None, *self.provider_interfaces):
+                try:
+                    self.validate_nft_guard(data, policy_interface=interface, sources=sources, probe_interface=probe)
+                    self.source_addresses = sources
+                    return
+                except ContainerLifecycleError:
+                    pass
+        raise ContainerLifecycleError("container_guard_resource_conflict")
+
+    def guard_payload(self, interface: str | None, *, sources=None, probe_interface=...) -> str:
+        sources = self.source_addresses if sources is None else sources
+        probe = self.probe_interface if probe_interface is ... else probe_interface
+        subnet = str(ipaddress.IPv4Interface(self.config.address).network)
+        protected = (f'iifname "{self.config.interface}"', f"ip saddr {subnet}")
+        lines = [
+            f"destroy table inet {TABLE}",
+            f"table inet {TABLE} {{",
+            "chain forward { type filter hook forward priority -200; policy accept;",
+        ]
+        if interface:
+            lines.append(f'{protected[0]} meta nfproto ipv4 oifname "{interface}" accept')
+        lines += [f"{selector} drop" for selector in protected]
+        lines += ["}", "chain input { type filter hook input priority -200; policy accept;"]
+        lines += [
+            f"{selector} {protocol} dport 53 drop"
+            for selector in protected
+            for protocol in ("udp", "tcp")
+        ]
+        lines += ["}"]
+        lines += ["chain output { type filter hook output priority 0; policy accept;"]
+        for address in sources:
+            if probe is not None:
+                lines.append(f'ip saddr {address} oifname "{probe}" accept')
+            lines.append(f"ip saddr {address} drop")
+        lines += ["}"]
+        if interface:
+            lines += [
+                "chain postrouting { type nat hook postrouting priority srcnat; policy accept;",
+                f'{protected[0]} meta nfproto ipv4 oifname "{interface}" masquerade',
+                "}",
+            ]
+        return "\n".join([*lines, "}", ""])
+
+    async def register_source(self, config) -> None:
+        # Called under the policy lock, before address assignment or probing.
+        try:
+            address = str(ipaddress.IPv4Interface(config.address).ip)
+            parsed = ipaddress.IPv4Address(address)
+            require(config.interface in self.provider_interfaces and not (parsed.is_unspecified or parsed.is_multicast or parsed.is_loopback or parsed.is_reserved or parsed.is_link_local or parsed in ipaddress.IPv4Network("0.0.0.0/8")), "container_provider_invalid")
+            sources = tuple(sorted(set(self.source_addresses) | {address}))
+            require(len(sources) <= 64, "container_provider_source_budget_exhausted")
+        except (ValueError, TypeError, AttributeError):
+            raise ContainerLifecycleError("container_provider_invalid") from None
+        await self._rewrite_policy(None, sources=sources, probe=config.interface)
+
+    async def restrict_provider(self, config=None, *, keep_probe=False) -> None:
+        # Caller holds policy_lock; D4 will add the outer lifecycle lease.
+        # Never acquire provider transaction locks while holding this lock.
+        if config is not None:
+            proof = self.policy_proof
+            require(
+                self.policy_candidate == config
+                and proof is not None
+                and proof[:2] == (self.policy_epoch, config)
+                and time.monotonic() - proof[2] <= 5,
+                "container_provider_commit_unproven",
+            )
+        interface = config.interface if config is not None else None
+        if config is None:
+            self.policy_committed = None
         require(
-            len(rules) == 2
-            and all(
-                rule.get("family") == "inet"
-                and rule.get("table") == TABLE
-                and rule.get("chain") == "forward"
-                for rule in rules
-            ),
-            "container_guard_unproven",
+            interface is None or interface in self.provider_interfaces, "container_provider_invalid"
         )
-        require(
-            [rule["expr"] for rule in rules] == list(self.expressions()),
-            "container_guard_unproven",
-        )
+        probe = interface if config is not None else self.probe_interface if keep_probe else None
+        await self._rewrite_policy(interface, sources=self.source_addresses, probe=probe)
+
+    async def _rewrite_policy(self, interface, *, sources, probe) -> None:
+        existing = json.loads(await self.checked("nft", "-j", "list", "table", "inet", TABLE))
+        self.validate_nft_guard(existing)
+        payload = self.guard_payload(interface, sources=sources, probe_interface=probe)
+        await self.checked("nft", "-c", "-f", "/dev/stdin", input_text=payload)
+        # Retain the union even when an apply is cancelled after kernel mutation.
+        self.source_addresses = sources
+        self.probe_interface = probe
+        try:
+            await self.checked("nft", "-f", "/dev/stdin", input_text=payload)
+            self.policy_interface = interface
+            await self.observe_guard()
+        except BaseException:
+
+            async def recover_block():
+                self.policy_interface = None
+                self.policy_committed = None
+                self.probe_interface = None
+                try:
+                    await self.checked(
+                        "nft", "-f", "/dev/stdin", input_text=self.guard_payload(None)
+                    )
+                    await self.observe_guard()
+                except (ContainerLifecycleError, ValueError, KeyError, TypeError, AttributeError):
+                    await self.deactivate()
+
+            cleanup = asyncio.create_task(recover_block())
+            try:
+                await asyncio.shield(cleanup)
+            except asyncio.CancelledError:
+                await cleanup
+            raise
 
     async def observe_guard(self) -> None:
         try:
@@ -288,30 +503,29 @@ class ContainerWireGuardLifecycle:
             raise ContainerLifecycleError("container_guard_unproven") from None
 
     async def arm_guard(self) -> None:
-        try:
-            tables = json.loads(await self.checked("nft", "-j", "list", "tables"))["nftables"]
-            exists = any(
-                item.get("table", {}).get("family") == "inet"
-                and item.get("table", {}).get("name") == TABLE
-                for item in tables
-            )
-            if exists:
-                self.validate_nft_guard(
-                    json.loads(await self.checked("nft", "-j", "list", "table", "inet", TABLE))
+        async with self.policy_lock:
+            try:
+                tables = json.loads(await self.checked("nft", "-j", "list", "tables"))["nftables"]
+                exists = any(
+                    item.get("table", {}).get("family") == "inet"
+                    and item.get("table", {}).get("name") == TABLE
+                    for item in tables
                 )
-        except (ValueError, KeyError, TypeError, AttributeError):
-            raise ContainerLifecycleError("container_guard_resource_conflict") from None
-        await self.provider_guard.arm((self.config.interface,))
-        network = str(ipaddress.IPv4Interface(self.config.address).network)
-        payload = (
-            f"destroy table inet {TABLE}\ntable inet {TABLE} {{\n"
-            "chain forward { type filter hook forward priority -200; policy accept;\n"
-            f'iifname "{self.config.interface}" drop\nip saddr {network} drop\n'
-            "}\n}\n"
-        )
-        await self.checked("nft", "-c", "-f", "/dev/stdin", input_text=payload)
-        await self.checked("nft", "-f", "/dev/stdin", input_text=payload)
-        await self.observe_guard()
+                if exists:
+                    self.validate_previous_policy(
+                        json.loads(await self.checked("nft", "-j", "list", "table", "inet", TABLE))
+                    )
+            except (ValueError, KeyError, TypeError, AttributeError):
+                raise ContainerLifecycleError("container_guard_resource_conflict") from None
+            await self.provider_guard.arm((self.config.interface,))
+            self.probe_interface = None
+            payload = self.guard_payload(None)
+            await self.checked("nft", "-c", "-f", "/dev/stdin", input_text=payload)
+            await self.checked("nft", "-f", "/dev/stdin", input_text=payload)
+            self.policy_interface = None
+            self.policy_candidate = self.policy_proof = self.policy_committed = None
+            self.policy_epoch += 1
+            await self.observe_guard()
 
     async def activate(self) -> None:
         require(not self.uncertain_creation, "container_interface_creation_uncertain")

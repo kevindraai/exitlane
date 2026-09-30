@@ -167,7 +167,7 @@ jobs:
               )
               if result.returncode == 0:
                   relevant = any(
-                      name.startswith(("backend/exitlane/", "docker/testing/"))
+                      name.startswith(("backend/exitlane/", "docker/testing/", "scripts/qualification/", "backend/tests/test_container"))
                       or name in {
                           "backend/pyproject.toml", "backend/uv.lock",
                           "scripts/qualification/container_lifecycle.py",
@@ -186,6 +186,10 @@ jobs:
       - name: Qualify isolated kernel lifecycle
         if: steps.changes.outputs.run == 'true'
         run: python3 scripts/qualification/container_lifecycle.py
+
+      - name: Qualify synthetic direct-provider dataplane
+        if: steps.changes.outputs.run == 'true'
+        run: python3 scripts/qualification/container_dataplane.py --image exitlane-lifecycle:test
 
   package:
     name: Package build

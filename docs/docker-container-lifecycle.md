@@ -2,7 +2,8 @@
 
 This slice implements container network lifecycle primitives and a bounded worker supervisor.
 It is not a Docker appliance. Application runtime selection still accepts native Debian only;
-the full application startup, direct-provider integration and durable recovery belong to D3/D4.
+direct-provider integration is exercised by the isolated D3 fixture; full application startup
+and durable recovery remain later gates.
 Native systemd units, configuration generation and installer behavior remain unchanged.
 
 `exitlane.container_runtime.IngressConfig` accepts the current single-peer IPv4 ingress shape.
@@ -15,9 +16,10 @@ Docker must configure that sysctl rather than the container writing to `/proc/sy
 
 Before adding an ingress interface, the lifecycle installs and semantically observes its separate
 `inet exitlane_container_guard` table and the shared direct-provider unreachable RPDB guard in
-both address families. The permanent table drops all forwarding from the ingress interface and
-its protected IPv4 source network. D2 never opens a provider path; D3 must integrate proven provider
-commit and routing without removing the permanent invariant. This table is independent of the
+both address families. With no committed provider, the permanent table drops all forwarding
+from the ingress interface and its protected IPv4 source network. D2 never opens a provider
+path; [D3](docker-container-dataplane.md) adds proven provider commit and routing while retaining
+the permanent invariant. This table is independent of the
 optional native killswitch. Existing foreign rules under its table name cause refusal.
 
 Interface creation rejects collisions and pins the successful interface index. Cleanup does not

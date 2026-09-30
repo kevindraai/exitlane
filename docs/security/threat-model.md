@@ -106,6 +106,23 @@ interface ownership rather than adopting or deleting another interface. The test
 NET_ADMIN/TUN in isolated namespaces; Docker owns all host bridge/firewall setup. Full application
 container composition remains disabled pending the later networking and recovery gates.
 
+The D3 direct-provider adapter adds a shared candidate epoch and a separate commit
+gate: a handshake alone does not open forwarding. Exact route, peer, interface,
+lossless dataplane and UDP/TCP DNS proof must precede committed encrypted state.
+Revocation preserves ingress/source unreachable routes and the permanent namespace
+guard. Registered provider IPv4 sources are also filtered in OUTPUT after destination
+translation, independently of destination port, so local resolver translation cannot
+turn protected source traffic into management-uplink DNS. Historical sources remain
+blocked after interface deletion or disconnect; the bounded inventory fails closed
+instead of evicting an address. Startup accepts only an exact owned policy shape and
+revokes its previous forwarding/probe permissions before use.
+
+Separate synthetic packet observers must prove both usable provider transport and
+zero plaintext fallback on the normal uplink; observer failure, packet drops or missing
+positive controls invalidate that evidence. These checks do not qualify daemon/host
+restart, persistent restore or production images. Those remain D4–D6 gates, and the
+development image retains its existing restrictions.
+
 ### System power actions
 
 An authenticated administrator can request three fixed host lifecycle actions.

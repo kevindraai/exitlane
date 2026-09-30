@@ -47,23 +47,15 @@ class Namespace:
         )
 
     def nft(self):
-        chain = {
-            "family": "inet",
-            "table": TABLE,
-            "name": "forward",
-            "type": "filter",
-            "hook": "forward",
-            "prio": -200,
-            "policy": "accept",
-        }
-        expressions = self.network.expressions()
-        rules = [
-            {"rule": {"family": "inet", "table": TABLE, "chain": "forward", "expr": expr}}
-            for expr in expressions
-        ]
+        chains = []
+        rules = []
+        for name, expressions in (("forward", self.network.forward_expressions(self.network.policy_interface)), ("input", self.network.input_expressions()), ("output", self.network.output_expressions())):
+            chain = {"family": "inet", "table": TABLE, "name": name, "type": "filter", "hook": name, "prio": 0 if name == "output" else -200, "policy": "accept"}
+            chains.append({"chain": chain})
+            rules += [{"rule": {"family": "inet", "table": TABLE, "chain": name, "expr": expr}} for expr in expressions]
         if self.bad_observation or self.foreign:
             rules[0]["rule"]["expr"] = [{"accept": None}]
-        return json.dumps({"nftables": [{"chain": chain}, *rules]})
+        return json.dumps({"nftables": [*chains, *rules]})
 
     async def run(self, *args, **kwargs):
         self.commands.append(args)
@@ -413,3 +405,389 @@ def test_recreated_interface_with_changed_ifindex_not_deleted():
         asyncio.run(ns.network.deactivate())
     assert ns.exists and ns.guard_exists
     assert not any(command[:3] == ("ip", "link", "delete") for command in ns.commands)
+
+
+# Captured from the NET_ADMIN-only appliance on Debian 13 / nftables 1.1.3.
+# Independent kernel output: do not derive this receipt from the renderer.
+KERNEL_BLOCK_GUARD = r'''
+{
+  "nftables": [
+    {
+      "table": {
+        "family": "inet",
+        "name": "exitlane_container_guard",
+        "handle": 3
+      }
+    },
+    {
+      "chain": {
+        "family": "inet",
+        "table": "exitlane_container_guard",
+        "name": "forward",
+        "handle": 1,
+        "type": "filter",
+        "hook": "forward",
+        "prio": -200,
+        "policy": "accept"
+      }
+    },
+    {
+      "chain": {
+        "family": "inet",
+        "table": "exitlane_container_guard",
+        "name": "input",
+        "handle": 2,
+        "type": "filter",
+        "hook": "input",
+        "prio": -200,
+        "policy": "accept"
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "exitlane_container_guard",
+        "chain": "forward",
+        "handle": 3,
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "meta": {
+                  "key": "iifname"
+                }
+              },
+              "right": "wg-office"
+            }
+          },
+          {
+            "drop": null
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "exitlane_container_guard",
+        "chain": "forward",
+        "handle": 4,
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "ip",
+                  "field": "saddr"
+                }
+              },
+              "right": {
+                "prefix": {
+                  "addr": "10.77.0.0",
+                  "len": 24
+                }
+              }
+            }
+          },
+          {
+            "drop": null
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "exitlane_container_guard",
+        "chain": "input",
+        "handle": 5,
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "meta": {
+                  "key": "iifname"
+                }
+              },
+              "right": "wg-office"
+            }
+          },
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "udp",
+                  "field": "dport"
+                }
+              },
+              "right": 53
+            }
+          },
+          {
+            "drop": null
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "exitlane_container_guard",
+        "chain": "input",
+        "handle": 6,
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "meta": {
+                  "key": "iifname"
+                }
+              },
+              "right": "wg-office"
+            }
+          },
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "tcp",
+                  "field": "dport"
+                }
+              },
+              "right": 53
+            }
+          },
+          {
+            "drop": null
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "exitlane_container_guard",
+        "chain": "input",
+        "handle": 7,
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "ip",
+                  "field": "saddr"
+                }
+              },
+              "right": {
+                "prefix": {
+                  "addr": "10.77.0.0",
+                  "len": 24
+                }
+              }
+            }
+          },
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "udp",
+                  "field": "dport"
+                }
+              },
+              "right": 53
+            }
+          },
+          {
+            "drop": null
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "exitlane_container_guard",
+        "chain": "input",
+        "handle": 8,
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "ip",
+                  "field": "saddr"
+                }
+              },
+              "right": {
+                "prefix": {
+                  "addr": "10.77.0.0",
+                  "len": 24
+                }
+              }
+            }
+          },
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "tcp",
+                  "field": "dport"
+                }
+              },
+              "right": 53
+            }
+          },
+          {
+            "drop": null
+          }
+        ]
+      }
+    }
+  ]
+}
+'''
+
+
+def kernel_guard_network():
+    return ContainerWireGuardLifecycle(
+        IngressConfig("wg-office", "10.77.0.1/24", KEY, KEY, "10.77.0.2/32", 51821)
+    )
+
+
+def kernel_guard_receipt():
+    # The captured INPUT canonical form plus the new mandatory OUTPUT chain.
+    data = json.loads(KERNEL_BLOCK_GUARD)
+    data["nftables"].append({"chain": {"family": "inet", "table": TABLE, "name": "output", "type": "filter", "hook": "output", "prio": 0, "policy": "accept"}})
+    return data
+
+
+def test_actual_nft_113_block_guard_readback():
+    network = kernel_guard_network()
+    with pytest.raises(ContainerLifecycleError, match="guard_unproven"):
+        network.validate_nft_guard(json.loads(KERNEL_BLOCK_GUARD))
+    network.validate_nft_guard(kernel_guard_receipt())
+    payload = network.guard_payload(None)
+    assert "meta l4proto" not in payload
+    assert 'iifname "wg-office" udp dport 53 drop' in payload
+    assert "ip saddr 10.77.0.0/24 tcp dport 53 drop" in payload
+
+
+@pytest.mark.parametrize("tamper", ["protocol", "port", "missing_port", "accept", "extra_rule", "selector", "order"])
+def test_kernel_dns_guard_semantic_changes_refused(tamper):
+    data = kernel_guard_receipt()
+    rules = [item["rule"] for item in data["nftables"] if "rule" in item and item["rule"]["chain"] == "input"]
+    expr = rules[0]["expr"]
+    if tamper == "protocol":
+        expr[1]["match"]["left"]["payload"]["protocol"] = "tcp"
+    elif tamper == "port":
+        expr[1]["match"]["right"] = 54
+    elif tamper == "missing_port":
+        expr.pop(1)
+    elif tamper == "accept":
+        expr[-1] = {"accept": None}
+    elif tamper == "extra_rule":
+        data["nftables"].append({"rule": rules[0]})
+    elif tamper == "selector":
+        expr[0]["match"]["right"] = "eth0"
+    else:
+        expr.reverse()
+    with pytest.raises(ContainerLifecycleError, match="^container_guard_unproven$"):
+        kernel_guard_network().validate_nft_guard(data)
+
+
+def historical_source_receipt(*, permit=True):
+    data = kernel_guard_receipt()
+    selector = {"match": {"op": "==", "left": {"payload": {"protocol": "ip", "field": "saddr"}}, "right": "10.64.0.2"}}
+    expressions = []
+    if permit:
+        expressions.append([selector, {"match": {"op": "==", "left": {"meta": {"key": "oifname"}}, "right": "wg-mullvad"}}, {"accept": None}])
+    expressions.append([selector, {"drop": None}])
+    for expr in expressions:
+        data["nftables"].append({"rule": {"family": "inet", "table": TABLE, "chain": "output", "expr": expr}})
+    return data
+
+
+def test_exact_historical_sources_recovered_then_blocked():
+    network = kernel_guard_network()
+    receipt = historical_source_receipt()
+    network.validate_previous_policy(receipt)
+    assert network.source_addresses == ("10.64.0.2",)
+    assert network.probe_interface is None
+    payload = network.guard_payload(None)
+    assert "ip saddr 10.64.0.2 drop" in payload
+    assert "oifname" not in payload
+    network.validate_nft_guard(historical_source_receipt(permit=False))
+
+
+@pytest.mark.parametrize("tamper", ["eth0", "lo", "port", "wildcard", "prefix", "multicast", "loopback", "verdict", "priority", "missing_drop", "extra_rule"])
+def test_historical_output_inventory_cannot_adopt_weakened_guard(tamper):
+    data = historical_source_receipt()
+    output = [o["rule"] for o in data["nftables"] if "rule" in o and o["rule"]["chain"] == "output"]
+    if tamper in ("eth0", "lo"):
+        output[0]["expr"][1]["match"]["right"] = tamper
+    elif tamper == "port":
+        output[-1]["expr"].insert(1, {"match": {"op": "==", "left": {"payload": {"protocol": "udp", "field": "dport"}}, "right": 53}})
+    elif tamper in ("wildcard", "prefix", "multicast", "loopback"):
+        replacement = {"wildcard": "10.*", "prefix": {"prefix": {"addr": "10.64.0.0", "len": 24}}, "multicast": "224.0.0.1", "loopback": "127.0.0.1"}[tamper]
+        for rule in output:
+            rule["expr"][0]["match"]["right"] = replacement
+    elif tamper == "verdict":
+        output[-1]["expr"][-1] = {"accept": None}
+    elif tamper == "priority":
+        next(o["chain"] for o in data["nftables"] if "chain" in o and o["chain"]["name"] == "output")["prio"] = -200
+    elif tamper == "missing_drop":
+        data["nftables"] = [o for o in data["nftables"] if o.get("rule") is not output[-1]]
+    else:
+        data["nftables"].append({"rule": output[-1]})
+    with pytest.raises(ContainerLifecycleError, match="^container_guard_resource_conflict$"):
+        kernel_guard_network().validate_previous_policy(data)
+
+
+def test_source_inventory_overflow_never_evicts_protection():
+    from types import SimpleNamespace
+    ns = Namespace()
+    asyncio.run(ns.network.activate())
+    ns.network.source_addresses = tuple(f"10.99.0.{i}" for i in range(1, 65))
+    before = tuple(ns.network.source_addresses)
+    commands = len(ns.commands)
+    with pytest.raises(ContainerLifecycleError, match="source_budget_exhausted"):
+        asyncio.run(ns.network.register_source(SimpleNamespace(address="10.99.1.1/32", interface="wg-pia")))
+    assert ns.network.source_addresses == before
+    assert len(ns.commands) == commands
+
+
+def test_startup_retains_previous_namespace_source_guard_inventory():
+    ns = Namespace()
+    ns.network = kernel_guard_network()
+    ns.network.runner = ns.run
+    ns.network.provider_guard = FakeGuard(ns.commands)
+    ns.guard_exists = True
+    receipt = historical_source_receipt()
+    original = ns.run
+    replaced = False
+
+    async def kernel_snapshot(*args, **kwargs):
+        nonlocal replaced
+        if args[:3] == ("nft", "-j", "list") and args[-1] == TABLE and not replaced:
+            return 0, json.dumps(receipt), ""
+        if args[:3] == ("nft", "-f", "/dev/stdin"):
+            replaced = True
+        return await original(*args, **kwargs)
+
+    ns.network.runner = kernel_snapshot
+    asyncio.run(ns.network.arm_guard())
+    assert replaced
+    assert ns.network.source_addresses == ("10.64.0.2",)
+    assert ns.network.probe_interface is None
+    assert "ip saddr 10.64.0.2 drop" in ns.inputs[-1][1]
+    assert "oifname" not in ns.inputs[-1][1]
