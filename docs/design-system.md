@@ -4,8 +4,8 @@ ExitLane is classified as a `technical` Tuned.pixel product. The selected theme 
 `cobalt-slate` (Cobalt / Slate) because its catalogued use cases are `operations` and
 `professional-ui`: the closest match for a self-hosted network appliance with status-heavy
 administration views. The Cobalt / Slate semantic colors remain the functional application theme.
-The approved ExitLane product accent is reserved for a separate visual review; this namespace
-migration does not introduce it into the interface.
+The approved ExitLane product accent is confined to the shell's logo boundary; it does not replace
+semantic action, link, focus or status colors.
 
 The source is the current Tuned.pixel Design Foundation `cobalt-slate` theme at
 `kevindraai/tunedpixel/tunedpixel-design-foundation/tokens/tokens.css`. The original adoption used
@@ -30,9 +30,9 @@ resolve from the selected Tuned.pixel roles declared as `--tp-*` properties at t
 | keyboard focus | `focus-ring` |
 | operation outcomes | `success`, `warning`, `danger`, `info` |
 
-Component-specific translucent fills, shadows, code surfaces, progress tracks and toast surfaces
-remain local derived tokens. They do not form a second theme or introduce component-level seed
-colors. Light and dark values are declared independently.
+Component surfaces, code surfaces, progress tracks and toast surfaces remain local derived tokens.
+They do not form a second theme or introduce component-level seed colors. Light and dark values are
+declared independently.
 
 ExitLane places much of its normal text on `surface-elevated`, while the foundation's base
 `text-muted` audit covers `background` and `surface`. In dark mode the application therefore uses
@@ -65,7 +65,21 @@ general interface color token.
 
 ## Typography
 
-The interface uses the Tuned.pixel production-safe interface sans stack: Inter when locally
-available, followed by system UI, Segoe UI and platform fallbacks. Monospace remains limited to
-configuration, recovery codes, commands, logs and other technical identifiers. No candidate font
-or remote font dependency is introduced.
+The interface bundles the approved Inter Variable WOFF2 asset from `kevindraai/tunedpixel-site`,
+with its SIL Open Font License notice in `backend/exitlane/static/fonts/Inter-LICENSE.txt`.
+`font-display: swap` and the system UI stack preserve readable text while the local font loads.
+There is no remote font dependency. Monospace remains limited to configuration, recovery codes,
+commands, logs and other technical identifiers.
+
+## Visual review for issue #76
+
+The status-heavy appliance keeps its existing information hierarchy and provider controls. Panels,
+navigation and common form controls now have straighter corners, opaque surfaces and less decorative
+shadow. The page glow and panel gradient were removed. Status pills, circular step markers and the
+QR code's black-on-white rendering retain their functional shapes and colors. The product accent
+`#4CB4E8` appears only as a logo border; Cobalt still governs actions and accessible light-mode
+text/focus. The existing semantic success, warning, danger and info colors remain unchanged.
+
+Browser review must cover desktop and narrow layouts in light and dark mode, with login, wizard,
+provider, dashboard, diagnostics, WireGuard, settings, activity and Help states checked on the
+test appliance before merge. Automated frontend contrast and i18n checks remain release gates.

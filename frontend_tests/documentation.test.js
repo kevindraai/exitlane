@@ -106,3 +106,18 @@ test("dark elevated panels retain normal-text contrast for muted copy and links"
   assert.match(dark, /--muted: var\(--tp-text-muted-elevated\)/);
   assert.match(dark, /--accent-text: var\(--tp-info\)/);
 });
+
+test("local Inter font and product accent preserve the accessible semantic theme", async () => {
+  const [styles, font, license] = await Promise.all([
+    read("../backend/exitlane/static/style.css"),
+    readFile(new URL("../backend/exitlane/static/fonts/InterVariable.woff2", import.meta.url)),
+    read("../backend/exitlane/static/fonts/Inter-LICENSE.txt"),
+  ]);
+  assert.equal(font.subarray(0, 4).toString("ascii"), "wOF2");
+  assert.match(license, /SIL OPEN FONT LICENSE Version 1\.1/);
+  assert.match(styles, /url\("\.\/fonts\/InterVariable\.woff2"\)/);
+  assert.doesNotMatch(styles, /fonts\.googleapis|fonts\.gstatic/);
+  assert.match(styles, /--product-accent: #4cb4e8/);
+  assert.doesNotMatch(styles, /color:\s*var\(--product-accent\)/);
+  assert.match(styles, /--focus-ring: var\(--tp-focus-ring\)/);
+});

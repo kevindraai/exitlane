@@ -1,5 +1,12 @@
 # Third-party notices
 
+## Inter Variable font
+
+ExitLane includes the approved `InterVariable.woff2` asset from the Tuned.pixel site repository,
+originally by The Inter Project Authors (copyright 2016). The font is locally hosted under
+`backend/exitlane/static/fonts/` and has no runtime CDN dependency. Its complete SIL Open Font
+License 1.1 notice is included as `backend/exitlane/static/fonts/Inter-LICENSE.txt`.
+
 ## Self-Hosted Dashboard Icons — NordVPN and Mullvad VPN logos
 
 ExitLane includes the NordVPN and Mullvad VPN SVG artwork, without visual modifications, from the

@@ -26,4 +26,5 @@ test("PIA authentication has its own username and password form in both flows", 
   assert.match(wizardSource, /password\.value = "";/);
   assert.match(managementSource, /username\.value = "";/);
   assert.match(managementSource, /password\.value = "";/);
+  assert.match(managementSource, /t\("provider\.description\.not_installed", \{ provider: name \}/);
 });
