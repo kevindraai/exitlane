@@ -1,20 +1,26 @@
 # ExitLane design-system adoption
 
-ExitLane is classified as a `technical` N/L Foundry product. The selected theme is
+ExitLane is classified as a `technical` Tuned.pixel product. The selected theme is
 `cobalt-slate` (Cobalt / Slate) because its catalogued use cases are `operations` and
 `professional-ui`: the closest match for a self-hosted network appliance with status-heavy
-administration views. It also preserves ExitLane's established blue identity without turning the
-beta.4 polish release into a redesign.
+administration views. The Cobalt / Slate semantic colors remain the functional application theme.
+The approved ExitLane product accent is reserved for a separate visual review; this namespace
+migration does not introduce it into the interface.
 
-The source is N/L Foundry Design Foundation catalog version `1.0.0`, generated 2026-08-23, at
-Foundry commit `e92d5421e34de4166f4cf7d633f971883e00deab`.
+The source is the current Tuned.pixel Design Foundation `cobalt-slate` theme at
+`kevindraai/tunedpixel/tunedpixel-design-foundation/tokens/tokens.css`. The original adoption used
+catalog version `1.0.0`, generated 2026-08-23, at source commit
+`e92d5421e34de4166f4cf7d633f971883e00deab`. The current canonical theme uses the `--tp-*`
+namespace with the same light and dark semantic values used by ExitLane. The Tuned.pixel site brand
+guide and tokens define the approved ExitLane product accent `#4CB4E8`; that accent is not a
+replacement for functional status colors or accessible Cobalt text and focus colors.
 
 ## Semantic mapping
 
 Application components continue to use ExitLane's concise semantic aliases. Those aliases now
-resolve from the selected N/L Foundry roles declared as `--nlf-*` properties at the document root.
+resolve from the selected Tuned.pixel roles declared as `--tp-*` properties at the document root.
 
-| ExitLane concept | N/L Foundry role |
+| ExitLane concept | Tuned.pixel role |
 | --- | --- |
 | page background | `background` |
 | panels and cards | `surface`, `surface-elevated` |
@@ -59,7 +65,7 @@ general interface color token.
 
 ## Typography
 
-The interface uses the N/L Foundry production-safe interface sans stack: Inter when locally
+The interface uses the Tuned.pixel production-safe interface sans stack: Inter when locally
 available, followed by system UI, Segoe UI and platform fallbacks. Monospace remains limited to
 configuration, recovery codes, commands, logs and other technical identifiers. No candidate font
 or remote font dependency is introduced.

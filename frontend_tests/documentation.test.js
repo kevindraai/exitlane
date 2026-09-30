@@ -70,13 +70,15 @@ test("Cobalt Slate semantics replace self-referential dark-mode component tokens
     read("../backend/exitlane/static/index.html"),
     read("../backend/exitlane/static/style.css"),
   ]);
-  assert.match(index, /data-nlf-theme="cobalt-slate"/);
-  assert.match(styles, /--nlf-background: #1a1a1d/);
-  assert.match(styles, /--nlf-primary: #657fad/);
+  assert.match(index, /data-tp-theme="cobalt-slate"/);
+  assert.match(styles, /--tp-background: #1a1a1d/);
+  assert.match(styles, /--tp-primary: #657fad/);
+  assert.doesNotMatch(index, /data-nlf-theme/);
+  assert.doesNotMatch(styles, /--nlf-/);
   assert.doesNotMatch(styles, /--(code-background|track-background|toast-background): var\(--\1\)/);
   assert.match(styles, /--code-background: #101114/);
-  assert.match(styles, /--track-background: var\(--nlf-surface-elevated\)/);
-  assert.match(styles, /--toast-background: var\(--nlf-surface-elevated\)/);
+  assert.match(styles, /--track-background: var\(--tp-surface-elevated\)/);
+  assert.match(styles, /--toast-background: var\(--tp-surface-elevated\)/);
 });
 
 test("dark elevated panels retain normal-text contrast for muted copy and links", async () => {
@@ -98,9 +100,9 @@ test("dark elevated panels retain normal-text contrast for muted copy and links"
     const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
     return (values[0] + 0.05) / (values[1] + 0.05);
   };
-  const elevated = value("nlf-surface-elevated");
-  assert.ok(contrast(value("nlf-text-muted-elevated"), elevated) >= 4.5);
-  assert.ok(contrast(value("nlf-info"), elevated) >= 4.5);
-  assert.match(dark, /--muted: var\(--nlf-text-muted-elevated\)/);
-  assert.match(dark, /--accent-text: var\(--nlf-info\)/);
+  const elevated = value("tp-surface-elevated");
+  assert.ok(contrast(value("tp-text-muted-elevated"), elevated) >= 4.5);
+  assert.ok(contrast(value("tp-info"), elevated) >= 4.5);
+  assert.match(dark, /--muted: var\(--tp-text-muted-elevated\)/);
+  assert.match(dark, /--accent-text: var\(--tp-info\)/);
 });
