@@ -465,8 +465,10 @@ Documentation-only planning uses ordinary required CI and no artificial runtime 
 | D6 Disposable-host qualification | D5; executable harness and complete matrix above, exact supported host/runtime inventory | Independent packet/security review, no-fallback proof through daemon/host restarts; integration/release gate, not every docs PR |
 | D7 GHCR/release integration | D6 PASS and reviewed support decision; release workflow, digest/metadata/provenance/SBOM and operator upgrade guide | Versioned release build/pull verification, schema compatibility receipts and current security gates; first production publication separately authorized |
 
-D1 is engineering-ready after architecture approval, but this work order authorizes the program
-and issues, not full Docker implementation. D2–D7 remain dependency-blocked until predecessor
+The subsequent deployment-wave work order authorizes sequential D1–D7 implementation.
+D1 establishes a native-only composition root (`exitlane.runtime`); unsupported runtime names
+fail before state initialization. Native paths preserve existing independent historical defaults
+and explicit environment overrides; this extraction does not migrate appliance state. D2–D7 remain dependency-blocked until predecessor
 acceptance evidence exists. If D2/D3 privilege or packet gates fail, stop before product packaging;
 D5 cannot turn a failed dataplane into a supported appliance. A future NordVPN design is a separate
 [research issue #98](https://github.com/kevindraai/exitlane/issues/98) outside D1–D7.

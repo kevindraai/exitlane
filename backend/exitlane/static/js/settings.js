@@ -1,3 +1,4 @@
+import { applyRuntimeCapabilities, runtimeAllows, runtimeAllowsAction } from "./runtime.js";
 import { api } from "./api.js";
 import {
   getCurrentLanguage,
@@ -49,7 +50,7 @@ const SYSTEM_ACTIONS = Object.freeze({
 });
 
 export function openSystemActionDialog(action) {
-  if (!SYSTEM_ACTIONS[action] || systemActionSubmitted) return false;
+  if (!runtimeAllowsAction(action) || !SYSTEM_ACTIONS[action] || systemActionSubmitted) return false;
   pendingSystemAction = action;
   const dialog = select("#system-action-confirm");
   const submit = select("#system-action-submit");
@@ -295,7 +296,7 @@ async function loadAuthenticationSecurity() {
 
 function generalFormValue() {
   return {
-    timezone: select("#settings-timezone").value,
+    ...(runtimeAllows("timezone_configuration") ? { timezone: select("#settings-timezone").value } : {}),
     provider_refresh_interval_seconds: Number(
       select("#settings-polling-interval").value,
     ),
@@ -342,6 +343,7 @@ export function renderAbout(about) {
 }
 
 export function renderSettings(data) {
+  applyRuntimeCapabilities(data.runtime_capabilities);
   savedSettings = JSON.parse(JSON.stringify(data));
   savedGeneral = { ...data.general };
   fillTimezones(data.timezones, data.general.timezone);

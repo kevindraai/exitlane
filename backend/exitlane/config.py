@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import ipaddress
 import os
-from pathlib import Path
 from urllib.parse import urlsplit
+
+from exitlane.runtime import RuntimePaths, validate_runtime_selection
+
+validate_runtime_selection()
 
 
 def environment_int(name: str, default: int) -> int:
@@ -37,9 +40,9 @@ APP_NAME = "Exitlane"
 WEB_HOST = os.getenv("EXITLANE_HOST", "0.0.0.0")  # nosec B104
 WEB_PORT = environment_int("EXITLANE_PORT", 8787)
 
-CONFIG_DIR = Path(os.getenv("EXITLANE_CONFIG_DIR", "/etc/exitlane"))
-DATA_DIR = Path(os.getenv("EXITLANE_DATA_DIR", "/var/lib/exitlane"))
-LOG_DIR = Path(os.getenv("EXITLANE_LOG_DIR", "/var/log/exitlane"))
+CONFIG_DIR = RuntimePaths.native().config
+DATA_DIR = RuntimePaths.native().service_data
+LOG_DIR = RuntimePaths.native().logs
 
 MIN_PASSWORD_LENGTH = environment_int(
     "EXITLANE_MIN_PASSWORD_LENGTH",

@@ -74,6 +74,7 @@ from exitlane.providers.nordvpn import provider
 from exitlane.providers.proton import provider as proton_provider
 from exitlane.providers.registry import ProviderNotFound
 from exitlane.proxy import deployment_status, normalized_origin, request_security, trusted_origin
+from exitlane.runtime import SYSTEM_ACTION_COMMANDS, RuntimeCapabilityUnavailable, runtime
 from exitlane.services import (
     auth_security,
     connection_diagnostics,
@@ -108,7 +109,7 @@ from exitlane.settings import (
     update_settings,
 )
 
-SYSTEM_WIREGUARD_DIR = Path("/etc/wireguard")
+SYSTEM_WIREGUARD_DIR = runtime.paths.system_wireguard
 _system_started_databases: set[Path] = set()
 _wireguard_observed_state: tuple[bool, bool] | None = None
 _pending_provider_connection: dict | None = None
@@ -131,11 +132,7 @@ SECURITY_REJECTION_LOG_ATTEMPTS = 5
 SECURITY_REJECTION_LOG_WINDOW_SECONDS = 60
 NETWORK_REAUTH_ATTEMPTS = 5
 NETWORK_REAUTH_WINDOW_SECONDS = 300
-SYSTEM_ACTION_COMMANDS = {
-    "restart": ("/usr/bin/systemctl", "restart", "exitlane.service"),
-    "reboot": ("/usr/bin/systemctl", "reboot"),
-    "shutdown": ("/usr/bin/systemctl", "poweroff"),
-}
+
 MAX_REQUEST_BODY_MESSAGES = 4096
 
 
@@ -744,7 +741,7 @@ async def dashboard() -> DashboardResponse:
         active_provider.status,
         wireguard_status,
         __version__,
-        system_status_call=lambda: system_status(DATA),
+        system_status_call=lambda: runtime.system_status(DATA, observer=system_status),
         killswitch_status_call=_current_killswitch_status,
         active_provider_id=active_provider.id,
         active_provider_display_name=active_provider.display_name,
@@ -1193,6 +1190,7 @@ async def enable_killswitch(request: Request) -> dict:
 
 @app.post("/api/vpn/killswitch/disable")
 async def disable_killswitch(request: Request) -> dict:
+    runtime.capabilities.require("direct_egress")
     if setting(killswitch.SETTING_TRANSITION, False):
         raise HTTPException(status_code=409, detail="vpn_action_in_progress")
     try:
@@ -1318,6 +1316,18 @@ async def update_deployment_security(req: NetworkSecurityUpdate, request: Reques
     }
 
 
+@app.exception_handler(RuntimeCapabilityUnavailable)
+async def runtime_capability_error(request: Request, error: RuntimeCapabilityUnavailable):
+    return JSONResponse(
+        status_code=409, content={"detail": {"code": error.code, "capability": error.capability}}
+    )
+
+
+@app.get("/api/runtime/capabilities")
+async def runtime_capabilities() -> dict:
+    return runtime.capabilities.projection()
+
+
 @app.get("/api/setup/state")
 async def setup_state() -> dict:
     with sqlite3.connect(DB) as connection:
@@ -1404,6 +1414,7 @@ async def setup_state() -> dict:
         set_setting("setup_current_step", current_step)
 
     return {
+        "runtime_capabilities": runtime.capabilities.projection(),
         "complete": bool(setting("setup_complete", False)),
         "current_step": current_step,
         "steps": steps,
@@ -1652,7 +1663,7 @@ async def system_network() -> dict:
 
 @app.get("/api/diagnostics")
 async def diagnostic_checks() -> dict:
-    checks = await diagnostics()
+    checks = await runtime.diagnostics(observer=diagnostics)
     all_passed = all(check["ok"] for check in checks)
 
     if all_passed:
@@ -1670,6 +1681,7 @@ async def diagnostic_checks() -> dict:
 
 @app.post("/api/diagnostics/connection-runs", status_code=202)
 async def start_connection_diagnostics() -> dict:
+    runtime.capabilities.require("diagnostics")
     return connection_diagnostics.start(_fresh_vpn_status)
 
 
@@ -1683,6 +1695,9 @@ async def connection_diagnostic_run(run_id: uuid.UUID) -> dict:
 
 @app.post("/api/diagnostics/actions/{action}")
 async def run_diagnostic_action(action: str, request: DiagnosticAction) -> dict:
+    runtime.capabilities.require("diagnostics")
+    if action == "speedtest":
+        runtime.capabilities.require("speedtest")
     try:
         return await connection_diagnostics.action(
             action,
@@ -1700,6 +1715,7 @@ async def run_diagnostic_action(action: str, request: DiagnosticAction) -> dict:
 
 @app.get("/api/diagnostics/speedtest/installation")
 async def speedtest_installation_status() -> dict:
+    runtime.capabilities.require("speedtest")
     return await speedtest_installation.status()
 
 
@@ -1719,16 +1735,20 @@ async def install_speedtest(
             status_code=422,
             detail="speedtest_installation_confirmation_required",
         )
+    runtime.capabilities.require("package_installation")
+    runtime.capabilities.require("speedtest")
     return await speedtest_installation.start_installation()
 
 
 @app.post("/api/providers/nordvpn/login/token")
 async def login_token(req: Token, request: Request) -> dict:
+    runtime.capabilities.require_provider("nordvpn")
     return await _authenticate_provider(provider, req.token, request, legacy_token=True)
 
 
 @app.post("/api/providers/nordvpn/token")
 async def update_nordvpn_token(req: Token, request: Request) -> dict:
+    runtime.capabilities.require_provider("nordvpn")
     return await _authenticate_provider(provider, req.token, request, legacy_token=True)
 
 
@@ -1844,6 +1864,7 @@ def _active_provider_id() -> str:
         provider_registry.get(provider_id)
     except (ProviderNotFound, TypeError):
         return provider_registry.default_id
+    runtime.capabilities.require_provider(provider_id)
     return provider_id
 
 
@@ -2028,6 +2049,7 @@ def _provider_local_activation_state(
 
 @app.post("/api/providers/nordvpn/session/end")
 async def end_nordvpn_session(request: Request) -> dict:
+    runtime.capabilities.require_provider("nordvpn")
     return await _end_provider_session(provider, request)
 
 
@@ -2098,6 +2120,7 @@ async def _end_provider_session(provider_instance, request: Request) -> dict:
 
 @app.post("/api/providers/nordvpn/login/callback")
 async def login_callback(req: Callback) -> dict:
+    runtime.capabilities.require_provider("nordvpn")
     result = await provider.login_callback(req.callback_url)
 
     if result.get("ok"):
@@ -2108,6 +2131,7 @@ async def login_callback(req: Callback) -> dict:
 
 @app.post("/api/providers/nordvpn/configure-defaults")
 async def configure_nordvpn_defaults() -> dict:
+    runtime.capabilities.require_provider("nordvpn")
     results = await provider.defaults()
 
     return {
@@ -2118,6 +2142,7 @@ async def configure_nordvpn_defaults() -> dict:
 
 @app.get("/api/providers/nordvpn/status")
 async def nordvpn_status() -> dict:
+    runtime.capabilities.require_provider("nordvpn")
     global _pending_provider_connection
     status = await _fresh_status_for(provider)
     if _pending_provider_connection and status.get("connected"):
@@ -2139,6 +2164,7 @@ async def nordvpn_status() -> dict:
 
 @app.get("/api/providers/nordvpn/countries")
 async def nordvpn_countries() -> dict:
+    runtime.capabilities.require_provider("nordvpn")
     return {
         "countries": await provider.countries(),
     }
@@ -2260,6 +2286,7 @@ async def vpn_provider_installation_status(provider_id: str, request: Request) -
 @app.post("/api/vpn/providers/{provider_id}/installation", status_code=202)
 async def install_vpn_provider(provider_id: str, request: Request) -> dict:
     provider_instance = _provider_or_404(provider_id)
+    runtime.capabilities.require("package_installation")
     async with _provider_installation_lock:
         for registered_provider in provider_registry.all():
             status = await registered_provider.installation_status()
@@ -2323,11 +2350,13 @@ async def sign_out_vpn_provider(provider_id: str, request: Request) -> dict:
 
 @app.get("/api/vpn/providers/proton/profiles")
 async def proton_profiles() -> dict:
+    runtime.capabilities.require_provider("proton")
     return {"profiles": await proton_provider.list_profiles()}
 
 
 @app.post("/api/vpn/providers/proton/profiles")
 async def import_proton_profile(payload: ProtonProfileImport, request: Request) -> dict:
+    runtime.capabilities.require_provider("proton")
     if vpn_operations.active_snapshot():
         raise HTTPException(status_code=409, detail="vpn_action_in_progress")
     result = await proton_provider.import_profile(
@@ -2348,6 +2377,7 @@ async def import_proton_profile(payload: ProtonProfileImport, request: Request) 
 async def rename_proton_profile(
     profile_id: str, payload: ProtonProfileRename, request: Request
 ) -> dict:
+    runtime.capabilities.require_provider("proton")
     result = await proton_provider.rename_profile(profile_id, payload.display_name)
     if not result.get("ok"):
         raise HTTPException(status_code=422, detail=result["error_code"])
@@ -2359,6 +2389,7 @@ async def rename_proton_profile(
 
 @app.delete("/api/vpn/providers/proton/profiles/{profile_id}")
 async def delete_proton_profile(profile_id: str, request: Request) -> dict:
+    runtime.capabilities.require_provider("proton")
     if vpn_operations.active_snapshot():
         raise HTTPException(status_code=409, detail="vpn_action_in_progress")
     result = await proton_provider.delete_profile(profile_id)
@@ -2473,15 +2504,8 @@ async def _fresh_vpn_status(provider_instance=None) -> dict:
 
 
 async def _run_system_action(action: str, actor: dict | None) -> None:
-    command_argv = SYSTEM_ACTION_COMMANDS[action]
     try:
-        await asyncio.create_subprocess_exec(
-            *command_argv,
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-            start_new_session=True,
-        )
+        await runtime.launch_system_action(action, launcher=asyncio.create_subprocess_exec)
         record_event("system.action_started", actor=actor, metadata={"action": action})
     except OSError:
         logger.exception("Accepted system action failed to start: %s", action)
@@ -2501,6 +2525,7 @@ def schedule_system_action(action: str, actor: dict | None) -> None:
 async def system_action(action: str, request: Request) -> dict:
     if action not in SYSTEM_ACTION_COMMANDS:
         raise HTTPException(status_code=404, detail="system_action_unsupported")
+    runtime.capabilities.require_action(action)
     actor = request_actor(request)
     record_event("system.action_accepted", actor=actor, metadata={"action": action})
     schedule_system_action(action, actor)
@@ -2964,6 +2989,7 @@ async def _disconnect_provider(provider_instance, request: Request) -> dict:
 
 @app.post("/api/providers/nordvpn/connect")
 async def connect_nordvpn(req: Connect, request: Request) -> dict:
+    runtime.capabilities.require_provider("nordvpn")
     _require_active_provider(provider.id)
     return await _connect_provider(provider, req, request)
 
@@ -3100,6 +3126,7 @@ async def _connect_provider(
 
 @app.post("/api/providers/nordvpn/disconnect")
 async def disconnect_nordvpn(request: Request) -> dict:
+    runtime.capabilities.require_provider("nordvpn")
     _require_active_provider(provider.id)
     return await _disconnect_provider(provider, request)
 
@@ -3784,83 +3811,14 @@ async def vpn_provider_latency(provider_id: str) -> dict:
 
 @app.post("/api/providers/nordvpn/login/browser/start")
 async def start_browser_login() -> dict:
+    runtime.capabilities.require_provider("nordvpn")
     return await provider.start_browser_login()
 
 
 async def activate_wireguard_interface(interface: str) -> None:
-    source_config = WG_DIR / f"{interface}.conf"
-    system_config = SYSTEM_WIREGUARD_DIR / f"{interface}.conf"
-    service_name = f"wg-quick@{interface}.service"
-
-    if not source_config.exists():
-        raise RuntimeError(f"WireGuard-configuratie ontbreekt: {source_config}")
-
-    SYSTEM_WIREGUARD_DIR.mkdir(
-        parents=True,
-        exist_ok=True,
+    await runtime.activate_ingress(
+        interface, source_directory=WG_DIR, system_directory=SYSTEM_WIREGUARD_DIR, runner=command
     )
-
-    source_config.chmod(0o600)
-
-    if system_config.is_symlink():
-        if system_config.resolve() != source_config.resolve():
-            system_config.unlink()
-            system_config.symlink_to(source_config)
-    elif system_config.exists():
-        raise RuntimeError(f"{system_config} bestaat al en is geen symlink.")
-    else:
-        system_config.symlink_to(source_config)
-
-    enable_rc, _, enable_error = await command(
-        "systemctl",
-        "enable",
-        service_name,
-    )
-
-    if enable_rc != 0:
-        raise RuntimeError(enable_error or "De WireGuard-service kon niet worden ingeschakeld.")
-
-    service_rc, _, _ = await command(
-        "systemctl",
-        "is-active",
-        "--quiet",
-        service_name,
-    )
-
-    if service_rc != 0:
-        link_rc, _, _ = await command(
-            "ip",
-            "link",
-            "show",
-            "dev",
-            interface,
-        )
-
-        if link_rc == 0:
-            await command(
-                "wg-quick",
-                "down",
-                str(source_config),
-            )
-
-    restart_rc, _, restart_error = await command(
-        "systemctl",
-        "restart",
-        service_name,
-    )
-
-    if restart_rc != 0:
-        raise RuntimeError(restart_error or "De WireGuard-service kon niet worden gestart.")
-
-    active_rc, _, active_error = await command(
-        "systemctl",
-        "is-active",
-        "--quiet",
-        service_name,
-    )
-
-    if active_rc != 0:
-        raise RuntimeError(active_error or "De WireGuard-service is niet actief geworden.")
 
 
 async def wireguard_egress_interface() -> None:
@@ -3869,6 +3827,7 @@ async def wireguard_egress_interface() -> None:
 
 @app.post("/api/ingress/wireguard")
 async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
+    runtime.capabilities.require("ingress")
     global _wireguard_observed_state
     generation_lock = wireguard_generation_lock()
     try:
@@ -4038,6 +3997,7 @@ async def wireguard_configuration_qr() -> Response:
 
 @app.post("/api/ingress/wireguard/config/regenerate")
 async def regenerate_wireguard_configuration(request: Request) -> JSONResponse:
+    runtime.capabilities.require("ingress")
     global _wireguard_observed_state
     generation_lock = wireguard_generation_lock()
     if generation_lock.locked():
@@ -4125,16 +4085,7 @@ async def wireguard_status() -> dict:
         DEFAULT_WIREGUARD_CLIENT,
     )
 
-    service_name = f"wg-quick@{interface}.service"
-
-    service_rc, _, _ = await command(
-        "systemctl",
-        "is-active",
-        "--quiet",
-        service_name,
-    )
-
-    service_active = service_rc == 0
+    service_active = await runtime.observe_ingress(interface, runner=command)
 
     rc, out, err = await command(
         "wg",
