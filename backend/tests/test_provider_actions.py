@@ -333,7 +333,7 @@ def test_country_catalog_survives_temporary_provider_dns_failure(monkeypatch):
     "payload",
     [
         b"[" * 10_000 + b"0" + b"]" * 10_000,
-        b"[null, 1, \"provider-controlled\"]",
+        b'[null, 1, "provider-controlled"]',
     ],
 )
 def test_nord_catalog_rejects_malformed_json_shapes(monkeypatch, payload):

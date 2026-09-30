@@ -83,10 +83,7 @@ def _validated_ingress_network(subnet: str) -> ipaddress.IPv4Network:
         network = ipaddress.ip_network(subnet, strict=True)
     except ValueError as error:
         raise ValueError("Het WireGuard-tunnelnetwerk is ongeldig.") from error
-    if (
-        network.version != 4
-        or network.prefixlen > 31
-    ):
+    if network.version != 4 or network.prefixlen > 31:
         raise ValueError("Het WireGuard-tunnelnetwerk moet minimaal twee IPv4-adressen bevatten.")
     return network
 

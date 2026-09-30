@@ -246,7 +246,9 @@ def test_restored_wireguard_rejects_unapproved_hooks(tmp_path: Path, directive: 
 
 
 @pytest.mark.parametrize("egress", [None, "nordlynx"])
-def test_restored_wireguard_accepts_only_canonical_hooks(tmp_path: Path, egress: str | None) -> None:
+def test_restored_wireguard_accepts_only_canonical_hooks(
+    tmp_path: Path, egress: str | None
+) -> None:
     configuration = tmp_path / "wg0.conf"
     configuration.write_text(
         "[Interface]\n"
@@ -632,7 +634,11 @@ def test_reset_cleans_every_registered_direct_interface(
         default_id = "mullvad"
 
         def __init__(self):
-            self.providers = (DirectProvider("mullvad"), DirectProvider("pia"), DirectProvider("proton"))
+            self.providers = (
+                DirectProvider("mullvad"),
+                DirectProvider("pia"),
+                DirectProvider("proton"),
+            )
 
         def get(self, provider_id: str):
             return next(item for item in self.providers if item.id == provider_id)

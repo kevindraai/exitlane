@@ -46,7 +46,11 @@ def _addresses(value: str, *, kind: str) -> tuple[str, ...]:
     parsed = []
     for token in tokens:
         try:
-            address = ipaddress.ip_interface(token) if kind == "interface" else ipaddress.ip_address(token)
+            address = (
+                ipaddress.ip_interface(token)
+                if kind == "interface"
+                else ipaddress.ip_address(token)
+            )
         except ValueError as error:
             raise ProtonProfileError() from error
         if (
@@ -95,9 +99,10 @@ def parse_profile(content: str) -> ProtonProfile:
         raise ProtonProfileError()
     interface = sections["Interface"]
     peer = sections["Peer"]
-    if not {"Address", "PrivateKey", "DNS"} <= interface.keys() or not {
-        "PublicKey", "AllowedIPs", "Endpoint"
-    } <= peer.keys():
+    if (
+        not {"Address", "PrivateKey", "DNS"} <= interface.keys()
+        or not {"PublicKey", "AllowedIPs", "Endpoint"} <= peer.keys()
+    ):
         raise ProtonProfileError()
     addresses = _addresses(interface["Address"], kind="interface")
     v4 = [item for item in addresses if ipaddress.ip_interface(item).version == 4]

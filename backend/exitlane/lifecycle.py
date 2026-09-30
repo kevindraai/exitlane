@@ -52,9 +52,7 @@ SALT_LENGTH = 16
 NONCE_LENGTH = 12
 LOCK_PATH = Path(os.getenv("EXITLANE_LIFECYCLE_LOCK", "/run/lock/exitlane-lifecycle.lock"))
 WIREGUARD_CONFIG_MAX_BYTES = 256 * 1024
-WIREGUARD_HOOK = re.compile(
-    r"^\s*(PreUp|PostUp|PreDown|PostDown)\s*=\s*(.*?)\s*$", re.IGNORECASE
-)
+WIREGUARD_HOOK = re.compile(r"^\s*(PreUp|PostUp|PreDown|PostDown)\s*=\s*(.*?)\s*$", re.IGNORECASE)
 WIREGUARD_INTERFACE = re.compile(r"[A-Za-z0-9-]{1,15}")
 WIREGUARD_EGRESS_INTERFACE = re.compile(r"[A-Za-z0-9_.-]{1,15}")
 
@@ -303,9 +301,7 @@ def _decrypt(source: Path, passphrase: str) -> bytes:
 def _validated_payload(payload: bytes, staging: Path) -> dict[str, object]:
     if len(payload) > MAX_TOTAL_BYTES:
         raise LifecycleError("payload_too_large")
-    compression_limit = (
-        max(len(payload), 1) * MAX_COMPRESSION_RATIO + MAX_TAR_STRUCTURAL_OVERHEAD
-    )
+    compression_limit = max(len(payload), 1) * MAX_COMPRESSION_RATIO + MAX_TAR_STRUCTURAL_OVERHEAD
     expanded_limit = min(MAX_TAR_BYTES, compression_limit)
     expanded = bytearray()
     try:
@@ -500,9 +496,7 @@ def _validated_wireguard_hooks(path: Path) -> None:
         content_bytes = path.read_bytes()
         if len(content_bytes) > WIREGUARD_CONFIG_MAX_BYTES:
             raise LifecycleError("invalid_wireguard_config")
-        if any(
-            byte not in {9, 10} and not 32 <= byte <= 126 for byte in content_bytes
-        ):
+        if any(byte not in {9, 10} and not 32 <= byte <= 126 for byte in content_bytes):
             raise LifecycleError("invalid_wireguard_config")
         content = content_bytes.decode("ascii")
     except (OSError, UnicodeError):

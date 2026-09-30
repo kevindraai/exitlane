@@ -2301,7 +2301,9 @@ async def authenticate_vpn_provider(
     provider_instance = _provider_or_404(provider_id)
     pia_pair = req.username is not None and req.password is not None
     if provider_instance.id == "pia" and pia_pair and req.credential is None and req.token is None:
-        return await _authenticate_provider(provider_instance, (req.username, req.password), request)
+        return await _authenticate_provider(
+            provider_instance, (req.username, req.password), request
+        )
     supplied = [value for value in (req.credential, req.token) if value is not None]
     if (
         len(supplied) != 1
@@ -2343,11 +2345,15 @@ async def import_proton_profile(payload: ProtonProfileImport, request: Request) 
 
 
 @app.patch("/api/vpn/providers/proton/profiles/{profile_id}")
-async def rename_proton_profile(profile_id: str, payload: ProtonProfileRename, request: Request) -> dict:
+async def rename_proton_profile(
+    profile_id: str, payload: ProtonProfileRename, request: Request
+) -> dict:
     result = await proton_provider.rename_profile(profile_id, payload.display_name)
     if not result.get("ok"):
         raise HTTPException(status_code=422, detail=result["error_code"])
-    record_event("provider.profile_renamed", actor=request_actor(request), metadata={"provider": "proton"})
+    record_event(
+        "provider.profile_renamed", actor=request_actor(request), metadata={"provider": "proton"}
+    )
     return result
 
 
@@ -2358,7 +2364,9 @@ async def delete_proton_profile(profile_id: str, request: Request) -> dict:
     result = await proton_provider.delete_profile(profile_id)
     if not result.get("ok"):
         raise HTTPException(status_code=409, detail=result["error_code"])
-    record_event("provider.profile_deleted", actor=request_actor(request), metadata={"provider": "proton"})
+    record_event(
+        "provider.profile_deleted", actor=request_actor(request), metadata={"provider": "proton"}
+    )
     return result
 
 
@@ -3868,7 +3876,9 @@ async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
             return JSONResponse(
                 status_code=409, content={"error": "wireguard_generation_in_progress"}
             )
-        if any(item._operation_lock.locked() for item in provider_registry.direct_egress_providers()):
+        if any(
+            item._operation_lock.locked() for item in provider_registry.direct_egress_providers()
+        ):
             return JSONResponse(status_code=409, content={"error": "vpn_action_in_progress"})
         # Keep provider connection attempts out until the ingress name is saved;
         # their fail-closed rules are derived from that persisted name.
@@ -3882,7 +3892,10 @@ async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
                         content={"error": "wireguard_interface_change_unsupported"},
                     )
                 if any(
-                    any(key in (provider_secrets.load(item.id) or {}) for key in ("active", "pending"))
+                    any(
+                        key in (provider_secrets.load(item.id) or {})
+                        for key in ("active", "pending")
+                    )
                     for item in provider_registry.direct_egress_providers()
                 ):
                     return JSONResponse(
