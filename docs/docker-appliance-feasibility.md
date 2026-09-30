@@ -5,6 +5,13 @@
 - Decision: **Not yet suitable as an ExitLane VPN appliance**
 - Current image status: UI/API development only
 
+The subsequent [Docker runtime architecture and implementation program](docker-runtime-architecture.md)
+supersedes the open-ended design next steps with source-derived adapters, a state contract, network
+and recovery ordering, an exact packet harness and sequential D1–D7 delivery gates. Its decision is
+**feasible subject to implementation and qualification**; Docker remains **not yet suitable** today.
+This assessment preserves the historical development-image evidence below. No production image
+or supported runtime is introduced by the planning work.
+
 The current image builds and serves the management API. That proves the control-plane process
 can start in a container; it does **not** prove routed client traffic, fail-closed protection,
 recovery, or appliance lifecycle. No production Docker deployment is shipped by this assessment.
