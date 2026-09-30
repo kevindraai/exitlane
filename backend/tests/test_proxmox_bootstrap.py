@@ -16,6 +16,7 @@ SCRIPT = Path(__file__).resolve().parents[2] / "installer/proxmox.sh"
 TAG = "v0.3.0-rc.3"
 ENGINE = """import json, os, sys
 open(os.environ['ARGS_LOG'], 'w').write(json.dumps(sys.argv[1:]))
+print('Engine umask: ' + oct(os.umask(0o022)), flush=True)
 print('Canonical plan: ' + repr(sys.argv[1:]), flush=True)
 answer = input('Create? [y/N]: ')
 if answer == 'y':
@@ -131,6 +132,7 @@ def test_default_plan_exact_tag_and_cleanup(bootstrap):
     assert code == 0
     assert json.loads((root / "args").read_text()) == ["--ref", TAG]
     assert output.count("Canonical plan:") == 1
+    assert "Engine umask: 0o22" in output
     assert (root / "mutation").exists()
     assert f"/{TAG}/installer/create-proxmox-lxc.py" in (root / "urls").read_text()
     assert f"?ref={TAG}" in (root / "urls").read_text()

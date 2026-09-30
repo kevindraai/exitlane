@@ -59,6 +59,8 @@ but existing GitHub releases are not platform-enforced immutable. A repository c
 maintainer tag change is outside this integrity check's protection. Downloads fail on HTTP errors,
 are limited to 30 seconds/2 MiB and must be nonempty. Root-only temporary files are removed on
 normal exit, error and handled interruption (SIGKILL/power loss can leave files in `/tmp`).
+The private download umask is scoped to the bootstrap. The engine runs with umask `022`,
+so PVE-generated public guest configuration remains readable by APT's `_apt` sandbox user.
 The helper's Git blob digest and size are checked against GitHub contents metadata for the same
 tag. This catches accidental corruption or mismatches; metadata and payload have the **same trust
 origin**, so this is not an independent signature. A same-origin checksum manifest would add no
@@ -90,17 +92,53 @@ python3 installer/create-proxmox-lxc.py --ref v0.3.0-rc.3 --yes
 
 Use `--help` for the advanced flags described above. The Bash launcher deliberately requires a
 TTY; it accepts no raw command options and never passes `--yes`. The engine uses explicit argv,
-refuses occupied IDs and appends only the two documented TUN entries. Readiness has a single
-90-second deadline for running state, TUN, IPv4 and DNS. On partial failure, inspect
+refuses occupied IDs and appends only the two documented TUN entries. New engine releases use a
+single 90-second deadline for two complete successful rounds: running state, TUN, usable IPv4,
+default route, resolver configuration, `_apt` access to that configuration, and usable IPv4 DNS
+answers for `deb.debian.org`, `security.debian.org` and `github.com` **as `_apt`**. The guest address,
+route and configured resolvers must remain unchanged between the successful rounds. Package
+operations start only after this gate; actual repository fetching remains a separate hard gate.
+APT update uses `Acquire::Retries=2` and `APT::Update::Error-Mode=any`, so even transient repository
+fetch failures abort rather than continuing on warning-only/stale indexes. These engine changes
+require a new published tag; the existing rc.3 engine retains its earlier readiness/APT behavior.
+On partial failure, inspect
 `pct config <CTID>`, `pct status <CTID>` and guest logs. No automatic deletion occurs.
 New engine releases revalidate frozen resource choices after confirmation and template download;
 changed resources require a fresh plan rather than silently changing the approved allocation.
 
-Deterministic launcher/engine tests do not prove actual PVE creation. No disposable PVE node or
-CTID range is currently designated: public launcher → tagged engine → create → boot → install
-qualification remains outstanding. The already qualified native test LXC is not proof of creation.
+Deterministic launcher/engine tests do not prove actual PVE creation. The first public creation
+attempt exposed a root-DNS/APT-readiness false positive; investigation and qualification are
+tracked in [deployment wave #87](https://github.com/kevindraai/exitlane/issues/87).
+A separate disposable NLFoundry LXC reproduced the same failure when `resolv.conf` was readable
+only by root, and installed rc.3 successfully after restoring ordinary public file permissions.
+That alternative provisioner is **not** proof of public launcher creation. Public launcher →
+tagged engine → create → boot → install qualification remains outstanding.
 The helper uses supported [PVE container commands](https://pve.proxmox.com/pve-docs/pct.1.html)
 and [storage commands](https://pve.proxmox.com/pve-docs/pvesm.1.html).
+
+#### Root lookup succeeds, APT fails
+
+Do not substitute public DNS servers merely because APT reports a resolution failure. Root's
+`getent` can succeed while `_apt` cannot read `/etc/resolv.conf`. Proxmox's guest configuration
+writer requests mode `0644`, subject to its process umask; inheriting bootstrap umask `077` can
+produce mode `0600`. The launcher and new engine isolate that boundary rather than changing
+the operator's DNS settings. A bounded diagnostic comparison is:
+
+```bash
+pct exec <CTID> -- stat -c '%a %U:%G %n' /etc/resolv.conf /etc/hosts
+pct exec <CTID> -- getent ahostsv4 deb.debian.org
+pct exec <CTID> -- runuser -u _apt -- test -r /etc/resolv.conf
+pct exec <CTID> -- runuser -u _apt -- getent ahostsv4 deb.debian.org
+```
+
+Preserve failed guests and capture their configuration before repair. The reproduced permission
+failure explains this specific false-positive boundary; it does not establish the failed guest's
+actual permissions without inspecting that guest. Private/local resolvers remain supported.
+The relevant contracts are documented in the
+[Proxmox configuration writer](https://github.com/proxmox/pve-container/blob/master/src/PVE/LXC/Setup/Base.pm),
+[Proxmox file writer](https://github.com/proxmox/pve-common/blob/master/src/PVE/File.pm), and Debian 13's
+[APT update error handling](https://manpages.debian.org/trixie/apt/apt-get.8.en.html) and
+[bounded fetch retries](https://manpages.debian.org/trixie/apt/apt.conf.5.en.html).
 
 ### Manual creation
 

@@ -115,4 +115,6 @@ printf '\nThe tagged engine will validate and display the exact plan.\n'
 printf 'Creation requires its explicit confirmation; cancelling makes no changes.\n\n'
 # One engine invocation computes, confirms and executes one canonical plan.
 # rc.3 asks for CREATE; newer engines may use y/N. Never pass --yes here.
-python3 "$bootstrap_dir/helper.py" "${args[@]}"
+# Keep bootstrap downloads private without leaking that policy into pct's guest
+# configuration writers (0644 masked by 077 becomes unreadable to APT's _apt).
+(umask 022; python3 "$bootstrap_dir/helper.py" "${args[@]}")
