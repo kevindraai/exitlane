@@ -333,15 +333,20 @@ def test_direct_to_direct_switch_uses_protected_transaction(client, monkeypatch)
             self.display_name = provider_id
             self.direct_egress_interface = f"wg-{provider_id}"
             self.metadata = ProviderMetadata(
-                id=provider_id, display_name=provider_id, short_name=provider_id,
-                description="Synthetic direct provider", icon="shield-check",
+                id=provider_id,
+                display_name=provider_id,
+                short_name=provider_id,
+                description="Synthetic direct provider",
+                icon="shield-check",
             )
             self.connected = connected
 
         async def local_status(self, *, timeout=6):
             return {
-                "installed": True, "daemon_active": True,
-                "local_control_available": True, "connected": self.connected,
+                "installed": True,
+                "daemon_active": True,
+                "local_control_available": True,
+                "connected": self.connected,
                 "connection_state": "connected" if self.connected else "disconnected",
                 "error_code": None,
             }
@@ -368,8 +373,10 @@ def test_direct_to_direct_switch_uses_protected_transaction(client, monkeypatch)
 
         async def network_facts(self):
             return main.killswitch.TunnelFacts(
-                available=self.connected, interface=self.direct_egress_interface,
-                supports_ipv4=self.connected, protected_egress=self.connected,
+                available=self.connected,
+                interface=self.direct_egress_interface,
+                supports_ipv4=self.connected,
+                protected_egress=self.connected,
             )
 
     source = DirectProvider("mullvad", True)

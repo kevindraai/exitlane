@@ -133,7 +133,10 @@ def test_import_encrypts_secrets_and_exposes_only_safe_metadata():
     assert "private_key" not in json.dumps(profile)
     assert asyncio.run(provider.list_profiles()) == [profile]
     assert content.split("PrivateKey = ")[1].splitlines()[0].encode() not in core.DB.read_bytes()
-    assert asyncio.run(provider.import_profile(content, "Duplicate", "NL"))["error_code"] == "proton_profile_duplicate"
+    assert (
+        asyncio.run(provider.import_profile(content, "Duplicate", "NL"))["error_code"]
+        == "proton_profile_duplicate"
+    )
     assert provider_secrets.load("proton")["profiles"][profile["id"]]["config"]["private_key"]
 
 
@@ -161,11 +164,18 @@ def test_connect_switch_recovery_and_active_deletion_refusal(monkeypatch):
 def test_invalid_profile_target_preserves_active_tunnel():
     wireguard = FakeWireGuard()
     provider = proton.Proton(wireguard=wireguard)
-    identifier = asyncio.run(provider.import_profile(profile_text(), "NL synthetic", "NL"))["profile"]["id"]
+    identifier = asyncio.run(provider.import_profile(profile_text(), "NL synthetic", "NL"))[
+        "profile"
+    ]["id"]
     assert asyncio.run(provider.connect(identifier, timeout=1))["ok"]
     started = len(wireguard.started)
-    assert asyncio.run(provider.connect("unknown-profile", timeout=1))["error_code"] == "proton_profile_not_found"
-    assert asyncio.run(provider.connect("BE", timeout=1))["error_code"] == "proton_profile_not_found"
+    assert (
+        asyncio.run(provider.connect("unknown-profile", timeout=1))["error_code"]
+        == "proton_profile_not_found"
+    )
+    assert (
+        asyncio.run(provider.connect("BE", timeout=1))["error_code"] == "proton_profile_not_found"
+    )
     assert len(wireguard.started) == started
     assert asyncio.run(provider.status())["connected"]
 
@@ -218,7 +228,9 @@ def test_failed_first_connect_clears_pending_and_routing_rules(monkeypatch):
     wireguard = FakeWireGuard()
     provider = proton.Proton(wireguard=wireguard)
     monkeypatch.setattr(provider, "_tools_available", lambda: True)
-    identifier = asyncio.run(provider.import_profile(profile_text(), "NL synthetic", "NL"))["profile"]["id"]
+    identifier = asyncio.run(provider.import_profile(profile_text(), "NL synthetic", "NL"))[
+        "profile"
+    ]["id"]
 
     async def fail_probe(config, *, timeout):
         raise proton.ProviderWireGuardError("provider_egress_apply_failed")
@@ -227,14 +239,18 @@ def test_failed_first_connect_clears_pending_and_routing_rules(monkeypatch):
     assert asyncio.run(provider.connect(identifier, timeout=1))["ok"] is False
     assert provider.direct_egress_intent() is None
     assert wireguard.stopped[-3:] == [
-        ("stop", "wg-proton"), ("remove", "wg-proton"), ("disarm", "wg-proton")
+        ("stop", "wg-proton"),
+        ("remove", "wg-proton"),
+        ("disarm", "wg-proton"),
     ]
 
 
 def test_failed_config_cleanup_retains_fail_closed_intent(monkeypatch):
     wireguard = FakeWireGuard()
     provider = proton.Proton(wireguard=wireguard)
-    identifier = asyncio.run(provider.import_profile(profile_text(), "NL synthetic"))["profile"]["id"]
+    identifier = asyncio.run(provider.import_profile(profile_text(), "NL synthetic"))["profile"][
+        "id"
+    ]
 
     async def fail_probe(config, *, timeout):
         raise proton.ProviderWireGuardError("provider_egress_apply_failed")
@@ -262,10 +278,13 @@ def test_profile_api_requires_admin_and_never_returns_keys(monkeypatch):
                 ("admin", digest, salt),
             )
         core.set_setting("setup_provider_ids", ["proton"])
-        assert client.post(
-            "/api/auth/login",
-            json={"username": "admin", "password": "correct horse battery staple"},
-        ).status_code == 200
+        assert (
+            client.post(
+                "/api/auth/login",
+                json={"username": "admin", "password": "correct horse battery staple"},
+            ).status_code
+            == 200
+        )
         imported = client.post(
             endpoint,
             json={"config": content, "display_name": "NL synthetic", "country_code": "NL"},
@@ -274,12 +293,18 @@ def test_profile_api_requires_admin_and_never_returns_keys(monkeypatch):
         assert core.setting("setup_provider_complete") is True
         assert core.setting("vpn.provider_id") == "proton"
         with sqlite3.connect(core.DB) as connection:
-            assert connection.execute(
-                "SELECT COUNT(*) FROM events WHERE code='provider.profile_imported'"
-            ).fetchone()[0] == 1
-            assert connection.execute(
-                "SELECT COUNT(*) FROM events WHERE code='provider.session_started'"
-            ).fetchone()[0] == 0
+            assert (
+                connection.execute(
+                    "SELECT COUNT(*) FROM events WHERE code='provider.profile_imported'"
+                ).fetchone()[0]
+                == 1
+            )
+            assert (
+                connection.execute(
+                    "SELECT COUNT(*) FROM events WHERE code='provider.session_started'"
+                ).fetchone()[0]
+                == 0
+            )
         identifier = imported.json()["profile"]["id"]
         listing = client.get(endpoint)
         assert listing.status_code == 200
@@ -287,8 +312,11 @@ def test_profile_api_requires_admin_and_never_returns_keys(monkeypatch):
         private_key = content.split("PrivateKey = ")[1].splitlines()[0]
         assert private_key not in json.dumps(imported.json())
         assert private_key not in json.dumps(listing.json())
-        assert client.post(
-            endpoint,
-            json={"config": content, "display_name": "Duplicate", "country_code": "NL"},
-        ).status_code == 422
+        assert (
+            client.post(
+                endpoint,
+                json={"config": content, "display_name": "Duplicate", "country_code": "NL"},
+            ).status_code
+            == 422
+        )
         assert client.delete(f"{endpoint}/{identifier}").status_code == 200

@@ -254,11 +254,17 @@ async def measure_latency(endpoint: str, *, attempts: int = 3, timeout: float = 
         address = ipaddress.ip_address(endpoint)
     except (TypeError, ValueError):
         unknown = {"latency_ms": None, "status": "unknown", "method": None}
-        if not isinstance(endpoint, str) or not SAFE_SERVER_PATTERN.fullmatch(endpoint) or "." not in endpoint:
+        if (
+            not isinstance(endpoint, str)
+            or not SAFE_SERVER_PATTERN.fullmatch(endpoint)
+            or "." not in endpoint
+        ):
             return unknown
         try:
             answers = await asyncio.wait_for(
-                asyncio.to_thread(socket.getaddrinfo, endpoint, None, socket.AF_INET, socket.SOCK_DGRAM),
+                asyncio.to_thread(
+                    socket.getaddrinfo, endpoint, None, socket.AF_INET, socket.SOCK_DGRAM
+                ),
                 timeout=5,
             )
         except (OSError, TimeoutError):
@@ -316,11 +322,10 @@ async def measure_servers(
         if normalize_server_hostname(item.get("hostname"))
     ][:5]
     if not force:
-        available = {
-            normalize_server_hostname(item.get("hostname")) for item in servers
-        }
+        available = {normalize_server_hostname(item.get("hostname")) for item in servers}
         cached = [
-            item for item in _cached(code, provider_id=provider_id)
+            item
+            for item in _cached(code, provider_id=provider_id)
             if normalize_server_hostname(item["server"]) in available
         ]
         measured = {normalize_server_hostname(item["server"]) for item in cached}

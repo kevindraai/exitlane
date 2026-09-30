@@ -1,6 +1,6 @@
 # Proxmox LXC
 
-The qualified container baseline for ExitLane 0.3.0-rc.2 is **Debian 13, `amd64`, privileged LXC**.
+The qualified container baseline for ExitLane 0.3.0-rc.3 is **Debian 13, `amd64`, privileged LXC**.
 Unprivileged containers, other Debian releases and other architectures are not supported release
 targets. ExitLane runs natively inside the container and needs systemd, WireGuard, nftables and
 permission to administer its network namespace.
@@ -16,7 +16,7 @@ containers only. Run it as root on the PVE host from a reviewed ExitLane checkou
 discovers a free cluster-wide CTID, active root and template storage, and the Debian 13 amd64
 template managed by PVE. It validates the bridge, shows its full plan, and asks for an explicit
 `CREATE` confirmation before changing anything. Its in-container step clones an explicit published
-release tag (default `v0.3.0-rc.2`) and runs the existing Debian installer.
+release tag (default `v0.3.0-rc.3`) and runs the existing Debian installer.
 
 ```bash
 # From a reviewed ExitLane checkout on the PVE host:

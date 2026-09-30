@@ -137,7 +137,10 @@ class Proton(Provider):
         return [self._summary(item) for item in self._profiles(self._state()).values()]
 
     async def rename_profile(self, identifier: str, display_name: str) -> dict:
-        if not isinstance(display_name, str) or DISPLAY_NAME.fullmatch(display_name.strip()) is None:
+        if (
+            not isinstance(display_name, str)
+            or DISPLAY_NAME.fullmatch(display_name.strip()) is None
+        ):
             return {"ok": False, "error_code": "invalid_proton_profile_metadata"}
         async with self._operation_lock:
             state = self._state()
@@ -173,7 +176,9 @@ class Proton(Provider):
             self._save(state)
             return {"ok": True}
 
-    def capabilities(self, *, installation_state: str, authentication_state: str, connection_state: str) -> dict[str, bool]:
+    def capabilities(
+        self, *, installation_state: str, authentication_state: str, connection_state: str
+    ) -> dict[str, bool]:
         configured = authentication_state == "configured"
         available = installation_state == InstallationState.AVAILABLE
         return {
@@ -181,7 +186,9 @@ class Proton(Provider):
             "can_sign_out": False,
             "can_connect": available and configured and connection_state == "disconnected",
             "can_disconnect": available and configured and connection_state == "connected",
-            "can_reconnect": available and configured and connection_state in {"connected", "disconnected"},
+            "can_reconnect": available
+            and configured
+            and connection_state in {"connected", "disconnected"},
             "can_select_country": available and configured,
             "can_select_server": available and configured,
             "can_measure_latency": available and configured,
@@ -231,7 +238,9 @@ class Proton(Provider):
         except ValueError:
             try:
                 answers = await asyncio.wait_for(
-                    asyncio.to_thread(socket.getaddrinfo, host, None, socket.AF_INET, socket.SOCK_DGRAM),
+                    asyncio.to_thread(
+                        socket.getaddrinfo, host, None, socket.AF_INET, socket.SOCK_DGRAM
+                    ),
                     timeout=5,
                 )
             except (OSError, TimeoutError) as error:
@@ -265,16 +274,24 @@ class Proton(Provider):
     @staticmethod
     def _owns_transition() -> bool:
         operation = vpn_operations.active_snapshot()
-        return not (isinstance(operation, dict) and operation.get("connection_id") == "provider-switch")
+        return not (
+            isinstance(operation, dict) and operation.get("connection_id") == "provider-switch"
+        )
 
     async def _complete_transition(self) -> bool:
         try:
             await killswitch.complete_provider_transition(await self.network_facts())
             return True
-        except (killswitch.KillswitchError, ProviderWireGuardError, provider_secrets.ProviderSecretError):
+        except (
+            killswitch.KillswitchError,
+            ProviderWireGuardError,
+            provider_secrets.ProviderSecretError,
+        ):
             return False
 
-    async def _restore(self, state: dict, previous: dict | None, candidate: dict | None, *, timeout: float) -> bool:
+    async def _restore(
+        self, state: dict, previous: dict | None, candidate: dict | None, *, timeout: float
+    ) -> bool:
         state.pop("active", None)
         state.pop("pending", None)
         if previous:
@@ -325,8 +342,7 @@ class Proton(Provider):
                     candidates = list(profiles.values())
                 elif isinstance(target, str) and re.fullmatch(r"[A-Za-z]{2}", target):
                     candidates = [
-                        item for item in profiles.values()
-                        if item["country_code"] == target.upper()
+                        item for item in profiles.values() if item["country_code"] == target.upper()
                     ]
                 else:
                     candidates = []
@@ -372,9 +388,16 @@ class Proton(Provider):
                 self._save(state)
                 if owns_transition and not await self._complete_transition():
                     return {"ok": False, "error_code": "firewall_apply_failed"}
-                return {"ok": True, "state": "connected", "target": profile["id"], "error_code": None}
+                return {
+                    "ok": True,
+                    "state": "connected",
+                    "target": profile["id"],
+                    "error_code": None,
+                }
             except asyncio.CancelledError:
-                cleanup = asyncio.create_task(self._restore(state, previous, state.get("pending"), timeout=min(5, timeout)))
+                cleanup = asyncio.create_task(
+                    self._restore(state, previous, state.get("pending"), timeout=min(5, timeout))
+                )
                 try:
                     await asyncio.shield(cleanup)
                 except asyncio.CancelledError:
@@ -382,13 +405,28 @@ class Proton(Provider):
                 if owns_transition and cleanup.result():
                     await self._complete_transition()
                 raise
-            except (KeyError, TypeError, ValueError, ProtonProfileError, ProviderWireGuardError, provider_secrets.ProviderSecretError) as error:
-                safe = await self._restore(state, previous, state.get("pending"), timeout=min(5, timeout))
+            except (
+                KeyError,
+                TypeError,
+                ValueError,
+                ProtonProfileError,
+                ProviderWireGuardError,
+                provider_secrets.ProviderSecretError,
+            ) as error:
+                safe = await self._restore(
+                    state, previous, state.get("pending"), timeout=min(5, timeout)
+                )
                 if owns_transition and safe:
                     await self._complete_transition()
-                return {"ok": False, "state": "error", "error_code": getattr(error, "code", "provider_connect_failed")}
+                return {
+                    "ok": False,
+                    "state": "error",
+                    "error_code": getattr(error, "code", "provider_connect_failed"),
+                }
 
-    async def connect_country(self, country_code: str, *, server_hostname: str | None = None, timeout: float = 40) -> dict:
+    async def connect_country(
+        self, country_code: str, *, server_hostname: str | None = None, timeout: float = 40
+    ) -> dict:
         code = country_code.upper()
         if len(code) != 2 or not code.isalpha():
             return {"ok": False, "error_code": "invalid_target"}
@@ -422,7 +460,13 @@ class Proton(Provider):
                 if owns_transition:
                     await killswitch.complete_provider_transition(TunnelFacts(False))
                 return {"ok": True, "state": "disconnected", "error_code": None}
-            except (KeyError, OSError, ProviderWireGuardError, provider_secrets.ProviderSecretError, killswitch.KillswitchError):
+            except (
+                KeyError,
+                OSError,
+                ProviderWireGuardError,
+                provider_secrets.ProviderSecretError,
+                killswitch.KillswitchError,
+            ):
                 return {"ok": False, "state": "error", "error_code": "provider_disconnect_failed"}
 
     async def status(self, *, timeout: float = 8) -> dict:
@@ -430,7 +474,9 @@ class Proton(Provider):
         state = self._state()
         profiles = self._profiles(state)
         generation = state.get("active")
-        profile = profiles.get(generation.get("profile_id")) if isinstance(generation, dict) else None
+        profile = (
+            profiles.get(generation.get("profile_id")) if isinstance(generation, dict) else None
+        )
         observation: dict = {}
         connected = False
         if profile is not None:
@@ -462,7 +508,9 @@ class Proton(Provider):
             "handshake": observation.get("handshake", 0),
             "error_code": error,
             "management": self.management_status(
-                installation_state=InstallationState.AVAILABLE if available else InstallationState.NOT_INSTALLED,
+                installation_state=InstallationState.AVAILABLE
+                if available
+                else InstallationState.NOT_INSTALLED,
                 authentication_state="configured" if configured else "unconfigured",
                 connection_state=state_name,
                 error_code=error,

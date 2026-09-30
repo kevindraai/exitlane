@@ -375,9 +375,7 @@ class Mullvad(Provider):
         if not state:
             return None
         generation = (
-            state.get("pending")
-            if isinstance(state.get("pending"), dict)
-            else state.get("active")
+            state.get("pending") if isinstance(state.get("pending"), dict) else state.get("active")
         )
         if not isinstance(generation, dict):
             return None

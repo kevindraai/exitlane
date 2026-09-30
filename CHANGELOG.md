@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0-rc.3] - 2026-09-30
+
+### Security
+
+- Harden privileged WireGuard configuration and authenticated backup restore boundaries.
+- Enforce streamed request body limits and bound provider-controlled input.
+- Record the Daybreak Blue-assisted internal defensive assessment and qualification limits.
+
+### Added
+
+- Tuned.pixel appliance theming and local Inter assets.
+- Proxmox VE Debian 13 LXC helper with deterministic safety tests and dry-run.
+- Docker feasibility matrix; Docker remains development-only and not yet suitable as an appliance.
+
 ## [Unreleased]
 
 ## [0.3.0-rc.2] - 2026-09-25

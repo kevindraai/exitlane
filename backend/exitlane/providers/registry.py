@@ -26,7 +26,10 @@ class ProviderRegistry:
             raise ValueError(f"Provider already registered: {provider.id}")
         interface = provider.direct_egress_interface
         if interface is not None:
-            if not isinstance(interface, str) or re.fullmatch(r"[A-Za-z0-9_.-]{1,15}", interface) is None:
+            if (
+                not isinstance(interface, str)
+                or re.fullmatch(r"[A-Za-z0-9_.-]{1,15}", interface) is None
+            ):
                 raise ValueError("Invalid direct egress interface")
             if any(item.direct_egress_interface == interface for item in self._providers.values()):
                 raise ValueError("Direct egress interface already registered")

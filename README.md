@@ -4,9 +4,10 @@
 
 ExitLane is a self-hosted egress appliance for routers, VLANs, and selected devices. Your router maintains one permanent WireGuard tunnel to ExitLane, while ExitLane manages outbound connection through NordVPN, Mullvad, PIA, or imported Proton VPN profiles.
 
-The **0.3.0-rc.2** release candidate improves provider setup, fixes NordVPN installation after
-switching providers, and adds the NordVPN guide to integrated Help. Read the [release notes](docs/release-notes/0.3.0-rc.2.md)
-for the supported scope, upgrade procedure and limitations.
+The **0.3.0-rc.3** release candidate includes the post-Daybreak security patches, direct PIA
+and imported Proton providers, Tuned.pixel theming and the Proxmox helper. Read the
+[release notes](docs/release-notes/0.3.0-rc.3.md) for the supported scope, upgrade procedure
+and qualification limits.
 
 The result is an experience closer to a native VPN app, but for an entire network: switch countries, reconnect, use the fastest available server, and keep provider-specific configuration away from your router.
 
@@ -149,7 +150,7 @@ tagged Debian installer after a dry-run preview.
 Install a published release tag rather than the moving development branch. For this release:
 
 ```bash
-git clone --branch v0.3.0-rc.2 --depth 1 https://github.com/kevindraai/exitlane.git
+git clone --branch v0.3.0-rc.3 --depth 1 https://github.com/kevindraai/exitlane.git
 cd exitlane
 sudo ./installer/install-debian.sh
 ```
