@@ -115,10 +115,12 @@ class Harness:
 
     def address(self, name: str):
         facts = json.loads(self.docker("inspect", name).stdout)[0]
-        assert facts["HostConfig"]["CapAdd"] == ["NET_ADMIN"]
+        validate_capabilities(facts["HostConfig"]["CapAdd"])
         assert facts["HostConfig"]["CapDrop"] == ["ALL"]
         assert not facts["HostConfig"]["Privileged"]
         assert facts["HostConfig"]["NetworkMode"] == self.network
+        effective = self.python(name, 'from pathlib import Path; print(next(line.split()[1] for line in Path("/proc/self/status").read_text().splitlines() if line.startswith("CapEff:")))').stdout.strip()
+        assert int(effective, 16) == 1 << 12, "effective capabilities must be NET_ADMIN only"
         return facts["NetworkSettings"]["Networks"][self.network]["IPAddress"]
 
     def wait(self, predicate, description: str, timeout=20):
@@ -247,6 +249,12 @@ iifname "wg-office" oifname "eth0" masquerade
             self.docker("rm", "--force", name, check=False)
         if self.network_created:
             self.docker("network", "rm", self.network, check=False)
+
+
+def validate_capabilities(capabilities):
+    # Docker API versions may normalize the Linux CAP_ prefix. Preserve the
+    # exact one-capability contract and verify the effective kernel mask too.
+    assert capabilities in (["NET_ADMIN"], ["CAP_NET_ADMIN"]), capabilities
 
 
 if __name__ == "__main__":
