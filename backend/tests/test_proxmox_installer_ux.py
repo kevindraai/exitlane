@@ -3,6 +3,7 @@
 import base64
 import importlib.util
 import json
+import os
 import subprocess
 import warnings
 from pathlib import Path
@@ -56,7 +57,7 @@ def ui(monkeypatch, answers, passwords=(), width=80):
     monkeypatch.setattr(helper, "check_host", lambda: None)
     monkeypatch.setattr(helper, "discover_keys", lambda: [KEY])
     monkeypatch.setattr(
-        helper.shutil, "get_terminal_size", lambda *_: type("Size", (), {"columns": width})()
+        helper.shutil, "get_terminal_size", lambda *_, **__: os.terminal_size((width, 24))
     )
     masked = iter(passwords)
     monkeypatch.setattr(helper.getpass, "getpass", lambda _: next(masked))
