@@ -143,11 +143,18 @@ The supported appliance baseline is Debian 13 on `amd64`. The qualified Proxmox 
 **privileged LXC** with `/dev/net/tun` and permission to manage WireGuard, routing and nftables.
 Other Debian releases, architectures and unprivileged LXC configurations are not supported release
 targets. Keep the management interface on a trusted network.
-On a Proxmox VE host, the [PVE LXC helper](docs/proxmox-lxc.md#create-the-container) can
-provision a new container from a PVE-managed Debian 13 template and invoke the same
-tagged Debian installer after a dry-run preview.
+On a Proxmox VE host, run the interactive launcher as root:
 
-Install a published release tag rather than the moving development branch. For this release:
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kevindraai/exitlane/main/installer/proxmox.sh)"
+```
+
+Choose default or advanced settings, then confirm the new-container plan. The launcher resolves
+an exact published release and uses the same tag for the helper and guest installation.
+See [Proxmox LXC](docs/proxmox-lxc.md) for defaults, trust, inspect-first and automation options.
+Live disposable PVE creation qualification remains outstanding.
+
+For a native Debian host or manually created LXC, install a published release tag rather than the moving development branch. For this release:
 
 ```bash
 git clone --branch v0.3.0-rc.3 --depth 1 https://github.com/kevindraai/exitlane.git

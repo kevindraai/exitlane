@@ -385,6 +385,11 @@ def main(
         f"{args.memory} MiB RAM, {args.disk} GiB disk"
     )
     print(f"Template: {template}" + (" (download required)" if download else ""))
+    create = commands[int(download)]
+    print(f"Hostname: {args.hostname}; storage: {create[create.index('--rootfs') + 1]}")
+    print(f"Network: {create[create.index('--net0') + 1]}")
+    print(f"DNS: {args.dns or 'PVE host default'}; pool: {args.pool or 'none'}")
+    print(f"Startup: {args.startup or 'default'}; on boot: yes; TUN: yes")
     print(f"ExitLane release: {args.ref}")
     print("Planned operations:")
     for command in commands:
@@ -404,12 +409,33 @@ def main(
             "Interactive confirmation required; pass --yes after reviewing --dry-run",
         )
         require(
-            input("Create this new container? Type CREATE: ") == "CREATE",
+            input("Create this new container? [y/N]: ").strip().lower() == "y",
             "Creation cancelled",
         )
     # Recheck immediately before mutation. pct itself also refuses an occupied ID.
     free_ctid(ctid)
     require(not (config_dir / f"{ctid}.conf").exists(), "CTID became occupied")
+    # Resolve discovery defaults once. Revalidation must never silently select
+    # another CTID, storage, bridge or template after the operator confirms.
+    frozen = argparse.Namespace(**vars(args))
+    frozen.ctid = ctid
+    frozen.storage = create[create.index("--rootfs") + 1].split(":")[0]
+    frozen.template_storage = template.split(":")[0]
+    frozen.bridge = (
+        create[create.index("--net0") + 1].split(",bridge=")[1].split(",")[0]
+    )
+
+    def recheck_plan() -> None:
+        _, new_template, new_commands, new_download = plan(
+            frozen, config_dir, bridge_root
+        )
+        require(
+            new_template == template
+            and new_commands[int(new_download) :] == commands[int(download) :],
+            "PVE resources changed after confirmation; rerun to review a new plan",
+        )
+
+    recheck_plan()
     creation_attempted = False
     try:
         if download:
@@ -418,6 +444,9 @@ def main(
                 template in run("pveam", "list", template.split(":")[0]).stdout,
                 "Downloaded template is missing",
             )
+        # Template download can take minutes; repeat essential checks immediately
+        # before pct create. The command itself remains collision-protected.
+        recheck_plan()
         offset = int(download)
         creation_attempted = True
         run(*commands[offset], timeout=900)

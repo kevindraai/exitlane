@@ -51,8 +51,15 @@ The host needs systemd, outbound internet access, `/dev/net/tun`, and permission
 manage WireGuard interfaces. A Proxmox LXC must be configured accordingly; the currently tested
 baseline is a privileged container. Unprivileged LXC is not a supported release target.
 See [Proxmox LXC](proxmox-lxc.md).
-The PVE-host creation helper in that guide provisions a new privileged container and then reuses
-this same Debian installer; it does not provide a second application installation path.
+On the PVE host, the ordinary installation route is:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kevindraai/exitlane/main/installer/proxmox.sh)"
+```
+
+It creates a new privileged Debian 13 LXC with default or advanced settings and one plan
+confirmation, then reuses the same Debian installer at the resolved published tag.
+See the linked guide for release selection, trust and inspect-first operation.
 
 Use the published release tag. The following command becomes available when `v0.3.0-rc.3` is
 published; do not substitute an unreviewed development branch for an appliance deployment:
