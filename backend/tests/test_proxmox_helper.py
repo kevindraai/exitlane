@@ -21,7 +21,8 @@ def result(stdout: str = "", code: int = 0) -> subprocess.CompletedProcess[str]:
 
 
 @pytest.fixture
-def pve(tmp_path):
+def pve(tmp_path, monkeypatch):
+    monkeypatch.setattr(helper, "LOG_DIRECTORY", tmp_path / "logs")
     config_dir = tmp_path / "pve" / "lxc"
     config_dir.mkdir(parents=True)
     bridge_root = tmp_path / "net"
@@ -247,6 +248,15 @@ def test_creation_reuses_installer_and_adds_only_tun_lines(pve, capsys):
         for command in state["commands"]
     )
     assert "http://192.0.2.20:8787" in capsys.readouterr().out
+
+
+def test_quiet_automation_executes_frozen_plan(pve, capsys):
+    config_dir, bridge_root, state = pve
+    with patch.object(helper, "wait_ready", return_value="192.0.2.20"):
+        assert helper.main(["--yes", "--output", "quiet"], config_dir, bridge_root) == 0
+    assert (config_dir / "200.conf").exists()
+    assert sum(command[:2] == ("pct", "create") for command in state["commands"]) == 1
+    assert "Planned operations" not in capsys.readouterr().out
 
 
 def test_installer_failure_retains_created_ct(pve, capsys):

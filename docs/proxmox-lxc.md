@@ -24,6 +24,43 @@ free cluster-wide CTID, active root/template storage and a PVE-managed Debian 13
 **Advanced settings** exposes CTID, hostname, storage, template storage, bridge, static IPv4/CIDR,
 gateway, DNS, VLAN, CPU, memory, disk, pool and startup ordering. Empty answers use engine defaults.
 
+New published helpers advertise a side-effect-free bootstrap capability and own the interactive
+installer themselves. Recommended settings retain the appliance defaults; Advanced groups container,
+network and access choices. Until such a helper is published, the launcher keeps the compatible
+older-tag menu. It never substitutes provisioning code from `main`.
+
+### Guest access and installation output
+
+In new tagged installers, both modes offer an optional masked, confirmed console root password and
+SSH public-key selection: discover a host public key, paste a bare public key, read a public-key
+file, or skip. Discovered keys are shown by type, fingerprint and comment, with duplicates removed.
+Private keys and option-prefixed `authorized_keys` entries are rejected; restrictions are never
+silently stripped to grant unrestricted root access. No password is generated or printed.
+
+The console password and ExitLane's web administrator are separate credentials. A console password
+alone does not install SSH; if the template already provides SSH, that explicit console-password
+choice reconciles SSH to key-only authentication. Requesting a key or explicitly enabling password SSH installs OpenSSH
+in the new Debian guest and configures its policy. Key-only SSH is the default; Advanced can
+explicitly enable SSH password authentication with a configured root password. If all guest login
+credentials are skipped, the installer confirms that PVE-managed container access remains the
+recovery path. SSH instructions appear only when SSH is configured.
+
+Standard output shows stage progress and suppresses normal package output. Verbose additionally
+streams child output; Quiet is intended for explicit-flag automation. Every confirmed provisioning
+run records stages, release, CTID, non-secret argv and streamed subprocess output in a root-only
+log under `/var/log/exitlane-proxmox/`. Per-run output is capped at 32 MiB while the child continues
+to be drained; logs are retained for diagnosis, with host log rotation/retention left to the operator.
+Failures show a bounded tail and inspection commands while
+retaining the guest. Password transfer uses stdin, with no plaintext password in argv, environment,
+plan, log or ordinary temporary file. Local root can still inspect live process memory.
+
+The existing application onboarding remains authoritative for timezone; the helper does not copy
+the PVE host timezone. Startup ordering and inherited/local DNS remain explicit plan facts.
+
+For automation with a newly published helper, `--ssh-public-key-file` accepts public keys only and
+`--output standard|verbose|quiet` controls output. `--interactive` starts the built-in terminal UI;
+limited/narrow terminals use plain output. Root password entry remains interactive and masked.
+
 The tagged Python engine validates and displays one canonical plan before asking for confirmation.
 The default answer is no. The published rc.3 engine requires typing `CREATE`; newer engines use
 `y` at `[y/N]`. There is no separate dry-run prerequisite or second confirmation. No container,
