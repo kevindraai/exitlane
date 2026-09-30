@@ -141,7 +141,7 @@
 
 ### Changed
 
-- Adopted the N/L Foundry Cobalt / Slate technical theme through a thin semantic token mapping for
+- Adopted the Tuned.pixel Cobalt / Slate technical theme through a thin semantic token mapping for
   deliberate light and dark modes.
 - Reduced page-heading scale, expanded focus-visible coverage and made optional Diagnostics tools
   secondary to the primary connection flow.
