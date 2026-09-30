@@ -223,7 +223,7 @@ class MullvadApi:
                 raise MullvadApiError("provider_api_invalid_response")
         try:
             return json.loads(raw)
-        except (UnicodeDecodeError, ValueError) as error:
+        except (UnicodeDecodeError, ValueError, RecursionError) as error:
             raise MullvadApiError("provider_api_invalid_response") from error
 
     def _request_sync(

@@ -162,6 +162,16 @@ def test_token_is_bounded_cached_in_memory_and_renewed(monkeypatch):
     assert len(requests) == 2
 
 
+@pytest.mark.parametrize("operation", ["token", "catalog"])
+def test_pia_api_maps_excessive_json_nesting_to_safe_error(monkeypatch, operation):
+    client = pia_api.PiaApi("p1234567", "safe-password")
+    nested = b"[" * 10_000 + b"0" + b"]" * 10_000
+    monkeypatch.setattr(client, "_public_request", lambda *_args, **_kwargs: nested)
+
+    with pytest.raises(pia_api.PiaApiError, match="provider_api_invalid_response"):
+        asyncio.run(getattr(client, operation)())
+
+
 def test_token_transport_uses_multipart_and_refuses_redirect():
     client = pia_api.PiaApi()
     captured = []
@@ -247,6 +257,31 @@ def test_add_key_tls_verification_failure_is_safe(monkeypatch):
         pia_api.PiaApi()._add_key_sync(SERVER, "a" * 40, PEER_KEY)
     assert failure.value.code == "provider_api_unavailable"
     assert "a" * 40 not in str(failure.value)
+
+
+def test_add_key_maps_excessive_json_nesting_to_safe_error(monkeypatch):
+    class Response:
+        status = 200
+
+        def read(self, _maximum):
+            return b"[" * 10_000 + b"0" + b"]" * 10_000
+
+    class Connection:
+        def __init__(self, *_args):
+            pass
+
+        def request(self, *_args, **_kwargs):
+            pass
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(pia_api, "_PinnedConnection", Connection)
+    with pytest.raises(pia_api.PiaApiError, match="provider_api_invalid_response"):
+        pia_api.PiaApi()._add_key_sync(SERVER, "a" * 40, PEER_KEY)
 
 
 def test_credential_boundary_rejects_control_characters_and_delimiters():

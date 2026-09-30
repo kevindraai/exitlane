@@ -251,8 +251,8 @@ async def ensure_active_server_latency(
 async def measure_latency(endpoint: str, *, attempts: int = 3, timeout: float = 1.0) -> dict:
     """Measure median ICMP RTT, with TCP/443 fallback when ICMP is unavailable or blocked."""
     try:
-        ipaddress.ip_address(endpoint)
-    except ValueError:
+        address = ipaddress.ip_address(endpoint)
+    except (TypeError, ValueError):
         unknown = {"latency_ms": None, "status": "unknown", "method": None}
         if not isinstance(endpoint, str) or not SAFE_SERVER_PATTERN.fullmatch(endpoint) or "." not in endpoint:
             return unknown
@@ -267,8 +267,16 @@ async def measure_latency(endpoint: str, *, attempts: int = 3, timeout: float = 
         if not candidates:
             return unknown
         address = ipaddress.ip_address(candidates[0])
-        if not address.is_global:
+        if not address.is_global or address.is_multicast:
             return unknown
+        endpoint = str(address)
+    else:
+        if (
+            not address.is_global
+            or address.is_multicast
+            or getattr(address, "scope_id", None) is not None
+        ):
+            return {"latency_ms": None, "status": "unknown", "method": None}
         endpoint = str(address)
 
     if shutil.which("ping"):

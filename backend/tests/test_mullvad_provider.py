@@ -183,6 +183,18 @@ def test_device_and_relay_parsers_reject_unsafe_network_values():
     assert mullvad.Relay.parse(dict(valid_relay, active=False)) is None
 
 
+def test_mullvad_api_maps_excessive_json_nesting_to_safe_error():
+    class Response:
+        def __init__(self):
+            self.headers = {}
+
+        def read(self, _maximum):
+            return b"[" * 10_000 + b"0" + b"]" * 10_000
+
+    with pytest.raises(mullvad.MullvadApiError, match="provider_api_invalid_response"):
+        mullvad.MullvadApi._decode_response(Response(), mullvad.MAX_ACCOUNT_RESPONSE)
+
+
 def test_authenticate_persists_pending_key_before_remote_device_create(monkeypatch):
     observed = []
 
