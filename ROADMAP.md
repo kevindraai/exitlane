@@ -9,6 +9,12 @@ release candidates are tested in real networks.
 - Reliable NordVPN installation after switching providers.
 - NordVPN administrator documentation in the repository and integrated Help.
 - Mobile Help layout corrections.
+- Tuned.pixel identity/token migration and appliance-focused Cobalt / Slate polish.
+- Repository-owned Proxmox VE helper for a privileged Debian 13 LXC, with deterministic safety
+  tests and dry-run support; live PVE creation remains unqualified.
+- Docker appliance feasibility decision: `not yet suitable`; the image remains development-only.
+- Daybreak Blue-assisted internal defensive assessment with remediations #81 through #84 and a
+  final fresh-main challenge. This is not an independent penetration test.
 
 ## Included in 0.3.0-rc.1
 
@@ -82,14 +88,13 @@ Beta.5 inherits the beta.4 UX, accessibility, design-system and integrated-docum
 
 - PIA direct WireGuard provider: synthetic Debian 13 qualification passed; live account proof remains outstanding.
 - Proton imported WireGuard profiles: synthetic Debian 13 qualification passed; live provider proof remains outstanding.
-- UX and visual consistency polish
-- Provider abstraction hardening
 - Further VPN providers and broader relay-availability testing
 - IPv6 egress support for Mullvad
 - Notification management improvements
 - Appliance and installation polish
-- Docker appliance adapters and synthetic fail-closed network qualification; current image
-  remains development-only pending the [feasibility gates](docs/docker-appliance-feasibility.md).
+- Revisit Docker appliance adapters only after the [feasibility blockers](docs/docker-appliance-feasibility.md)
+  can be closed without privileged mode, host networking or host control.
+- Live disposable PVE create → boot → installer qualification for the helper.
 - Extended operational logging and diagnostic depth
 
 ## Later
