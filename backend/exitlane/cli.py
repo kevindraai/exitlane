@@ -18,6 +18,7 @@ from exitlane.events import record_event
 from exitlane.providers.base import DirectEgressIntent
 from exitlane.providers.catalog import provider_registry
 from exitlane.providers.registry import ProviderNotFound
+from exitlane.runtime import RuntimeCapabilityUnavailable, runtime
 from exitlane.services import killswitch, management_routing, network_security, provider_secrets
 from exitlane.services.auth_security import disable_mfa as disable_administrator_mfa
 from exitlane.services.credentials import CredentialError, reset_administrator_password
@@ -304,6 +305,9 @@ def disable_killswitch(
     if (os.geteuid() if effective_user_id is None else effective_user_id) != 0:
         print("This command must be run as root or with sudo.", file=sys.stderr)
         return 77
+    if not runtime.capabilities.direct_egress:
+        print("runtime_capability_unavailable", file=sys.stderr)
+        return 2
     phrase = "DISABLE EXITLANE KILLSWITCH"
     if input_reader(f"Type {phrase} to continue: ") != phrase:
         print("Killswitch recovery cancelled.", file=sys.stderr)
@@ -479,41 +483,11 @@ def _restore_forwarding_guard(ingress: tuple[str, ...], enabled: bool) -> None:
 
 
 def _restore_ingress_service(*, start: bool) -> None:
-    if not core.setting("wireguard_configured", False):
-        return
-    ingress, _ = killswitch.configuration()
-    interface = ingress[0]
-    unit = f"wg-quick@{interface}.service"
-    if start:
-        source = core.WG_DIR / f"{interface}.conf"
-        lifecycle._safe_regular_file(source)
-        system_directory = Path("/etc/wireguard")
-        system_directory.mkdir(mode=0o700, exist_ok=True)
-        target = system_directory / source.name
-        if target.is_symlink():
-            if target.resolve() != source.resolve():
-                raise lifecycle.LifecycleError("restore_ingress_config_conflict")
-        elif target.exists():
-            raise lifecycle.LifecycleError("restore_ingress_config_conflict")
-        else:
-            target.symlink_to(source)
-        commands = (("enable", unit), ("restart", unit))
-    else:
-        commands = (("disable", "--now", unit),)
-    for arguments in commands:
-        rc, _, _ = asyncio.run(
-            core.command(
-                "/usr/bin/systemctl",
-                *arguments,
-                timeout=30,
-                environment={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C"},
-            )
-        )
-        if rc:
-            raise lifecycle.LifecycleError("restore_ingress_service_failed")
+    runtime.restore_ingress(start=start, core=core, lifecycle=lifecycle, killswitch=killswitch)
 
 
 def _systemd_service_action(action: str) -> None:
+    runtime.capabilities.require("restore")
     if action == "reset-egress":
 
         async def reset_egress() -> None:
@@ -564,15 +538,7 @@ def _systemd_service_action(action: str) -> None:
             except killswitch.KillswitchError as error:
                 raise lifecycle.LifecycleError("restore_network_guard_failed") from error
         _restore_ingress_service(start=True)
-    returncode, _output, _error = asyncio.run(
-        core.command(
-            "/usr/bin/systemctl",
-            action,
-            "exitlane.service",
-            timeout=30,
-            environment={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C"},
-        )
-    )
+    returncode, _output, _error = asyncio.run(runtime.service_action(action, runner=core.command))
     if returncode:
         raise OSError("service action failed")
 
@@ -606,9 +572,10 @@ def backup_command(arguments: argparse.Namespace) -> int:
                 print("Backup authentication, manifest, checksums, and database verified.")
         else:
             confirmation = input("Type RESTORE EXITLANE to continue: ")
-            info = lifecycle.restore_backup(
+            info = runtime.restore(
                 source,
                 passphrase,
+                restore_transaction=lifecycle.restore_backup,
                 confirmation=confirmation,
                 service_action=_systemd_service_action,
                 health_check=_local_health_check,
@@ -621,7 +588,7 @@ def backup_command(arguments: argparse.Namespace) -> int:
         print(f"Database schema: {info.database_schema_version}")
         print(f"Files: {len(info.files)}")
         return 0
-    except lifecycle.LifecycleError as error:
+    except (lifecycle.LifecycleError, RuntimeCapabilityUnavailable) as error:
         print(f"Backup operation failed: {error.code}.", file=sys.stderr)
         return 2
     except OSError:
@@ -709,6 +676,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         core.init()
         return killswitch_status()
     if arguments.command == "disable-killswitch":
+        if not runtime.capabilities.direct_egress:
+            return disable_killswitch()
         core.init()
         return disable_killswitch()
     if arguments.command == "restore-killswitch":

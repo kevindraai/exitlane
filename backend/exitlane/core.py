@@ -6,11 +6,11 @@ import hmac
 import json
 import os
 import sqlite3
-from pathlib import Path
 
 from exitlane.config import MIN_PASSWORD_LENGTH
+from exitlane.runtime import RuntimePaths
 
-DATA = Path(os.getenv("EXITLANE_DATA_DIR", "/etc/exitlane"))
+DATA = RuntimePaths.native().application_data
 DB = DATA / "exitlane.db"
 WG_DIR = DATA / "wireguard"
 

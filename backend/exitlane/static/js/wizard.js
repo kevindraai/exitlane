@@ -1,3 +1,4 @@
+import { applyRuntimeCapabilities } from "./runtime.js";
 import { api, postJson } from "./api.js";
 import { showLogin } from "./auth.js";
 import { t } from "./i18n.js";
@@ -96,6 +97,7 @@ function updateApplicationMode(setup) {
   );
 }
 export function renderSetupState(setup) {
+  applyRuntimeCapabilities(setup.runtime_capabilities);
   appState.setup = setup;
   updateApplicationMode(setup);
   renderWizardProviders(setup);

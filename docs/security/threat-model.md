@@ -91,6 +91,14 @@ modify those host tables. The [issue #76 feasibility matrix](../docker-appliance
 records the missing container-capability and packet-level proof. The development Compose
 example binds management only to host loopback and publishes no VPN ingress.
 
+Runtime capabilities are selected by trusted process configuration, never by a browser request.
+The initial runtime adapter implements native Debian only; unknown runtime selections fail before
+database or key initialization. The authenticated capability endpoint and public onboarding
+projection contain availability facts, not host paths or secrets. UI hiding is convenience:
+API and CLI checks deny unavailable operations before state writes, privileged commands or Activity
+acceptance. Native command allowlists, provider authorization and restore validation remain in
+force. This boundary prepares container adapters without claiming a supported Docker appliance.
+
 ### System power actions
 
 An authenticated administrator can request three fixed host lifecycle actions.
