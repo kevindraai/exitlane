@@ -233,7 +233,10 @@ def test_download_and_host_failures(bootstrap, failure):
 def test_no_tty_and_no_root(bootstrap):
     _, env = bootstrap
     result = subprocess.run(
-        ["bash", "-c", SCRIPT.read_text().replace("$EUID", "0")], capture_output=True, env=env
+        ["bash", "-c", SCRIPT.read_text().replace("$EUID", "0")],
+        capture_output=True,
+        env=env,
+        check=False,
     )
     assert result.returncode != 0 and b"terminal" in result.stderr
     # Exercise the root refusal without setuid (sandbox/CI need no privilege).
@@ -241,6 +244,7 @@ def test_no_tty_and_no_root(bootstrap):
         ["bash", "-c", SCRIPT.read_text().replace("$EUID", "65534")],
         capture_output=True,
         env=env,
+        check=False,
     )
     assert result.returncode != 0 and b"root" in result.stderr
 
