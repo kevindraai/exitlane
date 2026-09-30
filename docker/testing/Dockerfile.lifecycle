@@ -1,0 +1,13 @@
+# Synthetic lifecycle qualification only; not the production appliance image.
+FROM python:3.13-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b
+LABEL org.exitlane.runtime="synthetic-lifecycle-test" \
+      org.exitlane.support="unsupported"
+RUN apt-get -o APT::Update::Error-Mode=any update \
+    && apt-get install --yes --no-install-recommends wireguard-tools iproute2 nftables \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY backend/pyproject.toml /src/pyproject.toml
+COPY backend/exitlane /src/exitlane
+RUN pip install --no-cache-dir .
+ENV EXITLANE_DATA_DIR=/data/state EXITLANE_CONFIG_DIR=/data/config
+CMD ["python", "-c", "import time; time.sleep(3600)"]

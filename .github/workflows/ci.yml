@@ -137,6 +137,56 @@ jobs:
       - name: Validate translations
         run: python3 scripts/check_i18n.py
 
+  container-lifecycle:
+    name: Container lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Select relevant changes
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          base = os.environ.get("BASE_SHA", "")
+          relevant = True
+          if re.fullmatch(r"[0-9a-f]{40}", base) and set(base) != {"0"}:
+              result = subprocess.run(
+                  ["git", "diff", "--name-only", base, "HEAD"],
+                  capture_output=True, text=True, check=False,
+              )
+              if result.returncode == 0:
+                  relevant = any(
+                      name.startswith(("backend/exitlane/", "docker/testing/"))
+                      or name in {
+                          "backend/pyproject.toml", "backend/uv.lock",
+                          "scripts/qualification/container_lifecycle.py",
+                          ".github/workflows/ci.yml",
+                      }
+                      for name in result.stdout.splitlines()
+                  )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+              output.write(f"run={str(relevant).lower()}\n")
+          PY
+
+      - name: Build synthetic lifecycle image
+        if: steps.changes.outputs.run == 'true'
+        run: docker build -f docker/testing/Dockerfile.lifecycle -t exitlane-lifecycle:test .
+
+      - name: Qualify isolated kernel lifecycle
+        if: steps.changes.outputs.run == 'true'
+        run: python3 scripts/qualification/container_lifecycle.py
+
   package:
     name: Package build
     runs-on: ubuntu-latest

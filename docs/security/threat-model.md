@@ -99,6 +99,13 @@ API and CLI checks deny unavailable operations before state writes, privileged c
 acceptance. Native command allowlists, provider authorization and restore validation remain in
 force. This boundary prepares container adapters without claiming a supported Docker appliance.
 
+The D2 synthetic lifecycle installs a permanent container-owned forwarding restriction and shared
+unreachable provider routes before ingress, verifies actual rule semantics, and never executes native
+configuration hooks. Its worker supervisor keeps protection through failures and exits on uncertain
+interface ownership rather than adopting or deleting another interface. The test harness uses only
+NET_ADMIN/TUN in isolated namespaces; Docker owns all host bridge/firewall setup. Full application
+container composition remains disabled pending the later networking and recovery gates.
+
 ### System power actions
 
 An authenticated administrator can request three fixed host lifecycle actions.
