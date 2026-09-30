@@ -5,9 +5,10 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    cap_add: [NET_ADMIN]
-    devices: [/dev/net/tun:/dev/net/tun]
-    ports: ["8787:8787", "51820:51820/udp"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    # Development management access is host-local; no VPN ingress is published.
+    ports: ["127.0.0.1:8787:8787"]
     volumes: [exitlane-data:/data]
     restart: unless-stopped
 volumes:

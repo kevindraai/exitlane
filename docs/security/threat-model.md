@@ -55,6 +55,16 @@ and an appliance upgrade/recovery path are present. Root service execution, head
 writes, public static shell assets and memory-only login throttling remain explicit beta risks.
 Public Internet exposure, untrusted shared hosting and permanent active-scan targets are
 unsupported. See `security-assurance-matrix.md` for test traceability and open appliance gates.
+
+## Docker deployment boundary
+
+The Docker image remains a development WebUI/API surface, not a VPN appliance. Its private
+container namespace has no qualified WireGuard ingress, fail-closed forwarding, DNS protection,
+startup guard or restore path. Docker owns its host bridge/NAT firewall state; ExitLane must not
+modify those host tables. The [issue #76 feasibility matrix](../docker-appliance-feasibility.md)
+records the missing container-capability and packet-level proof. The development Compose
+example binds management only to host loopback and publishes no VPN ingress.
+
 ### System power actions
 
 An authenticated administrator can request three fixed host lifecycle actions.

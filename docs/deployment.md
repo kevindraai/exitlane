@@ -37,8 +37,10 @@ systemd unit, and prepares configuration, data, and log locations.
 
 ExitLane must run natively in the gateway VM or LXC. NordVPN uses `nordvpn`/`nordvpnd`; Mullvad uses
 ExitLane's own `wg-mullvad` interface and must not have an active Mullvad app daemon or firewall
-table. The Docker image is for UI/API development and is not a supported VPN gateway. Do not expose
-the Docker socket or mount broad host paths to bridge that boundary.
+table. The Docker image is for UI/API development and is not a supported VPN gateway. The
+[Docker appliance feasibility assessment](docker-appliance-feasibility.md) records the exact
+unproven security and lifecycle gates. Do not expose the Docker socket or mount broad host
+paths to bridge that boundary.
 
 The systemd service gives provider tooling a private writable home under `/var/lib/exitlane` while
 retaining `ProtectHome=true`. ExitLane does not mount host command or Docker control sockets.
