@@ -142,6 +142,9 @@ The supported appliance baseline is Debian 13 on `amd64`. The qualified Proxmox 
 **privileged LXC** with `/dev/net/tun` and permission to manage WireGuard, routing and nftables.
 Other Debian releases, architectures and unprivileged LXC configurations are not supported release
 targets. Keep the management interface on a trusted network.
+On a Proxmox VE host, the [PVE LXC helper](docs/proxmox-lxc.md#create-the-container) can
+provision a new container from a PVE-managed Debian 13 template and invoke the same
+tagged Debian installer after a dry-run preview.
 
 Install a published release tag rather than the moving development branch. For this release:
 
