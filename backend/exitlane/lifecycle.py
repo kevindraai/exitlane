@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import base64
 import fcntl
+import gzip
 import hashlib
 import io
+import ipaddress
 import json
 import os
+import re
 import secrets
 import shutil
 import sqlite3
@@ -14,6 +17,7 @@ import struct
 import tarfile
 import tempfile
 import uuid
+import zlib
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -23,6 +27,7 @@ from pathlib import Path, PurePosixPath
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+from packaging.version import InvalidVersion, Version
 
 from exitlane import __version__, core
 from exitlane.config import CONFIG_DIR
@@ -36,6 +41,8 @@ MAX_HEADER_BYTES = 64 * 1024
 MAX_FILES = 256
 MAX_FILE_BYTES = 128 * 1024 * 1024
 MAX_TOTAL_BYTES = 384 * 1024 * 1024
+MAX_TAR_STRUCTURAL_OVERHEAD = (MAX_FILES + 4) * 512 + 10 * 1024
+MAX_TAR_BYTES = MAX_TOTAL_BYTES + 2 * 1024 * 1024
 MAX_COMPRESSION_RATIO = 100
 SCRYPT_N = 2**15
 SCRYPT_R = 8
@@ -44,6 +51,12 @@ KEY_LENGTH = 32
 SALT_LENGTH = 16
 NONCE_LENGTH = 12
 LOCK_PATH = Path(os.getenv("EXITLANE_LIFECYCLE_LOCK", "/run/lock/exitlane-lifecycle.lock"))
+WIREGUARD_CONFIG_MAX_BYTES = 256 * 1024
+WIREGUARD_HOOK = re.compile(
+    r"^\s*(PreUp|PostUp|PreDown|PostDown)\s*=\s*(.*?)\s*$", re.IGNORECASE
+)
+WIREGUARD_INTERFACE = re.compile(r"[A-Za-z0-9-]{1,15}")
+WIREGUARD_EGRESS_INTERFACE = re.compile(r"[A-Za-z0-9_.-]{1,15}")
 
 
 class LifecycleError(RuntimeError):
@@ -290,9 +303,25 @@ def _decrypt(source: Path, passphrase: str) -> bytes:
 def _validated_payload(payload: bytes, staging: Path) -> dict[str, object]:
     if len(payload) > MAX_TOTAL_BYTES:
         raise LifecycleError("payload_too_large")
+    compression_limit = (
+        max(len(payload), 1) * MAX_COMPRESSION_RATIO + MAX_TAR_STRUCTURAL_OVERHEAD
+    )
+    expanded_limit = min(MAX_TAR_BYTES, compression_limit)
+    expanded = bytearray()
     try:
-        archive = tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz")  # noqa: SIM115
-    except tarfile.TarError:
+        with gzip.GzipFile(fileobj=io.BytesIO(payload)) as compressed:
+            while True:
+                remaining = expanded_limit - len(expanded)
+                chunk = compressed.read(min(1024 * 1024, remaining + 1))
+                if not chunk:
+                    break
+                expanded.extend(chunk)
+                if len(expanded) > MAX_TAR_BYTES:
+                    raise LifecycleError("payload_too_large")
+                if len(expanded) > compression_limit:
+                    raise LifecycleError("compression_ratio_exceeded")
+        archive = tarfile.open(fileobj=io.BytesIO(expanded), mode="r:")  # noqa: SIM115
+    except (OSError, EOFError, zlib.error, tarfile.TarError):
         raise LifecycleError("invalid_archive") from None
     seen: set[str] = set()
     total = 0
@@ -315,9 +344,6 @@ def _validated_payload(payload: bytes, staging: Path) -> dict[str, object]:
         total += member.size
         if total > MAX_TOTAL_BYTES:
             raise LifecycleError("payload_too_large")
-    compressed_size = max(len(payload), 1)
-    if total > compressed_size * MAX_COMPRESSION_RATIO:
-        raise LifecycleError("compression_ratio_exceeded")
     if "manifest.json" not in seen:
         raise LifecycleError("manifest_missing")
     for member in members:
@@ -376,8 +402,16 @@ def _validate_manifest(manifest: object, staging: Path, seen: set[str]) -> None:
         raise LifecycleError("unexpected_file")
     if types.count("database") != 1 or types.count("master_key") != 1:
         raise LifecycleError("required_component_missing")
+    master_key = next(entry for entry in entries if entry["type"] == "master_key")
+    if master_key["size"] != KEY_LENGTH:
+        raise LifecycleError("invalid_master_key")
     if manifest["database_schema_version"] > DATABASE_SCHEMA_VERSION:
         raise LifecycleError("future_database_schema")
+    try:
+        if Version(manifest["exitlane_version"]) > Version(__version__):
+            raise LifecycleError("future_application_version")
+    except InvalidVersion:
+        raise LifecycleError("invalid_manifest") from None
 
 
 def _inspect_database(path: Path) -> None:
@@ -461,6 +495,73 @@ def _replace_wireguard(source: Path) -> None:
         os.chmod(core.WG_DIR / item.name, 0o600)
 
 
+def _validated_wireguard_hooks(path: Path) -> None:
+    try:
+        content_bytes = path.read_bytes()
+        if len(content_bytes) > WIREGUARD_CONFIG_MAX_BYTES:
+            raise LifecycleError("invalid_wireguard_config")
+        if any(
+            byte not in {9, 10} and not 32 <= byte <= 126 for byte in content_bytes
+        ):
+            raise LifecycleError("invalid_wireguard_config")
+        content = content_bytes.decode("ascii")
+    except (OSError, UnicodeError):
+        raise LifecycleError("invalid_wireguard_config") from None
+    hooks = []
+    for line in content.split("\n"):
+        match = WIREGUARD_HOOK.fullmatch(line)
+        if match:
+            hooks.append((match.group(1), match.group(2)))
+    if not hooks:
+        return
+
+    interface = path.stem
+    if path.suffix != ".conf" or WIREGUARD_INTERFACE.fullmatch(interface) is None:
+        raise LifecycleError("invalid_wireguard_config")
+    current_section = ""
+    addresses = []
+    for line in content.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            current_section = stripped[1:-1]
+        elif current_section == "Interface" and "=" in stripped:
+            name, value = stripped.split("=", 1)
+            if name.strip() == "Address":
+                addresses.append(value.strip())
+    if len(addresses) != 1:
+        raise LifecycleError("invalid_wireguard_config")
+    try:
+        address = ipaddress.ip_interface(addresses[0])
+    except ValueError:
+        raise LifecycleError("invalid_wireguard_config") from None
+    if address.version != 4 or address.network.prefixlen > 31:
+        raise LifecycleError("invalid_wireguard_config")
+
+    from exitlane.services.wireguard import _forwarding_rules
+
+    sysctl = ("PostUp", "sysctl -w net.ipv4.ip_forward=1")
+    candidates = [None]
+    first_forward = re.fullmatch(
+        rf"iptables -A FORWARD -i {re.escape(interface)} -o ([A-Za-z0-9_.-]{{1,15}}) -j ACCEPT",
+        hooks[1][1] if len(hooks) > 1 else "",
+    )
+    if first_forward and WIREGUARD_EGRESS_INTERFACE.fullmatch(first_forward.group(1)):
+        candidates.append(first_forward.group(1))
+    for egress in candidates:
+        expected = [sysctl]
+        for line in _forwarding_rules(interface, str(address.network), egress).splitlines():
+            name, value = line.split("=", 1)
+            expected.append((name.strip(), value.strip()))
+        if hooks == expected:
+            return
+    raise LifecycleError("invalid_wireguard_config")
+
+
+def _validate_restored_wireguard(directory: Path) -> None:
+    for path in directory.iterdir():
+        _validated_wireguard_hooks(path)
+
+
 def restore_backup(
     source: Path,
     passphrase: str,
@@ -505,6 +606,7 @@ def restore_backup(
                 ):
                     raise LifecycleError("invalid_manifest")
                 os.replace(staging / entry["name"], restored_wireguard / name)
+        _validate_restored_wireguard(restored_wireguard)
         # Quiesce both generations before stopping the only application writer.
         # No restored or recovered service is exposed until its own guards exist.
         if forwarding_guard:
