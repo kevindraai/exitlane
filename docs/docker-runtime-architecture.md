@@ -465,6 +465,10 @@ Documentation-only planning uses ordinary required CI and no artificial runtime 
 | D6 Disposable-host qualification | D5; executable harness and complete matrix above, exact supported host/runtime inventory | Independent packet/security review, no-fallback proof through daemon/host restarts; integration/release gate, not every docs PR |
 | D7 GHCR/release integration | D6 PASS and reviewed support decision; release workflow, digest/metadata/provenance/SBOM and operator upgrade guide | Versioned release build/pull verification, schema compatibility receipts and current security gates; first production publication separately authorized |
 
+The synthetic D2 lifecycle implementation and runnable lightweight proof are documented in
+[container lifecycle qualification](docker-container-lifecycle.md). They do not enable the full
+application container runtime or satisfy D3–D6 dataplane/recovery/support acceptance.
+
 The subsequent deployment-wave work order authorizes sequential D1–D7 implementation.
 D1 establishes a native-only composition root (`exitlane.runtime`); unsupported runtime names
 fail before state initialization. Native paths preserve existing independent historical defaults
