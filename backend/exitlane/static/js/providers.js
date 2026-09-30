@@ -428,7 +428,7 @@ function renderOverviewSummary(items, activeProviderId) {
 
 function providerStatusText(view, name) {
   if (view.installationState === "not_installed") {
-    return t("settings.vpn.states.not_installed", { provider: name }, `${name} is not installed.`);
+    return t("provider.description.not_installed", { provider: name }, `${name} is not installed.`);
   }
   if (view.authenticationState === "configured") {
     return t("provider.proton.configured", {}, "WireGuard profiles configured.");
