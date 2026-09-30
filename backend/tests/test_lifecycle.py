@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import io
+import json
 import sqlite3
 import tarfile
 from pathlib import Path
@@ -8,26 +10,74 @@ from pathlib import Path
 import pytest
 
 from exitlane import cli, core, lifecycle
-from exitlane.services import auth_security, killswitch, provider_secrets
+from exitlane.services import auth_security, killswitch, provider_secrets, wireguard
 from exitlane.services.provider_wireguard import ProviderWireGuard, ProviderWireGuardError
+
+
+def _synthetic_payload(*, master_key: bytes = b"k" * 32, version: str | None = None) -> bytes:
+    files = {
+        "database.sqlite3": ("database", b"synthetic-database"),
+        "master-key": ("master_key", master_key),
+    }
+    manifest = {
+        "format": "exitlane-appliance-backup",
+        "format_version": lifecycle.FORMAT_VERSION,
+        "backup_id": "00000000-0000-4000-8000-000000000000",
+        "created_at": "2026-09-30T00:00:00+00:00",
+        "exitlane_version": version or lifecycle.__version__,
+        "database_schema_version": lifecycle.DATABASE_SCHEMA_VERSION,
+        "files": [
+            {
+                "type": kind,
+                "name": name,
+                "size": len(content),
+                "sha256": hashlib.sha256(content).hexdigest(),
+                "mode": 0o600,
+            }
+            for name, (kind, content) in files.items()
+        ],
+    }
+    content = {
+        **{name: value for name, (_kind, value) in files.items()},
+        "manifest.json": json.dumps(manifest).encode(),
+    }
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:gz", format=tarfile.USTAR_FORMAT) as archive:
+        for name, value in content.items():
+            member = tarfile.TarInfo(name)
+            member.size = len(value)
+            archive.addfile(member, io.BytesIO(value))
+    return output.getvalue()
 
 
 @pytest.fixture
 def appliance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
     data = tmp_path / "data"
     config = tmp_path / "config"
-    wireguard = data / "wireguard"
-    for directory in (data, config, wireguard):
+    wireguard_dir = data / "wireguard"
+    for directory in (data, config, wireguard_dir):
         directory.mkdir(mode=0o700)
     monkeypatch.setattr(core, "DATA", data)
     monkeypatch.setattr(core, "DB", data / "exitlane.db")
-    monkeypatch.setattr(core, "WG_DIR", wireguard)
+    monkeypatch.setattr(core, "WG_DIR", wireguard_dir)
     monkeypatch.setattr(lifecycle, "CONFIG_DIR", config)
     core.init()
     (config / "secret.key").write_bytes(b"k" * 32)
     (config / "secret.key").chmod(0o600)
-    (wireguard / "wg0.conf").write_text("[Interface]\nPrivateKey = test\n", encoding="utf-8")
-    (wireguard / "wg0.conf").chmod(0o600)
+    server_config = (
+        "[Interface]\n"
+        "Address = 10.42.0.1/24\n"
+        "ListenPort = 51820\n"
+        "PrivateKey = test\n"
+        "PostUp = sysctl -w net.ipv4.ip_forward=1\n"
+        f"{wireguard._forwarding_rules('wg0', '10.42.0.0/24', None)}\n\n"
+        "[Peer]\n"
+        "PublicKey = test\n"
+        "AllowedIPs = 10.42.0.2/32\n"
+        "PersistentKeepalive = 25\n"
+    )
+    (wireguard_dir / "wg0.conf").write_text(server_config, encoding="utf-8")
+    (wireguard_dir / "wg0.conf").chmod(0o600)
     core.set_setting("language", "nl")
     with sqlite3.connect(core.DB) as connection:
         connection.execute(
@@ -138,6 +188,134 @@ def test_malicious_archive_entry_is_rejected_before_extraction(
     with pytest.raises(lifecycle.LifecycleError, match="unsafe_archive_entry"):
         lifecycle._validated_payload(output.getvalue(), staging)
     assert not (tmp_path / "escape").exists()
+
+
+def test_compression_budget_covers_tar_metadata(tmp_path: Path) -> None:
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:gz", format=tarfile.PAX_FORMAT) as archive:
+        member = tarfile.TarInfo("manifest.json")
+        member.pax_headers = {"comment": "x" * 1024 * 1024}
+        member.size = 2
+        archive.addfile(member, io.BytesIO(b"{}"))
+
+    staging = tmp_path / "metadata-staging"
+    staging.mkdir()
+    with pytest.raises(lifecycle.LifecycleError, match="compression_ratio_exceeded"):
+        lifecycle._validated_payload(output.getvalue(), staging)
+    assert list(staging.iterdir()) == []
+
+
+@pytest.mark.parametrize("damage", ["deflate", "truncated"])
+def test_malformed_gzip_is_normalized_to_lifecycle_error(tmp_path: Path, damage: str) -> None:
+    payload = bytearray(_synthetic_payload())
+    if damage == "deflate":
+        payload[10] ^= 0xFF
+    else:
+        del payload[-5:]
+    staging = tmp_path / f"{damage}-staging"
+    staging.mkdir()
+
+    with pytest.raises(lifecycle.LifecycleError, match="invalid_archive"):
+        lifecycle._validated_payload(bytes(payload), staging)
+
+
+def test_invalid_restored_master_key_is_rejected_before_mutation(tmp_path: Path) -> None:
+    staging = tmp_path / "master-key-staging"
+    staging.mkdir()
+    with pytest.raises(lifecycle.LifecycleError, match="invalid_master_key"):
+        lifecycle._validated_payload(_synthetic_payload(master_key=b"short"), staging)
+
+
+def test_future_application_backup_is_rejected_before_mutation(tmp_path: Path) -> None:
+    staging = tmp_path / "future-version-staging"
+    staging.mkdir()
+    with pytest.raises(lifecycle.LifecycleError, match="future_application_version"):
+        lifecycle._validated_payload(_synthetic_payload(version="999.0.0"), staging)
+
+
+@pytest.mark.parametrize("directive", ["PreUp", "PostUp", "PreDown", "PostDown"])
+def test_restored_wireguard_rejects_unapproved_hooks(tmp_path: Path, directive: str) -> None:
+    configuration = tmp_path / "wg0.conf"
+    configuration.write_text(
+        f"[Interface]\nAddress = 10.42.0.1/24\n{directive} = sentinel-operation\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(lifecycle.LifecycleError, match="invalid_wireguard_config"):
+        lifecycle._validated_wireguard_hooks(configuration)
+
+
+@pytest.mark.parametrize("egress", [None, "nordlynx"])
+def test_restored_wireguard_accepts_only_canonical_hooks(tmp_path: Path, egress: str | None) -> None:
+    configuration = tmp_path / "wg0.conf"
+    configuration.write_text(
+        "[Interface]\n"
+        "Address = 10.42.0.1/24\n"
+        "PostUp = sysctl -w net.ipv4.ip_forward=1\n"
+        f"{wireguard._forwarding_rules('wg0', '10.42.0.0/24', egress)}\n",
+        encoding="utf-8",
+    )
+
+    lifecycle._validated_wireguard_hooks(configuration)
+
+    with configuration.open("a", encoding="utf-8") as handle:
+        handle.write("PostUp = sentinel-operation\n")
+    with pytest.raises(lifecycle.LifecycleError, match="invalid_wireguard_config"):
+        lifecycle._validated_wireguard_hooks(configuration)
+
+
+@pytest.mark.parametrize("separator", ["\r", "\u0085", "\u2028", "\u2029"])
+def test_restored_wireguard_rejects_noncanonical_line_separators(
+    tmp_path: Path, separator: str
+) -> None:
+    configuration = tmp_path / "wg0.conf"
+    hooks = wireguard._forwarding_rules("wg0", "10.42.0.0/24", None)
+    configuration.write_text(
+        "[Interface]\n"
+        "Address = 10.42.0.1/24\n"
+        f"PostUp = sysctl -w net.ipv4.ip_forward=1{separator}; sentinel-operation\n"
+        f"{hooks}\n",
+        encoding="utf-8",
+        newline="",
+    )
+
+    with pytest.raises(lifecycle.LifecycleError, match="invalid_wireguard_config"):
+        lifecycle._validated_wireguard_hooks(configuration)
+
+
+def test_restore_rejects_unapproved_wireguard_before_mutation(
+    appliance: dict[str, Path], tmp_path: Path
+) -> None:
+    safe_configuration = (core.WG_DIR / "wg0.conf").read_bytes()
+    (core.WG_DIR / "wg0.conf").write_text(
+        "[Interface]\nAddress = 10.42.0.1/24\nPreUp = sentinel-operation\n",
+        encoding="utf-8",
+    )
+    backup = tmp_path / "unapproved-wireguard.elb"
+    lifecycle.create_backup(
+        backup,
+        "correct horse battery staple",
+        effective_user_id=0,
+        lock_path=appliance["lock"],
+    )
+    (core.WG_DIR / "wg0.conf").write_bytes(safe_configuration)
+    service_actions = []
+    guard_actions = []
+
+    with pytest.raises(lifecycle.LifecycleError, match="invalid_wireguard_config"):
+        lifecycle.restore_backup(
+            backup,
+            "correct horse battery staple",
+            confirmation="RESTORE EXITLANE",
+            effective_user_id=0,
+            lock_path=appliance["lock"],
+            service_action=service_actions.append,
+            forwarding_guard=lambda ingress, enabled: guard_actions.append((ingress, enabled)),
+        )
+
+    assert service_actions == []
+    assert guard_actions == []
+    assert (core.WG_DIR / "wg0.conf").read_bytes() == safe_configuration
 
 
 def test_lifecycle_lock_prevents_concurrent_actions(tmp_path: Path) -> None:
