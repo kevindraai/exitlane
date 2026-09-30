@@ -88,6 +88,8 @@ Beta.5 inherits the beta.4 UX, accessibility, design-system and integrated-docum
 - IPv6 egress support for Mullvad
 - Notification management improvements
 - Appliance and installation polish
+- Docker appliance adapters and synthetic fail-closed network qualification; current image
+  remains development-only pending the [feasibility gates](docs/docker-appliance-feasibility.md).
 - Extended operational logging and diagnostic depth
 
 ## Later

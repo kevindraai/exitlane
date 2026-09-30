@@ -5,6 +5,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends wireguard-tools
 WORKDIR /app
 COPY backend /app
 RUN pip install --no-cache-dir .
-ENV EXITLANE_DATA_DIR=/data
+ENV EXITLANE_DATA_DIR=/data EXITLANE_CONFIG_DIR=/data
 EXPOSE 8787
 CMD ["uvicorn","exitlane.main:app","--host","0.0.0.0","--port","8787"]

@@ -162,6 +162,10 @@ Use the tagged installation command once the candidate is published on the
 
 Read the [deployment guide](docs/deployment.md), [NordVPN provider guide](docs/nordvpn.md), [Mullvad provider guide](docs/mullvad.md), [PIA provider guide](docs/pia.md), [Proton provider guide](docs/proton.md), [backup and restore guide](docs/backup-and-restore.md), [upgrade and recovery guide](docs/upgrade-and-recovery.md), and [Proxmox LXC notes](docs/proxmox-lxc.md) before using ExitLane outside a development environment.
 
+The Docker image remains for UI/API development. Its
+[appliance feasibility assessment](docs/docker-appliance-feasibility.md) classifies a Docker
+VPN gateway as **not yet suitable** pending container lifecycle and fail-closed dataplane proof.
+
 Direct HTTP remains available on a trusted local network. For HTTPS termination, follow the [reverse-proxy guide](docs/deployment/reverse-proxy.md); ExitLane does not terminate TLS itself.
 
 Docker is not currently a supported deployment method.
