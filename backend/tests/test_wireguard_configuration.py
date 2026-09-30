@@ -50,6 +50,76 @@ def configuration(private_key, peer_key):
     return f"[Interface]\nPrivateKey = {private_key}\n\n[Peer]\nPublicKey = {peer_key}\n"
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("endpoint", "vpn.example.invalid\ninvalid"),
+        ("endpoint", "vpn.example.invalid trailing"),
+        ("endpoint", "2001:db8::1%bad\nvalue"),
+        ("dns", "fe80::1%bad\nvalue"),
+        ("subnet", "::/64"),
+        ("subnet", "10.42.0.1/32"),
+    ],
+)
+def test_ingress_rejects_unsafe_configuration_before_key_generation(monkeypatch, field, value):
+    async def must_not_generate():
+        raise AssertionError("invalid configuration reached key generation")
+
+    monkeypatch.setattr(wireguard, "keypair", must_not_generate)
+    arguments = {
+        "endpoint": "vpn.example.invalid",
+        "subnet": "10.42.0.0/24",
+        "dns": "10.42.0.1",
+        field: value,
+    }
+    with pytest.raises(ValueError):
+        asyncio.run(wireguard.create(**arguments))
+
+
+def test_ingress_requires_distinct_server_and_client_configuration_names(monkeypatch):
+    async def must_not_generate():
+        raise AssertionError("ambiguous configuration reached key generation")
+
+    monkeypatch.setattr(wireguard, "keypair", must_not_generate)
+    with pytest.raises(ValueError, match="verschillen"):
+        asyncio.run(
+            wireguard.create(
+                endpoint="vpn.example.invalid",
+                subnet="10.42.0.0/24",
+                dns="10.42.0.1",
+                interface="wg-ingress",
+                client="wg-ingress",
+            )
+        )
+
+
+def test_ingress_renders_ipv6_endpoint_with_wireguard_brackets(monkeypatch, tmp_path):
+    monkeypatch.setattr(wireguard, "WG_DIR", tmp_path)
+    pairs = iter((("server-private", "server-public"), ("client-private", "client-public")))
+
+    async def keypair():
+        return next(pairs)
+
+    monkeypatch.setattr(wireguard, "keypair", keypair)
+    result = asyncio.run(
+        wireguard.create(
+            endpoint="2001:db8::42",
+            subnet="10.42.0.0/24",
+            dns="10.42.0.1",
+            interface="wg-ingress",
+            client="router",
+        )
+    )
+    assert "Endpoint = [2001:db8::42]:51820" in result["client_config"]
+
+    async def public_key(private):
+        return {"server-private": "server-public", "client-private": "client-public"}[private]
+
+    monkeypatch.setattr(wireguard, "_public_key", public_key)
+    parameters = asyncio.run(wireguard.parameters_from_current("wg-ingress", "router"))
+    assert parameters["endpoint"] == "2001:db8::42"
+
+
 def test_configuration_endpoints_require_authentication(client):
     for path in (
         "/api/ingress/wireguard/config",
