@@ -92,8 +92,10 @@ Beta.5 inherits the beta.4 UX, accessibility, design-system and integrated-docum
 - IPv6 egress support for Mullvad
 - Notification management improvements
 - Appliance and installation polish
-- Revisit Docker appliance adapters only after the [feasibility blockers](docs/docker-appliance-feasibility.md)
-  can be closed without privileged mode, host networking or host control.
+- Deliver the reviewed [Docker runtime program](docs/docker-runtime-architecture.md) sequentially:
+  runtime boundary, container lifecycle, fail-closed dataplane, state/recovery, image/Compose,
+  disposable-host qualification and finally GHCR/release integration. Native remains reference;
+  Docker remains unsupported until its gates pass.
 - Live disposable PVE create → boot → installer qualification for the helper.
 - Extended operational logging and diagnostic depth
 
