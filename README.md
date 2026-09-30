@@ -15,7 +15,7 @@ The result is an experience closer to a native VPN app, but for an entire networ
 > [!WARNING]
 > The management interface is intended for a trusted network and must not be exposed directly to the internet.
 
-The trusted management network is a deployment assumption, not a substitute for application security. See the [hardening guide](docs/security/hardening-guide.md), [threat model](docs/security/threat-model.md), and [security policy](SECURITY.md).
+The trusted management network is a deployment assumption, not a substitute for application security. See the [hardening guide](docs/security/hardening-guide.md), [threat model](docs/security/threat-model.md), [2026-09-30 Daybreak Blue-assisted internal defensive assessment](docs/security/daybreak-blue-assessment-2026-09-30.md), and [security policy](SECURITY.md). This internal assessment is not an independent penetration test.
 
 ## Why ExitLane?
 
