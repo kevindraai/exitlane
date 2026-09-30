@@ -49,6 +49,8 @@ The host needs systemd, outbound internet access, `/dev/net/tun`, and permission
 manage WireGuard interfaces. A Proxmox LXC must be configured accordingly; the currently tested
 baseline is a privileged container. Unprivileged LXC is not a supported release target.
 See [Proxmox LXC](proxmox-lxc.md).
+The PVE-host creation helper in that guide provisions a new privileged container and then reuses
+this same Debian installer; it does not provide a second application installation path.
 
 Use the published release tag. The following command becomes available when `v0.3.0-rc.2` is
 published; do not substitute an unreviewed development branch for an appliance deployment:

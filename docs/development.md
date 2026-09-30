@@ -42,6 +42,12 @@ The LXC check catches systemd, permissions, TUN/WireGuard, NordVPN CLI, and host
 problems that unit tests cannot represent. Record both automated and manual verification in the
 pull request before merge.
 
+The PVE creation helper has host-command fixtures in
+`backend/tests/test_proxmox_helper.py`. Run `cd backend && python -m pytest -q tests/test_proxmox_helper.py`
+and `python -m py_compile installer/create-proxmox-lxc.py` before its PR. Its live
+create/destroy qualification requires a separately designated disposable PVE CTID range;
+the existing test LXC is not such a range.
+
 After recreating a WireGuard interface, do not treat `active` service state and a restored route as
 proof that its demand-driven peer session is already usable. From the QA peer, run the bounded
 dataplane gate and only continue after its separate steady-state probe succeeds:
