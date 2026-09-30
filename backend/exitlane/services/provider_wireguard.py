@@ -668,12 +668,25 @@ class ProviderWireGuard:
 
     async def _rollback_start(self, interface: str, path: Path, previous: str | None) -> None:
         try:
-            await self.stop_interface(interface)
+            await self._stop_for_rollback(interface)
         finally:
             if previous is None:
                 path.unlink(missing_ok=True)
             else:
                 self._atomic_write(path, previous)
+
+    async def transition_facts(self, config: EgressConfig):
+        """Optional proved-candidate facts for completing an owned transition."""
+        return
+
+    async def _stop_for_rollback(self, interface: str) -> None:
+        await self.stop_interface(interface)
+
+    async def committed(self, config: EgressConfig) -> None:
+        """Runtime post-commit hook; native networking needs no extra action."""
+
+    async def _stop_for_start(self, interface: str) -> None:
+        await self.stop_interface(interface)
 
     async def start(self, config: EgressConfig, ingress_interfaces: Iterable[str]) -> None:
         item = config.validated()
@@ -691,7 +704,7 @@ class ProviderWireGuard:
             raise ProviderWireGuardError("provider_egress_apply_failed") from error
         try:
             await self._apply_guard(ingress, item.interface, source)
-            await self.stop_interface(item.interface)
+            await self._stop_for_start(item.interface)
             self._atomic_write(path, self.render(item))
             await self._run("wg-quick", "up", str(path), timeout=20)
             await self._run(

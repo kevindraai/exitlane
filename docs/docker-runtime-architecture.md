@@ -469,6 +469,11 @@ The synthetic D2 lifecycle implementation and runnable lightweight proof are doc
 [container lifecycle qualification](docker-container-lifecycle.md). They do not enable the full
 application container runtime or satisfy D3–D6 dataplane/recovery/support acceptance.
 
+The D3 implementation and isolated packet harness are described in
+[direct-provider dataplane qualification](docker-container-dataplane.md). They reuse shared
+provider transactions with a container-specific lifecycle adapter. Full application runtime
+selection remains disabled pending durable state/recovery and production composition gates.
+
 The subsequent deployment-wave work order authorizes sequential D1–D7 implementation.
 D1 establishes a native-only composition root (`exitlane.runtime`); unsupported runtime names
 fail before state initialization. Native paths preserve existing independent historical defaults

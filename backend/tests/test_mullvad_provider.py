@@ -71,11 +71,22 @@ class FakeWireGuard:
     def __init__(self, *, ready=True):
         self.ready = ready
         self.started = []
+        self.committed_configs = []
         self.stopped = []
         self.source_guards = []
 
     async def arm_source(self, interface, source_address):
         self.source_guards.append((interface, source_address))
+
+    async def transition_facts(self, config):
+        return None
+
+    async def committed(self, config):
+        # The forwarding hook must observe a successfully persisted generation.
+        state = provider_secrets.load(config.provider_id)
+        assert state["active"]["generation"] == config.generation
+        assert "pending" not in state
+        self.committed_configs.append(config)
 
     async def start(self, config, ingress):
         self.started.append((config, tuple(ingress)))
@@ -452,3 +463,20 @@ def test_provider_secret_database_contains_no_plaintext_account_or_private_key()
         )
     assert ACCOUNT.encode() not in encrypted
     assert PRIVATE_KEY.encode() not in encrypted
+
+
+def test_failed_active_state_write_never_calls_forwarding_commit(monkeypatch):
+    registered_state()
+    api = FakeApi(None, devices=[device()], relays=[relay()])
+    wireguard = FakeWireGuard()
+    provider = mullvad.Mullvad(api_factory=lambda account: api, wireguard=wireguard)
+    save = provider._save
+
+    def fail_active(state):
+        if state.get("active"):
+            raise provider_secrets.ProviderSecretError("synthetic-state-commit-failed")
+        save(state)
+
+    monkeypatch.setattr(provider, "_save", fail_active)
+    assert not asyncio.run(provider.connect("nl", timeout=1))["ok"]
+    assert wireguard.committed_configs == []
