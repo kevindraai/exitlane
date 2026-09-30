@@ -23,6 +23,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from exitlane import __version__
 from exitlane.config import (
@@ -135,6 +136,53 @@ SYSTEM_ACTION_COMMANDS = {
     "reboot": ("/usr/bin/systemctl", "reboot"),
     "shutdown": ("/usr/bin/systemctl", "poweroff"),
 }
+MAX_REQUEST_BODY_MESSAGES = 4096
+
+
+class RequestBodyLimitMiddleware:
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        body = bytearray()
+        messages = 0
+        while True:
+            message = await receive()
+            if message["type"] == "http.request":
+                messages += 1
+                chunk = message.get("body", b"")
+                if (
+                    messages > MAX_REQUEST_BODY_MESSAGES
+                    or len(body) + len(chunk) > MAX_REQUEST_BODY_BYTES
+                ):
+                    response = JSONResponse(
+                        status_code=413, content={"detail": "Request body too large"}
+                    )
+                    await response(scope, receive, send)
+                    return
+                body.extend(chunk)
+                if not message.get("more_body", False):
+                    break
+            elif message["type"] == "http.disconnect":
+                response = JSONResponse(
+                    status_code=400, content={"detail": "Request body incomplete"}
+                )
+                await response(scope, receive, send)
+                return
+
+        replayed = False
+
+        async def replay_receive() -> Message:
+            nonlocal replayed
+            if not replayed:
+                replayed = True
+                return {"type": "http.request", "body": bytes(body), "more_body": False}
+            return await receive()
+
+        await self.app(scope, replay_receive, send)
 
 
 def observe_auth_phase(_request: Request, _phase: str) -> None:
@@ -425,6 +473,7 @@ app = FastAPI(
     version=__version__,
     lifespan=lifespan,
 )
+app.add_middleware(RequestBodyLimitMiddleware)
 
 
 @app.exception_handler(RequestValidationError)

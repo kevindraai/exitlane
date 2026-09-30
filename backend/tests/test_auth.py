@@ -1,5 +1,7 @@
+import asyncio
 import hashlib
 import ipaddress
+import json
 import sqlite3
 import time
 
@@ -547,6 +549,163 @@ def test_oversized_body_is_rejected_before_route_processing(client, monkeypatch)
     )
     assert response.status_code == 413
     assert response.json() == {"detail": "Request body too large"}
+
+
+@pytest.mark.parametrize("declared_length", [None, "1"])
+def test_streamed_body_limit_does_not_trust_content_length(tmp_path, monkeypatch, declared_length):
+    data = tmp_path / "data"
+    database = data / "exitlane.db"
+    monkeypatch.setattr(core, "DATA", data)
+    monkeypatch.setattr(core, "DB", database)
+    monkeypatch.setattr(core, "WG_DIR", data / "wireguard")
+    monkeypatch.setattr(main, "DB", database)
+    monkeypatch.setattr(main, "WG_DIR", data / "wireguard")
+    monkeypatch.setattr(main, "MAX_REQUEST_BODY_BYTES", 32)
+    phases = []
+    monkeypatch.setattr(main, "observe_auth_phase", lambda _request, phase: phases.append(phase))
+    core.init()
+    body_chunks = [b'{"username":"admin","password":"', b"x" * 64, b'"}']
+    sent = []
+
+    async def receive():
+        content = body_chunks.pop(0)
+        return {"type": "http.request", "body": content, "more_body": bool(body_chunks)}
+
+    async def send(message):
+        sent.append(message)
+
+    headers = [(b"host", b"testserver"), (b"content-type", b"application/json")]
+    if declared_length is not None:
+        headers.append((b"content-length", declared_length.encode()))
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/api/auth/login",
+        "raw_path": b"/api/auth/login",
+        "query_string": b"",
+        "headers": headers,
+        "client": ("127.0.0.1", 12345),
+        "server": ("testserver", 80),
+    }
+    asyncio.run(asyncio.wait_for(main.app(scope, receive, send), timeout=2))
+    start = next(message for message in sent if message["type"] == "http.response.start")
+    response_headers = dict(start["headers"])
+    response_body = b"".join(
+        message.get("body", b"") for message in sent if message["type"] == "http.response.body"
+    )
+    assert start["status"] == 413, (start, response_body, phases)
+    assert json.loads(response_body) == {"detail": "Request body too large"}
+    assert response_headers[b"x-content-type-options"] == b"nosniff"
+    assert response_headers[b"cache-control"] == b"no-store"
+    assert phases == []
+
+
+def test_body_limit_coalesces_fragmented_body_at_exact_limit(monkeypatch):
+    body = b"bounded-body"
+    received_body = []
+    sent = []
+
+    async def downstream(_scope, receive, send):
+        message = await receive()
+        received_body.append(message)
+        await send({"type": "http.response.start", "status": 204, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    messages = [
+        {"type": "http.request", "body": b"", "more_body": True},
+        *[{"type": "http.request", "body": bytes([byte]), "more_body": True} for byte in body[:-1]],
+        {"type": "http.request", "body": body[-1:], "more_body": False},
+    ]
+
+    async def receive():
+        return messages.pop(0)
+
+    async def send(message):
+        sent.append(message)
+
+    monkeypatch.setattr(main, "MAX_REQUEST_BODY_BYTES", len(body))
+    middleware = main.RequestBodyLimitMiddleware(downstream)
+    asyncio.run(middleware({"type": "http"}, receive, send))
+
+    assert received_body == [{"type": "http.request", "body": body, "more_body": False}]
+    assert sent[0]["status"] == 204
+
+
+def test_body_limit_does_not_dispatch_partial_body_after_disconnect(tmp_path, monkeypatch):
+    data = tmp_path / "data"
+    database = data / "exitlane.db"
+    monkeypatch.setattr(core, "DATA", data)
+    monkeypatch.setattr(core, "DB", database)
+    monkeypatch.setattr(core, "WG_DIR", data / "wireguard")
+    monkeypatch.setattr(main, "DB", database)
+    monkeypatch.setattr(main, "WG_DIR", data / "wireguard")
+    phases = []
+    monkeypatch.setattr(main, "observe_auth_phase", lambda _request, phase: phases.append(phase))
+    core.init()
+    sent = []
+
+    messages = [
+        {"type": "http.request", "body": b"partial", "more_body": True},
+        {"type": "http.disconnect"},
+    ]
+
+    async def receive():
+        return messages.pop(0)
+
+    async def send(message):
+        sent.append(message)
+
+    monkeypatch.setattr(main, "MAX_REQUEST_BODY_BYTES", 32)
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/api/auth/login",
+        "raw_path": b"/api/auth/login",
+        "query_string": b"",
+        "headers": [(b"host", b"testserver"), (b"content-type", b"application/json")],
+        "client": ("127.0.0.1", 12345),
+        "server": ("testserver", 80),
+    }
+    asyncio.run(asyncio.wait_for(main.app(scope, receive, send), timeout=2))
+
+    start = next(message for message in sent if message["type"] == "http.response.start")
+    response_body = b"".join(
+        message.get("body", b"") for message in sent if message["type"] == "http.response.body"
+    )
+    assert start["status"] == 400
+    assert json.loads(response_body) == {"detail": "Request body incomplete"}
+    assert phases == []
+
+
+def test_body_limit_bounds_empty_chunk_processing(monkeypatch):
+    dispatched = False
+    sent = []
+
+    async def downstream(_scope, _receive, _send):
+        nonlocal dispatched
+        dispatched = True
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": True}
+
+    async def send(message):
+        sent.append(message)
+
+    monkeypatch.setattr(main, "MAX_REQUEST_BODY_MESSAGES", 4)
+    middleware = main.RequestBodyLimitMiddleware(downstream)
+    asyncio.run(middleware({"type": "http"}, receive, send))
+
+    assert dispatched is False
+    assert (
+        next(message for message in sent if message["type"] == "http.response.start")["status"]
+        == 413
+    )
 
 
 @pytest.mark.parametrize("path", ["/", "/api/health", "/api/auth/session", "/missing"])
