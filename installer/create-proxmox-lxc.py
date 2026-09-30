@@ -47,6 +47,9 @@ def run(
         text=True,
         timeout=timeout,
         env={"PATH": PVE_PATH, "HOME": "/root", "LC_ALL": "C"},
+        # PVE-generated public guest configuration must remain readable by _apt.
+        # Do not inherit a caller's private bootstrap/download umask.
+        umask=0o022,
     )
 
 
@@ -305,7 +308,10 @@ def plan(
     commands += [
         create,
         ["pct", "start", str(ctid)],
-        ["pct", "exec", str(ctid), "--", "apt-get", "update"],
+        [
+            "pct", "exec", str(ctid), "--", "apt-get",
+            "-o", "Acquire::Retries=2", "-o", "APT::Update::Error-Mode=any", "update",
+        ],
         ["pct", "exec", str(ctid), "--", "apt-get", "install", "--yes", "git"],
         [
             "pct",
@@ -334,42 +340,95 @@ def plan(
 
 
 def wait_ready(ctid: int, timeout_seconds: float = 90, interval: float = 2.0) -> str:
+    """Require two stable rounds, including DNS as the package sandbox user."""
     deadline = time.monotonic() + timeout_seconds
+    last: dict[str, str] = {}
+    stable = 0
+    previous: tuple[str, str, str] | None = None
 
-    def probe(*command: str) -> subprocess.CompletedProcess[str] | None:
+    def probe(label: str, *command: str) -> subprocess.CompletedProcess[str] | None:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
+            last[label] = "deadline exhausted"
             return None
         try:
-            return run(*command, check=False, timeout=min(5, remaining))
+            observation = run(*command, check=False, timeout=min(5, remaining))
         except subprocess.TimeoutExpired:
+            last[label] = "timed out"
             return None
+        last[label] = f"rc={observation.returncode}"
+        return observation
+
+    def guest(label: str, *command: str) -> subprocess.CompletedProcess[str] | None:
+        return probe(label, "pct", "exec", str(ctid), "--", *command)
+
+    def successful(observation: subprocess.CompletedProcess[str] | None) -> bool:
+        return observation is not None and observation.returncode == 0
+
+    def addresses(text: str) -> list[str]:
+        found = []
+        for field in text.split():
+            try:
+                address = ipaddress.IPv4Address(field)
+            except ipaddress.AddressValueError:
+                continue
+            if not address.is_loopback and not address.is_unspecified and not address.is_link_local:
+                found.append(str(address))
+        return found
 
     while time.monotonic() < deadline:
-        running = probe("pct", "status", str(ctid))
-        if (
-            running is not None
-            and running.returncode == 0
-            and "running" in running.stdout
-        ):
-            tun = probe("pct", "exec", str(ctid), "--", "test", "-c", "/dev/net/tun")
-            if tun is not None and tun.returncode == 0:
-                dns = probe(
-                    "pct", "exec", str(ctid), "--", "getent", "ahostsv4", "github.com"
+        running = probe("running", "pct", "status", str(ctid))
+        passed = successful(running) and "status: running" in running.stdout
+        address = route = resolvers = "unavailable"
+        if passed:
+            tun = guest("TUN", "test", "-c", "/dev/net/tun")
+            ip = guest("IPv4", "hostname", "-I")
+            ips = addresses(ip.stdout) if successful(ip) else []
+            address = ips[0] if ips else "unavailable"
+            routing = guest("default route", "ip", "-4", "route", "show", "default")
+            route = " ".join(routing.stdout.split())[:200] if successful(routing) else "unavailable"
+            resolver = guest("resolver configuration", "cat", "/etc/resolv.conf")
+            servers = []
+            if successful(resolver):
+                for line in resolver.stdout.splitlines():
+                    fields = line.split()
+                    if len(fields) >= 2 and fields[0] == "nameserver":
+                        try:
+                            servers.append(str(ipaddress.ip_address(fields[1])))
+                        except ValueError:
+                            pass
+            resolvers = ", ".join(servers) if servers else "unavailable"
+            readable = guest(
+                "_apt resolver access", "runuser", "-u", "_apt", "--", "test", "-r", "/etc/resolv.conf"
+            )
+            passed = (successful(tun) and bool(ips) and route.startswith("default ")
+                      and bool(servers) and successful(readable))
+            for hostname in ("deb.debian.org", "security.debian.org", "github.com"):
+                dns = guest(
+                    f"_apt DNS {hostname}", "runuser", "-u", "_apt", "--",
+                    "getent", "ahostsv4", hostname,
                 )
-                if dns is not None and dns.returncode == 0:
-                    address = probe("pct", "exec", str(ctid), "--", "hostname", "-I")
-                    if address is not None and address.returncode == 0:
-                        for field in address.stdout.split():
-                            try:
-                                return str(ipaddress.IPv4Address(field))
-                            except ipaddress.AddressValueError:
-                                continue
+                resolved = successful(dns) and bool(addresses(dns.stdout))
+                if successful(dns) and not resolved:
+                    last[f"_apt DNS {hostname}"] = "rc=0 but no usable IPv4 answer"
+                passed = passed and resolved
+        last["guest IPv4"] = address
+        last["guest default route"] = route
+        last["configured resolvers"] = resolvers
+        snapshot = (address, route, resolvers)
+        stable = stable + 1 if passed and snapshot == previous else int(bool(passed))
+        previous = snapshot if passed else None
+        if stable >= 2:
+            return address
         remaining = deadline - time.monotonic()
         if remaining > 0:
             time.sleep(min(interval, remaining))
+    facts = "; ".join(f"{label}: {value}" for label, value in last.items())
     raise PreflightError(
-        f"CTID {ctid} did not reach running/TUN/IPv4/DNS readiness within {timeout_seconds:g}s"
+        f"CTID {ctid} did not reach stable running/TUN/IPv4/route/_apt DNS readiness "
+        f"within {timeout_seconds:g}s; {facts}. Guest preserved; inspect with "
+        f"pct config {ctid}, pct status {ctid}, and pct exec {ctid} -- "
+        "stat -c '%a %U:%G %n' /etc/resolv.conf. No packages installed."
     )
 
 
