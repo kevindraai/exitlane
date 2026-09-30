@@ -323,3 +323,61 @@ def test_readiness_requires_running_tun_dns_and_ipv4():
         assert helper.wait_ready(200, timeout_seconds=1) == "192.0.2.20"
     assert any(command[-3:] == ("test", "-c", "/dev/net/tun") for command in observations)
     assert any(command[-2:] == ("ahostsv4", "github.com") for command in observations)
+
+
+def test_confirmation_cancellation_has_no_mutation(pve):
+    config_dir, bridge_root, state = pve
+    with (
+        patch.object(helper.sys.stdin, "isatty", return_value=True),
+        patch("builtins.input", return_value="n"),
+        pytest.raises(helper.PreflightError, match="cancelled"),
+    ):
+        helper.main([], config_dir, bridge_root)
+    assert not state["downloaded"]
+    assert not (config_dir / "200.conf").exists()
+
+
+def test_storage_change_after_confirmation_fails_closed(pve):
+    config_dir, bridge_root, state = pve
+    original = helper.active_storages
+    calls = [0]
+
+    def storages(content):
+        calls[0] += 1
+        if calls[0] > 2 and content == "rootdir":
+            return []
+        return original(content)
+
+    with (
+        patch.object(helper, "active_storages", side_effect=storages),
+        pytest.raises(helper.PreflightError, match="rootdir"),
+    ):
+        helper.main(["--yes"], config_dir, bridge_root)
+    assert not state["downloaded"]
+    assert not (config_dir / "200.conf").exists()
+
+
+def test_collision_during_template_download_refuses_creation(pve):
+    config_dir, bridge_root, state = pve
+    original = helper.run
+
+    def run(*args, **kwargs):
+        result = original(*args, **kwargs)
+        if args[:2] == ("pveam", "download"):
+            state["collision"] = True
+        return result
+
+    with (
+        patch.object(helper, "run", side_effect=run),
+        pytest.raises(helper.PreflightError, match="already exists"),
+    ):
+        helper.main(["--yes"], config_dir, bridge_root)
+    assert not any(command[:2] == ("pct", "create") for command in state["commands"])
+
+
+def test_explicit_release_reaches_guest_clone(pve):
+    config_dir, bridge_root, state = pve
+    with patch.object(helper, "wait_ready", return_value="192.0.2.20"):
+        helper.main(["--yes", "--ref", "v1.2.3-rc.4"], config_dir, bridge_root)
+    clone = next(command for command in state["commands"] if "clone" in command)
+    assert clone[clone.index("--branch") + 1] == "v1.2.3-rc.4"
