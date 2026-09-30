@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import http.client
+import ipaddress
 import json
 import logging
 import os
@@ -23,6 +24,7 @@ SERVER_HOSTNAME_PATTERN = re.compile(r"^([a-z]{2}[0-9]+)\.nordvpn\.com$")
 CONNECT_FAILURE_TIMEOUT_SECONDS = 25
 TOKEN_LOGIN_TIMEOUT_SECONDS = 30
 SIGN_OUT_TIMEOUT_SECONDS = 15
+API_RESPONSE_MAX_BYTES = 2 * 1024 * 1024
 TOKEN_ERROR_CODES = frozenset(
     {
         "already_logged_in",
@@ -1129,18 +1131,25 @@ class NordVPN(Provider):
     async def countries(self):
         global _country_catalog_cache
         data = await self._api_json("/v1/servers/countries")
-        countries = sorted(
-            (
-                {
-                    "id": item["id"],
-                    "country_code": item["code"].upper(),
-                    "provider_name": item["name"],
-                }
-                for item in data
-                if item.get("id") is not None and item.get("code")
-            ),
-            key=lambda item: item["provider_name"],
-        )
+        countries = []
+        for item in data:
+            identifier = item.get("id")
+            code = item.get("code")
+            name = item.get("name")
+            if (
+                not isinstance(identifier, int)
+                or isinstance(identifier, bool)
+                or not isinstance(code, str)
+                or re.fullmatch(r"[A-Za-z]{2}", code) is None
+                or not isinstance(name, str)
+                or not 1 <= len(name) <= 100
+                or not name.isprintable()
+            ):
+                continue
+            countries.append(
+                {"id": identifier, "country_code": code.upper(), "provider_name": name}
+            )
+        countries.sort(key=lambda item: item["provider_name"])
         if countries:
             _country_catalog_cache = countries
         return [dict(item) for item in (countries or _country_catalog_cache)]
@@ -1148,16 +1157,38 @@ class NordVPN(Provider):
     async def servers(self, country_id: int, *, limit: int = 5) -> list[dict]:
         query = urllib.parse.urlencode({"filters[country_id]": country_id, "limit": limit})
         data = await self._api_json(f"/v1/servers/recommendations?{query}")
-        return [
-            {
-                "id": item.get("id"),
-                "hostname": item.get("hostname"),
-                "station": item.get("station"),
-                "load": item.get("load"),
-            }
-            for item in data
-            if item.get("hostname")
-        ][:limit]
+        servers = []
+        for item in data:
+            hostname = item.get("hostname")
+            station = item.get("station")
+            load = item.get("load")
+            try:
+                address = ipaddress.ip_address(station)
+            except (TypeError, ValueError):
+                continue
+            if (
+                not isinstance(hostname, str)
+                or SERVER_HOSTNAME_PATTERN.fullmatch(hostname) is None
+                or address.version != 4
+                or not address.is_global
+                or address.is_multicast
+                or not isinstance(load, int)
+                or isinstance(load, bool)
+                or not 0 <= load <= 100
+            ):
+                continue
+            identifier = item.get("id")
+            servers.append(
+                {
+                    "id": identifier
+                    if isinstance(identifier, int) and not isinstance(identifier, bool)
+                    else None,
+                    "hostname": hostname,
+                    "station": str(address),
+                    "load": load,
+                }
+            )
+        return servers[:limit]
 
     async def _api_json(self, path: str) -> list[dict]:
         def fetch() -> list[dict]:
@@ -1167,14 +1198,21 @@ class NordVPN(Provider):
                 response = connection.getresponse()
                 if response.status != 200:
                     return []
-                payload = json.loads(response.read())
+                raw = response.read(API_RESPONSE_MAX_BYTES + 1)
+                if len(raw) > API_RESPONSE_MAX_BYTES:
+                    return []
+                payload = json.loads(raw)
             finally:
                 connection.close()
-            return payload if isinstance(payload, list) else []
+            return (
+                [item for item in payload if isinstance(item, dict)]
+                if isinstance(payload, list)
+                else []
+            )
 
         try:
             return await asyncio.to_thread(fetch)
-        except (OSError, ValueError):
+        except (OSError, ValueError, RecursionError, http.client.HTTPException):
             return []
 
     async def connect(self, target=None, *, timeout: float = 40):

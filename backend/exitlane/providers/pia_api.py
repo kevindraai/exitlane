@@ -322,7 +322,7 @@ class PiaApi:
         )
         try:
             payload = json.loads(raw)
-        except (UnicodeError, ValueError) as error:
+        except (UnicodeError, ValueError, RecursionError) as error:
             raise PiaApiError("provider_api_invalid_response") from error
         value = payload.get("token") if isinstance(payload, dict) else None
         if not isinstance(value, str) or TOKEN.fullmatch(value) is None:
@@ -339,7 +339,7 @@ class PiaApi:
         raw = await asyncio.to_thread(self._public_request, CATALOG_URL, maximum=MAX_RESPONSE)
         try:
             payload = json.loads(raw.split(b"\n", 1)[0])
-        except (UnicodeError, ValueError) as error:
+        except (UnicodeError, ValueError, RecursionError) as error:
             raise PiaApiError("provider_api_invalid_response") from error
         return parse_catalog(payload)
 
@@ -367,7 +367,7 @@ class PiaApi:
                 )
             try:
                 payload = json.loads(raw)
-            except (UnicodeError, ValueError) as error:
+            except (UnicodeError, ValueError, RecursionError) as error:
                 raise PiaApiError("provider_api_invalid_response") from error
             return PiaKeyResponse.parse(
                 payload,

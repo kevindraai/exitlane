@@ -329,6 +329,88 @@ def test_country_catalog_survives_temporary_provider_dns_failure(monkeypatch):
     assert first == second == [{"id": 21, "country_code": "BE", "provider_name": "Belgium"}]
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b"[" * 10_000 + b"0" + b"]" * 10_000,
+        b"[null, 1, \"provider-controlled\"]",
+    ],
+)
+def test_nord_catalog_rejects_malformed_json_shapes(monkeypatch, payload):
+    class Response:
+        status = 200
+
+        def read(self, maximum):
+            assert maximum == nordvpn.API_RESPONSE_MAX_BYTES + 1
+            return payload
+
+    class Connection:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def request(self, *_args, **_kwargs):
+            pass
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(nordvpn.http.client, "HTTPSConnection", Connection)
+    assert asyncio.run(nordvpn.NordVPN()._api_json("/v1/servers/countries")) == []
+
+
+def test_nord_catalog_response_is_bounded(monkeypatch):
+    class Response:
+        status = 200
+
+        def read(self, maximum):
+            assert maximum == nordvpn.API_RESPONSE_MAX_BYTES + 1
+            return b"x" * maximum
+
+    class Connection:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def request(self, *_args, **_kwargs):
+            pass
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(nordvpn.http.client, "HTTPSConnection", Connection)
+    assert asyncio.run(nordvpn.NordVPN()._api_json("/v1/servers/countries")) == []
+
+
+def test_nord_catalog_consumers_reject_malformed_provider_fields(monkeypatch):
+    provider = nordvpn.NordVPN()
+
+    async def countries(_path):
+        return [
+            {"id": 1, "code": ["NL"], "name": "Netherlands"},
+            {"id": 2, "code": "BE"},
+            {"id": 3, "code": "DE", "name": 3},
+        ]
+
+    monkeypatch.setattr(provider, "_api_json", countries)
+    monkeypatch.setattr(nordvpn, "_country_catalog_cache", [])
+    assert asyncio.run(provider.countries()) == []
+
+    async def servers(_path):
+        return [
+            {"id": 1, "hostname": ["nl1.nordvpn.com"], "station": "1.1.1.1", "load": 1},
+            {"id": 2, "hostname": "nl1.nordvpn.com", "station": "127.0.0.1", "load": 1},
+            {"id": 3, "hostname": "nl1.nordvpn.com", "station": "1.1.1.1", "load": "1"},
+        ]
+
+    monkeypatch.setattr(provider, "_api_json", servers)
+    assert asyncio.run(provider.servers(1)) == []
+
+
 @pytest.mark.parametrize(("country_code", "expected"), [("NL", "nl"), ("GB", "gb")])
 def test_country_connect_target_is_lowercase_iso_code(country_code, expected):
     assert nordvpn.build_connect_target(country_code) == expected

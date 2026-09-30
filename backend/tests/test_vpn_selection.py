@@ -1,6 +1,8 @@
 import asyncio
 import sqlite3
 
+import pytest
+
 from exitlane import core
 from exitlane.services import vpn_selection
 
@@ -208,6 +210,37 @@ def test_invalid_latency_endpoint_is_not_executed(monkeypatch):
     result = asyncio.run(vpn_selection.measure_latency("server; reboot"))
 
     assert result == {"latency_ms": None, "status": "unknown", "method": None}
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "127.0.0.1",
+        "10.0.0.1",
+        "169.254.169.254",
+        "224.0.0.1",
+        "::1",
+        "fe80::1",
+        "ff02::1",
+        "2606:4700:4700::1111%eth0",
+        None,
+    ],
+)
+def test_non_global_literal_latency_endpoint_is_not_executed(monkeypatch, endpoint):
+    async def command(*_args, **_kwargs):
+        raise AssertionError("must not execute")
+
+    async def tcp(*_args, **_kwargs):
+        raise AssertionError("must not connect")
+
+    monkeypatch.setattr(core, "command", command)
+    monkeypatch.setattr(vpn_selection, "tcp_latency", tcp)
+
+    assert asyncio.run(vpn_selection.measure_latency(endpoint)) == {
+        "latency_ms": None,
+        "status": "unknown",
+        "method": None,
+    }
 
 
 def test_hostname_latency_resolves_only_public_ipv4(monkeypatch):
