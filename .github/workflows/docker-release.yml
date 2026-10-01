@@ -150,25 +150,28 @@ jobs:
           set -euo pipefail
           SYFT_VERSION=1.42.2
           TRIVY_VERSION=0.69.3
+          SYFT_ARCHIVE="syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          TRIVY_ARCHIVE="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
           curl --fail --silent --show-error --location --retry 3 \
-            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz" \
-            -o /tmp/syft.tar.gz
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/${SYFT_ARCHIVE}" \
+            -o "/tmp/${SYFT_ARCHIVE}"
           curl --fail --silent --show-error --location --retry 3 \
             "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_checksums.txt" \
             -o /tmp/syft-checksums.txt
           (cd /tmp && grep -E '^[[:xdigit:]]{64}  syft_'"${SYFT_VERSION}"'_linux_amd64\.tar\.gz$' syft-checksums.txt | sha256sum --check --status)
-          tar -xzf /tmp/syft.tar.gz -C /tmp syft
+          tar -xzf "/tmp/${SYFT_ARCHIVE}" -C /tmp syft
           sudo install -m 0755 /tmp/syft /usr/local/bin/syft
           curl --fail --silent --show-error --location --retry 3 \
-            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
-            -o /tmp/trivy.tar.gz
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${TRIVY_ARCHIVE}" \
+            -o "/tmp/${TRIVY_ARCHIVE}"
           curl --fail --silent --show-error --location --retry 3 \
             "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_checksums.txt" \
             -o /tmp/trivy-checksums.txt
           (cd /tmp && grep -E '^[[:xdigit:]]{64}  trivy_'"${TRIVY_VERSION}"'_Linux-64bit\.tar\.gz$' trivy-checksums.txt | sha256sum --check --status)
-          tar -xzf /tmp/trivy.tar.gz -C /tmp trivy
+          tar -xzf "/tmp/${TRIVY_ARCHIVE}" -C /tmp trivy
           sudo install -m 0755 /tmp/trivy /usr/local/bin/trivy
-          rm -f /tmp/syft.tar.gz /tmp/syft-checksums.txt /tmp/trivy.tar.gz /tmp/trivy-checksums.txt /tmp/syft /tmp/trivy
+          rm -f "/tmp/${SYFT_ARCHIVE}" /tmp/syft-checksums.txt \
+            "/tmp/${TRIVY_ARCHIVE}" /tmp/trivy-checksums.txt /tmp/syft /tmp/trivy
 
       - name: Scan exact release image for OS, Python and secrets
         env:
