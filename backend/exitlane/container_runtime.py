@@ -613,6 +613,8 @@ class ContainerSupervisor:
         *,
         restart_budget: int = 2,
         stop_timeout: float = 5,
+        prepare: Callable[[], Awaitable] | None = None,
+        process_group: bool = False,
     ):
         require(
             type(restart_budget) is int and 0 <= restart_budget <= 10,
@@ -625,18 +627,78 @@ class ContainerSupervisor:
         self.stop_timeout = stop_timeout
         self.stopping = asyncio.Event()
         self.worker = None
+        self.prepare = prepare
+        self.process_group = process_group
+        self.maintenance = False
+        self.resuming = asyncio.Event()
+        self.resuming.set()
+        self.worker_group = None
+        self.worker_lock = asyncio.Lock()
+        self.maintenance_generation = 0
 
     def request_stop(self) -> None:
         self.stopping.set()
+        self.resuming.set()
+
+    async def quiesce(self) -> None:
+        """Block before stopping writers; maintenance never spends restart budget."""
+        async with self.worker_lock:
+            self.maintenance = True
+            self.maintenance_generation += 1
+            self.resuming.clear()
+            try:
+                await self.network.arm_guard()
+            finally:
+                # An unproven guard never excuses leaving our own ingress or
+                # child writers alive. Cleanup still refuses foreign ifindices.
+                try:
+                    await self.network.deactivate()
+                finally:
+                    await self.stop_worker()
+            await self.network.observe_guard()
+
+    def resume(self) -> None:
+        self.maintenance = False
+        self.resuming.set()
+
+    def _signal_worker(self, sig: int) -> None:
+        if self.process_group and self.worker_group is not None:
+            pid = self.worker_group
+            # The factory must use start_new_session. Never signal an inherited
+            # supervisor/host process group or adopt an unrelated child.
+            require(type(pid) is int and pid > 1, "container_worker_process_group_invalid")
+            try:
+                os.killpg(pid, sig)
+            except ProcessLookupError:
+                pass
+        elif sig == signal.SIGTERM:
+            self.worker.terminate()
+        else:
+            self.worker.kill()
 
     async def stop_worker(self) -> None:
         if self.worker and self.worker.returncode is None:
-            self.worker.terminate()
+            self._signal_worker(signal.SIGTERM)
             try:
                 await asyncio.wait_for(self.worker.wait(), self.stop_timeout)
             except TimeoutError:
-                self.worker.kill()
+                self._signal_worker(signal.SIGKILL)
                 await asyncio.wait_for(self.worker.wait(), self.stop_timeout)
+        if self.process_group and self.worker_group is not None:
+            # A crashed parent does not prove its wg-quick/other writers stopped.
+            self._signal_worker(signal.SIGKILL)
+            deadline = asyncio.get_running_loop().time() + self.stop_timeout
+            while True:
+                try:
+                    os.killpg(self.worker_group, 0)
+                except ProcessLookupError:
+                    break
+                require(
+                    asyncio.get_running_loop().time() < deadline,
+                    "container_worker_group_not_reaped",
+                )
+                await asyncio.sleep(0.01)
+            self.worker_group = None
 
     async def run(self, *, install_signals: bool = True) -> int:
         loop = asyncio.get_running_loop()
@@ -646,31 +708,64 @@ class ContainerSupervisor:
                 loop.add_signal_handler(item, self.request_stop)
                 installed.append(item)
         try:
-            for attempt in range(self.restart_budget + 1):
+            if self.prepare is not None:
+                await self.prepare()
+            attempt = 0
+            while attempt <= self.restart_budget:
+                await self.resuming.wait()
                 if self.stopping.is_set():
                     return 0
-                await self.network.activate()
-                self.worker = await asyncio.wait_for(self.worker_factory(), 10)
+                async with self.worker_lock:
+                    if self.maintenance:
+                        continue
+                    await self.network.activate()
+                    self.worker = await asyncio.wait_for(self.worker_factory(), 10)
+                    generation = self.maintenance_generation
+                    if self.process_group:
+                        pid = self.worker.pid
+                        require(
+                            type(pid) is int and pid > 1, "container_worker_process_group_invalid"
+                        )
+                        # The trusted factory contract is start_new_session=True.
+                        # Retain its spawned session ID even if the leader exits
+                        # before getpgid; surviving children still own that group.
+                        self.worker_group = pid
+                        try:
+                            group = os.getpgid(pid)
+                        except ProcessLookupError:
+                            pass
+                        else:
+                            if group != pid:
+                                self.worker_group = None
+                                raise ContainerLifecycleError(
+                                    "container_worker_process_group_invalid"
+                                )
                 wait = asyncio.create_task(self.worker.wait())
                 stop = asyncio.create_task(self.stopping.wait())
                 try:
                     await asyncio.wait((wait, stop), return_when=asyncio.FIRST_COMPLETED)
-                    await self.network.deactivate()
-                    await self.network.observe_guard()
-                    await self.stop_worker()
+                    async with self.worker_lock:
+                        await self.network.arm_guard()
+                        await self.network.deactivate()
+                        await self.network.observe_guard()
+                        await self.stop_worker()
                     if self.stopping.is_set():
                         return 0
+                    if self.maintenance or generation != self.maintenance_generation:
+                        continue
                     if attempt == self.restart_budget:
                         return 1
+                    attempt += 1
                 finally:
                     for task in (wait, stop):
                         task.cancel()
                     await asyncio.gather(wait, stop, return_exceptions=True)
             return 1
         finally:
-            try:
-                await self.network.deactivate()
-            finally:
-                await self.stop_worker()
-                for item in installed:
-                    loop.remove_signal_handler(item)
+            async with self.worker_lock:
+                try:
+                    await self.network.deactivate()
+                finally:
+                    await self.stop_worker()
+                    for item in installed:
+                        loop.remove_signal_handler(item)

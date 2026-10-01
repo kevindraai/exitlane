@@ -409,7 +409,7 @@ def test_recreated_interface_with_changed_ifindex_not_deleted():
 
 # Captured from the NET_ADMIN-only appliance on Debian 13 / nftables 1.1.3.
 # Independent kernel output: do not derive this receipt from the renderer.
-KERNEL_BLOCK_GUARD = r'''
+KERNEL_BLOCK_GUARD = r"""
 {
   "nftables": [
     {
@@ -655,7 +655,7 @@ KERNEL_BLOCK_GUARD = r'''
     }
   ]
 }
-'''
+"""
 
 
 def kernel_guard_network():
@@ -791,3 +791,178 @@ def test_startup_retains_previous_namespace_source_guard_inventory():
     assert ns.network.probe_interface is None
     assert "ip saddr 10.64.0.2 drop" in ns.inputs[-1][1]
     assert "oifname" not in ns.inputs[-1][1]
+
+
+def test_prepare_state_precedes_ingress_and_worker():
+    ns = Namespace()
+    sequence = []
+
+    async def prepare():
+        assert not ns.exists
+        sequence.append("state-validated")
+
+    async def spawn():
+        assert sequence == ["state-validated"] and ns.exists and ns.guard_exists
+        sequence.append("worker")
+        supervisor.request_stop()
+        return Worker()
+
+    supervisor = ContainerSupervisor(ns.network, spawn, prepare=prepare)
+    assert asyncio.run(supervisor.run(install_signals=False)) == 0
+    assert sequence == ["state-validated", "worker"]
+
+
+def test_invalid_state_never_activates_ingress_or_starts_worker():
+    ns = Namespace()
+
+    async def prepare():
+        raise ContainerLifecycleError("container_state_manifest_invalid")
+
+    async def spawn():
+        pytest.fail("worker started")
+
+    supervisor = ContainerSupervisor(ns.network, spawn, prepare=prepare)
+    with pytest.raises(ContainerLifecycleError, match="manifest_invalid"):
+        asyncio.run(supervisor.run(install_signals=False))
+    assert not ns.exists
+
+
+def test_maintenance_quiesces_and_resumes_without_spending_crash_budget():
+    ns = Namespace()
+    workers = []
+
+    async def scenario():
+        started = asyncio.Event()
+
+        async def spawn():
+            worker = Worker()
+            workers.append(worker)
+            started.set()
+            return worker
+
+        supervisor = ContainerSupervisor(ns.network, spawn, restart_budget=0)
+        running = asyncio.create_task(supervisor.run(install_signals=False))
+        await started.wait()
+        await supervisor.quiesce()
+        assert workers[0].returncode == 0 and not ns.exists and ns.guard_exists
+        await asyncio.sleep(0)
+        assert len(workers) == 1 and not running.done()
+        started.clear()
+        supervisor.resume()
+        await started.wait()
+        assert len(workers) == 2 and ns.exists
+        supervisor.request_stop()
+        assert await running == 0
+
+    asyncio.run(scenario())
+
+
+def test_quiesce_worker_exit_cleanup_is_serialized():
+    ns = Namespace()
+
+    async def scenario():
+        started = asyncio.Event()
+        in_cleanup = asyncio.Event()
+        allow_cleanup = asyncio.Event()
+        original = ns.network.deactivate
+        concurrent = 0
+        maximum = 0
+
+        async def deactivate():
+            nonlocal concurrent, maximum
+            concurrent += 1
+            maximum = max(maximum, concurrent)
+            in_cleanup.set()
+            await allow_cleanup.wait()
+            try:
+                await original()
+            finally:
+                concurrent -= 1
+
+        ns.network.deactivate = deactivate
+
+        async def spawn():
+            started.set()
+            return Worker()
+
+        supervisor = ContainerSupervisor(ns.network, spawn, restart_budget=0)
+        running = asyncio.create_task(supervisor.run(install_signals=False))
+        await started.wait()
+        quiescing = asyncio.create_task(supervisor.quiesce())
+        await in_cleanup.wait()
+        supervisor.worker.terminate()
+        await asyncio.sleep(0)
+        assert maximum == 1
+        allow_cleanup.set()
+        await quiescing
+        supervisor.request_stop()
+        assert await running == 0
+        assert maximum == 1 and not ns.exists and ns.guard_exists
+
+    asyncio.run(asyncio.wait_for(scenario(), 2))
+
+
+def test_immediate_parent_exit_retains_owned_group_for_child_cleanup(monkeypatch):
+    import os
+    import signal
+
+    ns = Namespace()
+    signals = []
+
+    def parent_gone(pid):
+        raise ProcessLookupError
+
+    def signal_group(pid, sig):
+        if sig == 0:
+            raise ProcessLookupError
+        signals.append((pid, sig))
+
+    monkeypatch.setattr(os, "getpgid", parent_gone)
+    monkeypatch.setattr(os, "killpg", signal_group)
+
+    async def spawn():
+        worker = Worker(crash=True)
+        worker.pid = 987654
+        return worker
+
+    supervisor = ContainerSupervisor(ns.network, spawn, restart_budget=0, process_group=True)
+    assert asyncio.run(supervisor.run(install_signals=False)) == 1
+    assert signals == [(987654, signal.SIGKILL)]
+    assert supervisor.worker_group is None and not ns.exists and ns.guard_exists
+
+
+def test_inherited_group_contract_violation_never_signals_foreign_group(monkeypatch):
+    import os
+
+    ns = Namespace()
+    monkeypatch.setattr(os, "getpgid", lambda pid: 111)
+    monkeypatch.setattr(os, "killpg", lambda *args: pytest.fail("foreign group signalled"))
+
+    async def spawn():
+        worker = Worker()
+        worker.pid = 987654
+        return worker
+
+    supervisor = ContainerSupervisor(ns.network, spawn, process_group=True)
+    with pytest.raises(ContainerLifecycleError, match="process_group_invalid"):
+        asyncio.run(supervisor.run(install_signals=False))
+    assert supervisor.worker.returncode == 0 and not ns.exists
+
+
+def test_quiesce_guard_failure_still_closes_owned_ingress_and_reaps_writer():
+    ns = Namespace()
+
+    async def scenario():
+        await ns.network.activate()
+        supervisor = ContainerSupervisor(ns.network, None)
+        supervisor.worker = Worker()
+
+        async def failed():
+            raise ContainerLifecycleError('container_guard_unproven')
+
+        ns.network.arm_guard = failed
+        with pytest.raises(ContainerLifecycleError, match='guard_unproven'):
+            await supervisor.quiesce()
+        assert not ns.exists and supervisor.worker.returncode == 0
+        assert supervisor.maintenance and not supervisor.resuming.is_set()
+    asyncio.run(scenario())

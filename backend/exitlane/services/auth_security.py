@@ -83,7 +83,17 @@ def encrypt_secret(secret: str) -> bytes:
 
 def decrypt_secret(value: bytes) -> str:
     try:
-        return AESGCM(_key()).decrypt(value[:12], value[12:], b"exitlane-totp-v1").decode()
+        return decrypt_secret_with_key(value, _key())
+    except Exception as error:
+        raise RuntimeError(
+            "Stored MFA secret cannot be decrypted; use local MFA recovery"
+        ) from error
+
+
+def decrypt_secret_with_key(value: bytes, key: bytes) -> str:
+    """Authenticate MFA ciphertext with an explicitly staged master key."""
+    try:
+        return AESGCM(key).decrypt(value[:12], value[12:], b"exitlane-totp-v1").decode()
     except Exception as error:
         raise RuntimeError(
             "Stored MFA secret cannot be decrypted; use local MFA recovery"

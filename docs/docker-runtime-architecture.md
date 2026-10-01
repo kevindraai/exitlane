@@ -472,7 +472,11 @@ application container runtime or satisfy D3–D6 dataplane/recovery/support acce
 The D3 implementation and isolated packet harness are described in
 [direct-provider dataplane qualification](docker-container-dataplane.md). They reuse shared
 provider transactions with a container-specific lifecycle adapter. Full application runtime
-selection remains disabled pending durable state/recovery and production composition gates.
+selection remains disabled pending production composition gates. The experimental
+[durable state and recovery mechanisms](docker-container-recovery.md) retain the
+native encrypted archive format and add supervisor-owned mutation leases and
+journalled container orchestration. D5 must explicitly complete the worker startup
+handoff; D6 must qualify daemon/host restart on an independently disposable host.
 
 The subsequent deployment-wave work order authorizes sequential D1–D7 implementation.
 D1 establishes a native-only composition root (`exitlane.runtime`); unsupported runtime names

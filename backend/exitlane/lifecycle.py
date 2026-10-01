@@ -219,35 +219,7 @@ def create_backup(
             "database_schema_version": core.database_schema_version(),
             "files": files,
         }
-        payload = _make_payload(staging, manifest)
-        salt, nonce = secrets.token_bytes(SALT_LENGTH), secrets.token_bytes(NONCE_LENGTH)
-        header = {
-            "format": "exitlane-appliance-backup",
-            "format_version": FORMAT_VERSION,
-            "kdf": {"name": "scrypt", "n": SCRYPT_N, "r": SCRYPT_R, "p": SCRYPT_P},
-            "cipher": "AES-256-GCM",
-            "salt": base64.b64encode(salt).decode("ascii"),
-            "nonce": base64.b64encode(nonce).decode("ascii"),
-        }
-        header_bytes = json.dumps(header, sort_keys=True, separators=(",", ":")).encode()
-        associated_data = MAGIC + struct.pack(">I", len(header_bytes)) + header_bytes
-        ciphertext = AESGCM(_derive_key(passphrase, salt)).encrypt(nonce, payload, associated_data)
-        temporary_output = staging.parent / f".{destination.name}.{secrets.token_hex(8)}.tmp"
-        try:
-            descriptor = os.open(
-                temporary_output,
-                os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
-                0o600,
-            )
-            with os.fdopen(descriptor, "wb") as handle:
-                handle.write(associated_data)
-                handle.write(ciphertext)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary_output, destination)
-            os.chmod(destination, 0o600)
-        finally:
-            temporary_output.unlink(missing_ok=True)
+        encrypt_staged_backup(staging, manifest, destination, passphrase)
     return _backup_info(manifest)
 
 
@@ -679,4 +651,73 @@ def restore_backup(
         finally:
             if cleanup_snapshot or not snapshot_ready:
                 shutil.rmtree(recovery_dir, ignore_errors=True)
+    return _backup_info(manifest)
+
+
+@dataclass(frozen=True)
+class PreparedRestore:
+    """Validated portable components; runtime orchestration owns publication."""
+
+    manifest: dict[str, object]
+    database: Path
+    master_key: Path
+    wireguard: Path
+
+
+def prepare_restore(source: Path, passphrase: str, staging: Path) -> PreparedRestore:
+    manifest = _validated_payload(_decrypt(source, passphrase), staging)
+    entries = manifest["files"]
+    database = next(staging / item["name"] for item in entries if item["type"] == "database")
+    master_key = next(staging / item["name"] for item in entries if item["type"] == "master_key")
+    _inspect_database(database)
+    wireguard = staging / "wireguard"
+    wireguard.mkdir(mode=0o700)
+    for entry in entries:
+        if entry["type"] == "wireguard_config":
+            name = entry.get("original_name")
+            if (
+                not isinstance(name, str)
+                or name in {"", ".", ".."}
+                or PurePosixPath(name).name != name
+                or (wireguard / name).exists()
+            ):
+                raise LifecycleError("invalid_manifest")
+            os.replace(staging / entry["name"], wireguard / name)
+    _validate_restored_wireguard(wireguard)
+    return PreparedRestore(manifest, database, master_key, wireguard)
+
+
+def encrypt_staged_backup(
+    staging: Path, manifest: dict[str, object], destination: Path, passphrase: str
+) -> BackupInfo:
+    """Shared format-1 encryption for already collected runtime components."""
+    payload = _make_payload(staging, manifest)
+    salt, nonce = secrets.token_bytes(SALT_LENGTH), secrets.token_bytes(NONCE_LENGTH)
+    header = {
+        "format": "exitlane-appliance-backup",
+        "format_version": FORMAT_VERSION,
+        "kdf": {"name": "scrypt", "n": SCRYPT_N, "r": SCRYPT_R, "p": SCRYPT_P},
+        "cipher": "AES-256-GCM",
+        "salt": base64.b64encode(salt).decode("ascii"),
+        "nonce": base64.b64encode(nonce).decode("ascii"),
+    }
+    header_bytes = json.dumps(header, sort_keys=True, separators=(",", ":")).encode()
+    associated_data = MAGIC + struct.pack(">I", len(header_bytes)) + header_bytes
+    ciphertext = AESGCM(_derive_key(passphrase, salt)).encrypt(nonce, payload, associated_data)
+    temporary_output = staging.parent / f".{destination.name}.{secrets.token_hex(8)}.tmp"
+    try:
+        descriptor = os.open(
+            temporary_output,
+            os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
+            0o600,
+        )
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(associated_data)
+            handle.write(ciphertext)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_output, destination)
+        os.chmod(destination, 0o600)
+    finally:
+        temporary_output.unlink(missing_ok=True)
     return _backup_info(manifest)

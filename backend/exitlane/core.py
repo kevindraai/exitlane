@@ -22,7 +22,12 @@ class SettingsStorageError(RuntimeError):
 def init():
     DATA.mkdir(parents=True, exist_ok=True, mode=0o700)
     WG_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
-    with sqlite3.connect(DB) as c:
+    init_database(DB)
+
+
+def init_database(path):
+    """Initialize the shared schema at an explicitly selected database path."""
+    with sqlite3.connect(path) as c:
         c.execute(
             """CREATE TABLE IF NOT EXISTS schema_version(
                 singleton INTEGER PRIMARY KEY CHECK(singleton = 1),

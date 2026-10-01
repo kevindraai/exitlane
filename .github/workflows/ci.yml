@@ -191,6 +191,10 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         run: python3 scripts/qualification/container_dataplane.py --image exitlane-lifecycle:test
 
+      - name: Qualify durable state and interrupted recovery
+        if: steps.changes.outputs.run == 'true'
+        run: python3 scripts/qualification/container_recovery.py --image exitlane-lifecycle:test
+
   package:
     name: Package build
     runs-on: ubuntu-latest
