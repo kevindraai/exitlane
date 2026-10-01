@@ -123,6 +123,18 @@ positive controls invalidate that evidence. These checks do not qualify daemon/h
 restart, persistent restore or production images. Those remain D4–D6 gates, and the
 development image retains its existing restrictions.
 
+D4 adds a private DB/key/manifest volume contract and a supervisor-owned mutation
+lease. Its root-only local control socket is not a Docker socket or host-control
+interface. Loss of a writer guards networking and reaps only the known owned
+worker before another writer can be admitted. Restore shares native archive and
+cryptographic validation; old/restored ingress identities remain behind an exact
+owned temporary drop policy throughout journalled publication and rollback.
+Corrupt journals, incompatible schemas and failed rollback remain blocked with
+recovery state retained. Root-equivalent container processes already share this
+trust boundary; the manifest key digest does not authenticate externally supplied
+state. Full container startup composition and host restart proof remain D5/D6
+gates. See [container recovery](../docker-container-recovery.md).
+
 ### System power actions
 
 An authenticated administrator can request three fixed host lifecycle actions.

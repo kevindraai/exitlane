@@ -39,6 +39,7 @@ from exitlane.config import (
     SESSION_MAX_AGE_SECONDS,
     validate_config,
 )
+from exitlane.container_control import ControlError
 from exitlane.core import (
     DATA,
     DB,
@@ -75,6 +76,7 @@ from exitlane.providers.proton import provider as proton_provider
 from exitlane.providers.registry import ProviderNotFound
 from exitlane.proxy import deployment_status, normalized_origin, request_security, trusted_origin
 from exitlane.runtime import SYSTEM_ACTION_COMMANDS, RuntimeCapabilityUnavailable, runtime
+from exitlane.runtime_mutation import RuntimeMutationMiddleware, finish_writer
 from exitlane.services import (
     auth_security,
     connection_diagnostics,
@@ -344,6 +346,26 @@ class Webhook(BaseModel):
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    async with runtime.startup_mutation():
+        if runtime.coordinated_mutations:
+            await finish_writer(_initialize_runtime_state())
+        else:
+            await _initialize_runtime_state()
+    monitors = [
+        asyncio.create_task(_monitor_killswitch()),
+        asyncio.create_task(_monitor_management_routing()),
+    ]
+    try:
+        yield
+    finally:
+        for monitor in monitors:
+            monitor.cancel()
+        for monitor in monitors:
+            with suppress(asyncio.CancelledError):
+                await monitor
+
+
+async def _initialize_runtime_state() -> None:
     validate_config()
     init()
     auth_security.ensure_master_key()
@@ -386,18 +408,6 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             "network.management_routing_error",
             metadata={"reason": error.code},
         )
-    monitors = [
-        asyncio.create_task(_monitor_killswitch()),
-        asyncio.create_task(_monitor_management_routing()),
-    ]
-    try:
-        yield
-    finally:
-        for monitor in monitors:
-            monitor.cancel()
-        for monitor in monitors:
-            with suppress(asyncio.CancelledError):
-                await monitor
 
 
 async def _monitor_killswitch() -> None:
@@ -405,46 +415,60 @@ async def _monitor_killswitch() -> None:
     previous_facts: killswitch.TunnelFacts | None = None
     while True:
         await asyncio.sleep(5)
-        configured = bool(setting(killswitch.SETTING_CONFIGURED, False))
-        transition = bool(setting(killswitch.SETTING_TRANSITION, False))
-        if not configured and not transition:
-            previous = None
-            previous_facts = None
-            continue
         try:
-            if transition:
-                # Only the transaction that armed this persisted guard may
-                # release it after its own generation and management-route
-                # postconditions have passed. The monitor is deliberately a
-                # one-way fail-closed reconciler so stale observations cannot
-                # open a newer provider transaction.
-                facts = killswitch.TunnelFacts(False, reason="provider_transition")
-                current = await killswitch.reconcile(facts)
-            else:
-                facts = await _exclusive_provider_facts()
-                current = (
-                    await killswitch.reconcile(facts)
-                    if facts != previous_facts
-                    else await killswitch.status(facts)
+            async with runtime.mutation():
+                operation = _killswitch_monitor_iteration(previous, previous_facts)
+                previous, previous_facts = (
+                    await finish_writer(operation) if runtime.coordinated_mutations
+                    else await operation
                 )
-            previous_facts = facts
-        except (killswitch.KillswitchError, ProviderNotFound):
-            if previous != "error":
-                record_event(
-                    "network.killswitch_error", metadata={"reason": "firewall_apply_failed"}
-                )
-            previous = "error"
+        except ControlError:
+            # Recovery owns the lease. Do not write an Activity event without it.
             continue
-        if current.state != previous:
-            if current.state == "enabled_protected" and previous is not None:
-                record_event("network.killswitch_released")
-            elif current.state in {
-                "enabled_waiting_for_tunnel",
-                "enabled_degraded",
-                "enabled_transition",
-            }:
-                record_event("network.killswitch_engaged", metadata={"reason": current.reason})
-            previous = current.state
+
+
+async def _killswitch_monitor_iteration(previous, previous_facts):
+    configured = bool(setting(killswitch.SETTING_CONFIGURED, False))
+    transition = bool(setting(killswitch.SETTING_TRANSITION, False))
+    if not configured and not transition:
+        previous = None
+        previous_facts = None
+        return previous, previous_facts
+    try:
+        if transition:
+            # Only the transaction that armed this persisted guard may
+            # release it after its own generation and management-route
+            # postconditions have passed. The monitor is deliberately a
+            # one-way fail-closed reconciler so stale observations cannot
+            # open a newer provider transaction.
+            facts = killswitch.TunnelFacts(False, reason="provider_transition")
+            current = await killswitch.reconcile(facts)
+        else:
+            facts = await _exclusive_provider_facts()
+            current = (
+                await killswitch.reconcile(facts)
+                if facts != previous_facts
+                else await killswitch.status(facts)
+            )
+        previous_facts = facts
+    except (killswitch.KillswitchError, ProviderNotFound):
+        if previous != "error":
+            record_event(
+                "network.killswitch_error", metadata={"reason": "firewall_apply_failed"}
+            )
+        previous = "error"
+        return previous, previous_facts
+    if current.state != previous:
+        if current.state == "enabled_protected" and previous is not None:
+            record_event("network.killswitch_released")
+        elif current.state in {
+            "enabled_waiting_for_tunnel",
+            "enabled_degraded",
+            "enabled_transition",
+        }:
+            record_event("network.killswitch_engaged", metadata={"reason": current.reason})
+        previous = current.state
+    return previous, previous_facts
 
 
 async def _monitor_management_routing() -> None:
@@ -452,16 +476,31 @@ async def _monitor_management_routing() -> None:
     while True:
         await asyncio.sleep(5)
         try:
-            await management_routing.reconcile()
-        except management_routing.ManagementRoutingError as error:
-            if previous_error != error.code:
-                record_event(
-                    "network.management_routing_error",
-                    metadata={"reason": error.code},
+            async with runtime.mutation():
+                operation = _management_monitor_iteration(previous_error)
+                previous_error = (
+                    await finish_writer(operation) if runtime.coordinated_mutations
+                    else await operation
                 )
-            previous_error = error.code
-        else:
-            previous_error = None
+        except ControlError:
+            continue
+
+
+async def _management_monitor_iteration(previous_error):
+    try:
+        await management_routing.reconcile()
+    except management_routing.ManagementRoutingError as error:
+        if previous_error != error.code:
+            record_event(
+                "network.management_routing_error",
+                metadata={"reason": error.code},
+            )
+        previous_error = error.code
+    else:
+        previous_error = None
+    return previous_error
+
+
 
 
 app = FastAPI(
@@ -695,6 +734,7 @@ async def security_baseline(request: Request, call_next):
 
 
 static_dir = Path(__file__).parent / "static"
+app.add_middleware(RuntimeMutationMiddleware, runtime=runtime)
 app.mount(
     "/assets",
     StaticFiles(directory=static_dir),

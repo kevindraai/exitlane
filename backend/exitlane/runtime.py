@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -100,6 +101,14 @@ class RuntimePaths:
             Path(os.getenv("EXITLANE_LOG_DIR", "/var/log/exitlane")),
         )
 
+    @classmethod
+    def container(cls, root: Path = Path("/data")):
+        """Fixed durable paths; this does not enable container composition."""
+        from exitlane.container_state import ContainerLayout
+
+        layout = ContainerLayout(root)
+        return cls(layout.config, layout.state, layout.state, layout.root / "logs", layout.wireguard)
+
 
 SYSTEM_ACTION_COMMANDS = {
     "restart": ("/usr/bin/systemctl", "restart", "exitlane.service"),
@@ -109,9 +118,21 @@ SYSTEM_ACTION_COMMANDS = {
 
 
 class NativeSystemdRuntime:
+    coordinated_mutations = False
+
     def __init__(self, capabilities: RuntimeCapabilities | None = None):
         self.capabilities = capabilities or RuntimeCapabilities()
         self.paths = RuntimePaths.native()
+
+    @asynccontextmanager
+    async def mutation(self):
+        # Native retains its existing transaction/network locks and concurrency.
+        yield
+
+    @asynccontextmanager
+    async def startup_mutation(self):
+        # Native startup retains existing initializer and systemd ordering.
+        yield
 
     async def launch_system_action(self, action: str, *, launcher=asyncio.create_subprocess_exec):
         self.capabilities.require_action(action)

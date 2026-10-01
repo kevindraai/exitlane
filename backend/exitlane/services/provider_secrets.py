@@ -65,7 +65,7 @@ def save(provider_id: str, payload: Mapping[str, object]) -> None:
 
 
 def load(provider_id: str) -> dict[str, object] | None:
-    aad = _aad(provider_id)
+    _aad(provider_id)
     try:
         with sqlite3.connect(core.DB, timeout=5.0) as connection:
             row = connection.execute(
@@ -76,11 +76,20 @@ def load(provider_id: str) -> dict[str, object] | None:
         raise ProviderSecretError("provider_secret_storage_failed") from error
     if row is None:
         return None
-    value = bytes(row[0])
+    try:
+        return decode(provider_id, bytes(row[0]), _key())
+    except Exception as error:
+        raise ProviderSecretError("provider_secret_invalid") from error
+
+
+def decode(provider_id: str, encrypted: bytes, key: bytes) -> dict[str, object]:
+    """Authenticate provider state without selecting or changing runtime paths."""
+    aad = _aad(provider_id)
+    value = bytes(encrypted)
     if len(value) < 29:
         raise ProviderSecretError("provider_secret_invalid")
     try:
-        decoded = AESGCM(_key()).decrypt(value[:12], value[12:], aad)
+        decoded = AESGCM(key).decrypt(value[:12], value[12:], aad)
         envelope = json.loads(decoded)
     except Exception as error:
         raise ProviderSecretError("provider_secret_invalid") from error
