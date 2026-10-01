@@ -648,3 +648,68 @@ def test_ingress_sync_rejects_changed_router_owned_ifindex(qualification):
     qualification.h.command = changed
     with pytest.raises(state.QualificationError, match="client_ownership_changed"):
         qualification.interface_deletion(ingress=True)
+
+
+@pytest.mark.parametrize(
+    "stderr,expected",
+    [
+        ("container_control_failed\n", "container_control_failed"),
+        ("synthetic-private-detail", None),
+    ],
+)
+def test_cli_nonzero_retains_bounded_error_before_transport_discards_output(
+    qualification, stderr, expected
+):
+    args_seen = []
+
+    def failure(*args, data=None, **kwargs):
+        args_seen.append((args, kwargs))
+        assert kwargs["check"] is False and kwargs["timeout"] == 225
+        return {"code": 1, "stderr": stderr, "stdout": "synthetic-private-detail"}
+
+    qualification.h.docker = failure
+    with pytest.raises(state.QualificationError, match="qualification_state_cli_failed"):
+        qualification.phase(
+            "state-restore-error",
+            lambda: qualification.cli(
+                "restore", "synthetic-passphrase-test", name="synthetic.elbackup"
+            ),
+        )
+    receipts = [
+        data["receipt"]
+        for _, data in qualification.h.candidate.calls
+        if isinstance(data, dict) and "receipt" in data
+    ]
+    assert receipts[-1]["facts"]["cli_failure"] == {
+        "command": "restore",
+        "exit_code": 1,
+        "stderr_code": expected,
+    }
+    assert "synthetic-private-detail" not in str(receipts)
+    assert "synthetic-passphrase-test" not in str(args_seen)
+
+
+def test_actual_cli_parser_accepts_state_and_generation_flag_orders(qualification):
+    from exitlane.container_cli import parse_arguments
+
+    qualification.cli("restore", "synthetic-test-passphrase", name="synthetic.elbackup")
+    args, _stdin, _kwargs = qualification.h.calls[-1]
+    state_arguments = list(args[args.index("restore") :])
+    generation_arguments = [
+        "restore",
+        "--name",
+        "synthetic.elbackup",
+        "--confirm",
+        "RESTORE EXITLANE",
+        "--passphrase-stdin",
+    ]
+    one, two = parse_arguments(state_arguments), parse_arguments(generation_arguments)
+    assert vars(one) == vars(two)
+    assert one.confirm == "RESTORE EXITLANE" and one.passphrase_stdin is True
+
+
+@pytest.mark.parametrize("phrase", ["synthetic-test\rhidden", "synthetic-test\0hidden"])
+def test_cli_refuses_control_characters_before_process(qualification, phrase):
+    with pytest.raises(state.QualificationError, match="cli_invalid"):
+        qualification.cli("backup", phrase)
+    assert not qualification.h.calls

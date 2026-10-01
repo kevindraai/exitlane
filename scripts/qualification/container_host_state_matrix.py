@@ -30,6 +30,7 @@ class StateQualification:
         self.root = "/var/lib/exitlane-qualification/state-matrix-" + str(uuid.uuid4())
         self.used = set()
         self.last_api_failure = None
+        self.last_cli_failure = None
         self.h.candidate.run(
             "from pathlib import Path\np=Path(payload);p.mkdir(mode=0o700,exist_ok=False)\n",
             data=self.root,
@@ -81,6 +82,7 @@ finally:os.close(descriptor)
             raise QualificationError("qualification_phase_reused")
         self.used.add(name)
         self.last_api_failure = None
+        self.last_cli_failure = None
         phase = name + "-" + secrets.token_hex(4)
         self.record(phase, "RUNNING")
         try:
@@ -110,9 +112,14 @@ finally:os.close(descriptor)
             facts = {"error": "qualification_state_phase_failed"}
             if self.last_api_failure is not None:
                 facts["api_failure"] = self.last_api_failure
+            if self.last_cli_failure is not None:
+                facts["cli_failure"] = self.last_cli_failure
             self.record(phase, "FAIL", facts=facts)
             raise
-        self.record(phase, "PASS", facts={"packet": evidence["receipt"]})
+        facts = {"packet": evidence["receipt"]}
+        if self.last_cli_failure is not None:
+            facts["cli_rejection"] = self.last_cli_failure
+        self.record(phase, "PASS", facts=facts)
         return evidence
 
     def ownership(self):
@@ -624,7 +631,7 @@ print(json.dumps({'oom_kill_before':before['oom_kill'],'oom_kill_after':after['o
             command not in {"backup", "restore"}
             or not isinstance(passphrase, str)
             or not 12 <= len(passphrase) <= 1024
-            or "\n" in passphrase
+            or any(character in passphrase for character in ("\n", "\r", "\0"))
         ):
             raise QualificationError("qualification_state_cli_invalid")
         args = [
@@ -645,10 +652,33 @@ print(json.dumps({'oom_kill_before':before['oom_kill'],'oom_kill_after':after['o
             ):
                 raise QualificationError("qualification_state_cli_invalid")
             args += ["--name", name, "--confirm", "RESTORE EXITLANE"]
-        result = self.h.docker(*args, data=passphrase + "\n", timeout=180, check=check)
-        if result["code"]:
+        # Supervisor client can consume 180 operation + 30 wait + 5 framing
+        # seconds. Keep the transport bound above its own recovery deadline.
+        result = self.h.docker(*args, data=passphrase + "\n", timeout=225, check=False)
+        code = result.get("code")
+        if type(code) is not int or code != 0:
+            error = result.get("stderr", "").strip()
+            self.last_cli_failure = {
+                "command": command,
+                "exit_code": code
+                if type(code) is int and -128 <= code <= 255
+                else None,
+                "stderr_code": "container_control_failed"
+                if error == "container_control_failed"
+                else None,
+            }
+            if check:
+                raise QualificationError("qualification_state_cli_failed")
             return {"ok": False}
-        return json.loads(result["stdout"])
+        try:
+            value = json.loads(result["stdout"])
+        except (KeyError, TypeError, ValueError):
+            raise QualificationError(
+                "qualification_state_cli_response_invalid"
+            ) from None
+        if not isinstance(value, dict):
+            raise QualificationError("qualification_state_cli_response_invalid")
+        return value
 
     def backup_restore(self, passphrase):
         before = self.h.pair()
