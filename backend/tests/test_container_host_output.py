@@ -581,3 +581,67 @@ def test_actual_calibration_ledger_remains_incomplete_if_syn_is_only_marked():
     assert all('tcp_syn' not in forms for forms in q.unmarked_controls.values())
     with pytest.raises(output.OutputEvidenceError,match='output_unmarked_calibration_missing'):
         q.run(source,clock_token='a'*64)
+
+
+@pytest.mark.parametrize('source', ['10.64.0.2', '172.28.135.2'])
+def test_constructed_raw_controls_bind_exact_source_before_every_send(monkeypatch, source):
+    from types import SimpleNamespace
+    monkeypatch.setattr(output.os, 'geteuid', lambda: 0)
+    monkeypatch.setattr(output.Path, 'stat', lambda path: SimpleNamespace(
+        st_dev=4, st_ino=100 if str(path) == '/proc/self/ns/net' else 999))
+    monkeypatch.setattr(output.socket, 'if_nametoindex', lambda name: 2)
+    monkeypatch.setattr(output.time, 'sleep', lambda seconds: None)
+    events = []
+    class Socket:
+        def __enter__(self):return self
+        def __exit__(self, *arguments):events.append(('close', None))
+        def bind(self, address):events.append(('bind', address))
+        def sendto(self, raw, destination):
+            assert events[0] == ('bind', (source, 0))
+            assert raw[12:16] == output.ipaddress.IPv4Address(source).packed
+            events.append(('send', destination))
+            return len(raw)
+    def create(*arguments):
+        assert arguments == (output.socket.AF_INET, output.socket.SOCK_RAW, output.socket.IPPROTO_RAW)
+        return Socket()
+    monkeypatch.setattr(output.socket, 'socket', create)
+    program = output._program([output.OutputEvidenceError, output._require, output.checksum,
+        output.dns_query, output.packet, output.calibration_packets, output.inject_controls])
+    namespace = {}
+    exec(compile(program, '<actual-constructed-raw-controls>', 'exec'), namespace)  # noqa: S102 - fixed reviewed program
+    result = namespace['inject_controls']({'source': source, 'phase': 'calibration',
+                                         'namespace': [4, 100], 'eth0_ifindex': 2})
+    assert events == [('bind', (source, 0))] + [('send', ('1.1.1.1', 0))] * 3 + [('close', None)]
+    assert result['forms'] == ['tcp_syn', 'tcp_rst', 'icmp_quote']
+    # The socket has no setsockopt/SO_BINDTODEVICE seam: source routing remains
+    # the real RPDB decision, not a forced successful provider interface.
+
+
+@pytest.mark.parametrize('stage,number', [('bind', errno.EADDRNOTAVAIL), ('send', errno.EPERM),
+                                        ('send', errno.EACCES), ('send', errno.ENETUNREACH)])
+def test_constructed_raw_control_refusal_never_returns_calibration_success(monkeypatch, stage, number):
+    from types import SimpleNamespace
+    monkeypatch.setattr(output.os, 'geteuid', lambda: 0)
+    monkeypatch.setattr(output.Path, 'stat', lambda path: SimpleNamespace(
+        st_dev=4, st_ino=100 if str(path) == '/proc/self/ns/net' else 999))
+    monkeypatch.setattr(output.socket, 'if_nametoindex', lambda name: 2)
+    events = []
+    class Socket:
+        def __enter__(self):return self
+        def __exit__(self, *arguments):events.append('closed')
+        def bind(self, address):
+            events.append('bind')
+            if stage == 'bind':raise OSError(number, 'synthetic-error-detail')
+        def sendto(self, raw, destination):
+            events.append('send')
+            raise OSError(number, 'synthetic-error-detail')
+    monkeypatch.setattr(output.socket, 'socket', lambda *arguments: Socket())
+    program = output._program([output.OutputEvidenceError, output._require, output.checksum,
+        output.dns_query, output.packet, output.calibration_packets, output.inject_controls])
+    namespace = {}
+    exec(compile(program, '<actual-constructed-raw-controls>', 'exec'), namespace)  # noqa: S102 - fixed reviewed program
+    with pytest.raises(OSError) as caught:
+        namespace['inject_controls']({'source': '10.64.0.2', 'phase': 'calibration',
+                                     'namespace': [4, 100], 'eth0_ifindex': 2})
+    assert caught.value.errno == number
+    assert events == ['bind'] + (['send'] if stage == 'send' else []) + ['closed']

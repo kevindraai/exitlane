@@ -703,6 +703,10 @@ def inject_controls(configuration):
              and socket.if_nametoindex('eth0')==configuration['eth0_ifindex'], 'output_namespace_unproven')
     start=time.time_ns()
     with socket.socket(socket.AF_INET,socket.SOCK_RAW,socket.IPPROTO_RAW) as client:
+        # IP_HDRINCL supplies packet bytes, but RPDB routing uses the socket
+        # source before reading that header. Bind the validated source without
+        # forcing an interface or bypassing the appliance OUTPUT policy.
+        client.bind((source,0))
         for raw in calibration_packets(source,phase):client.sendto(raw,('1.1.1.1',0))
     time.sleep(.5)
     return {'start_ns':start,'end_ns':time.time_ns(),'source':source,'forms':['tcp_syn','tcp_rst','icmp_quote']}
