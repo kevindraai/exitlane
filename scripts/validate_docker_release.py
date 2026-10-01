@@ -26,6 +26,8 @@ REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 MINIMUM_DOCKER_RELEASE_SHA = "be97510c8ef5468b38e8ef6cbac7a738fa329620"
 MAX_RELEASE_RESPONSE = 1024 * 1024
 MAX_PROJECT_METADATA = 64 * 1024
+PUBLICATION_ENVIRONMENT = "ghcr-production"
+PRODUCT_OWNER = "kevindraai"
 
 
 class ReleaseValidationError(RuntimeError):
@@ -96,7 +98,9 @@ def _project_version(source_sha: str) -> str:
         )
         project = tomllib.loads(source)
     except (OSError, subprocess.SubprocessError, tomllib.TOMLDecodeError):
-        raise ReleaseValidationError("docker_release_project_metadata_invalid") from None
+        raise ReleaseValidationError(
+            "docker_release_project_metadata_invalid"
+        ) from None
     metadata = project.get("project")
     version = metadata.get("version") if isinstance(metadata, dict) else None
     if not isinstance(version, str):
@@ -134,6 +138,67 @@ def _fetch_release(tag: str, repository: str, token: str) -> dict[str, Any]:
     return result
 
 
+def validate_publication_environment(environment: Any) -> None:
+    """Fail before scheduling a job that could auto-create an unprotected environment."""
+    if (
+        not isinstance(environment, dict)
+        or environment.get("name") != PUBLICATION_ENVIRONMENT
+    ):
+        raise ReleaseValidationError("docker_release_approval_environment_missing")
+    rules = environment.get("protection_rules")
+    if not isinstance(rules, list):
+        raise ReleaseValidationError("docker_release_product_owner_approval_required")
+    approval = [
+        r
+        for r in rules
+        if isinstance(r, dict) and r.get("type") == "required_reviewers"
+    ]
+    reviewers = approval[0].get("reviewers") if len(approval) == 1 else None
+    if (
+        not isinstance(reviewers, list)
+        or len(reviewers) != 1
+        or not isinstance(reviewers[0], dict)
+        or reviewers[0].get("type") != "User"
+        or not isinstance(reviewers[0].get("reviewer"), dict)
+        or reviewers[0]["reviewer"].get("login") != PRODUCT_OWNER
+    ):
+        raise ReleaseValidationError("docker_release_product_owner_approval_required")
+    if environment.get("can_admins_bypass") is not False:
+        raise ReleaseValidationError("docker_release_approval_bypass_forbidden")
+    policy = environment.get("deployment_branch_policy")
+    if not isinstance(policy, dict) or policy != {
+        "protected_branches": True,
+        "custom_branch_policies": False,
+    }:
+        raise ReleaseValidationError("docker_release_protected_branch_required")
+
+
+def _fetch_publication_environment(repository: str, token: str) -> dict[str, Any]:
+    if REPOSITORY.fullmatch(repository) is None:
+        raise ReleaseValidationError("docker_release_repository_invalid")
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{repository}/environments/{PUBLICATION_ENVIRONMENT}",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": "Bearer " + token,
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "ExitLane-Docker-release-validator",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            raw = response.read(MAX_RELEASE_RESPONSE + 1)
+        if len(raw) > MAX_RELEASE_RESPONSE:
+            raise ReleaseValidationError("docker_release_approval_response_too_large")
+        environment = json.loads(raw)
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        raise ReleaseValidationError(
+            "docker_release_approval_environment_unavailable"
+        ) from None
+    validate_publication_environment(environment)
+    return environment
+
+
 def validate(
     *,
     tag: str,
@@ -162,7 +227,9 @@ def validate(
         raise ReleaseValidationError("docker_release_source_confirmation_mismatch")
     validate_published_release(tag, release)
     try:
-        ancestry = is_ancestor(minimum_sha, source_sha) and is_ancestor(source_sha, main_sha)
+        ancestry = is_ancestor(minimum_sha, source_sha) and is_ancestor(
+            source_sha, main_sha
+        )
     except (OSError, subprocess.SubprocessError):
         ancestry = False
     if not ancestry:
@@ -190,6 +257,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         app_version = package_version_for_tag(args.tag)
+        _fetch_publication_environment(repository, token)
         release = _fetch_release(args.tag, repository, token)
         facts = validate(
             tag=args.tag,
@@ -205,8 +273,17 @@ def main(argv: list[str] | None = None) -> int:
         )
         if facts["app_version"] != "v" + app_version:
             raise ReleaseValidationError("docker_release_version_mismatch")
-    except (ReleaseValidationError, OSError, subprocess.SubprocessError, tomllib.TOMLDecodeError) as exc:
-        code = str(exc) if isinstance(exc, ReleaseValidationError) else "docker_release_validation_failed"
+    except (
+        ReleaseValidationError,
+        OSError,
+        subprocess.SubprocessError,
+        tomllib.TOMLDecodeError,
+    ) as exc:
+        code = (
+            str(exc)
+            if isinstance(exc, ReleaseValidationError)
+            else "docker_release_validation_failed"
+        )
         print(code, file=sys.stderr)
         return 1
     if args.github_output is not None:

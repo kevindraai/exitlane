@@ -5,7 +5,15 @@ qualified the candidate on a disposable whole Docker host, including synthetic
 provider failure cases and packet-level no-fallback checks. This remains an
 experimental candidate under [#90](https://github.com/kevindraai/exitlane/issues/90),
 not a supported release. D7 adds the manually invoked publication workflow; image
-publication and a support declaration remain separately gated.
+publication and a support declaration remain separately gated. The publish job uses
+the protected `ghcr-production` GitHub Environment. Its preflight requires that
+environment to already exist, require approval from Product Owner `kevindraai` alone,
+disallow administrator bypass and restrict deployment to protected branches. The
+workflow itself additionally requires `main`, an existing published release and exact
+typed tag/SHA confirmation. Manual dispatch and confirmation are intent checks; they
+do not replace Product Owner approval. This PR does not configure the environment,
+approve a deployment or authorize any image publication. Until the release owner
+configures those protections, dispatch fails closed before scheduling publication.
 Native Debian 13 amd64/LXC remains the reference implementation. The existing
 `docker/Dockerfile` and `docker/docker-compose.yml` remain development surfaces.
 
@@ -167,9 +175,23 @@ D7's PR CI builds only `linux/amd64`, verifies image contents, runs the applianc
 qualification, and retains SPDX and full Trivy reports as seven-day artifacts. The
 candidate scan is informational in PR CI so currently unfixed base-distribution
 advisories do not block unrelated development; the manual release workflow blocks
-on all HIGH/CRITICAL OS/Python vulnerability and secret findings. It publishes only
+on all HIGH/CRITICAL OS/Python vulnerability and secret findings, including unfixed
+advisories. Its complete scan report is retained for 30 days even when that gate fails.
+It publishes only
 the exact version tag, pulls/verifies the resulting digest, and attaches provenance
-and SBOM attestations. The workflow is not run as part of this PR. Docker remains
+and SBOM attestations. The signed provenance identifies the actual tagged application
+commit separately from the trusted workflow commit; verification enforces both,
+the image digest, workflow identity and hosted runner. This is workflow-produced
+provenance, not a claim of independently isolated or hermetic SLSA build assurance.
+The workflow is not run as part of this PR. Docker remains
 experimental and unsupported until the #90 support decision and release criteria
 are complete. Schema compatibility remains `[1,1]`; the workflow does not claim
 cross-release compatibility beyond that declaration.
+
+All workflow Actions are GitHub-owned and SHA-pinned. Syft, Trivy and Gitleaks use
+versioned CLI archives with reviewed SHA-256 digests recorded in
+`scripts/install_security_cli.sh`; mismatches fail before extraction or execution.
+The recorded digests were obtained from the same upstream GitHub release assets.
+They freeze the reviewed bytes and protect integrity against subsequent replacement,
+but do not establish an independent vendor-authenticity root. Upstream maintainers,
+GitHub release hosting and the reviewed binaries remain trusted supply-chain inputs.

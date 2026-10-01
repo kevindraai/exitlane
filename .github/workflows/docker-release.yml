@@ -28,6 +28,9 @@ jobs:
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       source_sha: ${{ steps.release.outputs.source_sha }}
@@ -35,8 +38,6 @@ jobs:
       image: ${{ steps.release.outputs.image }}
     steps:
       - name: Validate requested release tag syntax before checkout
-        env:
-          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           python3 - <<'PY'
           import os, re, sys
@@ -85,6 +86,7 @@ jobs:
     concurrency:
       group: docker-publish-${{ needs.validate.outputs.tag }}
       cancel-in-progress: false
+    environment: ghcr-production
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -147,38 +149,27 @@ jobs:
 
       - name: Install pinned image inspection tools
         run: |
-          set -euo pipefail
-          SYFT_VERSION=1.42.2
-          TRIVY_VERSION=0.69.3
-          SYFT_ARCHIVE="syft_${SYFT_VERSION}_linux_amd64.tar.gz"
-          TRIVY_ARCHIVE="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
-          curl --fail --silent --show-error --location --retry 3 \
-            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/${SYFT_ARCHIVE}" \
-            -o "/tmp/${SYFT_ARCHIVE}"
-          curl --fail --silent --show-error --location --retry 3 \
-            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_checksums.txt" \
-            -o /tmp/syft-checksums.txt
-          (cd /tmp && grep -E '^[[:xdigit:]]{64}  syft_'"${SYFT_VERSION}"'_linux_amd64\.tar\.gz$' syft-checksums.txt | sha256sum --check --status)
-          tar -xzf "/tmp/${SYFT_ARCHIVE}" -C /tmp syft
-          sudo install -m 0755 /tmp/syft /usr/local/bin/syft
-          curl --fail --silent --show-error --location --retry 3 \
-            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${TRIVY_ARCHIVE}" \
-            -o "/tmp/${TRIVY_ARCHIVE}"
-          curl --fail --silent --show-error --location --retry 3 \
-            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_checksums.txt" \
-            -o /tmp/trivy-checksums.txt
-          (cd /tmp && grep -E '^[[:xdigit:]]{64}  trivy_'"${TRIVY_VERSION}"'_Linux-64bit\.tar\.gz$' trivy-checksums.txt | sha256sum --check --status)
-          tar -xzf "/tmp/${TRIVY_ARCHIVE}" -C /tmp trivy
-          sudo install -m 0755 /tmp/trivy /usr/local/bin/trivy
-          rm -f "/tmp/${SYFT_ARCHIVE}" /tmp/syft-checksums.txt \
-            "/tmp/${TRIVY_ARCHIVE}" /tmp/trivy-checksums.txt /tmp/syft /tmp/trivy
+          bash scripts/install_security_cli.sh syft
+          bash scripts/install_security_cli.sh trivy
 
       - name: Scan exact release image for OS, Python and secrets
         env:
           IMAGE: ${{ needs.validate.outputs.image }}
         run: |
           trivy image --scanners vuln,secret --pkg-types os,library \
-            --severity HIGH,CRITICAL --ignore-unfixed=false --exit-code 1 "$IMAGE"
+            --ignore-unfixed=false --format json --output docker-release-trivy.json \
+            --exit-code 0 "$IMAGE"
+          trivy image --scanners vuln,secret --pkg-types os,library \
+            --skip-db-update --severity HIGH,CRITICAL --ignore-unfixed=false --exit-code 1 "$IMAGE"
+
+      - name: Retain complete release scan evidence even when publication is blocked
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: exitlane-release-trivy-report
+          path: docker-release-trivy.json
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Create SPDX SBOM for exact release image
         env:
@@ -221,15 +212,27 @@ jobs:
             -i "$immutable_image" - < scripts/check_container_image.py
           python3 scripts/qualification/container_appliance.py --image "$immutable_image"
 
+      - name: Record validated application and trusted workflow sources
+        env:
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          python3 scripts/docker_release_provenance.py create \
+            --tag "$RELEASE_TAG" --source-sha "$SOURCE_SHA" --workflow-sha "$WORKFLOW_SHA" \
+            --invocation "$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT" --output release-provenance.json
+
       - name: Attest image build provenance
-        uses: actions/attest@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v4.1.0
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
           subject-name: ghcr.io/kevindraai/exitlane
           subject-digest: ${{ steps.push.outputs.digest }}
+          predicate-type: https://slsa.dev/provenance/v1
+          predicate-path: release-provenance.json
           push-to-registry: true
 
       - name: Attest SPDX SBOM to the image digest
-        uses: actions/attest@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v4.1.0
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
           subject-name: ghcr.io/kevindraai/exitlane
           subject-digest: ${{ steps.push.outputs.digest }}
@@ -240,8 +243,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           DIGEST: ${{ steps.push.outputs.digest }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+          WORKFLOW_SHA: ${{ github.sha }}
         run: |
           subject="oci://ghcr.io/kevindraai/exitlane@$DIGEST"
-          gh attestation verify "$subject" --repo kevindraai/exitlane
           gh attestation verify "$subject" --repo kevindraai/exitlane \
+            --signer-workflow kevindraai/exitlane/.github/workflows/docker-release.yml \
+            --source-ref refs/heads/main --source-digest "$WORKFLOW_SHA" \
+            --deny-self-hosted-runners --format json > provenance-verification.json
+          python3 scripts/docker_release_provenance.py verify \
+            --tag "$RELEASE_TAG" --source-sha "$SOURCE_SHA" --workflow-sha "$WORKFLOW_SHA" \
+            --invocation "$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT" \
+            --input provenance-verification.json --digest "$DIGEST"
+          gh attestation verify "$subject" --repo kevindraai/exitlane \
+            --signer-workflow kevindraai/exitlane/.github/workflows/docker-release.yml \
+            --source-ref refs/heads/main --source-digest "$WORKFLOW_SHA" \
+            --deny-self-hosted-runners \
             --predicate-type https://spdx.dev/Document/v2.3
