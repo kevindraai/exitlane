@@ -33,6 +33,42 @@ class QualificationError(RuntimeError):
     pass
 
 
+def _packet_acceptance_observations(observers):
+    """Map owned interfaces to the explicit seven-point D6 packet contract.
+
+    A capture process may observe several links in one namespace. The packet
+    validator models logical acceptance points, so provider wg-peer interfaces
+    and the three target links need stable aliases independent of handle shape.
+    Supplemental links remain captured in the raw observer evidence.
+    """
+    required = {'wan', 'client', 'provider-a', 'provider-b',
+                'target-pa', 'target-pb', 'target-uplink'}
+    result = {}
+    for role, interfaces in observers:
+        if not isinstance(interfaces, dict):
+            raise QualificationError('qualification_packet_topology_mismatch')
+        aliases = {
+            'wan': {'eth0': 'wan'},
+            'client': {'wg-client': 'client'},
+            'provider-a': {'wg-peer': 'provider-a'},
+            'provider-b': {'wg-peer': 'provider-b'},
+            'target': {'pa': 'target-pa', 'pb': 'target-pb', 'uplink': 'target-uplink'},
+        }.get(role, {})
+        for interface, facts in interfaces.items():
+            point = aliases.get(interface)
+            # Preserve the established one-link handle contract for any
+            # supported test topology that names that logical point directly.
+            if point is None and len(interfaces) == 1 and interface == role:
+                point = role
+            if point is not None:
+                if point in result:
+                    raise QualificationError('qualification_packet_topology_mismatch')
+                result[point] = facts
+    if set(result) != required:
+        raise QualificationError('qualification_packet_topology_mismatch')
+    return result
+
+
 def validate_config(value):
     required = {'run_id', 'candidate', 'peer', 'identity', 'known_hosts', 'image',
                 'revision', 'allow_host_restart'}
@@ -601,16 +637,16 @@ print(json.dumps({'calibration_emitted':15}))
         if status['stdout'].strip() != '0':
             raise QualificationError('qualification_sender_exit_failed')
         observations = {}
+        observer_facts = []
         for handle in captures:
             self.wait(lambda handle=handle: all(facts['end_ns'] >= result['end_ns'] for facts in self.evidence(handle)['captures'].values()),
                       handle['role'] + '_drain_complete', timeout=5)
             value = self.evidence(handle)
-            for interface, facts in value['captures'].items():
-                name = handle['role'] if len(value['captures']) == 1 else handle['role'] + '-' + interface
-                observations[name] = facts
+            observer_facts.append((handle['role'], value['captures']))
             process = self.command(self.peer, ['systemctl', 'show', handle['unit'], '--property=SubState', '--value'])
             if process['stdout'].strip() != 'running':
                 raise QualificationError('qualification_observer_exit_failed')
+        observations = _packet_acceptance_observations(observer_facts)
         forbidden = ['wan', 'target-uplink']
         if blocked:
             forbidden.extend(['provider-a', 'provider-b', 'target-pa', 'target-pb'])

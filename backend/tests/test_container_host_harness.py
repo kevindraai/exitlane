@@ -189,6 +189,34 @@ def test_reusing_packet_phase_fails_before_pressure_or_fault(configuration):
         instance.packet_phase('already-used', [{'role': 'client'}], fault='parent_crash')
 
 
+def test_multi_interface_observers_map_to_canonical_packet_acceptance_points():
+    facts = lambda name: {'interface': name}
+    observers = [
+        ('wan', {'eth0': facts('wan')}),
+        ('client', {'wg-client': facts('client')}),
+        ('provider-a', {'wg-peer': facts('provider-a'), 'target': facts('provider-a-target')}),
+        ('provider-b', {'wg-peer': facts('provider-b'), 'target': facts('provider-b-target')}),
+        ('target', {'pa': facts('target-pa'), 'pb': facts('target-pb'), 'uplink': facts('target-uplink')}),
+    ]
+    result = harness._packet_acceptance_observations(observers)
+    assert set(result) == {'wan', 'client', 'provider-a', 'provider-b',
+                           'target-pa', 'target-pb', 'target-uplink'}
+    assert result['provider-a'] == facts('provider-a')
+    assert result['provider-b'] == facts('provider-b')
+    assert result['target-pa'] == facts('target-pa')
+    assert result['target-pb'] == facts('target-pb')
+    assert result['target-uplink'] == facts('target-uplink')
+
+
+@pytest.mark.parametrize('observers', [
+    [('wan', {'eth0': {}}), ('client', {'wg-client': {}})],
+    [('wan', {'eth0': {}}), ('wan', {'eth0': {}})],
+])
+def test_packet_acceptance_mapping_rejects_incomplete_or_duplicate_topology(observers):
+    with pytest.raises(harness.QualificationError, match='qualification_packet_topology_mismatch'):
+        harness._packet_acceptance_observations(observers)
+
+
 @pytest.mark.parametrize('family', [0, 5, True, '6'])
 def test_sender_rejects_unknown_family_before_remote_access(configuration, family):
     instance = harness.HostHarness(configuration)
