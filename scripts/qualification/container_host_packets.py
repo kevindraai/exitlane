@@ -875,7 +875,7 @@ def attach_kernel_filter(sock, name, addresses):
         raise EvidenceInvalid("capture_filter_unavailable") from exc
 
 
-def _output_control_relevant(frame, result):
+def _output_control_relevant(frame, result, addresses):
     """Retain synthetic TCP controls/ICMP quotes without recording ordinary DNS.
 
     The caller has already decoded a valid packet and requires an explicitly
@@ -897,7 +897,25 @@ def _output_control_relevant(frame, result):
         # Valid empty TCP segments, including SYN, RST and ACK. No arbitrary
         # application/DNS payload becomes part of this additional capture path.
         return transport + (frame[transport + 12] >> 4) * 4 == end
-    return result.protocol == "icmp" and frame[transport] in {3, 11, 12}
+    if result.protocol != "icmp" or frame[transport] not in {3, 11, 12}:
+        return False
+    # ICMP can quote ordinary API/SSH payload. Preserve only the dedicated
+    # synthetic transport tuple, not every error mentioning a selected host.
+    quote = frame[transport + 8:end]
+    _require(len(quote) >= 20 and quote[0] >> 4 == 4, "output_quote_invalid")
+    header = (quote[0] & 15) * 4
+    _require(20 <= header <= 60 and len(quote) >= header, "output_quote_invalid")
+    source = str(ipaddress.IPv4Address(quote[12:16]))
+    destination = str(ipaddress.IPv4Address(quote[16:20]))
+    if source not in addresses and destination not in addresses:
+        return False
+    _require(struct.unpack_from("!H", quote, 6)[0] & 0xBFFF == 0,
+             "output_quote_fragment_unproven")
+    if quote[9] not in {6, 17}:
+        return False
+    _require(len(quote) >= header + 4 and struct.unpack_from("!H", quote, 2)[0] >= header + 4,
+             "output_quote_invalid")
+    return bool(set(struct.unpack_from("!HH", quote, header)) & {53, 7777, 7778})
 
 
 class HostCapture:
@@ -1054,8 +1072,13 @@ class HostCapture:
             and result.destination not in self.addresses
         ):
             return
-        if result.kind == "other" and not _output_control_relevant(frame, result):
-            return
+        if result.kind == "other":
+            try:
+                if not _output_control_relevant(frame, result, self.addresses):
+                    return
+            except EvidenceInvalid:
+                facts["invalid_packets"] += 1
+                return
         if result.kind == "wireguard":
             facts["wireguard_packets"] += 1
             if facts["wireguard_first_ns"] is None:

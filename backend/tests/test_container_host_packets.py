@@ -469,18 +469,40 @@ def test_truncated_unmarked_icmp_control_is_invalid_not_silent_zero(tmp_path, bo
 
 @pytest.mark.parametrize("quote", [b"\x45" + b"\0" * 10,
                                       ipv4(tcp(b""), protocol=6, fragment=1)[:28]])
-def test_actual_collected_malformed_icmp_quote_cannot_be_zero(tmp_path, monkeypatch, quote):
-    monkeypatch.syspath_prepend(str(Path(__file__).parents[2] / "scripts/qualification"))
-    from container_host_output import OutputEvidenceError, scan_pcap
-
+def test_actual_collected_malformed_icmp_quote_cannot_be_zero(tmp_path, quote):
     capture = observer(tmp_path)
     raw = frame(ipv4(b"\x03\0" + b"\0" * 6 + quote, protocol=1), 276)
     stamp = (capture.start_ns // 1000 + 2) * 1000
     capture.consume("eth0", raw, stamp)
     for output in capture.files.values():
         output.close()
-    with pytest.raises(OutputEvidenceError):
-        scan_pcap((capture.root / "eth0.pcap").read_bytes(), stamp - 1000, stamp + 1000)
+    assert capture.facts["eth0"]["invalid_packets"] == 1
+    assert (capture.root / "eth0.pcap").stat().st_size == 24
+
+
+@pytest.mark.parametrize("port", [22, 8787, 9443])
+@pytest.mark.parametrize("protocol", [6, 17])
+def test_icmp_retention_never_records_quoted_ssh_or_api_payload(tmp_path, port, protocol):
+    capture = observer(tmp_path)
+    transport = tcp(b"synthetic-private-sentinel", destination=port) if protocol == 6 else udp(
+        b"synthetic-private-sentinel", destination=port)
+    quote = ipv4(transport, protocol=protocol)
+    raw = frame(ipv4(b"\x03\0" + b"\0" * 6 + quote, protocol=1), 276)
+    capture.consume("eth0", raw, capture.start_ns + 1)
+    for output in capture.files.values():
+        output.close()
+    assert (capture.root / "eth0.pcap").stat().st_size == 24
+    assert capture.facts["eth0"]["invalid_packets"] == 0
+
+
+def test_icmp_dedicated_port_quote_outside_selected_addresses_is_not_recorded(tmp_path):
+    capture = observer(tmp_path)
+    quote = ipv4(tcp(b""), protocol=6, source="192.0.2.5", destination="192.0.2.6")[:28]
+    raw = frame(ipv4(b"\x03\0" + b"\0" * 6 + quote, protocol=1), 276)
+    capture.consume("eth0", raw, capture.start_ns + 1)
+    for output in capture.files.values():
+        output.close()
+    assert (capture.root / "eth0.pcap").stat().st_size == 24
 
 
 def test_observer_filters_unrelated_dns_uncertainty_but_rejects_synthetic(tmp_path):
