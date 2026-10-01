@@ -29,7 +29,7 @@ def test_unknown_runtime_refuses_before_state_creation(tmp_path):
         [sys.executable, "-c", "from exitlane import main"],
         env={
             **os.environ,
-            "EXITLANE_RUNTIME": "container",
+            "EXITLANE_RUNTIME": "unknown-runtime",
             "EXITLANE_DATA_DIR": str(tmp_path / "data"),
             "EXITLANE_CONFIG_DIR": str(tmp_path / "config"),
         },
@@ -172,3 +172,121 @@ def test_cli_entrypoint_denial_precedes_database_initialization(monkeypatch, cap
     monkeypatch.setattr(cli.core, "init", lambda: pytest.fail("state initialized before denial"))
     assert cli.main(["disable-killswitch"]) == 2
     assert "runtime_capability_unavailable" in capsys.readouterr().err
+
+
+def test_container_composition_imports_without_cycle_or_state_mutation(tmp_path):
+    result = subprocess.run(
+        [sys.executable, '-c',
+         ('from exitlane import main; from exitlane.providers.catalog import provider_registry; '
+         'assert str(main.DB)=="/data/state/exitlane.db"; '
+         'assert provider_registry.default_id=="mullvad"; '
+         'assert [p.id for p in provider_registry.all()]==["mullvad","pia","proton"]; '
+         'assert main.runtime.capabilities.system_actions==(); '
+         'assert main.runtime.capabilities.supported is False')],
+        env={**os.environ, 'EXITLANE_RUNTIME': 'container'},
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize('name', ['EXITLANE_DATA_DIR', 'EXITLANE_CONFIG_DIR',
+                                 'EXITLANE_MASTER_KEY_FILE', 'EXITLANE_LOG_DIR'])
+def test_container_path_override_refuses_before_state(name, tmp_path):
+    result = subprocess.run([sys.executable, '-c', 'from exitlane import main'],
+                            env={**os.environ, 'EXITLANE_RUNTIME': 'container',
+                                 name: str(tmp_path / 'forbidden')},
+                            capture_output=True, text=True, check=False)
+    assert result.returncode != 0
+    assert 'container_path_override_invalid' in result.stderr
+    assert not list(tmp_path.iterdir())
+
+
+def test_container_metrics_are_scoped_and_never_use_host_facts(tmp_path):
+    from exitlane.container_observation import system_status
+
+    group = tmp_path / 'cgroup'
+    group.mkdir()
+    (group / 'memory.current').write_text('100\n')
+    (group / 'memory.max').write_text('max\n')
+    result = asyncio.run(system_status(tmp_path, cgroup=group))
+    assert result.metric_scope == 'container'
+    assert result.memory_used_bytes == 100
+    assert result.memory_total_bytes is None
+    assert result.cpu_percent is None and result.load_average is None
+    assert result.temperature_celsius is None
+    (group / 'memory.max').write_text('200\n')
+    assert asyncio.run(system_status(tmp_path, cgroup=group)).memory_percent == 50.0
+
+
+@pytest.mark.parametrize('provider_id', ['mullvad', 'pia', 'proton'])
+@pytest.mark.parametrize('operation', ['connect', 'country', 'switch'])
+def test_container_connect_and_switch_require_ingress_before_provider_access(monkeypatch, provider_id, operation):
+    from fastapi import HTTPException
+
+    fake = NativeSystemdRuntime(replace(RuntimeCapabilities(), runtime_name='container'))
+    monkeypatch.setattr(main, 'runtime', fake)
+    monkeypatch.setattr(main, 'setting', lambda *_args: False)
+    monkeypatch.setattr(main, '_provider_or_404', lambda *_args: pytest.fail('provider accessed'))
+    provider = object()
+    with pytest.raises(HTTPException) as error:
+        if operation == 'switch':
+            asyncio.run(main.activate_vpn_provider(provider_id, None))
+        elif operation == 'country':
+            asyncio.run(main._connect_provider_country(provider, main.CountryConnect(country_code='NL'), None))
+        else:
+            asyncio.run(main._connect_provider(provider, main.Connect(target=None), None))
+    assert error.value.status_code == 409
+    assert error.value.detail == 'container_ingress_required'
+
+
+def test_unconfigured_container_adapter_never_uses_native_network_commands():
+    from exitlane.container_unconfigured import UnconfiguredContainerEgress
+    from exitlane.services.provider_wireguard import ProviderWireGuard, ProviderWireGuardError
+    adapter = UnconfiguredContainerEgress()
+    assert not isinstance(adapter, ProviderWireGuard)
+    for name in ('start', 'stop', 'stop_interface', 'probe', 'observe', 'status',
+                 'arm', 'arm_source', 'arm_for_restore', 'reapply_guards', 'disarm',
+                 'transition_facts', 'committed', 'verify_route', 'interface_exists'):
+        with pytest.raises(ProviderWireGuardError, match='container_ingress_required'):
+            asyncio.run(getattr(adapter, name)(None))
+    with pytest.raises(ProviderWireGuardError, match='container_ingress_required'):
+        adapter.remove_config('wg-pia')
+
+
+@pytest.mark.parametrize('provider_id', ['mullvad', 'pia', 'proton'])
+def test_real_provider_disconnect_before_ingress_cannot_run_native_teardown(monkeypatch, provider_id):
+    from exitlane.container_unconfigured import UnconfiguredContainerEgress
+    from exitlane.providers.catalog import provider_registry
+    from exitlane.services import killswitch
+    from exitlane.services.provider_wireguard import ProviderWireGuard
+
+    provider = provider_registry.get(provider_id)
+    monkeypatch.setattr(provider, 'wireguard', UnconfiguredContainerEgress())
+    monkeypatch.setattr(provider, '_state', dict)
+    monkeypatch.setattr(provider, '_owns_transition', lambda: False)
+    monkeypatch.setattr(killswitch, 'configuration', lambda: ((), None))
+    monkeypatch.setattr(provider, '_save', lambda *_: pytest.fail('state committed'))
+    async def native(*_args, **_kwargs):
+        pytest.fail('native teardown executed')
+    monkeypatch.setattr(ProviderWireGuard, '_run', native)
+    result = asyncio.run(provider.disconnect())
+    assert result['ok'] is False and result['error_code'] == 'provider_disconnect_failed'
+
+
+@pytest.mark.parametrize('provider_id', ['mullvad', 'pia'])
+def test_real_provider_signout_before_ingress_cannot_run_native_teardown(monkeypatch, provider_id):
+    from exitlane.container_unconfigured import UnconfiguredContainerEgress
+    from exitlane.providers.catalog import provider_registry
+    from exitlane.services import killswitch
+    from exitlane.services.provider_wireguard import ProviderWireGuard
+
+    provider = provider_registry.get(provider_id)
+    monkeypatch.setattr(provider, 'wireguard', UnconfiguredContainerEgress())
+    monkeypatch.setattr(provider, '_state', lambda: {'account_number': 'synthetic-account'})
+    monkeypatch.setattr(killswitch, 'configuration', lambda: ((), None))
+    monkeypatch.setattr(provider, 'api_factory', lambda *_: pytest.fail('external API accessed'))
+    async def native(*_args, **_kwargs):
+        pytest.fail('native teardown executed')
+    monkeypatch.setattr(ProviderWireGuard, '_run', native)
+    assert asyncio.run(provider.sign_out()) == {'ok': False, 'error': 'provider_error'}

@@ -296,7 +296,7 @@ async def _execute(run_id: str, status_loader: Callable[[], Awaitable[dict]]) ->
     run["completed_at"] = _now()
 
 
-def start(status_loader: Callable[[], Awaitable[dict]]) -> dict:
+def start(status_loader: Callable[[], Awaitable[dict]], *, executor=None) -> dict:
     run_id = str(uuid.uuid4())
     _runs[run_id] = {
         "run_id": run_id,
@@ -308,7 +308,7 @@ def start(status_loader: Callable[[], Awaitable[dict]]) -> dict:
     }
     while len(_runs) > MAX_RUNS:
         _runs.pop(next(iter(_runs)))
-    asyncio.create_task(_execute(run_id, status_loader))
+    asyncio.create_task((executor or _execute)(run_id, status_loader))
     return snapshot(run_id) or {}
 
 

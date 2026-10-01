@@ -172,7 +172,7 @@ def settings_response() -> dict:
         },
         "metadata": {
             "runtime_editable": [
-                "general.timezone",
+                *(["general.timezone"] if runtime.capabilities.timezone_configuration else []),
                 "general.provider_refresh_interval_seconds",
             ],
             "environment_only": ["system.session_duration_seconds"],
@@ -218,6 +218,10 @@ async def update_settings(update: SettingsUpdate) -> dict:
 
 
 async def reconcile_timezone() -> timezone_service.TimezoneChange | None:
+    if not runtime.capabilities.host_timezone or not runtime.capabilities.timezone_configuration:
+        # A restored application timezone remains valid state. A container must
+        # not reconcile that preference into Docker host or read-only image files.
+        return None
     async with _SETTINGS_UPDATE_LOCK:
         status = timezone_consistency()
         if not status["configured"]:

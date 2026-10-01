@@ -65,6 +65,9 @@ class MutationAuthority:
         self._quiesce = quiesce
         self._poisoned = False
         self.owner: MutationOwner | None = None
+        self._subordinates: set[asyncio.Task] = set()
+        self.revoking = False
+        self._subordinate_failed = False
 
     @property
     def available(self) -> bool:
@@ -98,13 +101,19 @@ class MutationAuthority:
             if self._poisoned:
                 raise ControlError('control_recovery_required')
             self.owner = owner
+            self.revoking = False
+            self._subordinate_failed = False
             try:
                 async with asyncio.timeout(timeout):
                     yield
             except BaseException as exc:
                 # Shield cleanup through cancellation. The lock is kept until
                 # the guard/quiesce callback has actually returned.
-                task = asyncio.create_task(self._abandon(owner, 'owner_lost'))
+                self.revoking = True
+                async def finish_loss():
+                    await self._drain_subordinates()
+                    await self._abandon(owner, 'owner_lost')
+                task = asyncio.create_task(finish_loss())
                 while not task.done():
                     try:
                         await asyncio.shield(task)
@@ -115,8 +124,71 @@ class MutationAuthority:
                     raise ControlError('control_expired') from None
                 raise
         finally:
-            self.owner = None
-            self._lock.release()
+            try:
+                if self.owner is owner:
+                    self.revoking = True
+                    await self._drain_subordinates()
+                    if self._subordinate_failed:
+                        # Repeat final cleanup after all parent writers have
+                        # joined, even if a client ignored a failed borrowed RPC.
+                        final = asyncio.create_task(self._abandon(owner, 'operation_interrupted'))
+                        while not final.done():
+                            try:
+                                await asyncio.shield(final)
+                            except asyncio.CancelledError:
+                                continue
+                        final.result()
+            finally:
+                if self.owner is owner:
+                    self.owner = None
+                self._lock.release()
+
+    async def _drain_subordinates(self):
+        while self._subordinates:
+            pending = asyncio.gather(*tuple(self._subordinates), return_exceptions=True)
+            while not pending.done():
+                try:
+                    await asyncio.shield(pending)
+                except asyncio.CancelledError:
+                    continue
+            self._subordinates.difference_update(task for task in tuple(self._subordinates)
+                                                 if task.done())
+
+    async def subordinate(self, owner: MutationOwner, operation) -> dict:
+        if self.owner is not owner or owner.label != 'acquire' or not self.available or self.revoking:
+            operation.close()
+            raise ControlError('control_unauthorized')
+
+        async def guarded_operation():
+            try:
+                return await operation
+            except BaseException:
+                self.revoking = True
+                self._subordinate_failed = True
+                cleanup = asyncio.create_task(self._abandon(owner, 'operation_interrupted'))
+                while not cleanup.done():
+                    try:
+                        await asyncio.shield(cleanup)
+                    except asyncio.CancelledError:
+                        continue
+                cleanup.result()
+                raise
+
+        task = asyncio.create_task(guarded_operation())
+        self._subordinates.add(task)
+        try:
+            try:
+                return await asyncio.shield(task)
+            except asyncio.CancelledError:
+                while not task.done():
+                    try:
+                        await asyncio.shield(task)
+                    except asyncio.CancelledError:
+                        continue
+                task.result()
+                raise
+        finally:
+            self._subordinates.discard(task)
 
 
 def _unique_pairs(pairs):
@@ -179,10 +251,13 @@ class UnixControlServer:
     def __init__(
         self, authority: MutationAuthority, *, callbacks: dict[str, Callback],
         path: Path = CONTROL_PATH, allowed_uid: int = 0,
+        ingress_callback: Callback | None = None, worker_authorized: Callable[[int], bool] | None = None,
     ):
         if set(callbacks) - {'backup', 'restore', 'status'}:
             raise ControlError('control_invalid_configuration')
         self.authority = authority
+        self.ingress_callback = ingress_callback
+        self.worker_authorized = worker_authorized
         self.callbacks = dict(callbacks)
         self.path = path
         self.allowed_uid = allowed_uid
@@ -261,7 +336,7 @@ class UnixControlServer:
                 raise ControlError('control_unauthorized')
             request = await _read(reader, 5)
             command = request.get('command')
-            if command not in {'acquire', 'backup', 'restore', 'status'}:
+            if command not in {'acquire', 'backup', 'restore', 'status', 'ingress'}:
                 raise ControlError('control_invalid_request')
             timeout = _seconds(request.get('timeout', 180), MAX_OPERATION_SECONDS)
             wait = _seconds(request.get('wait_timeout', 30), MAX_WAIT_SECONDS)
@@ -270,6 +345,25 @@ class UnixControlServer:
                 allowed.add('payload')
             if set(request) - allowed:
                 raise ControlError('control_invalid_request')
+            if command == 'ingress':
+                owner = self.authority.owner
+                payload = request.get('payload')
+                if (self.ingress_callback is None or self.worker_authorized is None
+                        or self.worker_authorized(pid) is not True or owner is None
+                        or owner.pid != pid or owner.label != 'acquire'
+                        or not isinstance(payload, dict) or set(payload) != {'action', 'interface'}
+                        or payload['action'] not in {'activate', 'deactivate', 'observe'}
+                        or not isinstance(payload['interface'], str)
+                        or not payload['interface'].isascii()
+                        or not 1 <= len(payload['interface']) <= 15
+                        or not all(c.isalnum() or c == '-' for c in payload['interface'])):
+                    raise ControlError('control_unauthorized')
+                result = await self.authority.subordinate(owner, self.ingress_callback(payload))
+                if (not isinstance(result, dict) or set(result) != {'active'}
+                        or not isinstance(result['active'], bool)):
+                    raise ControlError('control_operation_failed')
+                await _write(writer, {'ok': True, 'result': result})
+                return
             if command == 'status':
                 callback = self.callbacks.get('status')
                 if callback is None or request.get('payload', {}) != {}:
@@ -288,7 +382,7 @@ class UnixControlServer:
                             or not isinstance(release['token'], str)
                             or not secrets.compare_digest(release['token'], token)):
                         raise ControlError('control_invalid_release')
-                    await _write(writer, {'ok': True})
+                    response = {'ok': True}
                 else:
                     callback = self.callbacks.get(command)
                     payload = request.get('payload', {})
@@ -318,7 +412,11 @@ class UnixControlServer:
                         await asyncio.gather(disconnected, return_exceptions=True)
                     if not isinstance(result, dict):
                         raise ControlError('control_operation_failed')
-                    await _write(writer, {'ok': True, 'result': result})
+                    response = {'ok': True, 'result': result}
+            # A successful release is observable only after all borrowed parent
+            # writers have joined and the authority's final guard has completed.
+            # Sending this inside exclusive would acknowledge a still-live lease.
+            await _write(writer, response)
         except asyncio.CancelledError:
             pass
         except ControlError as exc:
@@ -392,7 +490,7 @@ class UnixControlClient:
             await writer.wait_closed()
 
     async def request(self, command: str, payload: dict | None = None, *, timeout: float = 180):
-        if command not in {'backup', 'restore', 'status'}:
+        if command not in {'backup', 'restore', 'status', 'ingress'}:
             raise ControlError('control_invalid_request')
         timeout = _seconds(timeout, MAX_OPERATION_SECONDS)
         reader, writer = await self._connect()

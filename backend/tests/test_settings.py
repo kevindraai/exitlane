@@ -1,5 +1,6 @@
 import asyncio
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from exitlane import core, main, settings
 from exitlane.html import render_index
+from exitlane.runtime import NativeSystemdRuntime, RuntimeCapabilities
 from exitlane.services import timezone as timezone_service
 
 PASSWORD = "correct horse battery staple"
@@ -65,6 +67,24 @@ def valid_update(**overrides):
     }
     general.update(overrides)
     return {"general": general}
+
+
+def test_runtime_without_host_timezone_preserves_restored_preference(client, monkeypatch):
+    core.set_setting("timezone", "Europe/London")
+    monkeypatch.setattr(settings, "runtime", NativeSystemdRuntime(replace(
+        RuntimeCapabilities(), host_timezone=False, timezone_configuration=False,
+    )))
+    monkeypatch.setattr(settings, "system_timezone", lambda: "UTC")
+    monkeypatch.setattr(settings, "timezone_consistency", lambda: {
+        "configured": True, "consistent": False, "error": "timezone_mismatch",
+    })
+    monkeypatch.setattr(timezone_service, "set_system_timezone", lambda *_: pytest.fail("host mutation"))
+    assert asyncio.run(settings.reconcile_timezone()) is None
+    assert core.setting("timezone") == "Europe/London"
+    response = settings.settings_response()
+    assert response["general"]["timezone"] == "Europe/London"
+    assert "general.timezone" not in response["metadata"]["runtime_editable"]
+    assert "general.provider_refresh_interval_seconds" in response["metadata"]["runtime_editable"]
 
 
 def test_system_timezone_prefers_etc_timezone(tmp_path):

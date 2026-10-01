@@ -38,6 +38,11 @@ Use this native test-appliance path for NordVPN status, connect, disconnect, and
 Running the application with `docker compose` is suitable for frontend/API development only and
 cannot test or control the NordVPN client installed on the Docker host.
 
+The separate [experimental appliance candidate](docker-appliance-candidate.md)
+uses the same core with a container lifecycle and bounded direct-provider scope.
+It is not supported and does not replace native test-LXC verification. Its image
+qualification uses only disposable, uniquely owned Docker resources.
+
 The LXC check catches systemd, permissions, TUN/WireGuard, NordVPN CLI, and host-integration
 problems that unit tests cannot represent. Record both automated and manual verification in the
 pull request before merge.

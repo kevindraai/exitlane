@@ -84,7 +84,7 @@ the public moving bootstrap preserves compatible behavior for older published he
 
 ## Docker deployment boundary
 
-The Docker image remains a development WebUI/API surface, not a VPN appliance. Its private
+The original Docker image remains a development WebUI/API surface, not a VPN appliance. Its private
 container namespace has no qualified WireGuard ingress, fail-closed forwarding, DNS protection,
 startup guard or restore path. Docker owns its host bridge/NAT firewall state; ExitLane must not
 modify those host tables. The [issue #76 feasibility matrix](../docker-appliance-feasibility.md)
@@ -132,8 +132,24 @@ owned temporary drop policy throughout journalled publication and rollback.
 Corrupt journals, incompatible schemas and failed rollback remain blocked with
 recovery state retained. Root-equivalent container processes already share this
 trust boundary; the manifest key digest does not authenticate externally supplied
-state. Full container startup composition and host restart proof remain D5/D6
-gates. See [container recovery](../docker-container-recovery.md).
+state. See [container recovery](../docker-container-recovery.md).
+
+The experimental D5 image supplies full container composition without changing the
+development image or claiming Docker support. The parent owns ingress and mutation
+authority; the worker owns live direct-provider generations and proofs. A one-use
+inherited socket grants initialization while the parent holds the startup lease.
+No startup credential travels through argv, environment values or persistent files.
+Subordinate ingress operations are revoked on lease loss, drained before the final
+guard/quiesce, and cannot release protection after revocation. Unsupported native
+service, package, host-power and upgrade operations remain unavailable in API/CLI.
+
+The candidate uses a read-only root, one private state volume, bounded private tmpfs,
+NET_ADMIN alone, TUN and explicit namespace sysctls. Management defaults to loopback;
+LAN exposure requires operator selection. Proxy trust is tied to the actual peer,
+not a supplied forwarded chain. Image content, actual authentication/proxy requests,
+encrypted ingress, namespace recreation and restore have dedicated qualification
+gates. Whole-host packet/restart evidence remains D6, and first public production
+publication remains separately authorized. See [the candidate contract](../docker-appliance-candidate.md).
 
 ### System power actions
 

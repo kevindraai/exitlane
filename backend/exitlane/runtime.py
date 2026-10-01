@@ -25,7 +25,7 @@ class RuntimeCapabilityUnavailable(RuntimeError):
 
 def validate_runtime_selection() -> str:
     selected = os.getenv("EXITLANE_RUNTIME", "native")
-    if selected != "native":
+    if selected not in {"native", "container"}:
         raise RuntimeError("runtime_unavailable")
     return selected
 
@@ -45,6 +45,9 @@ class RuntimeCapabilities:
     speedtest: bool = True
     native_upgrade: bool = True
     direct_egress: bool = True
+    runtime_name: str = "native"
+    supported: bool = True
+    metric_scope: str = "host"
 
     def require(self, capability: str) -> None:
         if not getattr(self, capability, False):
@@ -60,8 +63,9 @@ class RuntimeCapabilities:
 
     def projection(self) -> dict:
         return {
-            "runtime": "native",
-            "supported": True,
+            "runtime": self.runtime_name,
+            "supported": self.supported,
+            "metric_scope": self.metric_scope,
             "system_actions": list(self.system_actions),
             "providers": list(self.providers),
             **{
@@ -104,7 +108,7 @@ class RuntimePaths:
     @classmethod
     def container(cls, root: Path = Path("/data")):
         """Fixed durable paths; this does not enable container composition."""
-        from exitlane.container_state import ContainerLayout
+        from exitlane.container_paths import ContainerLayout
 
         layout = ContainerLayout(root)
         return cls(layout.config, layout.state, layout.state, layout.root / "logs", layout.wireguard)
@@ -299,5 +303,124 @@ class NativeSystemdRuntime:
         return restore_transaction(source, passphrase, **callbacks)
 
 
+class ContainerRuntime:
+    """Bounded container adapter; support remains gated by host qualification."""
+    coordinated_mutations = True
+
+    def __init__(self):
+        from exitlane.container_control import UnixControlClient
+        from exitlane.runtime_mutation import ContainerMutationBoundary
+
+        self.paths = RuntimePaths.container()
+        for name, expected in (
+            ("EXITLANE_DATA_DIR", self.paths.application_data),
+            ("EXITLANE_CONFIG_DIR", self.paths.config),
+            ("EXITLANE_MASTER_KEY_FILE", self.paths.config / "secret.key"),
+            ("EXITLANE_LOG_DIR", self.paths.logs),
+        ):
+            if name in os.environ and Path(os.environ[name]) != expected:
+                raise RuntimeError("container_path_override_invalid")
+        self.capabilities = RuntimeCapabilities(
+            system_actions=(), providers=("mullvad", "pia", "proton"),
+            timezone_configuration=False, host_timezone=False, host_metrics=False,
+            host_diagnostics=False, package_installation=False, speedtest=False,
+            native_upgrade=False, direct_egress=False, runtime_name="container",
+            supported=False, metric_scope="container",
+        )
+        self.client = UnixControlClient()
+        self.boundary = ContainerMutationBoundary(self.client)
+        self.network = None
+
+    async def legacy_provider_conflict(self):
+        from exitlane import core
+        rc, _, _ = await core.command("nft", "list", "table", "inet", "mullvad", timeout=3)
+        return rc == 0
+
+    def mutation(self):
+        return self.boundary.mutation()
+
+    def startup_mutation(self):
+        return self.boundary.startup_mutation()
+
+    async def launch_system_action(self, action, **_kwargs):
+        self.capabilities.require_action(action)
+
+    async def system_status(self, data, *, observer):
+        from exitlane.container_observation import system_status
+        return await system_status(data)
+
+    def read_timezone(self, **_kwargs):
+        # The read-only image uses UTC; this is not Docker host timezone state.
+        return "UTC"
+
+    async def set_timezone(self, _timezone, **_kwargs):
+        self.capabilities.require("timezone_configuration")
+
+    async def diagnostics(self, *, observer):
+        from exitlane.container_observation import diagnostics
+        return await diagnostics(self.network)
+
+    async def observe_ingress(self, _interface, *, runner):
+        result = await self.client.request("ingress", {"action": "observe", "interface": _interface})
+        return result.get("active") is True
+
+    async def activate_ingress(self, _interface, **_kwargs):
+        await self.client.request("ingress", {"action": "activate", "interface": _interface})
+        await self.configure_providers(_interface)
+        await self.client.request("ingress", {"action": "observe", "interface": _interface})
+
+    async def configure_providers(self, interface_override=None):
+        from exitlane import core
+        from exitlane.container_egress import ContainerWireGuardEgress
+        from exitlane.container_runtime import ContainerWireGuardLifecycle, IngressConfig
+        from exitlane.providers import catalog
+        if interface_override is None and not core.setting("wireguard_configured", False):
+            return
+        interface = interface_override or core.setting("wireguard_interface")
+        config = IngressConfig.from_file(core.WG_DIR / f"{interface}.conf")
+        # The worker owns policy only; parent exclusively creates/deletes ingress.
+        if self.network is not None:
+            if (self.network.config.interface != config.interface
+                    or self.network.config.address != config.address):
+                raise RuntimeError("container_ingress_identity_change_unsupported")
+            self.network.config = config
+            await self.network.observe_guard()
+            return
+        self.network = ContainerWireGuardLifecycle(config)
+        await self.network.arm_guard()
+        await self.network.observe_guard()
+        for provider in catalog.provider_registry.direct_egress_providers():
+            provider.wireguard = ContainerWireGuardEgress(self.network)
+
+    async def resume_provider(self):
+        from exitlane.providers import catalog
+        if self.network is None:
+            return
+        from exitlane.container_paths import ContainerLayout
+        from exitlane.container_state import ContainerState
+        inventory = ContainerState(ContainerLayout(Path("/data"))).validate()
+        selected = inventory.selected_provider
+        if selected is None:
+            return
+        if any(item.provider_id == selected and item.status != "active" for item in inventory.intents):
+            return
+        intent = next((item for item in inventory.intents if item.provider_id == selected), None)
+        if intent is None or intent.status != "active" or intent.config is None:
+            return
+        provider = catalog.provider_registry.get(selected)
+        config = intent.config
+        await provider.wireguard.start(config, (self.network.config.interface,))
+        facts = await provider.wireguard.probe(config)
+        if facts.get("ready") is not True:
+            return
+        await provider.wireguard.committed(config)
+
+    def restore(self, *_args, **_kwargs):
+        raise RuntimeCapabilityUnavailable("native_restore")
+
+    async def service_action(self, _action, **_kwargs):
+        raise RuntimeCapabilityUnavailable("host_service")
+
+
 validate_runtime_selection()
-runtime = NativeSystemdRuntime()
+runtime = NativeSystemdRuntime() if validate_runtime_selection() == "native" else ContainerRuntime()
