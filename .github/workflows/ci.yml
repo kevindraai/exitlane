@@ -244,9 +244,34 @@ jobs:
       - name: Inspect installed image content without application startup or state
         if: steps.changes.outputs.run == 'true'
         run: |
+          test "$(docker image inspect exitlane-appliance:test --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
           docker run --rm --network none --read-only --cap-drop ALL \
             --security-opt no-new-privileges:true --entrypoint python \
             -i exitlane-appliance:test - < scripts/check_container_image.py
+
+      - name: Generate image SBOM
+        if: steps.changes.outputs.run == 'true'
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: exitlane-appliance:test
+          format: spdx-json
+          output-file: exitlane-image.spdx.json
+          upload-artifact: true
+          upload-artifact-retention: 7
+          upload-release-assets: false
+          dependency-snapshot: false
+
+      - name: Scan candidate image for OS, Python and secret findings
+        if: steps.changes.outputs.run == 'true'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: exitlane-appliance:test
+          scanners: vuln,secret
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: "1"
+          format: table
 
       - name: Qualify real application management and durable image replacement
         if: steps.changes.outputs.run == 'true'
