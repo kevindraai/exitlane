@@ -514,14 +514,19 @@ to bypass the documented merge, infrastructure, qualification or publication gat
 
 ## NordVPN research disposition
 
-The [official NordVPN Docker instructions](https://support.nordvpn.com/hc/en-us/articles/20465811527057-How-to-build-the-NordVPN-Docker-image)
-show a local client daemon started through init.d and a container granted NET_ADMIN. That suggests
-containment is possible; it does not prove compatibility with ExitLane's firewall/routing ownership.
-Its example's IPv6 wording conflicts with the shown sysctl value, another reason not to adopt its
-recipe as security evidence. Docker v1 therefore excludes NordVPN. Future research must establish
-single firewall ownership, lifecycle ordering, contained auth/state and leak/rollback proof without
-host dependencies, systemd-in-container or any forbidden privileges. A feasibility finding must
-precede implementation and must not block the direct-provider program.
+The [current-client research decision](nordvpn-container-research.md) for
+[issue #98](https://github.com/kevindraai/exitlane/issues/98) is **NOT SUITABLE** for stock
+official NordVPN Linux 5.4.0 under the qualified Docker contract. Firewall and routing can be
+disabled, but the client still requires an IPv6 sysctl write that fails against the retained
+read-only kernel paths, even with creation-time IPv6 disablement. Hiding those paths would
+be a compatibility workaround rather than a supported external-owner mode.
+
+Native NordVPN remains supported; container capability metadata continues to exclude it.
+Do not repeat this architecture or implement privilege/path-view workarounds merely to claim
+parity. Reopen only after a material upstream change resolves the supported-client
+incompatibility, then review ownership and qualify lifecycle, state, DNS, switching and packet
+protection before enabling availability. This disposition does not block the direct-provider
+program or other dependency-ready engineering.
 
 ## Acceptance and retained gates
 
