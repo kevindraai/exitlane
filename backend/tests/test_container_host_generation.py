@@ -294,3 +294,40 @@ def test_pending_readiness_does_not_hide_malformed_control_or_other_known_errors
     value._cli = other
     with pytest.raises(generation.FailureEvidenceError, match='generation_control_contract_invalid'):
         value._pending_safe({}, [18, '1100'])
+
+
+def test_blocked_startup_is_polled_before_inventory_then_stable_pending_is_verified():
+    value, h, _receipts, _prep = qualification()
+    h.pending = h.refused = True
+    expected = value._inventory()
+    original_cli, original_inventory = value._cli, value._inventory
+    states = [{'state': 'blocked', 'available': True, 'recovery_required': False, 'worker_running': False}]
+    value._cli = lambda command: states.pop(0) if states else original_cli(command)
+    value._inventory = lambda: pytest.fail('blocked startup must not inspect transitional inventory')
+    assert value._pending_safe(expected, [18, '1100']) is False
+    assert value.last_control_status == {'state': 'blocked', 'available': True, 'recovery_required': False, 'worker_running': False}
+    value._inventory = original_inventory
+    assert value._pending_safe(expected, [18, '1100'])['inventory'] == expected
+    assert not h.fault_calls
+
+
+def test_permanent_documented_blocked_state_times_out_without_restore_or_false_component_pass():
+    value, h, receipts, prep = qualification()
+    original_cli = value._cli
+    def blocked(command, **kwargs):
+        if command == 'status':
+            return {'state': 'blocked', 'available': True, 'recovery_required': False, 'worker_running': False}
+        return original_cli(command, **kwargs)
+    value._cli = blocked
+    with pytest.raises(generation.FailureEvidenceError, match='failure_component_failed'):
+        value.run(catalog_preparation=prep, passphrase=PASSPHRASE)
+    metadata = [data for name, data in receipts.values.items() if name.endswith('-metadata.json')][-1]
+    assert metadata['result'] == 'FAILED' and metadata['last_control_status']['state'] == 'blocked'
+    assert not h.restore_called and h.fault_calls == [('b', 'handshake_off')]
+
+
+def test_unknown_status_state_is_not_classified_as_a_documented_startup_transient():
+    value, _h, _receipts, _prep = qualification()
+    value._cli = lambda _command: {'state': 'invented', 'available': True, 'recovery_required': False, 'worker_running': False}
+    with pytest.raises(generation.FailureEvidenceError, match='generation_control_contract_invalid'):
+        value._pending_safe({}, [18, '1100'])

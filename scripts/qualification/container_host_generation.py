@@ -105,13 +105,18 @@ class GenerationQualification:
             return False
         if isinstance(status, dict):
             self.last_control_status = {
-                'state': status.get('state') if status.get('state') in {'ready', 'recovery_required'} else None,
+                'state': status.get('state') if status.get('state') in {'ready', 'blocked', 'recovery_required'} else None,
                 **{field: status.get(field) if type(status.get(field)) is bool else None
                    for field in ('worker_running', 'available', 'recovery_required')},
             }
-        if (not isinstance(status, dict) or status.get('state') not in {'ready', 'recovery_required'}
+        if (not isinstance(status, dict) or status.get('state') not in {'ready', 'blocked', 'recovery_required'}
                 or any(type(status.get(field)) is not bool for field in ('worker_running', 'available', 'recovery_required'))):
             raise FailureEvidenceError('generation_control_contract_invalid')
+        # Parent status exposes blocked while startup/borrowed ACK/reconcile is
+        # incomplete. This is a documented transient, never a stable PASS and
+        # never a reason to inspect a half-published state or restart a request.
+        if status['state'] == 'blocked':
+            return False
         inventory = self._inventory()
         # Healthy management is permitted. Pending generation must remain exact,
         # with no automatic promotion/replacement, and the killed worker cannot
