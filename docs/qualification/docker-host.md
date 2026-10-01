@@ -78,6 +78,8 @@ The repository-owned components live under `scripts/qualification/`:
 - `container_host_peer.py` owns the isolated synthetic upstream/client/target namespaces.
 - `container_host_packets.py` parses frames, installs narrow kernel filters and validates receipts.
 - `container_host_sender.py` and `container_host_ipv6.py` provide independent numbered pressure.
+- `container_host_ipv6_qualify.py` rotates and archives IPv4 observers before calibrating and
+  validating a separately captured IPv6-blocking phase.
 - `container_host_upstream.py` implements the bounded synthetic response boundary.
 - `container_host_matrix.py` drives resumable whole-host restart components.
 - `container_host_providers.py`, `container_host_failures.py` and
@@ -236,6 +238,22 @@ Use fresh IPv6 collector epochs after retaining/draining IPv4 evidence. Calibrat
 all five IPv6 streams (including ICMPv6 and DNS UDP/TCP) independently on every
 actual interface. Pin the owned namespace, ifindex and explicit fixture MACs.
 No calibration changes host routes, neighbors or firewall policy.
+
+Run the repository-owned coordinator with root-private configuration and old
+external capture handles. It retains old capture files before stopping those
+observers and leaves every failed attempt intact:
+
+```bash
+python3 scripts/qualification/container_host_ipv6_qualify.py \
+  --config /root/d6/config.json \
+  --captures /root/d6/ipv4-handles.json \
+  --expected-image sha256:<exact-disposable-image-digest> \
+  --receipts-dir /root/d6/ipv6-<unique-run-id>
+```
+
+WireGuard L3 links may have no `address` key in `ip -j link`; only Ethernet
+interfaces require a MAC for synthetic frame construction. Missing Ethernet
+address data and unsupported link types fail closed.
 
 A raw outgoing packet on WireGuard can appear at the packet tap while the driver
 rejects delivery with ENOKEY. Only calibration on a stable ARPHRD_NONE interface
