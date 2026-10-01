@@ -1,8 +1,11 @@
 # Security assurance matrix
 
-Status: 0.3.0-rc.2 candidate internally reassessed with Daybreak Blue on
-2026-09-30. This matrix separates automated, synthetic-provider, native-appliance
-and internal assisted evidence. It is not an independent penetration test.
+Current contract: 0.3.0-rc.4 preparation. The 2026-09-30 Daybreak Blue internal reassessment and
+its test counts remain dated historical evidence. Exact rc.4 checks, refreshed scans and native
+appliance receipts remain release gates in the
+[rc.4 release notes](../release-notes/0.3.0-rc.4.md). This matrix separates automated,
+synthetic-provider, native-appliance and internal assisted evidence; it is not an independent
+penetration test.
 
 | ID | STRIDE / ASVS | Asset, actor, entry point and attack path | Impact | Measure and code | Positive / negative evidence | Manual validation | Residual risk | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -26,7 +29,7 @@ and internal assisted evidence. It is not an independent penetration test.
 | HOST-01 | E/I/T | All appliance secrets; local root/host admin; filesystem/systemd; host compromise | Complete compromise | Root-only files, `UMask=0077`, systemd sandbox, management VLAN | Permission/systemd-hardening tests | `systemd-analyze security` and filesystem audit | Root or hypervisor control defeats application controls | Accepted |
 | PROVIDER-INPUT-01 | T/D/I | NordVPN/Mullvad/PIA/Proton control data; provider or network failure; catalog/API/profile parser | Parser failure, local probe redirection, outage or unsafe generated state | Size/type/value bounds, recursion normalization, public-unicast probe policy and strict imported-profile grammar | Synthetic oversized/deep/malformed provider corpus and hostile Proton profile matrix | No provider infrastructure was security-tested; PIA/Proton live accounts unavailable | Provider availability/schema remain external; live PIA/Proton connectivity is unproven | Resolved within synthetic scope |
 | PVE-01 | T/E/D | Root PVE helper; operator input/discovery; command construction or CT collision | Existing-resource mutation or host command injection | Typed flags/input, preflight discovery, explicit CT ownership, no delete/repair path and zero-mutation dry-run | Mocked `pct`/`pveam`, quoting, collision, malformed-input, timeout/interruption tests | No disposable PVE range was authorised | Real create → boot → installer qualification remains unproven | Automated evidence only |
-| DOCKER-01 | I/T/D | Docker bridge and container network namespace; routed client; tunnel loss or daemon restart | Plaintext client egress or lost management/recovery | Development Compose is loopback-only, drops all capabilities and publishes no ingress; production appliance claim withheld | [Issue #76 capability matrix](../docker-appliance-feasibility.md) and isolated image/API probe; no routed traffic test | Dedicated disposable Docker host with synthetic peer, packet captures, restart/restore and no-fallback assertions remains required | Current image lacks nftables and service-manager adapters; fail-closed guarantee unproven | Not qualified |
+| DOCKER-01 | I/T/D | Docker bridge and container namespace; routed client; tunnel loss, restart or recovery | Plaintext client egress or inconsistent state | Separate experimental supervisor/runtime adapters, permanent provider-or-block guard, exact route/peer/DNS/dataplane commit, private DB/key volume and journalled recovery; host Docker policy remains foreign | D2–D5 regression/isolated harnesses, image/proxy/auth/state gates; [D6 synthetic whole-host acceptance](../qualification/docker-host.md) in #96 / PR #110; D7 exact-release/provenance/SBOM workflow infrastructure in PR #111 | Historical disposable-host packet, failure, restore, daemon-mode and reboot receipts retained; exact rc.4 candidate checks/rescan pending | No live commercial-provider container proof or blanket cross-release compatibility; strict publication scan/environment/support gates remain open; no official image | Historical synthetic D6 passed; Docker unsupported, publication gated |
 | DAYBREAK-01 | Cross-cutting | ExitLane source and disposable/synthetic runtime; internal defensive adversarial challenge | Gaps between claims, tests and implementation remain unnoticed | Private hypothesis ledger, safe reproduction, sequential fix/review/retest and final fresh-main challenge | [Sanitised 2026-09-30 report](daybreak-blue-assessment-2026-09-30.md); #81–#84; 766 backend tests, 38 frontend suites and namespace dataplane checks | Exact-head native LXC checks for every runtime fix; no destructive shared-guest experiments | Internal model-assisted assurance is not independent external testing | Complete; external review remains later |
 
 OWASP Top 10 is used as a completeness cross-check: access control (setup,
@@ -35,6 +38,17 @@ sessions, restore), cryptographic failures (MFA key and backup), injection
 misconfiguration (proxy/systemd), vulnerable components (audit/Dependabot),
 authentication failures, integrity failures (backup/upgrade/supply chain),
 logging failures, and SSRF-relevant webhook/provider boundaries.
+
+## Docker publication security gate
+
+The historical refreshed candidate scan retained 44 HIGH package findings across 8 distinct CVEs,
+with zero CRITICAL findings, secret findings and Python vulnerabilities. Reported Debian Trixie
+advisories remained unfixed. This baseline does not qualify a rebuilt rc.4 image; current candidate
+rescan and exact-source checks remain pending in the
+[rc.4 release record](../release-notes/0.3.0-rc.4.md). The manual publication gate rejects all
+HIGH/CRITICAL and secret findings, including unfixed advisories. No waiver is defined and D6
+synthetic packet acceptance does not override that gate. Docker remains unsupported with no
+official production image.
 
 ## Release interpretation
 

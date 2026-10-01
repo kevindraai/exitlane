@@ -207,9 +207,19 @@ def test_crash_receipt_reconciles_complete_pair(fixture, phase):
     assert not recovered.journal.exists()
 
 
-@pytest.mark.parametrize("stage", [
-    "guard", "quiesce", "snapshot", "reset_egress", "publish", "reconcile", "health", "reopen",
-])
+@pytest.mark.parametrize(
+    "stage",
+    [
+        "guard",
+        "quiesce",
+        "snapshot",
+        "reset_egress",
+        "publish",
+        "reconcile",
+        "health",
+        "reopen",
+    ],
+)
 def test_restore_logs_original_boundary_after_real_coherent_rollback(
     fixture, monkeypatch, caplog, stage
 ):
@@ -245,7 +255,11 @@ def test_restore_logs_original_boundary_after_real_coherent_rollback(
 
         coordinator.hooks = replace(coordinator.hooks, **{stage: fail_once})
     with pytest.raises(ContainerRecoveryError, match="restore_failed_rolled_back"):
-        asyncio.run(coordinator.restore(destination, "synthetic-passphrase", confirmation="RESTORE EXITLANE"))
+        asyncio.run(
+            coordinator.restore(
+                destination, "synthetic-passphrase", confirmation="RESTORE EXITLANE"
+            )
+        )
     assert marker(state) == "previous" and state.layout.master_key.read_bytes() == old_key
     state.validate()
     assert not coordinator.journal.exists() and hooks.events[-1] == "reopen"
@@ -274,7 +288,11 @@ def test_restore_failed_rollback_logs_original_code_not_secondary_secret(fixture
 
     coordinator.hooks = replace(coordinator.hooks, health=fail_health)
     with pytest.raises(ContainerRecoveryError, match="recovery_required"):
-        asyncio.run(coordinator.restore(destination, "synthetic-passphrase", confirmation="RESTORE EXITLANE"))
+        asyncio.run(
+            coordinator.restore(
+                destination, "synthetic-passphrase", confirmation="RESTORE EXITLANE"
+            )
+        )
     assert coordinator.journal.exists() and "reopen" not in hooks.events
     assert "stage=health code=recovery_health_failed outcome=recovery_required" in caplog.text
     assert "synthetic-passphrase" not in caplog.text and str(state.layout.root) not in caplog.text
@@ -297,16 +315,27 @@ def test_restore_unknown_exception_code_and_message_are_never_logged(fixture, ca
 
     coordinator.hooks = replace(coordinator.hooks, reset_egress=fail_once)
     with pytest.raises(ContainerRecoveryError, match="restore_failed_rolled_back"):
-        asyncio.run(coordinator.restore(destination, "synthetic-passphrase", confirmation="RESTORE EXITLANE"))
+        asyncio.run(
+            coordinator.restore(
+                destination, "synthetic-passphrase", confirmation="RESTORE EXITLANE"
+            )
+        )
     assert "stage=reset_egress code=unclassified outcome=rollback_completed" in caplog.text
-    assert "synthetic-private-sentinel" not in caplog.text and str(state.layout.root) not in caplog.text
+    assert (
+        "synthetic-private-sentinel" not in caplog.text
+        and str(state.layout.root) not in caplog.text
+    )
 
 
 def test_wrong_passphrase_log_has_static_rejected_boundary_and_no_secret(fixture, caplog):
     _state, hooks, coordinator = fixture
     destination = backup(fixture)
     with pytest.raises(lifecycle.LifecycleError):
-        asyncio.run(coordinator.restore(destination, "synthetic-wrong-private", confirmation="RESTORE EXITLANE"))
+        asyncio.run(
+            coordinator.restore(
+                destination, "synthetic-wrong-private", confirmation="RESTORE EXITLANE"
+            )
+        )
     assert hooks.events == []
     assert "stage=prepare_archive code=authentication_failed outcome=rejected" in caplog.text
     assert "synthetic-wrong-private" not in caplog.text and str(destination) not in caplog.text
@@ -318,9 +347,15 @@ def test_diagnostic_handler_failure_cannot_interrupt_rollback(fixture, monkeypat
     state, hooks, coordinator = fixture
     destination = backup(fixture)
     hooks.fail_health = 1
-    monkeypatch.setattr(container_recovery.LOGGER, "warning", lambda *_: (_ for _ in ()).throw(OSError()))
+    monkeypatch.setattr(
+        container_recovery.LOGGER, "warning", lambda *_: (_ for _ in ()).throw(OSError())
+    )
     with pytest.raises(ContainerRecoveryError, match="restore_failed_rolled_back"):
-        asyncio.run(coordinator.restore(destination, "synthetic-passphrase", confirmation="RESTORE EXITLANE"))
+        asyncio.run(
+            coordinator.restore(
+                destination, "synthetic-passphrase", confirmation="RESTORE EXITLANE"
+            )
+        )
     assert not coordinator.journal.exists() and hooks.events[-1] == "reopen"
     assert marker(state) == "previous"
 

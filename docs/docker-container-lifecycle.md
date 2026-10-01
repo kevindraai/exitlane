@@ -1,9 +1,12 @@
 # Synthetic container lifecycle (D2)
 
-This slice implements container network lifecycle primitives and a bounded worker supervisor.
-It is not a Docker appliance. Application runtime selection still accepts native Debian only;
-direct-provider integration is exercised by the isolated D3 fixture; full application startup
-and durable recovery remain later gates.
+D2 delivered container network lifecycle primitives and a bounded worker supervisor. Its isolated
+slice did not enable the full application container runtime or durable recovery. D3–D7 subsequently
+delivered direct-provider dataplane, recovery, the experimental appliance image, historical D6
+synthetic host qualification and publication infrastructure. See the
+[candidate contract](docker-appliance-candidate.md) and
+[rc.4 release notes](release-notes/0.3.0-rc.4.md) for current receipts and pending release gates.
+Docker remains unsupported and no official production image has been published.
 Native systemd units, configuration generation and installer behavior remain unchanged.
 
 `exitlane.container_runtime.IngressConfig` accepts the current single-peer IPv4 ingress shape.
@@ -56,5 +59,6 @@ host/daemon restart qualification required by D6.
 
 The lightweight kernel proof runs in CI when core, dependency, test-image, harness or workflow
 files change. Documentation-only changes skip its image build and execution. Shared backend tests
-remain one suite. Full production networking, restore/lease orchestration, image management,
-disposable-host packet qualification and release publication remain the sequential gates in #90.
+remain one suite. This D2 harness alone does not qualify full networking, restore/lease
+orchestration, image management or whole-host failures; later D3–D6 receipts cover those separate
+boundaries. D7 infrastructure does not itself publish an image or establish support under #90.

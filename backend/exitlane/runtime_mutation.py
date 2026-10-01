@@ -4,6 +4,7 @@ Health and immutable assets are read-only. Session checks and Activity updates
 can write during GET requests, so HTTP method alone is not a safe distinction.
 Native mutation contexts remain no-ops. Container activation belongs to D5.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -35,6 +36,7 @@ class ContainerMutationBoundary:
 
 class StartupBorrower:
     """One inherited supervisor channel authorizes initialization only once."""
+
     def __init__(self, fd: int):
         self.fd = fd
         self.used = False
@@ -67,7 +69,10 @@ class StartupBorrower:
             sock.setblocking(False)
             reader, writer = await asyncio.open_connection(sock=sock, limit=16384)
             grant = await _read(reader, 30)
-            if grant != {"command": "startup-grant", "version": 1} or type(grant['version']) is not int:
+            if (
+                grant != {"command": "startup-grant", "version": 1}
+                or type(grant["version"]) is not int
+            ):
                 raise ControlError("control_startup_handoff_required")
             try:
                 async with asyncio.timeout(30):
@@ -99,8 +104,10 @@ class RuntimeMutationMiddleware:
         method = scope.get("method", "")
         protected_documents = {"/docs", "/redoc", "/openapi.json"}
         readonly = (
-            method == "GET" and path == "/api/health"
-            or method in {"GET", "HEAD"} and not path.startswith("/api/")
+            method == "GET"
+            and path == "/api/health"
+            or method in {"GET", "HEAD"}
+            and not path.startswith("/api/")
             and path not in protected_documents
         )
         if scope["type"] != "http" or readonly:

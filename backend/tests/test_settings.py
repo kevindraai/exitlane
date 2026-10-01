@@ -71,14 +71,30 @@ def valid_update(**overrides):
 
 def test_runtime_without_host_timezone_preserves_restored_preference(client, monkeypatch):
     core.set_setting("timezone", "Europe/London")
-    monkeypatch.setattr(settings, "runtime", NativeSystemdRuntime(replace(
-        RuntimeCapabilities(), host_timezone=False, timezone_configuration=False,
-    )))
+    monkeypatch.setattr(
+        settings,
+        "runtime",
+        NativeSystemdRuntime(
+            replace(
+                RuntimeCapabilities(),
+                host_timezone=False,
+                timezone_configuration=False,
+            )
+        ),
+    )
     monkeypatch.setattr(settings, "system_timezone", lambda: "UTC")
-    monkeypatch.setattr(settings, "timezone_consistency", lambda: {
-        "configured": True, "consistent": False, "error": "timezone_mismatch",
-    })
-    monkeypatch.setattr(timezone_service, "set_system_timezone", lambda *_: pytest.fail("host mutation"))
+    monkeypatch.setattr(
+        settings,
+        "timezone_consistency",
+        lambda: {
+            "configured": True,
+            "consistent": False,
+            "error": "timezone_mismatch",
+        },
+    )
+    monkeypatch.setattr(
+        timezone_service, "set_system_timezone", lambda *_: pytest.fail("host mutation")
+    )
     assert asyncio.run(settings.reconcile_timezone()) is None
     assert core.setting("timezone") == "Europe/London"
     response = settings.settings_response()

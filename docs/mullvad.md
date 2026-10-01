@@ -5,9 +5,16 @@ control the Mullvad desktop app, CLI or `mullvad-daemon`. ExitLane owns the egre
 policy-routing table and forwarded-traffic killswitch; WireGuard ingress remains a separate
 interface and responsibility.
 
-This guide describes the direct integration in **0.3.0-rc.2**. Use the supported
-[Debian 13 `amd64` appliance](deployment.md); the qualified Proxmox configuration is a privileged
-LXC. The integration currently provides IPv4 egress.
+This guide describes the native direct integration in **0.3.0-rc.4**. Use the supported
+[Debian 13 `amd64` appliance target](deployment.md), including privileged Proxmox LXC.
+The integration currently provides IPv4 egress. Historical native live qualification is retained;
+exact rc.4 receipts remain release gates in the [rc.4 release notes](release-notes/0.3.0-rc.4.md).
+
+The separate [experimental Docker candidate](docker-appliance-candidate.md) also implements the
+direct provider, but remains unsupported with no official production image. Its synthetic
+qualification does not establish live-provider interoperability. Container protected ingress stays
+provider-or-block even after an explicit disconnect, regardless of the optional killswitch setting;
+the native host/systemd commands and direct-egress choices below apply to native Debian.
 
 ## Set up and connect
 
@@ -195,7 +202,7 @@ key and WireGuard files; a failed recovery keeps forwarding blocked for local op
 ## Release limitations
 
 - IPv6 through Mullvad is not supported; protected IPv6 is blocked.
-- One commercial provider is active at a time. Signing in to both providers does not combine them.
+- One commercial provider is active at a time. Configuring multiple providers does not combine them.
 - No automatic switch to another relay or country is promised after an unavailable relay.
 - This integration does not expose the Mullvad app's full feature set, such as multihop or obfuscation.
 - Direct exposure of the management API to the internet is unsupported.

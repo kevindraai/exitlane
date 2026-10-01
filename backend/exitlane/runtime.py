@@ -111,7 +111,9 @@ class RuntimePaths:
         from exitlane.container_paths import ContainerLayout
 
         layout = ContainerLayout(root)
-        return cls(layout.config, layout.state, layout.state, layout.root / "logs", layout.wireguard)
+        return cls(
+            layout.config, layout.state, layout.state, layout.root / "logs", layout.wireguard
+        )
 
 
 SYSTEM_ACTION_COMMANDS = {
@@ -305,6 +307,7 @@ class NativeSystemdRuntime:
 
 class ContainerRuntime:
     """Bounded container adapter; support remains gated by host qualification."""
+
     coordinated_mutations = True
 
     def __init__(self):
@@ -321,11 +324,19 @@ class ContainerRuntime:
             if name in os.environ and Path(os.environ[name]) != expected:
                 raise RuntimeError("container_path_override_invalid")
         self.capabilities = RuntimeCapabilities(
-            system_actions=(), providers=("mullvad", "pia", "proton"),
-            timezone_configuration=False, host_timezone=False, host_metrics=False,
-            host_diagnostics=False, package_installation=False, speedtest=False,
-            native_upgrade=False, direct_egress=False, runtime_name="container",
-            supported=False, metric_scope="container",
+            system_actions=(),
+            providers=("mullvad", "pia", "proton"),
+            timezone_configuration=False,
+            host_timezone=False,
+            host_metrics=False,
+            host_diagnostics=False,
+            package_installation=False,
+            speedtest=False,
+            native_upgrade=False,
+            direct_egress=False,
+            runtime_name="container",
+            supported=False,
+            metric_scope="container",
         )
         self.client = UnixControlClient()
         self.boundary = ContainerMutationBoundary(self.client)
@@ -333,6 +344,7 @@ class ContainerRuntime:
 
     async def legacy_provider_conflict(self):
         from exitlane import core
+
         rc, _, _ = await core.command("nft", "list", "table", "inet", "mullvad", timeout=3)
         return rc == 0
 
@@ -347,6 +359,7 @@ class ContainerRuntime:
 
     async def system_status(self, data, *, observer):
         from exitlane.container_observation import system_status
+
         return await system_status(data)
 
     def read_timezone(self, **_kwargs):
@@ -358,10 +371,13 @@ class ContainerRuntime:
 
     async def diagnostics(self, *, observer):
         from exitlane.container_observation import diagnostics
+
         return await diagnostics(self.network)
 
     async def observe_ingress(self, _interface, *, runner):
-        result = await self.client.request("ingress", {"action": "observe", "interface": _interface})
+        result = await self.client.request(
+            "ingress", {"action": "observe", "interface": _interface}
+        )
         return result.get("active") is True
 
     async def activate_ingress(self, _interface, **_kwargs):
@@ -374,14 +390,17 @@ class ContainerRuntime:
         from exitlane.container_egress import ContainerWireGuardEgress
         from exitlane.container_runtime import ContainerWireGuardLifecycle, IngressConfig
         from exitlane.providers import catalog
+
         if interface_override is None and not core.setting("wireguard_configured", False):
             return
         interface = interface_override or core.setting("wireguard_interface")
         config = IngressConfig.from_file(core.WG_DIR / f"{interface}.conf")
         # The worker owns policy only; parent exclusively creates/deletes ingress.
         if self.network is not None:
-            if (self.network.config.interface != config.interface
-                    or self.network.config.address != config.address):
+            if (
+                self.network.config.interface != config.interface
+                or self.network.config.address != config.address
+            ):
                 raise RuntimeError("container_ingress_identity_change_unsupported")
             self.network.config = config
             await self.network.observe_guard()

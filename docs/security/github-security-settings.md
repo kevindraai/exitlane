@@ -1,6 +1,7 @@
 # GitHub security settings
 
-Repository settings rechecked on 2026-09-25 for 0.3.0-rc.1 preparation.
+The initial settings inventory below was checked on 2026-09-25 for rc.1.
+Current rc.4 protection/settings verification belongs in the exact-source release receipt.
 Final source-specific CI and findings are recorded separately in release qualification.
 
 - [x] Dependency Graph enabled
@@ -32,8 +33,10 @@ follow-up, not permission to reintroduce the Action.
 First image publication uses the `ghcr-production` Environment. The release validator
 requires its existing Product Owner-only reviewer rule, disabled administrator bypass
 and protected-branch restriction before the publish job can be scheduled. The
-environment is not configured or approved by the D7 implementation PR. Missing
-protection fails closed; typed confirmation alone does not authorize publication.
+environment was not configured or approved by the D7 implementation PR. It is now configured,
+with Product Owner reviewer `kevindraai`, no administrator bypass and a protected-main restriction.
+Current settings must be reverified at the publication boundary. Missing protection fails closed;
+typed confirmation alone does not authorize publication, and rc.4 does not authorize Docker publication.
 
 `EXITLANE_DEPENDENCY_REVIEW_ENABLED` remains an explicit capability gate, not an opt-out. Dependency
 Graph is enabled and the variable is exactly `true`, so pull requests execute dependency review;

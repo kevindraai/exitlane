@@ -1,10 +1,12 @@
 # Synthetic direct-provider dataplane (D3)
 
-Docker remains unsupported. This implementation extends the isolated D2 lifecycle;
-it does not enable container runtime selection in the full application or publish
-a production image. Debian/systemd remains the reference runtime. Durable recovery,
-supervisor leases, production composition and disposable-host qualification retain
-their separate D4–D6 acceptance gates under #90.
+Docker remains unsupported. D3 extended the isolated D2 lifecycle; that slice alone did not
+enable full application container selection or publish an image. D4–D7 subsequently delivered
+durable recovery, supervisor leases, experimental appliance composition, historical D6 synthetic
+host qualification and release infrastructure. Debian/systemd remains the reference runtime.
+No official production image has been published. See the
+[candidate contract](docker-appliance-candidate.md) and
+[rc.4 release notes](release-notes/0.3.0-rc.4.md) for current receipts and pending release gates.
 
 ## Shared transactions, bounded runtime difference
 
@@ -101,7 +103,7 @@ interface deletion, protected source sockets and decrypted IPv6 attempts. Normal
 management DNS and a separately unsafe synthetic forwarding control must work;
 otherwise a zero-packet negative result is insufficient evidence.
 
-This is a lightweight namespace/dataplane proof. Docker daemon restart, host reboot,
-physical-uplink capture, durable restore and image replacement still require the
-independent disposable-host matrix in D6. Passing D3 does not confer production
-support or authorize publication.
+This is a lightweight namespace/dataplane proof. Its harness cannot establish Docker daemon
+restart, host reboot, physical-uplink capture, durable restore or image replacement acceptance;
+those have separate historical D6 disposable-host receipts. Passing D3 or the later synthetic
+matrix does not confer production support or authorize publication.

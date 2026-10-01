@@ -423,7 +423,8 @@ async def _monitor_killswitch() -> None:
             async with runtime.mutation():
                 operation = _killswitch_monitor_iteration(previous, previous_facts)
                 previous, previous_facts = (
-                    await finish_writer(operation) if runtime.coordinated_mutations
+                    await finish_writer(operation)
+                    if runtime.coordinated_mutations
                     else await operation
                 )
         except ControlError:
@@ -457,9 +458,7 @@ async def _killswitch_monitor_iteration(previous, previous_facts):
         previous_facts = facts
     except (killswitch.KillswitchError, ProviderNotFound):
         if previous != "error":
-            record_event(
-                "network.killswitch_error", metadata={"reason": "firewall_apply_failed"}
-            )
+            record_event("network.killswitch_error", metadata={"reason": "firewall_apply_failed"})
         previous = "error"
         return previous, previous_facts
     if current.state != previous:
@@ -483,7 +482,8 @@ async def _monitor_management_routing() -> None:
             async with runtime.mutation():
                 operation = _management_monitor_iteration(previous_error)
                 previous_error = (
-                    await finish_writer(operation) if runtime.coordinated_mutations
+                    await finish_writer(operation)
+                    if runtime.coordinated_mutations
                     else await operation
                 )
         except ControlError:
@@ -503,8 +503,6 @@ async def _management_monitor_iteration(previous_error):
     else:
         previous_error = None
     return previous_error
-
-
 
 
 app = FastAPI(
@@ -742,6 +740,7 @@ def apply_security_headers(headers, request):
 
 class SecurityHeadersMiddleware:
     """Apply the same baseline even when mutation authority refuses a request."""
+
     def __init__(self, app: ASGIApp):
         self.app = app
 
@@ -749,11 +748,13 @@ class SecurityHeadersMiddleware:
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
         request = Request(scope)
+
         async def secure_send(message):
             if message["type"] == "http.response.start":
                 message = {**message, "headers": list(message.get("headers", []))}
                 apply_security_headers(MutableHeaders(scope=message), request)
             await send(message)
+
         return await self.app(scope, receive, secure_send)
 
 
@@ -1749,9 +1750,11 @@ async def start_connection_diagnostics() -> dict:
     runtime.capabilities.require("diagnostics")
     if runtime.coordinated_mutations:
         from exitlane.container_observation import connection_run
+
         async def status_loader():
             async with runtime.mutation():
                 return await finish_writer(_fresh_vpn_status())
+
         return connection_diagnostics.start(status_loader, executor=connection_run)
     return connection_diagnostics.start(_fresh_vpn_status)
 
@@ -2789,7 +2792,9 @@ async def _connect_provider_country(
     provider_instance, req: CountryConnect, request: Request
 ) -> dict:
     global _pending_provider_connection
-    if runtime.capabilities.runtime_name == "container" and not setting("wireguard_configured", False):
+    if runtime.capabilities.runtime_name == "container" and not setting(
+        "wireguard_configured", False
+    ):
         raise HTTPException(status_code=409, detail="container_ingress_required")
     code = req.country_code.upper()
     connection_id = _provider_connection_id(provider_instance)
@@ -3075,7 +3080,9 @@ async def _connect_provider(
     reconnect: bool = False,
 ) -> dict:
     global _pending_provider_connection
-    if runtime.capabilities.runtime_name == "container" and not setting("wireguard_configured", False):
+    if runtime.capabilities.runtime_name == "container" and not setting(
+        "wireguard_configured", False
+    ):
         raise HTTPException(status_code=409, detail="container_ingress_required")
     if req.target and re.fullmatch(r"[A-Za-z]{2}", req.target):
         return await _connect_provider_country(
@@ -3491,7 +3498,9 @@ async def _rollback_provider_switch(previous, target, actor: dict | None) -> boo
 
 @app.post("/api/vpn/providers/{provider_id}/activate")
 async def activate_vpn_provider(provider_id: str, request: Request) -> dict:
-    if runtime.capabilities.runtime_name == "container" and not setting("wireguard_configured", False):
+    if runtime.capabilities.runtime_name == "container" and not setting(
+        "wireguard_configured", False
+    ):
         raise HTTPException(status_code=409, detail="container_ingress_required")
     target = _provider_or_404(provider_id)
     previous = _active_provider()

@@ -8,7 +8,8 @@ fi
 
 readonly CLIENT_NS="exitlane-proton-client-$$"
 readonly SERVER_NS="exitlane-proton-peer-$$"
-readonly WORK="$(mktemp -d /tmp/exitlane-proton-qualification.XXXXXXXX)"
+WORK="$(mktemp -d /tmp/exitlane-proton-qualification.XXXXXXXX)"
+readonly WORK
 cleanup() {
   if [[ -n ${DNS_PID:-} ]]; then kill "$DNS_PID" 2>/dev/null || true; fi
   ip netns delete "$CLIENT_NS" 2>/dev/null || true
@@ -19,6 +20,8 @@ trap cleanup EXIT
 
 ip netns add "$CLIENT_NS"
 ip netns add "$SERVER_NS"
+# Explicit native gateway prerequisite; never inherit or change host forwarding.
+ip netns exec "$CLIENT_NS" sysctl -q -w net.ipv4.ip_forward=1
 ip link add veth-pr-client type veth peer name veth-pr-server
 ip link set veth-pr-client netns "$CLIENT_NS"
 ip link set veth-pr-server netns "$SERVER_NS"

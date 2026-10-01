@@ -43,14 +43,14 @@ per-code metadata allowlists are stored in SQLite; the browser translates them a
 Event writes are best-effort so audit storage cannot break the primary action. This Activity log
 is intentionally distinct from systemd/journald operational logs.
 
-The explicitly stored ExitLane timezone is the source of truth for a managed appliance. Settings
+On native Debian, the explicitly stored ExitLane timezone is the source of truth for the managed appliance. Settings
 applies a validated IANA identifier through one fixed `/usr/bin/timedatectl set-timezone` argument
 vector, verifies the observed Debian timezone, and persists SQLite only after that verification.
 If persistence fails, the system timezone is restored and verified. Startup reconciles a valid
 explicit setting before normal operation; invalid or unreadable state remains visible in Settings
 and Activity rather than being silently treated as UTC.
 
-Dashboard system metrics are collected directly from Linux interfaces available on both bare-metal
+Native dashboard system metrics are collected directly from Linux interfaces available on both bare-metal
 hosts and LXC containers. Memory comes from `/proc/meminfo`, uptime from `/proc/uptime`, CPU time
 from the aggregate line in `/proc/stat`, and filesystem usage from the configured dashboard path.
 CPU utilisation is the change in non-idle time divided by the change in total time between
@@ -59,10 +59,22 @@ utilisation, so the first reading only establishes a baseline and the API intent
 `null` until the next sample; the browser displays an em dash during that interval.
 
 The provider registry and contract are the VPN boundary; see
-[VPN provider architecture](architecture/providers.md). NordVPN and Mullvad VPN are registered
-implementations. Exitlane delegates VPN tunnel ownership to mature local clients. WireGuard is the
-ingress boundary: routers and clients send selected traffic to Exitlane without requiring
-router-specific logic in the core.
+[VPN provider architecture](architecture/providers.md). Native NordVPN uses its managed Linux
+client/daemon; Mullvad, PIA and imported Proton profiles use ExitLane-owned direct WireGuard egress.
+PIA/Proton implementation and synthetic/native-kernel qualification are inherited; their live
+provider proof remains outstanding. WireGuard is the separate ingress boundary: routers and
+clients send selected traffic to ExitLane without router-specific logic in the core.
+
+An explicit runtime composition boundary selects native systemd adapters or the separate
+experimental container supervisor. Both share the application, provider transactions and
+validation controls; capabilities deny unavailable actions in API/UI/CLI. The container registry
+excludes NordVPN, uses a permanent provider-or-block ingress policy, supervises mutation leases and
+journalled recovery, reports cgroup-aware resource facts and treats timezone as an application IANA
+setting. Native host timezone, service and power behavior remains unchanged. D1–D7 implementation
+is delivered and historical D6 synthetic disposable-host qualification passed. Docker remains
+unsupported and no official production image has been published. See the
+[runtime architecture](docker-runtime-architecture.md), [candidate contract](docker-appliance-candidate.md)
+and [rc.4 release notes](release-notes/0.3.0-rc.4.md) for evidence and remaining release gates.
 
 Provider status keeps installation, authentication, and tunnel connection as separate states and
 includes backend-determined capabilities. The capability model currently exposes sign-in,
@@ -70,9 +82,10 @@ sign-out, connect, disconnect, and location-selection decisions. The VPN view re
 while signed out, but its provider-dependent controls and data loaders stay inert until
 `authentication.state` is `signed_in` and `can_select_location` permits them. The backend enforces
 the same boundary before catalog, latency, server, or connection work. The model reserves
-`can_manage_killswitch`, which remains `false`. Killswitch management is intentionally outside the current scope: enabling it later
-requires separate security, routing, DNS, failure-mode, and privilege design rather than only a UI
-toggle.
+`can_manage_killswitch`, which remains `false`: provider-client killswitch management is outside
+the provider contract. The existing [ExitLane killswitch](killswitch.md) is a separate shared
+protection boundary. Containers additionally enforce permanent provider-or-block behavior,
+independent of that optional native setting.
 
 WireGuard setup and management share one configuration service. It generates both key pairs,
 transactionally replaces mode-0600 server and client files, activates the interface, and restores the
@@ -112,5 +125,6 @@ repository nor signing key, and installation never starts a measurement. See
 - The current design targets one Exitlane instance, one active VPN provider, and a trusted
   management network.
 
-These boundaries keep the current beta candidate small while leaving room for additional providers,
-backup and restore, and a supported API in later releases.
+These boundaries retain one appliance core with encrypted backup/restore and four native provider
+integrations. Further providers and a supported public API remain future work; experimental
+container implementation does not imply Docker support or completed rc.4 release qualification.

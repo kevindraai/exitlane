@@ -208,7 +208,10 @@ class Harness:
     def api(self, path, **kwargs):
         self.calls.append(("api", path, kwargs))
         if path == "/api/auth/session":
-            return {"status": 200, "body": {"authenticated": not self.revoked, "setup_complete": False}}
+            return {
+                "status": 200,
+                "body": {"authenticated": not self.revoked, "setup_complete": False},
+            }
         if path == "/api/settings" and self.revoked:
             return {"status": 401}
         if path == "/api/ingress/wireguard/config":
@@ -334,20 +337,30 @@ def test_restore_revocation_accepts_public_first_run_provider_reads(qualificatio
     qualification.backup_restore("synthetic-test-passphrase")
     assert qualification.h.api("/api/vpn/providers")["status"] == 200
     assert qualification.h.api("/api/auth/session") == {
-        "status": 200, "body": {"authenticated": False, "setup_complete": False}}
+        "status": 200,
+        "body": {"authenticated": False, "setup_complete": False},
+    }
     assert qualification.h.cookie == ""
     calls = [c[1] for c in qualification.h.calls if c[0] == "api"]
-    assert calls[-4:] == ["/api/auth/session", "/api/settings", "/api/vpn/providers", "/api/auth/session"]
+    assert calls[-4:] == [
+        "/api/auth/session",
+        "/api/settings",
+        "/api/vpn/providers",
+        "/api/auth/session",
+    ]
 
 
-@pytest.mark.parametrize("session,protected", [
-    ({"status": 200, "body": {"authenticated": True}}, {"status": 401}),
-    ({"status": 200, "body": {"authenticated": False}}, {"status": 200}),
-    ({"status": 200, "body": {"authenticated": False}}, {"status": 503}),
-    ({"status": 401, "body": {"authenticated": False}}, {"status": 401}),
-    ({"status": 200, "body": {}}, {"status": 401}),
-    ({"status": 200, "body": {"authenticated": "false"}}, {"status": 403}),
-])
+@pytest.mark.parametrize(
+    "session,protected",
+    [
+        ({"status": 200, "body": {"authenticated": True}}, {"status": 401}),
+        ({"status": 200, "body": {"authenticated": False}}, {"status": 200}),
+        ({"status": 200, "body": {"authenticated": False}}, {"status": 503}),
+        ({"status": 401, "body": {"authenticated": False}}, {"status": 401}),
+        ({"status": 200, "body": {}}, {"status": 401}),
+        ({"status": 200, "body": {"authenticated": "false"}}, {"status": 403}),
+    ],
+)
 def test_restore_requires_both_actual_unauthenticated_session_and_protected_refusal(
     qualification, session, protected
 ):
@@ -365,8 +378,11 @@ def test_restore_requires_both_actual_unauthenticated_session_and_protected_refu
     with pytest.raises(state.QualificationError, match="qualification_state_session_not_revoked"):
         qualification.backup_restore("synthetic-test-passphrase")
     assert qualification.h.cookie == "synthetic-session-only"
-    receipts = [data["receipt"]["state"] for _, data in qualification.h.candidate.calls
-                if isinstance(data, dict) and "receipt" in data]
+    receipts = [
+        data["receipt"]["state"]
+        for _, data in qualification.h.candidate.calls
+        if isinstance(data, dict) and "receipt" in data
+    ]
     assert receipts[-1] == "FAIL"
 
 

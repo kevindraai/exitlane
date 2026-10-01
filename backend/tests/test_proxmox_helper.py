@@ -131,7 +131,7 @@ def test_default_selection_and_command_generation(pve):
     assert create[create.index("--net0") + 1] == "name=eth0,bridge=vmbr0,ip=dhcp,ip6=manual"
     assert create[create.index("--onboot") + 1] == "1"
     assert commands[-1][-1] == "/root/exitlane-source/installer/install-debian.sh"
-    assert commands[-2][commands[-2].index("--branch") + 1] == "v0.3.0-rc.3"
+    assert commands[-2][commands[-2].index("--branch") + 1] == "v0.3.0-rc.4"
     assert not any(command[:2] == ("pct", "destroy") for command in state["commands"])
 
 
@@ -368,10 +368,14 @@ def test_readiness_rejects_false_positive_and_reports_facts(failure):
             assert command[4:8] == ("runuser", "-u", "_apt", "--")
             fails = (
                 failure == "permanent"
-                or failure == "first-only" and rounds[0] > 1
-                or failure == "intermittent" and rounds[0] % 2 == 0
-                or failure == "debian" and command[-1] == "deb.debian.org"
-                or failure == "github" and command[-1] == "github.com"
+                or failure == "first-only"
+                and rounds[0] > 1
+                or failure == "intermittent"
+                and rounds[0] % 2 == 0
+                or failure == "debian"
+                and command[-1] == "deb.debian.org"
+                or failure == "github"
+                and command[-1] == "github.com"
             )
             return result("" if failure == "empty" else "192.0.2.10 STREAM answer\n", int(fails))
         return result()
@@ -379,14 +383,25 @@ def test_readiness_rejects_false_positive_and_reports_facts(failure):
     with (
         patch.object(helper, "run", side_effect=fake_run),
         patch.object(helper.time, "monotonic", side_effect=lambda: clock[0]),
-        patch.object(helper.time, "sleep", side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)),
+        patch.object(
+            helper.time,
+            "sleep",
+            side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+        ),
         pytest.raises(helper.PreflightError) as error,
     ):
         helper.wait_ready(200, timeout_seconds=7)
     assert clock[0] == 7
     assert rounds[0] == 4
     text = str(error.value)
-    for fact in ("CTID 200", "192.0.2.20", "172.16.0.12", "_apt DNS", "Guest preserved", "pct config 200"):
+    for fact in (
+        "CTID 200",
+        "192.0.2.20",
+        "172.16.0.12",
+        "_apt DNS",
+        "Guest preserved",
+        "pct config 200",
+    ):
         assert fact in text
     assert not any("apt-get" in command for command in observations)
 
@@ -408,13 +423,20 @@ def test_readiness_requires_two_complete_stable_rounds_after_failure():
             return result("nameserver 172.16.0.12\n")
         if "ahostsv4" in command:
             dns_calls.append((rounds[0], command[-1]))
-            return result("192.0.2.10 STREAM answer\n", int(rounds[0] == 2 and command[-1] == "security.debian.org"))
+            return result(
+                "192.0.2.10 STREAM answer\n",
+                int(rounds[0] == 2 and command[-1] == "security.debian.org"),
+            )
         return result()
 
     with (
         patch.object(helper, "run", side_effect=fake_run),
         patch.object(helper.time, "monotonic", side_effect=lambda: clock[0]),
-        patch.object(helper.time, "sleep", side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)),
+        patch.object(
+            helper.time,
+            "sleep",
+            side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+        ),
     ):
         assert helper.wait_ready(200, timeout_seconds=10) == "192.0.2.20"
     assert rounds[0] == 4
@@ -424,13 +446,17 @@ def test_readiness_requires_two_complete_stable_rounds_after_failure():
 def test_readiness_failure_preserves_guest_before_packages(pve, capsys):
     config_dir, bridge_root, state = pve
     with (
-        patch.object(helper, "wait_ready", side_effect=helper.PreflightError("_apt DNS unavailable")),
+        patch.object(
+            helper, "wait_ready", side_effect=helper.PreflightError("_apt DNS unavailable")
+        ),
         pytest.raises(helper.PreflightError, match="_apt DNS"),
     ):
         helper.main(["--yes"], config_dir, bridge_root)
     assert (config_dir / "200.conf").exists()
     assert "not deleted" in capsys.readouterr().err
-    assert not any("apt-get" in command or command[:2] == ("pct", "destroy") for command in state["commands"])
+    assert not any(
+        "apt-get" in command or command[:2] == ("pct", "destroy") for command in state["commands"]
+    )
 
 
 def test_apt_update_error_is_hard_failure_with_bounded_retries(pve, capsys):
@@ -466,7 +492,12 @@ def test_real_child_umask_keeps_parent_private(tmp_path):
     target = tmp_path / "pve-generated.conf"
     previous = helper.os.umask(0o077)
     try:
-        helper.run("python3", "-c", "import pathlib,sys; pathlib.Path(sys.argv[1]).write_text('public configuration')", str(target))
+        helper.run(
+            "python3",
+            "-c",
+            "import pathlib,sys; pathlib.Path(sys.argv[1]).write_text('public configuration')",
+            str(target),
+        )
         assert target.stat().st_mode & 0o777 == 0o644
         assert helper.os.umask(0o077) == 0o077
         assert tmp_path.stat().st_mode & 0o777 == 0o700

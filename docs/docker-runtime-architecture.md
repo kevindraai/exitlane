@@ -1,16 +1,21 @@
 # Docker runtime architecture and implementation program
 
 - Decision date: 2026-09-30
-- Status: independently reviewed architecture, **APPROVE**; D1–D6 delivered,
-  D7 manual release integration in review; **Docker is not supported**
+- Status: independently reviewed architecture, **APPROVE**; D1–D7 implementation delivered,
+  historical D6 synthetic host qualification passed; **Docker is not supported**
 - Governing deployment wave: [#87](https://github.com/kevindraai/exitlane/issues/87)
 - Reference implementation: native Debian 13 amd64, including privileged Proxmox LXC
 - Historical decision: [issue #76 feasibility assessment](docker-appliance-feasibility.md),
   2026-09-30, classified the development container **not yet suitable**.
 
-The proposed design is feasible subject to the gates below. It does not overturn that operational
-classification. One application core, backend, frontend and provider transaction model gain two
-explicit runtime implementations. There is no repository fork or duplicated product.
+The original development-container feasibility decision is historical. Subsequent D1–D7 work
+delivered the separate experimental appliance implementation and release infrastructure below;
+historical D6 qualification supplies synthetic host/packet evidence. No official production image
+has been published, and publication/support acceptance remains separately gated. Current candidate
+checks, refreshed scans and exact-source release receipts belong in the
+[rc.4 release notes](release-notes/0.3.0-rc.4.md), not in the dated architecture approval.
+One application core, backend, frontend and provider transaction model have two explicit runtime
+implementations. There is no repository fork or duplicated product.
 
 ```text
                          ExitLane core
@@ -293,10 +298,8 @@ wrong-key detection and kill-at-each-transaction-stage recovery. Native restore 
 
 Production image identity is `ghcr.io/kevindraai/exitlane:vX.Y.Z[-rc.N]` with recorded digest,
 source SHA, package/app version and supported state/schema interval. The publisher rejects an
-existing exact version tag; the registry digest is the immutable deployment identity. Optional
-`rc` and `stable` convenience tags may advance only after corresponding support/release gates.
-`latest` is absent until the project explicitly adopts a stable-release policy. No alias is a
-durable rollback identity.
+existing exact version tag; the registry digest is the immutable deployment identity. The delivered publisher creates no `rc`, `stable` or `latest` alias. Any future channel alias
+requires a separately reviewed release policy and remains unsuitable as a durable rollback identity.
 
 Operator workflow: create/verify/export encrypted backup; record current image digest and schema;
 `docker compose pull`; `docker compose up -d`; validate management/auth, guards, ingress and proven
@@ -340,7 +343,7 @@ contents, runs the appliance qualification, publishes only the exact release ver
 `latest`/channel alias), captures its immutable digest, pulls and rechecks that digest, then attaches
 and verifies provenance and SBOM attestations. HIGH/CRITICAL findings block publication; no
 automatic risk exception is defined. Attestations document source/build provenance, not packet
-safety. This workflow was not dispatched by the implementation PR. First production publication
+safety. The delivered implementation did not dispatch this workflow or publish an image. First production publication
 and any Docker support declaration remain separate gates. A newly created GHCR package defaults
 to private and its visibility is not changed by automation; the release owner must separately make
 it public and confirm anonymous pulls before announcing public availability. See GitHub's
@@ -471,7 +474,7 @@ Documentation-only planning uses ordinary required CI and no artificial runtime 
 | D4 State/restore/recovery | D3; full volume inventory, journal, quiesce callbacks, migration/rollback contracts | Key/DB pairing, recreation, adversarial archive corpus, kill-stage restore/recovery and packet reopening gates |
 | D5 Image/Compose management surface | D4; production build, read-only mounts/capabilities/health, bindings and proxy docs | Build-content/version/secret sentinels, image inspect, health/security readiness, proxy/auth matrix; CI image checks on image/runtime/dependency changes |
 | D6 Disposable-host qualification | D5; executable harness and complete matrix above, exact supported host/runtime inventory | Delivered in #96 / PR #110; synthetic packet no-fallback and daemon/host restart evidence |
-| D7 GHCR/release integration | D6 PASS and reviewed support decision; exact-release manual workflow, digest/metadata/provenance/SBOM and operator upgrade guide | In review in #97; CI workflow gates run without publishing; first public image needs separate authorization |
+| D7 GHCR/release integration | D6 PASS and reviewed support decision; exact-release manual workflow, digest/metadata/provenance/SBOM and operator upgrade guide | Delivered in #97 / PR #111; workflow checks do not publish; first public image remains separately gated |
 
 The synthetic D2 lifecycle implementation and runnable lightweight proof are documented in
 [container lifecycle qualification](docker-container-lifecycle.md). They do not enable the full
@@ -485,21 +488,24 @@ boundary described in [the image candidate contract](docker-appliance-candidate.
 [durable state and recovery mechanisms](docker-container-recovery.md) retain the
 native encrypted archive format and add supervisor-owned mutation leases and
 journalled container orchestration. D5 supplies a one-use, supervisor-held worker startup
-handoff; D6 must qualify daemon/host restart on an independently disposable host.
+handoff; historical D6 acceptance includes daemon/host restart on independently disposable hosts.
 
-The subsequent deployment-wave work order authorizes sequential D1–D7 implementation.
-D1 establishes a native-only composition root (`exitlane.runtime`); unsupported runtime names
-fail before state initialization. Native paths preserve existing independent historical defaults
-and explicit environment overrides; this extraction does not migrate appliance state. D2–D7 remain dependency-blocked until predecessor
-acceptance evidence exists. If D2/D3 privilege or packet gates fail, stop before product packaging;
-D5 cannot turn a failed dataplane into a supported appliance. A future NordVPN design is a separate
-[research issue #98](https://github.com/kevindraai/exitlane/issues/98) outside D1–D7.
+The deployment-wave work order authorized sequential D1–D7 implementation, now delivered.
+D1 introduced a native-only composition root (`exitlane.runtime`); D5 subsequently supplied the
+explicit experimental container composition. Unsupported runtime names fail before state
+initialization. Native paths preserve historical defaults and explicit environment overrides;
+the extraction does not migrate appliance state. Predecessor acceptance and privilege/packet gates
+remain the delivery contract: packaging never overrides a failed dataplane, and delivered slices
+do not themselves authorize support or publication. The separate
+[research issue #98](https://github.com/kevindraai/exitlane/issues/98) concluded that the stock
+NordVPN client is unsuitable under the retained container contract.
 
 ## GitHub implementation program
 
 Umbrella [#90](https://github.com/kevindraai/exitlane/issues/90) owns acceptance; deployment wave
 [#87](https://github.com/kevindraai/exitlane/issues/87) records the Proxmox and planning evidence.
-D1–D4 are delivered; D5 is the current implementation slice. Sequential issues:
+D1–D7 implementation is delivered. D6 has historical synthetic host acceptance; D7 supplies
+publication infrastructure, with first publication and support acceptance still open. Sequential issues:
 
 - [D1 — #91](https://github.com/kevindraai/exitlane/issues/91)
 - [D2 — #92](https://github.com/kevindraai/exitlane/issues/92)
@@ -530,11 +536,19 @@ program or other dependency-ready engineering.
 
 ## Acceptance and retained gates
 
-This architecture is a delivery contract, not runtime evidence. The program becomes supported only
-when D1–D7 gates and a reviewed release/support decision pass. Remaining unknowns are bounded:
-minimal-capability tooling (including ping/DNS), read-only root compatibility, container guard
-ordering, Docker NAT/source/proxy behavior, crash/restore/schema recovery and whole-host packet
-qualification. Each has a slice and test gate. The original architecture PR performed no
-runtime changes, image builds, publication or Docker host mutation. Subsequent bounded
-implementation PRs supply experimental evidence; they do not imply production support or
-authorize publication before D6 and the explicit first-publication gate.
+This architecture is a delivery contract; runtime evidence comes from the separately retained
+qualification receipts. D1–D7 implementation and historical D6 synthetic acceptance cover the
+minimal-capability, read-only-root, guard-ordering, DNS/proxy, recovery and whole-host failure
+boundaries on the recorded test surface. They do not establish live commercial-provider
+interoperability, compatibility beyond the declared state/schema interval or every host version.
+
+Docker remains experimental/unsupported. The historical refreshed candidate scan retained 44 HIGH
+package findings across 8 distinct CVEs, with zero CRITICAL findings, secret findings and Python
+vulnerabilities; the reported Debian Trixie findings were unfixed. Those are baseline receipts,
+not a fresh rc.4 scan. Current candidate rescan and exact-source qualification remain pending in
+the [rc.4 release record](release-notes/0.3.0-rc.4.md). The strict HIGH/CRITICAL/secret publication
+gate includes unfixed advisories, with no waiver. First publication also requires the protected
+environment, existing exact application tag/SHA, reviewed support/release decision, provenance,
+digest verification and public-pull confirmation. No official production image has been published.
+The original architecture PR performed no runtime changes, builds or host mutation; subsequent
+implementation evidence does not retroactively change that historical scope.

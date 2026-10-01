@@ -1,11 +1,12 @@
 [build-system]
-requires=["hatchling>=1.25"]
+requires=["hatchling>=1.27"]
 build-backend="hatchling.build"
 
 [project]
 name="exitlane"
-version="0.3.0rc3"
+version="0.3.0rc4"
 description="Smart egress for every network"
+license="GPL-3.0-only"
 requires-python=">=3.11"
 # Appliance pip upgrades do not read uv.lock; enforce the AnyIO security floor here.
 dependencies=["anyio>=4.14.2,<5","cryptography>=50.0.0,<51","fastapi>=0.139,<1","packaging>=24,<27","pyotp>=2.9,<3","uvicorn[standard]>=0.34,<1","pydantic>=2.10,<3","python-multipart>=0.0.20,<1","segno==1.6.6"]
@@ -29,3 +30,6 @@ target-version="py311"
 [tool.bandit]
 exclude_dirs=["tests"]
 skips=["B603"] # All subprocess calls use explicit argv with shell disabled.
+
+[tool.hatch.build.hooks.custom]
+path="hatch_build.py"

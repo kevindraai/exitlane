@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.3.0-rc.4] - 2026-10-01
+
+### Added
+
+- Public Proxmox launcher resolving one published tag for both helper and application.
+- Recommended/Advanced installation, console/password and SSH-key options, secure SSH defaults,
+  standard/verbose output, private installation logs and preserved partial-guest diagnostics.
+- Experimental Docker D1–D7 implementation, candidate image/Compose, whole-host synthetic D6
+  packet/restart qualification and protected, exact-release D7 publication infrastructure.
+
+### Fixed
+
+- Harden PVE resolver readability, `_apt` DNS/readiness, helper/application umask isolation,
+  repository failure handling and bounded retries.
+- Preserve fail-closed container state through restore and startup convergence.
+- Reconcile current deployment, provider, recovery, roadmap and security documentation.
+- Include GPL/third-party notices and local Help guides in wheel/sdist artifacts; resolve
+  packaged guides when no repository checkout is available.
+
+### Changed
+
+- Consolidate inherited PIA direct WireGuard and imported Proton profile support with explicit
+  live-provider evidence limits.
+- Refresh development Ruff/urllib3 and immutable CodeQL action pins.
+- Apply the required Python formatting gate without changing syntax trees.
+
+### Security
+
+- Consume supported Debian 13 security updates during candidate image builds. Retain complete
+  scans/SBOMs and the strict HIGH/CRITICAL publication gate without ignores or waivers.
+- Include all post-Daybreak WireGuard, restore, request/provider and archive-boundary hardening;
+  the assessment remains internal defensive evidence, not an external pentest.
+
+### Known limitations
+
+- Docker remains experimental/unsupported. No official Docker image is published.
+- Stock NordVPN 5.4.0 is not suitable for the qualified container contract; native support remains.
+- Live PIA/Proton connectivity remains unproven. See the rc.4 qualification record for current
+  image findings and final native/public-Proxmox evidence.
+
 ## [0.3.0-rc.3] - 2026-09-30
 
 ### Security

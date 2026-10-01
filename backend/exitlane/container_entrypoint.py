@@ -261,9 +261,13 @@ class ContainerEntrypoint:
         self.state = ContainerState(ContainerLayout(Path("/data")))
         self.maintenance = MaintenanceGuard()
         self.controller = ContainerController(
-            self.state, self.maintenance,
-            operation_valid=lambda: self.authority.owner is not None
-            and self.authority.owner.label == "acquire" and not self.authority.revoking,
+            self.state,
+            self.maintenance,
+            operation_valid=lambda: (
+                self.authority.owner is not None
+                and self.authority.owner.label == "acquire"
+                and not self.authority.revoking
+            ),
         )
         # ContainerSupervisor is used solely for bounded owned process-group
         # cleanup. This entrypoint owns startup/recovery and does not run its D2 loop.
@@ -317,7 +321,10 @@ class ContainerEntrypoint:
     async def reset(self):
         await self.controller.maintenance.observed(self.controller.maintenance.identities)
         if self.controller.network:
-            if self.controller.identity(self.controller.network.config) not in self.controller.maintenance.identities:
+            if (
+                self.controller.identity(self.controller.network.config)
+                not in self.controller.maintenance.identities
+            ):
                 raise EntrypointError("container_ingress_config_invalid")
             await self.controller.observe_policy()
         # Recognize only interfaces matching validated persisted generations;
@@ -395,12 +402,16 @@ class ContainerEntrypoint:
             # Validate every survivor before accepting any route residue. The
             # shared native ownership checker remains authoritative; ambiguous
             # multiple defaults or an unproved device are never adopted.
-            routes = json.loads(await self.controller.checked(
-                "ip", "-j", "-4", "route", "show", "table", str(TABLE_ID)
-            ))
+            routes = json.loads(
+                await self.controller.checked(
+                    "ip", "-j", "-4", "route", "show", "table", str(TABLE_ID)
+                )
+            )
             if not isinstance(routes, list) or any(not isinstance(item, dict) for item in routes):
                 raise EntrypointError("container_provider_recovery_required")
-            devices = {item.get("dev") for item in routes if item.get("type", "unicast") == "unicast"}
+            devices = {
+                item.get("dev") for item in routes if item.get("type", "unicast") == "unicast"
+            }
             if len(devices) > 1 or not devices <= {name for name, _ in owned}:
                 raise EntrypointError("container_provider_recovery_required")
             active = next(iter(devices), None)
@@ -409,9 +420,9 @@ class ContainerEntrypoint:
             ordered = sorted(owned, key=lambda item: item[0] != active)
 
             async def unchanged(name, index):
-                current = json.loads(await self.controller.checked(
-                    "ip", "-j", "link", "show", "dev", name
-                ))
+                current = json.loads(
+                    await self.controller.checked("ip", "-j", "link", "show", "dev", name)
+                )
                 if len(current) != 1 or current[0].get("ifindex") != index:
                     raise EntrypointError("container_interface_ownership_changed")
 

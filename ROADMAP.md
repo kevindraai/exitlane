@@ -3,6 +3,29 @@
 The roadmap describes direction rather than a release commitment. Priorities may change as the
 release candidates are tested in real networks.
 
+## Included in 0.3.0-rc.4
+
+- Guided public Proxmox bootstrap resolving one published tag for the helper and guest, with
+  inspect-first trust guidance and compatible older-helper negotiation.
+- PVE umask isolation, `_apt` resolver-readability checks, stable readiness rounds, fail-hard APT
+  repository errors and frozen-resource revalidation.
+- Proxmox installer access/output polish: optional masked console credentials, validated public
+  keys, key-only SSH default, explicit password SSH and bounded root-only host logs.
+- D1–D7 same-core Docker implementation: explicit runtime capabilities, guarded ingress and
+  direct-provider dataplane, mutation leases/journalled recovery, a separate experimental
+  image/Compose surface, historical D6 synthetic disposable-host acceptance and gated D7
+  release infrastructure. Docker remains unsupported; no official production image exists.
+- Supported Debian Trixie package refresh in appliance image builds; strict publication scanning
+  still includes unfixed advisories with no waiver.
+- Stock NordVPN Linux 5.4.0 container research decision: **NOT SUITABLE** under the retained
+  minimal/read-only contract. Native NordVPN remains unchanged; container parity is not promised.
+- Development dependency maintenance: urllib3 2.8.0, Ruff 0.16.9 and CodeQL Actions v4.38.2.
+
+These are delivered implementation scope, not publication or completed rc.4 qualification.
+Current checks, refreshed scans and exact-source appliance receipts belong in the
+[rc.4 release notes](docs/release-notes/0.3.0-rc.4.md). PIA and imported Proton implementation is
+inherited; synthetic/native-kernel qualification does not establish live provider proof.
+
 ## Included in 0.3.0-rc.3
 
 - Clear provider selection and keyboard-accessible configuration tabs in the setup wizard.
@@ -86,16 +109,21 @@ Beta.5 inherits the beta.4 UX, accessibility, design-system and integrated-docum
 
 ## Next
 
-- PIA direct WireGuard provider: synthetic Debian 13 qualification passed; live account proof remains outstanding.
-- Proton imported WireGuard profiles: synthetic Debian 13 qualification passed; live provider proof remains outstanding.
+- Live PIA qualification for the implemented direct WireGuard provider; synthetic Debian 13 qualification is retained.
+- Live Proton qualification for implemented imported WireGuard profiles; synthetic Debian 13 qualification is retained.
 - Further VPN providers and broader relay-availability testing
 - IPv6 egress support for Mullvad
 - Notification management improvements
 - Appliance and installation polish
-- Deliver the reviewed [Docker runtime program](docs/docker-runtime-architecture.md) sequentially:
-  runtime boundary, container lifecycle, fail-closed dataplane, state/recovery, image/Compose,
-  disposable-host qualification and finally GHCR/release integration. Native remains reference;
-  Docker remains unsupported until its gates pass.
+- Complete the [Docker runtime program](docs/docker-runtime-architecture.md) publication/support
+  boundary: refreshed exact-candidate scans and qualification, strict HIGH/CRITICAL/secret gate,
+  protected publication environment, separate first-publication approval and public-pull proof.
+  The historical refreshed scan retained 44 HIGH package findings across 8 CVEs, zero CRITICAL,
+  zero secret findings and zero Python vulnerabilities; Debian Trixie advisories remained unfixed.
+  Current rc.4 rescan is pending; no waiver or official image is available. Native remains reference.
+- Qualify live direct-provider interoperability and any wider Docker host/version or future schema
+  compatibility claims before extending support. NordVPN container work reopens only after a
+  material upstream change resolves the documented supported-client incompatibility.
 - Live disposable PVE create → boot → installer qualification for the helper.
 - Extended operational logging and diagnostic depth
 

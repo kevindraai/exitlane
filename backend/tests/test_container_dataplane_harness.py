@@ -260,7 +260,11 @@ def test_fixture_snapshot_uses_actual_operation_api(monkeypatch):
     instance = object.__new__(module.Fixture)
     instance.providers = {"mullvad": object()}
     instance.network = SimpleNamespace(policy_candidate=None, policy_epoch=7, policy_committed=None)
-    monkeypatch.setattr(core, "setting", lambda key, default=None: "mullvad" if key == "vpn.provider_id" else default)
+    monkeypatch.setattr(
+        core,
+        "setting",
+        lambda key, default=None: "mullvad" if key == "vpn.provider_id" else default,
+    )
     monkeypatch.setattr(vpn_operations, "active_snapshot", lambda: None)
     result = asyncio.run(instance.command({"command": "snapshot"}))
     assert result["ok"] and result["operation_state"] == "idle"
@@ -271,7 +275,12 @@ def test_fixture_snapshot_uses_actual_operation_api(monkeypatch):
 @pytest.mark.parametrize("fault", ["transport", "fixture", "pending", "unguarded"])
 def test_failed_rollback_requires_completed_transaction_and_retained_guard(fault):
     result = {"ok": False, "error_code": "provider_switch_failed", "http_status": 400}
-    snapshot = {"ok": True, "operation_state": "idle", "outer_transition": True, "candidate_committed": False}
+    snapshot = {
+        "ok": True,
+        "operation_state": "idle",
+        "outer_transition": True,
+        "candidate_committed": False,
+    }
     harness.validate_rollback_receipt(result, snapshot, source_loss=True)
     if fault == "transport":
         result.update(error_code="synthetic_http_unreachable", http_status=0)

@@ -1,9 +1,15 @@
 # Upgrade and recovery
 
-The 0.3.0-rc.3 release supports an in-place upgrade from `v0.3.0-rc.2`, `v0.3.0-rc.1` and the published `v0.2.0` tag
+The 0.3.0-rc.4 candidate retains the native in-place upgrade path from `v0.3.0-rc.3`,
+`v0.3.0-rc.2`, `v0.3.0-rc.1` and the published `v0.2.0` tag
 on Debian 13 `amd64`. The historical `v0.2.0` tag reports runtime version `0.2.0-rc.1` and Python package
 version `0.2.0rc1`; this is expected metadata, not evidence that another installation was selected.
-The new runtime version is `0.3.0-rc.3` and its Python package version is `0.3.0rc3`.
+The target runtime version is `0.3.0-rc.4` and its Python package version is `0.3.0rc4`.
+Exact rc.4 upgrade, preservation and rollback receipts remain release gates; consult the
+[rc.4 release notes](release-notes/0.3.0-rc.4.md) before treating this candidate as qualified.
+This guide covers the native Debian installer. Experimental container image replacement uses the
+[candidate lifecycle contract](docker-appliance-candidate.md#lifecycle-recovery-and-upgrades);
+Docker remains unsupported and no official production image is available.
 
 ## Before upgrading
 
@@ -12,16 +18,16 @@ client-traffic interruption. Record any custom `/etc/default/exitlane`, systemd,
 router settings separately. Do not change settings in the browser during the upgrade.
 
 ```bash
-sudo exitlane-cli backup create /var/lib/exitlane/backups/pre-0.3.0-rc.3.elb
-sudo exitlane-cli backup verify /var/lib/exitlane/backups/pre-0.3.0-rc.3.elb
+sudo exitlane-cli backup create /var/lib/exitlane/backups/pre-0.3.0-rc.4.elb
+sudo exitlane-cli backup verify /var/lib/exitlane/backups/pre-0.3.0-rc.4.elb
 ```
 
 Keep a protected copy outside the appliance. Once the target tag is published, use a separate
 release checkout so the installer source is never the live `/opt/exitlane` directory:
 
 ```bash
-git clone --branch v0.3.0-rc.3 --depth 1 https://github.com/kevindraai/exitlane.git exitlane-0.3.0-rc.3
-cd exitlane-0.3.0-rc.3
+git clone --branch v0.3.0-rc.4 --depth 1 https://github.com/kevindraai/exitlane.git exitlane-0.3.0-rc.4
+cd exitlane-0.3.0-rc.4
 sudo ./installer/install-debian.sh
 ```
 

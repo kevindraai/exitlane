@@ -1,8 +1,11 @@
 # VPN provider architecture
 
-ExitLane ships NordVPN, Mullvad VPN, PIA and imported Proton VPN profiles. Any combination may be configured,
-but exactly one registered provider can be selected as active egress. Only that active provider may
-receive a connect, reconnect, location-selection, or latency-selection mutation from ExitLane.
+The native runtime ships NordVPN, Mullvad VPN, PIA and imported Proton VPN profiles. Any combination
+may be configured, but exactly one registered provider can be selected as active egress. Only that
+active provider may receive a connect, reconnect, location-selection, or latency-selection mutation
+from ExitLane. The experimental container registry exposes only the three direct providers;
+NordVPN is unavailable there. Docker remains unsupported and no official production image exists.
+PIA and Proton have synthetic/native-kernel qualification; live provider proof remains outstanding.
 
 ## Boundaries
 
@@ -60,12 +63,15 @@ Metadata creates sidebar entries, Overview cards, provider headings, and wizard 
 status and polling start only while the authenticated provider view is active; logout/session
 expiry stops pollers and clears the catalog and provider slices.
 
-First-run onboarding accepts none, NordVPN, Mullvad VPN, or both. Selected providers are processed
+Native first-run onboarding accepts no provider or any selected combination of NordVPN, Mullvad,
+PIA and imported Proton profiles. Selected providers are processed
 in deterministic registry order and may be skipped independently. Exactly one ready provider is
 activated automatically. Multiple ready providers require an explicit active choice. The persisted
 `setup_provider_deferred` choice is distinct from provider authentication: it allows onboarding to
 continue with no provider while status remains honestly signed out or unavailable. In that mode,
-WireGuard ingress uses the appliance's normal internet route.
+native WireGuard ingress uses the appliance's normal internet route. Container first run can
+finish with no provider, but its permanent guard keeps protected clients blocked; it never offers
+plaintext fallback. Availability is enforced through the runtime projection and backend checks.
 When an administrator later opens an uninstalled provider, its management page exposes the same
 protected, resumable installation operation as onboarding. A status retry is reserved for states
 where managed installation is unavailable and can therefore provide useful new information.

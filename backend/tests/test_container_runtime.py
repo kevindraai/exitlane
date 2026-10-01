@@ -49,10 +49,25 @@ class Namespace:
     def nft(self):
         chains = []
         rules = []
-        for name, expressions in (("forward", self.network.forward_expressions(self.network.policy_interface)), ("input", self.network.input_expressions()), ("output", self.network.output_expressions())):
-            chain = {"family": "inet", "table": TABLE, "name": name, "type": "filter", "hook": name, "prio": 0 if name == "output" else -200, "policy": "accept"}
+        for name, expressions in (
+            ("forward", self.network.forward_expressions(self.network.policy_interface)),
+            ("input", self.network.input_expressions()),
+            ("output", self.network.output_expressions()),
+        ):
+            chain = {
+                "family": "inet",
+                "table": TABLE,
+                "name": name,
+                "type": "filter",
+                "hook": name,
+                "prio": 0 if name == "output" else -200,
+                "policy": "accept",
+            }
             chains.append({"chain": chain})
-            rules += [{"rule": {"family": "inet", "table": TABLE, "chain": name, "expr": expr}} for expr in expressions]
+            rules += [
+                {"rule": {"family": "inet", "table": TABLE, "chain": name, "expr": expr}}
+                for expr in expressions
+            ]
         if self.bad_observation or self.foreign:
             rules[0]["rule"]["expr"] = [{"accept": None}]
         return json.dumps({"nftables": [*chains, *rules]})
@@ -667,7 +682,19 @@ def kernel_guard_network():
 def kernel_guard_receipt():
     # The captured INPUT canonical form plus the new mandatory OUTPUT chain.
     data = json.loads(KERNEL_BLOCK_GUARD)
-    data["nftables"].append({"chain": {"family": "inet", "table": TABLE, "name": "output", "type": "filter", "hook": "output", "prio": 0, "policy": "accept"}})
+    data["nftables"].append(
+        {
+            "chain": {
+                "family": "inet",
+                "table": TABLE,
+                "name": "output",
+                "type": "filter",
+                "hook": "output",
+                "prio": 0,
+                "policy": "accept",
+            }
+        }
+    )
     return data
 
 
@@ -682,10 +709,16 @@ def test_actual_nft_113_block_guard_readback():
     assert "ip saddr 10.77.0.0/24 tcp dport 53 drop" in payload
 
 
-@pytest.mark.parametrize("tamper", ["protocol", "port", "missing_port", "accept", "extra_rule", "selector", "order"])
+@pytest.mark.parametrize(
+    "tamper", ["protocol", "port", "missing_port", "accept", "extra_rule", "selector", "order"]
+)
 def test_kernel_dns_guard_semantic_changes_refused(tamper):
     data = kernel_guard_receipt()
-    rules = [item["rule"] for item in data["nftables"] if "rule" in item and item["rule"]["chain"] == "input"]
+    rules = [
+        item["rule"]
+        for item in data["nftables"]
+        if "rule" in item and item["rule"]["chain"] == "input"
+    ]
     expr = rules[0]["expr"]
     if tamper == "protocol":
         expr[1]["match"]["left"]["payload"]["protocol"] = "tcp"
@@ -707,13 +740,33 @@ def test_kernel_dns_guard_semantic_changes_refused(tamper):
 
 def historical_source_receipt(*, permit=True):
     data = kernel_guard_receipt()
-    selector = {"match": {"op": "==", "left": {"payload": {"protocol": "ip", "field": "saddr"}}, "right": "10.64.0.2"}}
+    selector = {
+        "match": {
+            "op": "==",
+            "left": {"payload": {"protocol": "ip", "field": "saddr"}},
+            "right": "10.64.0.2",
+        }
+    }
     expressions = []
     if permit:
-        expressions.append([selector, {"match": {"op": "==", "left": {"meta": {"key": "oifname"}}, "right": "wg-mullvad"}}, {"accept": None}])
+        expressions.append(
+            [
+                selector,
+                {
+                    "match": {
+                        "op": "==",
+                        "left": {"meta": {"key": "oifname"}},
+                        "right": "wg-mullvad",
+                    }
+                },
+                {"accept": None},
+            ]
+        )
     expressions.append([selector, {"drop": None}])
     for expr in expressions:
-        data["nftables"].append({"rule": {"family": "inet", "table": TABLE, "chain": "output", "expr": expr}})
+        data["nftables"].append(
+            {"rule": {"family": "inet", "table": TABLE, "chain": "output", "expr": expr}}
+        )
     return data
 
 
@@ -729,22 +782,53 @@ def test_exact_historical_sources_recovered_then_blocked():
     network.validate_nft_guard(historical_source_receipt(permit=False))
 
 
-@pytest.mark.parametrize("tamper", ["eth0", "lo", "port", "wildcard", "prefix", "multicast", "loopback", "verdict", "priority", "missing_drop", "extra_rule"])
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "eth0",
+        "lo",
+        "port",
+        "wildcard",
+        "prefix",
+        "multicast",
+        "loopback",
+        "verdict",
+        "priority",
+        "missing_drop",
+        "extra_rule",
+    ],
+)
 def test_historical_output_inventory_cannot_adopt_weakened_guard(tamper):
     data = historical_source_receipt()
     output = [o["rule"] for o in data["nftables"] if "rule" in o and o["rule"]["chain"] == "output"]
     if tamper in ("eth0", "lo"):
         output[0]["expr"][1]["match"]["right"] = tamper
     elif tamper == "port":
-        output[-1]["expr"].insert(1, {"match": {"op": "==", "left": {"payload": {"protocol": "udp", "field": "dport"}}, "right": 53}})
+        output[-1]["expr"].insert(
+            1,
+            {
+                "match": {
+                    "op": "==",
+                    "left": {"payload": {"protocol": "udp", "field": "dport"}},
+                    "right": 53,
+                }
+            },
+        )
     elif tamper in ("wildcard", "prefix", "multicast", "loopback"):
-        replacement = {"wildcard": "10.*", "prefix": {"prefix": {"addr": "10.64.0.0", "len": 24}}, "multicast": "224.0.0.1", "loopback": "127.0.0.1"}[tamper]
+        replacement = {
+            "wildcard": "10.*",
+            "prefix": {"prefix": {"addr": "10.64.0.0", "len": 24}},
+            "multicast": "224.0.0.1",
+            "loopback": "127.0.0.1",
+        }[tamper]
         for rule in output:
             rule["expr"][0]["match"]["right"] = replacement
     elif tamper == "verdict":
         output[-1]["expr"][-1] = {"accept": None}
     elif tamper == "priority":
-        next(o["chain"] for o in data["nftables"] if "chain" in o and o["chain"]["name"] == "output")["prio"] = -200
+        next(
+            o["chain"] for o in data["nftables"] if "chain" in o and o["chain"]["name"] == "output"
+        )["prio"] = -200
     elif tamper == "missing_drop":
         data["nftables"] = [o for o in data["nftables"] if o.get("rule") is not output[-1]]
     else:
@@ -755,13 +839,16 @@ def test_historical_output_inventory_cannot_adopt_weakened_guard(tamper):
 
 def test_source_inventory_overflow_never_evicts_protection():
     from types import SimpleNamespace
+
     ns = Namespace()
     asyncio.run(ns.network.activate())
     ns.network.source_addresses = tuple(f"10.99.0.{i}" for i in range(1, 65))
     before = tuple(ns.network.source_addresses)
     commands = len(ns.commands)
     with pytest.raises(ContainerLifecycleError, match="source_budget_exhausted"):
-        asyncio.run(ns.network.register_source(SimpleNamespace(address="10.99.1.1/32", interface="wg-pia")))
+        asyncio.run(
+            ns.network.register_source(SimpleNamespace(address="10.99.1.1/32", interface="wg-pia"))
+        )
     assert ns.network.source_addresses == before
     assert len(ns.commands) == commands
 
@@ -958,11 +1045,12 @@ def test_quiesce_guard_failure_still_closes_owned_ingress_and_reaps_writer():
         supervisor.worker = Worker()
 
         async def failed():
-            raise ContainerLifecycleError('container_guard_unproven')
+            raise ContainerLifecycleError("container_guard_unproven")
 
         ns.network.arm_guard = failed
-        with pytest.raises(ContainerLifecycleError, match='guard_unproven'):
+        with pytest.raises(ContainerLifecycleError, match="guard_unproven"):
             await supervisor.quiesce()
         assert not ns.exists and supervisor.worker.returncode == 0
         assert supervisor.maintenance and not supervisor.resuming.is_set()
+
     asyncio.run(scenario())
