@@ -17,6 +17,7 @@ REQUIRED_MAIN_PUSH_WORKFLOWS = (
 ACTION_REFERENCE = re.compile(r"^\s*-?\s*uses:\s*([^\s#]+)", re.MULTILINE)
 FULL_SHA_REFERENCE = re.compile(r"^[^@\s]+@[0-9a-fA-F]{40}$")
 DIGEST_PINNED_CONTAINER = re.compile(r"^docker://[^@\s]+@sha256:[0-9a-fA-F]{64}$")
+ALLOWED_ACTION_OWNERS = {"actions", "github", "kevindraai"}
 MAIN_PUSH = re.compile(
     r"(?m)^on:\s*$\n(?:(?:^[ \t]+.*\n)|(?:^\s*$\n))*?"
     r"^[ \t]+push:\s*$\n^[ \t]+branches:"
@@ -41,6 +42,18 @@ def main() -> int:
                 or DIGEST_PINNED_CONTAINER.fullmatch(reference)
             ):
                 failures.append(f"{workflow.relative_to(ROOT)}: unpinned action {reference}")
+                continue
+
+            action = reference.removeprefix("docker://")
+            owner, separator, _name = action.partition("/")
+            repository = action.split("@", maxsplit=1)[0].lower()
+            if not separator or (
+                owner.lower() not in ALLOWED_ACTION_OWNERS
+                and repository != "gitleaks/gitleaks-action"
+            ):
+                failures.append(
+                    f"{workflow.relative_to(ROOT)}: action owner not allowed by repository policy: {reference}"
+                )
 
     for workflow in REQUIRED_MAIN_PUSH_WORKFLOWS:
         text = workflow.read_text(encoding="utf-8")

@@ -145,33 +145,48 @@ jobs:
           IMAGE: ${{ needs.validate.outputs.image }}
         run: python3 scripts/qualification/container_appliance.py --image "$IMAGE"
 
+      - name: Install pinned image inspection tools
+        run: |
+          set -euo pipefail
+          SYFT_VERSION=1.42.2
+          TRIVY_VERSION=0.69.3
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz" \
+            -o /tmp/syft.tar.gz
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_checksums.txt" \
+            -o /tmp/syft-checksums.txt
+          (cd /tmp && grep -E '^[[:xdigit:]]{64}  syft_'"${SYFT_VERSION}"'_linux_amd64\.tar\.gz$' syft-checksums.txt | sha256sum --check --status)
+          tar -xzf /tmp/syft.tar.gz -C /tmp syft
+          sudo install -m 0755 /tmp/syft /usr/local/bin/syft
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+            -o /tmp/trivy.tar.gz
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_checksums.txt" \
+            -o /tmp/trivy-checksums.txt
+          (cd /tmp && grep -E '^[[:xdigit:]]{64}  trivy_'"${TRIVY_VERSION}"'_Linux-64bit\.tar\.gz$' trivy-checksums.txt | sha256sum --check --status)
+          tar -xzf /tmp/trivy.tar.gz -C /tmp trivy
+          sudo install -m 0755 /tmp/trivy /usr/local/bin/trivy
+          rm -f /tmp/syft.tar.gz /tmp/syft-checksums.txt /tmp/trivy.tar.gz /tmp/trivy-checksums.txt /tmp/syft /tmp/trivy
+
       - name: Scan exact release image for OS, Python and secrets
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ needs.validate.outputs.image }}
-          scanners: vuln,secret
-          vuln-type: os,library
-          severity: HIGH,CRITICAL
-          ignore-unfixed: false
-          exit-code: "1"
-          format: table
+        env:
+          IMAGE: ${{ needs.validate.outputs.image }}
+        run: |
+          trivy image --scanners vuln,secret --pkg-types os,library \
+            --severity HIGH,CRITICAL --ignore-unfixed=false --exit-code 1 "$IMAGE"
 
       - name: Create SPDX SBOM for exact release image
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-        with:
-          image: ${{ needs.validate.outputs.image }}
-          format: spdx-json
-          output-file: exitlane.spdx.json
-          upload-artifact: false
-          upload-release-assets: false
-          dependency-snapshot: false
+        env:
+          IMAGE: ${{ needs.validate.outputs.image }}
+        run: syft "$IMAGE" --output spdx-json=exitlane.spdx.json
 
       - name: Sign in to GitHub Container Registry
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USER" --password-stdin
 
       - name: Publish one version tag without replacing an existing release
         id: push

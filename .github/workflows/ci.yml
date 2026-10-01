@@ -249,29 +249,51 @@ jobs:
             --security-opt no-new-privileges:true --entrypoint python \
             -i exitlane-appliance:test - < scripts/check_container_image.py
 
-      - name: Generate image SBOM
+      - name: Install pinned image inspection tools
         if: steps.changes.outputs.run == 'true'
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        run: |
+          set -euo pipefail
+          SYFT_VERSION=1.42.2
+          TRIVY_VERSION=0.69.3
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz" \
+            -o /tmp/syft.tar.gz
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_checksums.txt" \
+            -o /tmp/syft-checksums.txt
+          (cd /tmp && grep -E '^[[:xdigit:]]{64}  syft_'"${SYFT_VERSION}"'_linux_amd64\.tar\.gz$' syft-checksums.txt | sha256sum --check --status)
+          tar -xzf /tmp/syft.tar.gz -C /tmp syft
+          sudo install -m 0755 /tmp/syft /usr/local/bin/syft
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+            -o /tmp/trivy.tar.gz
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_checksums.txt" \
+            -o /tmp/trivy-checksums.txt
+          (cd /tmp && grep -E '^[[:xdigit:]]{64}  trivy_'"${TRIVY_VERSION}"'_Linux-64bit\.tar\.gz$' trivy-checksums.txt | sha256sum --check --status)
+          tar -xzf /tmp/trivy.tar.gz -C /tmp trivy
+          sudo install -m 0755 /tmp/trivy /usr/local/bin/trivy
+          rm -f /tmp/syft.tar.gz /tmp/syft-checksums.txt /tmp/trivy.tar.gz /tmp/trivy-checksums.txt /tmp/syft /tmp/trivy
+
+      - name: Create SPDX image SBOM
+        if: steps.changes.outputs.run == 'true'
+        run: syft exitlane-appliance:test --output spdx-json=exitlane-image.spdx.json
+
+      - name: Upload SPDX image SBOM
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          image: exitlane-appliance:test
-          format: spdx-json
-          output-file: exitlane-image.spdx.json
-          upload-artifact: true
-          upload-artifact-retention: 7
-          upload-release-assets: false
-          dependency-snapshot: false
+          name: exitlane-image-spdx
+          path: exitlane-image.spdx.json
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Scan candidate image for OS, Python and secret findings
         if: steps.changes.outputs.run == 'true'
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: exitlane-appliance:test
-          scanners: vuln,secret
-          vuln-type: os,library
-          severity: HIGH,CRITICAL
-          ignore-unfixed: false
-          exit-code: "1"
-          format: table
+        run: |
+          trivy image --scanners vuln,secret --pkg-types os,library \
+            --severity HIGH,CRITICAL --ignore-unfixed=false --exit-code 1 \
+            exitlane-appliance:test
 
       - name: Qualify real application management and durable image replacement
         if: steps.changes.outputs.run == 'true'
