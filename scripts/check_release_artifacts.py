@@ -68,8 +68,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
     directory = parser.parse_args().directory
-    artifacts = [*directory.glob("*.whl"), *directory.glob("*.tar.gz")]
-    if len(artifacts) != 2:
+    wheels = list(directory.glob("*.whl"))
+    sdists = list(directory.glob("*.tar.gz"))
+    artifacts = wheels + sdists
+    if len(wheels) != 1 or len(sdists) != 1:
         raise ValueError("Expected exactly one wheel and one source distribution")
     for path in sorted(artifacts):
         print(inspect(path))

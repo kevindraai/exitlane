@@ -4,6 +4,8 @@ LABEL org.exitlane.runtime="development-only" \
 RUN apt-get update && apt-get install -y --no-install-recommends wireguard-tools iptables iproute2 curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY backend /app
+COPY LICENSE THIRD_PARTY_NOTICES.md /
+COPY docs /docs
 RUN pip install --no-cache-dir .
 ENV EXITLANE_DATA_DIR=/data EXITLANE_CONFIG_DIR=/data
 EXPOSE 8787
