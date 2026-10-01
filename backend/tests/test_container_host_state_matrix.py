@@ -50,6 +50,7 @@ class Harness:
         )
         self.image = FIRST
         self.cookie = "synthetic-session-only"
+        self.revoked = False
         self.calls, self.phases = [], []
         self.command_inputs = []
         self.ingress_identity = {
@@ -179,6 +180,7 @@ class Harness:
                 if data == "synthetic-wrong-passphrase-only\n":
                     return {"code": 1, "stdout": "", "stderr": "container_control_failed"}
                 self.interval = 10
+                self.revoked = True
                 value = {"restored": True}
             return {"code": 0, "stdout": json.dumps(value)}
         return {"stdout": "{}", "code": 0}
@@ -205,6 +207,10 @@ class Harness:
 
     def api(self, path, **kwargs):
         self.calls.append(("api", path, kwargs))
+        if path == "/api/auth/session":
+            return {"status": 200, "body": {"authenticated": not self.revoked, "setup_complete": False}}
+        if path == "/api/settings" and self.revoked:
+            return {"status": 401}
         if path == "/api/ingress/wireguard/config":
             return {
                 "status": 200,
@@ -212,11 +218,7 @@ class Harness:
             }
         if path == "/api/settings" and kwargs.get("method") == "PUT":
             self.interval = kwargs["body"]["general"]["provider_refresh_interval_seconds"]
-        return (
-            {"status": 401}
-            if path == "/api/vpn/providers"
-            else {"status": 200, "body": {"success": True}}
-        )
+        return {"status": 200, "body": {"success": True}}
 
     def wait(self, probe, stage, **kwargs):
         assert probe()
@@ -321,6 +323,51 @@ def test_cli_restore_last_revokes_cookie_preserves_pair(qualification):
         "state-cli-wrong-passphrase",
         "state-cli-restore",
     ]
+
+
+def test_restore_revocation_accepts_public_first_run_provider_reads(qualification):
+    from exitlane import main
+
+    assert main.is_setup_provider_api_route("GET", "/api/vpn/providers") is True
+    assert ("GET", "/api/settings") not in main.PUBLIC_API_ROUTES | main.SETUP_API_ROUTES
+    assert qualification.h.api("/api/vpn/providers")["status"] == 200
+    qualification.backup_restore("synthetic-test-passphrase")
+    assert qualification.h.api("/api/vpn/providers")["status"] == 200
+    assert qualification.h.api("/api/auth/session") == {
+        "status": 200, "body": {"authenticated": False, "setup_complete": False}}
+    assert qualification.h.cookie == ""
+    calls = [c[1] for c in qualification.h.calls if c[0] == "api"]
+    assert calls[-4:] == ["/api/auth/session", "/api/settings", "/api/vpn/providers", "/api/auth/session"]
+
+
+@pytest.mark.parametrize("session,protected", [
+    ({"status": 200, "body": {"authenticated": True}}, {"status": 401}),
+    ({"status": 200, "body": {"authenticated": False}}, {"status": 200}),
+    ({"status": 200, "body": {"authenticated": False}}, {"status": 503}),
+    ({"status": 401, "body": {"authenticated": False}}, {"status": 401}),
+    ({"status": 200, "body": {}}, {"status": 401}),
+    ({"status": 200, "body": {"authenticated": "false"}}, {"status": 403}),
+])
+def test_restore_requires_both_actual_unauthenticated_session_and_protected_refusal(
+    qualification, session, protected
+):
+    original = qualification.h.api
+
+    def changed(path, **kwargs):
+        if qualification.h.revoked:
+            if path == "/api/auth/session":
+                return session
+            if path == "/api/settings":
+                return protected
+        return original(path, **kwargs)
+
+    qualification.h.api = changed
+    with pytest.raises(state.QualificationError, match="qualification_state_session_not_revoked"):
+        qualification.backup_restore("synthetic-test-passphrase")
+    assert qualification.h.cookie == "synthetic-session-only"
+    receipts = [data["receipt"]["state"] for _, data in qualification.h.candidate.calls
+                if isinstance(data, dict) and "receipt" in data]
+    assert receipts[-1] == "FAIL"
 
 
 def test_real_kernel_oom_counter_required_and_swap_restored(qualification):

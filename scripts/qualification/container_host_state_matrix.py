@@ -753,8 +753,19 @@ print(json.dumps({'oom_kill_before':before['oom_kill'],'oom_kill_after':after['o
             value = json.loads(status["stdout"])
             if value.get("state") != "ready" or value.get("worker_running") is not True:
                 raise QualificationError("qualification_state_restore_failed")
-            # Authentication failure is the expected proof after session revocation.
-            if self.h.api("/api/vpn/providers")["status"] not in {401, 403}:
+            # Provider reads can be public during incomplete first-run setup.
+            # Prove the old cookie is unauthenticated through the public session
+            # projection and separately refused by an always-protected route.
+            session = self.h.api("/api/auth/session")
+            protected = self.h.api("/api/settings")
+            if (
+                not isinstance(session, dict)
+                or session.get("status") != 200
+                or not isinstance(session.get("body"), dict)
+                or session["body"].get("authenticated") is not False
+                or not isinstance(protected, dict)
+                or protected.get("status") not in {401, 403}
+            ):
                 raise QualificationError("qualification_state_session_not_revoked")
             self.h.cookie = ""
 

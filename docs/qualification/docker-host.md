@@ -183,8 +183,14 @@ before deleting the interface. It cleans the exact old ingress selector before
 arming canonical ingress policy. Historical source guards and unreachable routes
 remain in place. Foreign resources, ambiguous defaults and interface changes fail
 closed; native ownership validation is unchanged. Deterministic regressions cover
-this boundary. The fixed healthy-provider restore still requires live qualification
-with the original retained backup, session-revocation checks and fresh packet proof.
+this boundary. The exact previously failing encrypted backup subsequently restored
+successfully on reviewed application source `09c34d3f98d0353534dec58012a39262d848037a`: the
+canary reverted, provider identities remained unchanged and fresh protected packet
+delivery passed. The old cookie projected `authenticated: false` and received
+401 from the protected settings endpoint. Public provider reads during incomplete
+first-run setup are not a session-revocation oracle. Failed attempts and the
+corrected HTTP-contract assertion are retained; no successful restore was retried
+to change its result. This component does not establish full D6 acceptance.
 
 The pending-generation component verifies the exact pending generation and public
 keys before killing the pinned worker. A transport interruption is distinct from

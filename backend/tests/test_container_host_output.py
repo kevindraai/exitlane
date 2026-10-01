@@ -534,3 +534,50 @@ def test_nat_rewritten_plaintext_source_does_not_make_forbidden_plane_zero():
     assert scan['tuples'][0]['source']=='172.28.0.20'
     with pytest.raises(output.OutputEvidenceError,match='output_plaintext_detected'):
         output.validate_output(attempt_receipt(),observations,pcaps,expected='provider_or_block')
+
+
+@pytest.mark.parametrize('flag',[2,4])
+def test_marked_syn_or_rst_cannot_substitute_for_empty_segment_calibration(flag):
+    raw=bytearray(packet('10.64.0.2','calibration',1,'protected','tcp'));raw[33]=flag
+    result=output.scan_pcap(pcap(bytes(raw)),2*10**9,4*10**9)
+    assert result['tuples'][0]['form']=='tcp' and result['tuples'][0]['empty_tcp'] is False
+    # The packet remains forbidden on the normal uplink despite not providing
+    # unmarked sensitivity calibration.
+    observations,pcaps=empty_evidence();pcaps['wan']['eth0']=result
+    with pytest.raises(output.OutputEvidenceError,match='output_plaintext_detected'):
+        output.validate_output(attempt_receipt(),observations,pcaps,expected='provider_or_block')
+
+
+def test_true_empty_controls_with_tcp_options_and_ethernet_padding_are_classified():
+    raw=bytearray(output.calibration_packets('10.64.0.2','calibration')[0])
+    raw[32]=0x60;raw+=b'\x01'*4;raw[2:4]=struct.pack('!H',44)
+    # A packet can carry link padding beyond its declared IP length; it is not
+    # TCP payload and must not invalidate actual empty-SYN sensitivity.
+    result=output.scan_pcap(pcap(bytes(raw)+b'\0'*6),2*10**9,4*10**9)
+    assert result['tuples'][0]['form']=='tcp_syn' and result['tuples'][0]['empty_tcp'] is True
+
+
+def test_malformed_tcp_header_length_never_becomes_an_empty_calibration():
+    raw=bytearray(output.calibration_packets('10.64.0.2','calibration')[0]);raw[32]=0xf0
+    with pytest.raises(output.OutputEvidenceError,match='output_pcap_invalid'):
+        output.scan_pcap(pcap(bytes(raw)),2*10**9,4*10**9)
+
+
+def test_actual_calibration_ledger_remains_incomplete_if_syn_is_only_marked():
+    class CalibrationHarness(Harness):
+        def __init__(self):super().__init__();self.clock_count=0
+        def measure_clock(self,*,token):
+            self.clock_count+=1;stamp=(1 if self.clock_count==1 else 6)*10**9
+            return {'reference_boot_id':RUN,'measurement':{'local_before_ns':stamp,'local_after_ns':stamp+1000,'reference_ns':stamp+500}}
+    class CalibrationDriver(Driver):
+        def _inject(self,receipt,phase,*,controls=False):return {'start_ns':3*10**9,'end_ns':4*10**9}
+        def _pcaps(self,handle,start,end):
+            control=output.calibration_packets('10.64.0.2','calibration')
+            raw=pcap(packet('10.64.0.2','calibration',1,'protected','tcp'),control[1],control[2])
+            return {name:output.scan_pcap(raw,start,end) for name in handle['interfaces']}
+    q=CalibrationDriver(CalibrationHarness(),handles(),receipts=Receipts());source=q.capture_source('mullvad')
+    q.unmarked_controls={};q.unmarked_ifindexes={}
+    q.raw_calibration(source_receipt=source,clock_token='a'*64)
+    assert all('tcp_syn' not in forms for forms in q.unmarked_controls.values())
+    with pytest.raises(output.OutputEvidenceError,match='output_unmarked_calibration_missing'):
+        q.run(source,clock_token='a'*64)

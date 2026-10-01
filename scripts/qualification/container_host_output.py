@@ -87,7 +87,7 @@ def _tuple(ip, *, quoted=False):
             raise OutputEvidenceError('output_fragment_unproven')
         return None
     protocol = ip[9]
-    body = ip[offset:]
+    body = ip[offset:min(total, len(ip))]
     if protocol in (6, 17):
         if len(body) < 4:
             if relevant:
@@ -97,10 +97,16 @@ def _tuple(ip, *, quoted=False):
             raise OutputEvidenceError('output_pcap_invalid')
         sport, dport = struct.unpack('!HH', body[:4])
         if relevant and ({sport, dport} & PORTS):
+            empty_tcp = False
+            if protocol == 6 and not quoted:
+                header = (body[12] >> 4) * 4
+                _require(20 <= header <= len(body), 'output_pcap_invalid')
+                empty_tcp = len(body) == header
             form = 'icmp_quote' if quoted else 'udp' if protocol == 17 else (
-                'tcp_rst' if len(body) >= 14 and body[13] & 4 else 'tcp_syn' if len(body) >= 14 and body[13] & 2 else 'tcp')
+                'tcp_rst' if empty_tcp and body[13] & 4 else 'tcp_syn' if empty_tcp and body[13] & 2 else 'tcp')
             return {'source': source, 'destination': destination, 'protocol': 'tcp' if protocol == 6 else 'udp',
-                    'source_port': sport, 'destination_port': dport, 'quoted': quoted, 'form': form}
+                    'source_port': sport, 'destination_port': dport, 'quoted': quoted, 'form': form,
+                    'empty_tcp': empty_tcp}
     elif protocol == 1 and body:
         if body[0] in (3, 11, 12) and not quoted:
             if len(body) < 28:
