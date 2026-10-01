@@ -15,8 +15,16 @@ import pytest
 SCRIPT = Path(__file__).resolve().parents[2] / "installer/proxmox.sh"
 TAG = "v0.3.0-rc.3"
 ENGINE = """import json, os, sys
+if sys.argv[1:] == ["--bootstrap-capabilities"]:
+    if os.environ.get("NEW_ENGINE"):
+        print(json.dumps({"schema": 1, "interactive": True}))
+        sys.exit(0)
+    sys.exit(2)
 open(os.environ['ARGS_LOG'], 'w').write(json.dumps(sys.argv[1:]))
+print('Engine umask: ' + oct(os.umask(0o022)), flush=True)
 print('Canonical plan: ' + repr(sys.argv[1:]), flush=True)
+if '--interactive' in sys.argv:
+    print('Choose [1]:', flush=True)
 answer = input('Create? [y/N]: ')
 if answer == 'y':
     open(os.environ['MUTATION_LOG'], 'w').write('created')
@@ -86,10 +94,18 @@ shutil.copyfile(root / source, output)
 
 
 def launch(env, text="1\ny\n", interrupt=False):
-    before = set(Path("/tmp").glob("exitlane-bootstrap.*"))
+    temp_root = Path(env["FIXTURES"]) / "bootstrap-temp"
+    temp_root.mkdir(exist_ok=True)
+    before = set(temp_root.glob("exitlane-bootstrap.*"))
     master, slave = pty.openpty()
     process = subprocess.Popen(
-        ["bash", "-c", SCRIPT.read_text().replace("$EUID", "0")],
+        [
+            "bash",
+            "-c",
+            SCRIPT.read_text()
+            .replace("$EUID", "0")
+            .replace("/tmp/exitlane-bootstrap.", str(temp_root / "exitlane-bootstrap.")),
+        ],
         stdin=slave,
         stdout=slave,
         stderr=slave,
@@ -121,7 +137,7 @@ def launch(env, text="1\ny\n", interrupt=False):
             process.kill()
             process.wait()
         os.close(master)
-    assert set(Path("/tmp").glob("exitlane-bootstrap.*")) == before
+    assert set(temp_root.glob("exitlane-bootstrap.*")) == before
     return process.returncode, output.decode(errors="replace")
 
 
@@ -131,6 +147,7 @@ def test_default_plan_exact_tag_and_cleanup(bootstrap):
     assert code == 0
     assert json.loads((root / "args").read_text()) == ["--ref", TAG]
     assert output.count("Canonical plan:") == 1
+    assert "Engine umask: 0o22" in output
     assert (root / "mutation").exists()
     assert f"/{TAG}/installer/create-proxmox-lxc.py" in (root / "urls").read_text()
     assert f"?ref={TAG}" in (root / "urls").read_text()
@@ -233,7 +250,11 @@ def test_download_and_host_failures(bootstrap, failure):
 def test_no_tty_and_no_root(bootstrap):
     _, env = bootstrap
     result = subprocess.run(
-        ["bash", "-c", SCRIPT.read_text().replace("$EUID", "0")],
+        [
+            "bash",
+            "-c",
+            SCRIPT.read_text().replace("$EUID", "0"),
+        ],
         capture_output=True,
         env=env,
         check=False,
@@ -259,3 +280,14 @@ def test_interrupted_launcher_cleans_temporary_files(bootstrap):
     root, env = bootstrap
     assert launch(env, interrupt=True)[0] == 143
     assert not (root / "mutation").exists()
+
+
+def test_new_tagged_helper_ui_negotiation(bootstrap):
+    root, env = bootstrap
+    env["NEW_ENGINE"] = "1"
+    code, output = launch(env, "y\n")
+    assert code == 0
+    assert json.loads((root / "args").read_text()) == ["--interactive", "--ref", TAG]
+    assert output.count("Canonical plan:") == 1
+    assert "Installation mode" not in output
+    assert (root / "mutation").exists()

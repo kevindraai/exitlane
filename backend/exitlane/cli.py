@@ -10,14 +10,18 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import warnings
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from exitlane import core, lifecycle
+from exitlane.container_control import ControlError
 from exitlane.events import record_event
 from exitlane.providers.base import DirectEgressIntent
 from exitlane.providers.catalog import provider_registry
 from exitlane.providers.registry import ProviderNotFound
+from exitlane.runtime import RuntimeCapabilityUnavailable, runtime
+from exitlane.runtime_mutation import finish_writer
 from exitlane.services import killswitch, management_routing, network_security, provider_secrets
 from exitlane.services.auth_security import disable_mfa as disable_administrator_mfa
 from exitlane.services.credentials import CredentialError, reset_administrator_password
@@ -275,6 +279,10 @@ def killswitch_status(*, effective_user_id: int | None = None) -> int:
     if (os.geteuid() if effective_user_id is None else effective_user_id) != 0:
         print("This command must be run as root or with sudo.", file=sys.stderr)
         return 77
+    if runtime.capabilities.runtime_name == "container":
+        print("runtime_capability_unavailable: use container supervisor status or WebUI diagnostics.",
+              file=sys.stderr)
+        return 2
     try:
         active_id = core.setting("vpn.provider_id", provider_registry.default_id)
         facts = asyncio.run(provider_registry.get(active_id).network_facts())
@@ -304,6 +312,9 @@ def disable_killswitch(
     if (os.geteuid() if effective_user_id is None else effective_user_id) != 0:
         print("This command must be run as root or with sudo.", file=sys.stderr)
         return 77
+    if not runtime.capabilities.direct_egress:
+        print("runtime_capability_unavailable", file=sys.stderr)
+        return 2
     phrase = "DISABLE EXITLANE KILLSWITCH"
     if input_reader(f"Type {phrase} to continue: ") != phrase:
         print("Killswitch recovery cancelled.", file=sys.stderr)
@@ -428,9 +439,15 @@ def _read_backup_passphrase(
             raise lifecycle.LifecycleError("unsafe_passphrase_file")
         value = path.read_text(encoding="utf-8").rstrip("\r\n")
     else:
-        value = password_reader("Backup passphrase: ")
-        if confirmation and value != password_reader("Repeat backup passphrase: "):
-            raise lifecycle.LifecycleError("passphrase_mismatch")
+        with warnings.catch_warnings():
+            if runtime.capabilities.runtime_name == "container":
+                warnings.simplefilter("error", getpass.GetPassWarning)
+            try:
+                value = password_reader("Backup passphrase: ")
+                if confirmation and value != password_reader("Repeat backup passphrase: "):
+                    raise lifecycle.LifecycleError("passphrase_mismatch")
+            except getpass.GetPassWarning:
+                raise lifecycle.LifecycleError("masked_input_unavailable") from None
     if len(value) < 12:
         raise lifecycle.LifecycleError("passphrase_too_short")
     return value
@@ -479,41 +496,11 @@ def _restore_forwarding_guard(ingress: tuple[str, ...], enabled: bool) -> None:
 
 
 def _restore_ingress_service(*, start: bool) -> None:
-    if not core.setting("wireguard_configured", False):
-        return
-    ingress, _ = killswitch.configuration()
-    interface = ingress[0]
-    unit = f"wg-quick@{interface}.service"
-    if start:
-        source = core.WG_DIR / f"{interface}.conf"
-        lifecycle._safe_regular_file(source)
-        system_directory = Path("/etc/wireguard")
-        system_directory.mkdir(mode=0o700, exist_ok=True)
-        target = system_directory / source.name
-        if target.is_symlink():
-            if target.resolve() != source.resolve():
-                raise lifecycle.LifecycleError("restore_ingress_config_conflict")
-        elif target.exists():
-            raise lifecycle.LifecycleError("restore_ingress_config_conflict")
-        else:
-            target.symlink_to(source)
-        commands = (("enable", unit), ("restart", unit))
-    else:
-        commands = (("disable", "--now", unit),)
-    for arguments in commands:
-        rc, _, _ = asyncio.run(
-            core.command(
-                "/usr/bin/systemctl",
-                *arguments,
-                timeout=30,
-                environment={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C"},
-            )
-        )
-        if rc:
-            raise lifecycle.LifecycleError("restore_ingress_service_failed")
+    runtime.restore_ingress(start=start, core=core, lifecycle=lifecycle, killswitch=killswitch)
 
 
 def _systemd_service_action(action: str) -> None:
+    runtime.capabilities.require("restore")
     if action == "reset-egress":
 
         async def reset_egress() -> None:
@@ -564,15 +551,7 @@ def _systemd_service_action(action: str) -> None:
             except killswitch.KillswitchError as error:
                 raise lifecycle.LifecycleError("restore_network_guard_failed") from error
         _restore_ingress_service(start=True)
-    returncode, _output, _error = asyncio.run(
-        core.command(
-            "/usr/bin/systemctl",
-            action,
-            "exitlane.service",
-            timeout=30,
-            environment={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C"},
-        )
-    )
+    returncode, _output, _error = asyncio.run(runtime.service_action(action, runner=core.command))
     if returncode:
         raise OSError("service action failed")
 
@@ -596,6 +575,35 @@ def backup_command(arguments: argparse.Namespace) -> int:
             arguments.passphrase_file, confirmation=arguments.backup_command == "create"
         )
         source = Path(arguments.path)
+        if runtime.capabilities.runtime_name == "container" and arguments.backup_command in {"create", "restore"}:
+            from exitlane.container_service import BACKUP_NAME
+            directory = runtime.paths.application_data.parent / "backups"
+            command = "backup" if arguments.backup_command == "create" else "restore"
+            if command == "backup" and source != directory:
+                raise ControlError("control_invalid_request")
+            if command == "restore" and (
+                source.parent != directory or BACKUP_NAME.fullmatch(source.name) is None
+            ):
+                raise ControlError("control_invalid_request")
+            payload = {"passphrase": passphrase}
+            if command == "restore":
+                payload.update(name=source.name,
+                               confirmation=input("Type RESTORE EXITLANE to continue: "))
+            try:
+                info = asyncio.run(runtime.client.request(command, payload))
+            finally:
+                payload.clear()
+                passphrase = None
+            if command == "backup":
+                name = info.get("name")
+                if not isinstance(name, str) or BACKUP_NAME.fullmatch(name) is None:
+                    raise ControlError("control_operation_failed")
+                print(f"Encrypted backup created: {directory / name}")
+            elif info.get("restored") is True:
+                print("Backup restored. Existing sessions were revoked.")
+            else:
+                raise ControlError("control_operation_failed")
+            return 0
         if arguments.backup_command == "create":
             core.init()
             info = lifecycle.create_backup(source, passphrase)
@@ -606,9 +614,10 @@ def backup_command(arguments: argparse.Namespace) -> int:
                 print("Backup authentication, manifest, checksums, and database verified.")
         else:
             confirmation = input("Type RESTORE EXITLANE to continue: ")
-            info = lifecycle.restore_backup(
+            info = runtime.restore(
                 source,
                 passphrase,
+                restore_transaction=lifecycle.restore_backup,
                 confirmation=confirmation,
                 service_action=_systemd_service_action,
                 health_check=_local_health_check,
@@ -621,15 +630,15 @@ def backup_command(arguments: argparse.Namespace) -> int:
         print(f"Database schema: {info.database_schema_version}")
         print(f"Files: {len(info.files)}")
         return 0
-    except lifecycle.LifecycleError as error:
-        print(f"Backup operation failed: {error.code}.", file=sys.stderr)
+    except (lifecycle.LifecycleError, RuntimeCapabilityUnavailable, ControlError) as error:
+        print(f"Backup operation failed: {getattr(error, 'code', 'control_operation_failed')}.", file=sys.stderr)
         return 2
     except OSError:
         print("Backup operation failed: local_operation_failed.", file=sys.stderr)
         return 1
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def _main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="exitlane-cli")
     subcommands = parser.add_subparsers(dest="command", required=True)
     subcommands.add_parser(
@@ -709,6 +718,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         core.init()
         return killswitch_status()
     if arguments.command == "disable-killswitch":
+        if not runtime.capabilities.direct_egress:
+            return disable_killswitch()
         core.init()
         return disable_killswitch()
     if arguments.command == "restore-killswitch":
@@ -726,6 +737,34 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.command == "backup":
         return backup_command(arguments)
     return 2
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    if not runtime.coordinated_mutations:
+        return _main(argv)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments[:1] == ["killswitch-status"]:
+        return killswitch_status()
+    # Restore/backup are supervisor-owned transactions, not a CLI inner lease.
+    if arguments[:1] == ["backup"]:
+        return _main(arguments)
+    if arguments[:1] and arguments[0] in {
+        "restore-killswitch", "restore-provider-egress-guard",
+        "reconcile-management-routes", "prepare-management-routes",
+    }:
+        print("runtime_capability_unavailable", file=sys.stderr)
+        return 2
+
+    async def operation():
+        async with runtime.mutation():
+            # Sync recovery functions run to completion before the lease can
+            # release; cancelling the awaiting thread does not stop a DB writer.
+            return await finish_writer(asyncio.to_thread(_main, arguments))
+    try:
+        return asyncio.run(operation())
+    except ControlError:
+        print("runtime_recovery_busy", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

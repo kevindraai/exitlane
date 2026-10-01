@@ -278,9 +278,12 @@ class Proton(Provider):
             isinstance(operation, dict) and operation.get("connection_id") == "provider-switch"
         )
 
-    async def _complete_transition(self) -> bool:
+    async def _complete_transition(self, config: EgressConfig | None = None) -> bool:
         try:
-            await killswitch.complete_provider_transition(await self.network_facts())
+            facts = await self.wireguard.transition_facts(config) if config is not None else None
+            if facts is None:
+                facts = await self.network_facts()
+            await killswitch.complete_provider_transition(facts)
             return True
         except (
             killswitch.KillswitchError,
@@ -306,6 +309,7 @@ class Proton(Provider):
                     state["active"] = previous
                     state.pop("pending", None)
                     self._save(state)
+                    await self.wireguard.committed(config)
                     return True
             except (KeyError, TypeError, ValueError, ProviderWireGuardError):
                 pass
@@ -386,8 +390,9 @@ class Proton(Provider):
                 state["last_profile_id"] = profile["id"]
                 state.pop("pending", None)
                 self._save(state)
-                if owns_transition and not await self._complete_transition():
+                if owns_transition and not await self._complete_transition(config):
                     return {"ok": False, "error_code": "firewall_apply_failed"}
+                await self.wireguard.committed(config)
                 return {
                     "ok": True,
                     "state": "connected",

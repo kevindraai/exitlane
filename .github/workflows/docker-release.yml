@@ -1,0 +1,263 @@
+name: Docker appliance release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing published ExitLane release tag
+        required: true
+        type: string
+      source_sha:
+        description: Exact 40-character commit currently tagged by release_tag
+        required: true
+        type: string
+      confirmation:
+        description: Type PUBLISH EXITLANE <release_tag> <source_sha>
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-release-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      source_sha: ${{ steps.release.outputs.source_sha }}
+      app_version: ${{ steps.release.outputs.app_version }}
+      image: ${{ steps.release.outputs.image }}
+    steps:
+      - name: Validate requested release tag syntax before checkout
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+          if not re.fullmatch(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-rc\.[1-9][0-9]*)?", os.environ.get("RELEASE_TAG", "")):
+              print("docker_release_tag_invalid", file=sys.stderr)
+              raise SystemExit(1)
+          if not re.fullmatch(r"[0-9a-f]{40}", os.environ.get("RELEASE_SOURCE_SHA", "")):
+              print("docker_release_source_sha_invalid", file=sys.stderr)
+              raise SystemExit(1)
+          PY
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
+
+      - name: Checkout trusted workflow source and full ancestry
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch current main and requested tag
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: git fetch --no-tags origin main "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+
+      - name: Verify exact published release, source, confirmation and D6 ancestry
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
+          RELEASE_CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          python3 scripts/validate_docker_release.py \
+            --tag "$RELEASE_TAG" \
+            --source-sha "$RELEASE_SOURCE_SHA" \
+            --confirmation "$RELEASE_CONFIRMATION" \
+            --github-output "$GITHUB_OUTPUT"
+
+  publish:
+    needs: validate
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' }}
+    concurrency:
+      group: docker-publish-${{ needs.validate.outputs.tag }}
+      cancel-in-progress: false
+    environment: ghcr-production
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - name: Checkout trusted release workflow source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout the exact validated application source as build input
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate.outputs.source_sha }}
+          path: release-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify trusted workflow and application source identities
+        env:
+          EXPECTED_SHA: ${{ needs.validate.outputs.source_sha }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$WORKFLOW_SHA"
+          test "$(git -C release-source rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Build exact versioned amd64 image
+        env:
+          APP_VERSION: ${{ needs.validate.outputs.app_version }}
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+          IMAGE: ${{ needs.validate.outputs.image }}
+        run: |
+          docker build --platform linux/amd64 -f release-source/docker/Dockerfile.appliance \
+            --build-arg EXITLANE_VERSION="$APP_VERSION" \
+            --build-arg EXITLANE_REVISION="$SOURCE_SHA" \
+            -t "$IMAGE" release-source
+          test "$(docker image inspect "$IMAGE" --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
+          test "$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')" = "$APP_VERSION"
+          test "$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "$SOURCE_SHA"
+
+      - name: Check installed files and dependencies
+        env:
+          IMAGE: ${{ needs.validate.outputs.image }}
+        run: |
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges:true --entrypoint python \
+            -i "$IMAGE" - < scripts/check_container_image.py
+
+      - name: Qualify release image health and state contract
+        env:
+          IMAGE: ${{ needs.validate.outputs.image }}
+        run: python3 scripts/qualification/container_appliance.py --image "$IMAGE"
+
+      - name: Install pinned image inspection tools
+        run: |
+          bash scripts/install_security_cli.sh syft
+          bash scripts/install_security_cli.sh trivy
+
+      - name: Scan exact release image for OS, Python and secrets
+        env:
+          IMAGE: ${{ needs.validate.outputs.image }}
+        run: |
+          trivy image --scanners vuln,secret --pkg-types os,library \
+            --ignore-unfixed=false --format json --output docker-release-trivy.json \
+            --exit-code 0 "$IMAGE"
+          trivy image --scanners vuln,secret --pkg-types os,library \
+            --skip-db-update --severity HIGH,CRITICAL --ignore-unfixed=false --exit-code 1 "$IMAGE"
+
+      - name: Retain complete release scan evidence even when publication is blocked
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: exitlane-release-trivy-report
+          path: docker-release-trivy.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Create SPDX SBOM for exact release image
+        env:
+          IMAGE: ${{ needs.validate.outputs.image }}
+        run: syft "$IMAGE" --output spdx-json=exitlane.spdx.json
+
+      - name: Sign in to GitHub Container Registry
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USER" --password-stdin
+
+      - name: Publish one version tag without replacing an existing release
+        id: push
+        env:
+          IMAGE: ${{ needs.validate.outputs.image }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/push_ghcr_image.py --image "$IMAGE" --github-output "$GITHUB_OUTPUT"
+
+      - name: Pull the exact published digest
+        env:
+          IMAGE: ${{ needs.validate.outputs.image }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: docker pull "${IMAGE%:*}@$DIGEST"
+
+      - name: Verify pulled digest metadata and contents
+        env:
+          IMAGE: ${{ needs.validate.outputs.image }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+          APP_VERSION: ${{ needs.validate.outputs.app_version }}
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+        run: |
+          immutable_image="${IMAGE%:*}@$DIGEST"
+          test "$(docker image inspect "$immutable_image" --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
+          test "$(docker image inspect "$immutable_image" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')" = "$APP_VERSION"
+          test "$(docker image inspect "$immutable_image" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "$SOURCE_SHA"
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges:true --entrypoint python \
+            -i "$immutable_image" - < scripts/check_container_image.py
+          python3 scripts/qualification/container_appliance.py --image "$immutable_image"
+
+      - name: Record validated application and trusted workflow sources
+        env:
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          python3 scripts/docker_release_provenance.py create \
+            --tag "$RELEASE_TAG" --source-sha "$SOURCE_SHA" --workflow-sha "$WORKFLOW_SHA" \
+            --invocation "$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT" --output release-provenance.json
+
+      - name: Attest image build provenance
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-name: ghcr.io/kevindraai/exitlane
+          subject-digest: ${{ steps.push.outputs.digest }}
+          predicate-type: https://slsa.dev/provenance/v1
+          predicate-path: release-provenance.json
+          push-to-registry: true
+
+      - name: Attest SPDX SBOM to the image digest
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-name: ghcr.io/kevindraai/exitlane
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: exitlane.spdx.json
+          push-to-registry: true
+
+      - name: Verify provenance and SBOM attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          subject="oci://ghcr.io/kevindraai/exitlane@$DIGEST"
+          gh attestation verify "$subject" --repo kevindraai/exitlane \
+            --signer-workflow kevindraai/exitlane/.github/workflows/docker-release.yml \
+            --source-ref refs/heads/main --source-digest "$WORKFLOW_SHA" \
+            --deny-self-hosted-runners --format json > provenance-verification.json
+          python3 scripts/docker_release_provenance.py verify \
+            --tag "$RELEASE_TAG" --source-sha "$SOURCE_SHA" --workflow-sha "$WORKFLOW_SHA" \
+            --invocation "$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT" \
+            --input provenance-verification.json --digest "$DIGEST"
+          gh attestation verify "$subject" --repo kevindraai/exitlane \
+            --signer-workflow kevindraai/exitlane/.github/workflows/docker-release.yml \
+            --source-ref refs/heads/main --source-digest "$WORKFLOW_SHA" \
+            --deny-self-hosted-runners \
+            --predicate-type https://spdx.dev/Document/v2.3

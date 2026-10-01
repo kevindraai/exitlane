@@ -1,0 +1,48 @@
+# D5 candidate image. Support and publication still require D6/D7 qualification.
+FROM python:3.13-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b AS wheel
+WORKDIR /build
+COPY backend/pyproject.toml ./pyproject.toml
+COPY backend/exitlane ./exitlane
+RUN python -m pip wheel --no-cache-dir --no-deps --wheel-dir /wheel .
+
+FROM python:3.13-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b
+ARG EXITLANE_VERSION
+ARG EXITLANE_REVISION
+LABEL org.opencontainers.image.title="ExitLane" \
+      org.opencontainers.image.description="Experimental container appliance; D6/D7 gates pending" \
+      org.opencontainers.image.source="https://github.com/kevindraai/exitlane" \
+      org.opencontainers.image.version="${EXITLANE_VERSION}" \
+      org.opencontainers.image.revision="${EXITLANE_REVISION}" \
+      org.opencontainers.image.licenses="GPL-3.0-only" \
+      org.exitlane.runtime="container" \
+      org.exitlane.support="experimental" \
+      org.exitlane.schema="1:1"
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    EXITLANE_RUNTIME=container \
+    EXITLANE_CONFIG_DIR=/data/config \
+    EXITLANE_DATA_DIR=/data/state \
+    HOME=/run/exitlane
+RUN apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=3 update \
+    && apt-get install --yes --no-install-recommends ca-certificates tzdata wireguard-tools iproute2 nftables iputils-ping \
+    && apt-get upgrade --yes --no-install-recommends --no-remove \
+    && rm -rf /var/lib/apt/lists/*
+COPY docker/requirements-runtime.txt /tmp/requirements-runtime.txt
+COPY --from=wheel /wheel /tmp/wheel
+RUN python -m pip install --no-cache-dir --no-compile --require-hashes -r /tmp/requirements-runtime.txt \
+    && python -m pip install --no-cache-dir --no-compile --no-deps /tmp/wheel/*.whl \
+    && python -m pip check \
+    && python -c 'import os,re,exitlane; assert os.environ["EXITLANE_VERSION"] == "v"+exitlane.__version__; assert re.fullmatch(r"[0-9a-f]{40}",os.environ["EXITLANE_REVISION"])' \
+    && rm -rf /tmp/requirements-runtime.txt /tmp/wheel /root/.cache \
+    && rm -rf /usr/local/lib/python3.13/site-packages/pip /usr/local/lib/python3.13/site-packages/pip-*.dist-info \
+              /usr/local/lib/python3.13/site-packages/setuptools /usr/local/lib/python3.13/site-packages/setuptools-*.dist-info \
+              /usr/local/lib/python3.13/site-packages/pkg_resources \
+              /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.13 \
+    && find /usr/local/lib/python3.13/site-packages -type d -name __pycache__ -exec rm -rf '{}' + \
+    && install -d -m 0700 /data
+COPY LICENSE /usr/share/doc/exitlane/LICENSE
+WORKDIR /
+EXPOSE 8787/tcp 51820/udp
+HEALTHCHECK --interval=30s --timeout=8s --start-period=45s --retries=3 \
+    CMD ["python", "-m", "exitlane.container_entrypoint", "health"]
+CMD ["python", "-m", "exitlane.container_entrypoint", "serve"]

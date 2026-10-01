@@ -91,6 +91,21 @@ blob = b'blob ' + str(len(payload)).encode() + b'\0' + payload
 if hashlib.sha1(blob, usedforsecurity=False).hexdigest() != metadata['sha']:
     sys.exit('Tagged helper integrity mismatch')
 PY
+# Capability query is side-effect-free for new engines. Old argparse engines
+# reject this unknown option before host discovery or mutation.
+if (umask 022; python3 "$bootstrap_dir/helper.py" --bootstrap-capabilities > "$bootstrap_dir/capabilities.json" 2>/dev/null) &&
+  python3 - "$bootstrap_dir/capabilities.json" <<'PY_CAP'
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+except (ValueError, OSError):
+    sys.exit(1)
+sys.exit(0 if isinstance(data, dict) and data.get('schema') == 1 and data.get('interactive') is True else 1)
+PY_CAP
+then
+  (umask 022; python3 "$bootstrap_dir/helper.py" --interactive --ref "$version")
+  exit $?
+fi
 printf '\nInstallation mode\n  1. Default settings\n  2. Advanced settings\n  3. Exit\n'
 read -r -p 'Choose [1]: ' mode
 args=(--ref "$version")
@@ -115,4 +130,6 @@ printf '\nThe tagged engine will validate and display the exact plan.\n'
 printf 'Creation requires its explicit confirmation; cancelling makes no changes.\n\n'
 # One engine invocation computes, confirms and executes one canonical plan.
 # rc.3 asks for CREATE; newer engines may use y/N. Never pass --yes here.
-python3 "$bootstrap_dir/helper.py" "${args[@]}"
+# Keep bootstrap downloads private without leaking that policy into pct's guest
+# configuration writers (0644 masked by 077 becomes unreadable to APT's _apt).
+(umask 022; python3 "$bootstrap_dir/helper.py" "${args[@]}")

@@ -6,11 +6,11 @@ import hmac
 import json
 import os
 import sqlite3
-from pathlib import Path
 
 from exitlane.config import MIN_PASSWORD_LENGTH
+from exitlane.runtime import runtime
 
-DATA = Path(os.getenv("EXITLANE_DATA_DIR", "/etc/exitlane"))
+DATA = runtime.paths.application_data
 DB = DATA / "exitlane.db"
 WG_DIR = DATA / "wireguard"
 
@@ -22,7 +22,12 @@ class SettingsStorageError(RuntimeError):
 def init():
     DATA.mkdir(parents=True, exist_ok=True, mode=0o700)
     WG_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
-    with sqlite3.connect(DB) as c:
+    init_database(DB)
+
+
+def init_database(path):
+    """Initialize the shared schema at an explicitly selected database path."""
+    with sqlite3.connect(path) as c:
         c.execute(
             """CREATE TABLE IF NOT EXISTS schema_version(
                 singleton INTEGER PRIMARY KEY CHECK(singleton = 1),

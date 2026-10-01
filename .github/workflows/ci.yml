@@ -27,7 +27,7 @@ jobs:
       - name: Install ShellCheck
         run: |
           sudo apt-get update
-          sudo apt-get install --yes shellcheck
+          sudo apt-get install --yes shellcheck python3-yaml
 
       - name: Check Bash syntax
         run: |
@@ -36,6 +36,7 @@ jobs:
             -name "*.sh" \
             -print0 |
             xargs -0 -r -n1 bash -n
+          bash -n scripts/install_security_cli.sh
 
       - name: Run ShellCheck
         run: |
@@ -44,6 +45,7 @@ jobs:
             -name "*.sh" \
             -print0 |
             xargs -0 -r shellcheck
+          shellcheck scripts/install_security_cli.sh
 
       - name: Validate workflow security policy
         run: python3 scripts/check_workflow_security.py
@@ -136,6 +138,179 @@ jobs:
 
       - name: Validate translations
         run: python3 scripts/check_i18n.py
+
+  container-lifecycle:
+    name: Container lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Select relevant changes
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          base = os.environ.get("BASE_SHA", "")
+          relevant = True
+          if re.fullmatch(r"[0-9a-f]{40}", base) and set(base) != {"0"}:
+              result = subprocess.run(
+                  ["git", "diff", "--name-only", base, "HEAD"],
+                  capture_output=True, text=True, check=False,
+              )
+              if result.returncode == 0:
+                  relevant = any(
+                      name.startswith(("backend/exitlane/", "docker/testing/", "scripts/qualification/", "backend/tests/test_container"))
+                      or name in {
+                          "backend/pyproject.toml", "backend/uv.lock",
+                          "scripts/qualification/container_lifecycle.py",
+                          ".github/workflows/ci.yml",
+                      }
+                      for name in result.stdout.splitlines()
+                  )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+              output.write(f"run={str(relevant).lower()}\n")
+          PY
+
+      - name: Build synthetic lifecycle image
+        if: steps.changes.outputs.run == 'true'
+        run: docker build -f docker/testing/Dockerfile.lifecycle -t exitlane-lifecycle:test .
+
+      - name: Qualify isolated kernel lifecycle
+        if: steps.changes.outputs.run == 'true'
+        run: python3 scripts/qualification/container_lifecycle.py
+
+      - name: Qualify synthetic direct-provider dataplane
+        if: steps.changes.outputs.run == 'true'
+        run: python3 scripts/qualification/container_dataplane.py --image exitlane-lifecycle:test
+
+      - name: Qualify durable state and interrupted recovery
+        if: steps.changes.outputs.run == 'true'
+        run: python3 scripts/qualification/container_recovery.py --image exitlane-lifecycle:test
+
+  container-appliance:
+    name: Container appliance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Select relevant image and runtime changes
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+          base = os.environ.get("BASE_SHA", "")
+          relevant = True
+          if re.fullmatch(r"[0-9a-f]{40}", base) and set(base) != {"0"}:
+              result = subprocess.run(["git", "diff", "--name-only", base, "HEAD"],
+                                      capture_output=True, text=True, check=False)
+              if result.returncode == 0:
+                  relevant = any(
+                      name.startswith(("backend/exitlane/", "docker/", "scripts/qualification/",
+                                       "backend/tests/test_container"))
+                      or name in {"backend/pyproject.toml", "backend/uv.lock", "LICENSE",
+                                  ".dockerignore", ".github/workflows/ci.yml",
+                                  "scripts/check_container_image.py", "scripts/check_docker_appliance_host.py"}
+                      for name in result.stdout.splitlines())
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+              output.write(f"run={str(relevant).lower()}\n")
+          PY
+
+      - name: Build candidate from exact source with locked runtime dependencies
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          version=$(PYTHONPATH=backend python3 -c 'import exitlane; print("v" + exitlane.__version__)')
+          docker build -f docker/Dockerfile.appliance \
+            --build-arg EXITLANE_VERSION="$version" \
+            --build-arg EXITLANE_REVISION="$(git rev-parse HEAD)" \
+            -t exitlane-appliance:test .
+
+      - name: Inspect installed image content without application startup or state
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          test "$(docker image inspect exitlane-appliance:test --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges:true --entrypoint python \
+            -i exitlane-appliance:test - < scripts/check_container_image.py
+
+      - name: Install pinned image inspection tools
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          bash scripts/install_security_cli.sh syft
+          bash scripts/install_security_cli.sh trivy
+
+      - name: Create SPDX image SBOM
+        if: steps.changes.outputs.run == 'true'
+        run: syft exitlane-appliance:test --output spdx-json=exitlane-image.spdx.json
+
+      - name: Upload SPDX image SBOM
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: exitlane-image-spdx
+          path: exitlane-image.spdx.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Scan candidate image for OS, Python and secret findings
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          trivy image --scanners vuln,secret --pkg-types os,library \
+            --ignore-unfixed=false --format json \
+            --output trivy-image-results.json --exit-code 0 \
+            exitlane-appliance:test
+          python3 - <<'PY'
+          import json
+          import os
+          from collections import Counter
+          from pathlib import Path
+
+          report = json.loads(Path("trivy-image-results.json").read_text(encoding="utf-8"))
+          counts = Counter(
+              finding.get("Severity", "UNKNOWN")
+              for result in report.get("Results") or []
+              for finding in result.get("Vulnerabilities") or []
+          )
+          summary = (
+              "Candidate image Trivy findings (informational in PR CI; the manual "
+              "release workflow blocks on HIGH/CRITICAL): "
+              f"HIGH={counts['HIGH']}, CRITICAL={counts['CRITICAL']}"
+          )
+          print(summary)
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as handle:
+              handle.write(summary + "\n")
+          PY
+
+      - name: Upload candidate image scan report
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: exitlane-image-trivy-report
+          path: trivy-image-results.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Qualify real application management and durable image replacement
+        if: steps.changes.outputs.run == 'true'
+        run: python3 scripts/qualification/container_appliance.py --image exitlane-appliance:test
 
   package:
     name: Package build

@@ -55,6 +55,7 @@ class WireGuardStatus(BaseModel):
 
 
 class SystemStatus(BaseModel):
+    metric_scope: str = "host"
     available: bool = True
     hostname: str | None
     cpu_percent: float | None

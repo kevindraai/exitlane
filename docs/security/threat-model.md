@@ -62,14 +62,94 @@ High-impact issues with substantial prerequisites plus bounded availability and 
 Sensitive High-impact reproduction detail is retained in private draft advisories. This work is
 not an independent penetration test.
 
+## Proxmox installer access boundary
+
+The public launcher verifies the selected published helper and negotiates its UI capability
+without provisioning mutation. New helpers separate optional Linux console-root credentials from
+ExitLane web onboarding and from SSH authentication. Passwords are masked and confirmed, transferred
+through stdin, and omitted from argv, environment, canonical plans, host logs and failure output.
+Public keys are structurally validated; private material and option-prefixed authorized-key entries
+are rejected rather than removing restrictions. SSH key-only policy is the default when SSH is
+requested; password SSH requires explicit advanced selection. Skipping all guest credentials keeps
+PVE-managed access as the recovery path, with an explicit operator acknowledgement.
+
+Installer logging is root-only and streams subprocess output with bounded diagnostic tails.
+Credential-configuration subprocess output is suppressed even on failure. A root-equivalent PVE
+operator can inspect live memory or change guest configuration; this boundary does not defend
+against the operator who owns the provisioning host. The helper still creates new guests only,
+requires one canonical confirmation, rechecks frozen resources and never destroys partial guests.
+
+The new UI/access/logging path is only available after inclusion in a published helper tag;
+the public moving bootstrap preserves compatible behavior for older published helpers.
+
 ## Docker deployment boundary
 
-The Docker image remains a development WebUI/API surface, not a VPN appliance. Its private
+The original Docker image remains a development WebUI/API surface, not a VPN appliance. Its private
 container namespace has no qualified WireGuard ingress, fail-closed forwarding, DNS protection,
 startup guard or restore path. Docker owns its host bridge/NAT firewall state; ExitLane must not
 modify those host tables. The [issue #76 feasibility matrix](../docker-appliance-feasibility.md)
 records the missing container-capability and packet-level proof. The development Compose
 example binds management only to host loopback and publishes no VPN ingress.
+
+Runtime capabilities are selected by trusted process configuration, never by a browser request.
+The initial runtime adapter implements native Debian only; unknown runtime selections fail before
+database or key initialization. The authenticated capability endpoint and public onboarding
+projection contain availability facts, not host paths or secrets. UI hiding is convenience:
+API and CLI checks deny unavailable operations before state writes, privileged commands or Activity
+acceptance. Native command allowlists, provider authorization and restore validation remain in
+force. This boundary prepares container adapters without claiming a supported Docker appliance.
+
+The D2 synthetic lifecycle installs a permanent container-owned forwarding restriction and shared
+unreachable provider routes before ingress, verifies actual rule semantics, and never executes native
+configuration hooks. Its worker supervisor keeps protection through failures and exits on uncertain
+interface ownership rather than adopting or deleting another interface. The test harness uses only
+NET_ADMIN/TUN in isolated namespaces; Docker owns all host bridge/firewall setup. Full application
+container composition remains disabled pending the later networking and recovery gates.
+
+The D3 direct-provider adapter adds a shared candidate epoch and a separate commit
+gate: a handshake alone does not open forwarding. Exact route, peer, interface,
+lossless dataplane and UDP/TCP DNS proof must precede committed encrypted state.
+Revocation preserves ingress/source unreachable routes and the permanent namespace
+guard. Registered provider IPv4 sources are also filtered in OUTPUT after destination
+translation, independently of destination port, so local resolver translation cannot
+turn protected source traffic into management-uplink DNS. Historical sources remain
+blocked after interface deletion or disconnect; the bounded inventory fails closed
+instead of evicting an address. Startup accepts only an exact owned policy shape and
+revokes its previous forwarding/probe permissions before use.
+
+Separate synthetic packet observers must prove both usable provider transport and
+zero plaintext fallback on the normal uplink; observer failure, packet drops or missing
+positive controls invalidate that evidence. These checks do not qualify daemon/host
+restart, persistent restore or production images. Those remain D4–D6 gates, and the
+development image retains its existing restrictions.
+
+D4 adds a private DB/key/manifest volume contract and a supervisor-owned mutation
+lease. Its root-only local control socket is not a Docker socket or host-control
+interface. Loss of a writer guards networking and reaps only the known owned
+worker before another writer can be admitted. Restore shares native archive and
+cryptographic validation; old/restored ingress identities remain behind an exact
+owned temporary drop policy throughout journalled publication and rollback.
+Corrupt journals, incompatible schemas and failed rollback remain blocked with
+recovery state retained. Root-equivalent container processes already share this
+trust boundary; the manifest key digest does not authenticate externally supplied
+state. See [container recovery](../docker-container-recovery.md).
+
+The experimental D5 image supplies full container composition without changing the
+development image or claiming Docker support. The parent owns ingress and mutation
+authority; the worker owns live direct-provider generations and proofs. A one-use
+inherited socket grants initialization while the parent holds the startup lease.
+No startup credential travels through argv, environment values or persistent files.
+Subordinate ingress operations are revoked on lease loss, drained before the final
+guard/quiesce, and cannot release protection after revocation. Unsupported native
+service, package, host-power and upgrade operations remain unavailable in API/CLI.
+
+The candidate uses a read-only root, one private state volume, bounded private tmpfs,
+NET_ADMIN alone, TUN and explicit namespace sysctls. Management defaults to loopback;
+LAN exposure requires operator selection. Proxy trust is tied to the actual peer,
+not a supplied forwarded chain. Image content, actual authentication/proxy requests,
+encrypted ingress, namespace recreation and restore have dedicated qualification
+gates. Whole-host packet/restart evidence remains D6, and first public production
+publication remains separately authorized. See [the candidate contract](../docker-appliance-candidate.md).
 
 ### System power actions
 

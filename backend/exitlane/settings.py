@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from exitlane import __version__
 from exitlane.config import APP_NAME, PROVIDER_REFRESH_INTERVAL_SECONDS, SESSION_MAX_AGE_SECONDS
 from exitlane.core import SettingsStorageError, set_settings, setting
+from exitlane.runtime import runtime
 from exitlane.services import timezone as timezone_service
 
 TIMEZONE_KEY = "timezone"
@@ -30,11 +31,11 @@ def system_hostname() -> str:
 
 
 def system_timezone() -> str:
-    return timezone_service.read_system_timezone() or "UTC"
+    return runtime.read_timezone(reader=timezone_service.read_system_timezone) or "UTC"
 
 
 def timezone_consistency() -> dict[str, object]:
-    actual = timezone_service.read_system_timezone()
+    actual = runtime.read_timezone(reader=timezone_service.read_system_timezone)
     try:
         configured = setting(TIMEZONE_KEY, None)
     except (json.JSONDecodeError, TypeError, ValueError):
@@ -171,12 +172,13 @@ def settings_response() -> dict:
         },
         "metadata": {
             "runtime_editable": [
-                "general.timezone",
+                *(["general.timezone"] if runtime.capabilities.timezone_configuration else []),
                 "general.provider_refresh_interval_seconds",
             ],
             "environment_only": ["system.session_duration_seconds"],
             "restart_required": [],
         },
+        "runtime_capabilities": runtime.capabilities.projection(),
         "timezones": sorted(VALID_TIMEZONES),
         "languages": ["en", "nl"],
     }
@@ -193,7 +195,9 @@ async def update_settings(update: SettingsUpdate) -> dict:
         }
         timezone_change = None
         if "timezone" in changes:
-            timezone_change = await timezone_service.set_system_timezone(validated.timezone)
+            timezone_change = await runtime.set_timezone(
+                validated.timezone, setter=timezone_service.set_system_timezone
+            )
         try:
             set_settings({keys[field]: getattr(validated, field) for field in changes})
         except SettingsStorageError:
@@ -202,7 +206,9 @@ async def update_settings(update: SettingsUpdate) -> dict:
             rollback_performed = bool(timezone_change and timezone_change.changed)
             if rollback_performed:
                 try:
-                    await timezone_service.set_system_timezone(timezone_change.previous)
+                    await runtime.set_timezone(
+                        timezone_change.previous, setter=timezone_service.set_system_timezone
+                    )
                 except timezone_service.TimezoneOperationError as error:
                     raise timezone_service.TimezoneOperationError(
                         "system_timezone_rollback_failed"
@@ -212,6 +218,10 @@ async def update_settings(update: SettingsUpdate) -> dict:
 
 
 async def reconcile_timezone() -> timezone_service.TimezoneChange | None:
+    if not runtime.capabilities.host_timezone or not runtime.capabilities.timezone_configuration:
+        # A restored application timezone remains valid state. A container must
+        # not reconcile that preference into Docker host or read-only image files.
+        return None
     async with _SETTINGS_UPDATE_LOCK:
         status = timezone_consistency()
         if not status["configured"]:
@@ -223,4 +233,4 @@ async def reconcile_timezone() -> timezone_service.TimezoneChange | None:
         configured = validated_stored_value(TIMEZONE_KEY, None, "timezone")
         if not isinstance(configured, str):
             raise timezone_service.TimezoneOperationError("invalid_stored_timezone")
-        return await timezone_service.set_system_timezone(configured)
+        return await runtime.set_timezone(configured, setter=timezone_service.set_system_timezone)

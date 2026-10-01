@@ -23,6 +23,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from exitlane import __version__
@@ -39,6 +40,7 @@ from exitlane.config import (
     SESSION_MAX_AGE_SECONDS,
     validate_config,
 )
+from exitlane.container_control import ControlError
 from exitlane.core import (
     DATA,
     DB,
@@ -74,6 +76,8 @@ from exitlane.providers.nordvpn import provider
 from exitlane.providers.proton import provider as proton_provider
 from exitlane.providers.registry import ProviderNotFound
 from exitlane.proxy import deployment_status, normalized_origin, request_security, trusted_origin
+from exitlane.runtime import SYSTEM_ACTION_COMMANDS, RuntimeCapabilityUnavailable, runtime
+from exitlane.runtime_mutation import RuntimeMutationMiddleware, finish_writer
 from exitlane.services import (
     auth_security,
     connection_diagnostics,
@@ -108,7 +112,7 @@ from exitlane.settings import (
     update_settings,
 )
 
-SYSTEM_WIREGUARD_DIR = Path("/etc/wireguard")
+SYSTEM_WIREGUARD_DIR = runtime.paths.system_wireguard
 _system_started_databases: set[Path] = set()
 _wireguard_observed_state: tuple[bool, bool] | None = None
 _pending_provider_connection: dict | None = None
@@ -131,11 +135,7 @@ SECURITY_REJECTION_LOG_ATTEMPTS = 5
 SECURITY_REJECTION_LOG_WINDOW_SECONDS = 60
 NETWORK_REAUTH_ATTEMPTS = 5
 NETWORK_REAUTH_WINDOW_SECONDS = 300
-SYSTEM_ACTION_COMMANDS = {
-    "restart": ("/usr/bin/systemctl", "restart", "exitlane.service"),
-    "reboot": ("/usr/bin/systemctl", "reboot"),
-    "shutdown": ("/usr/bin/systemctl", "poweroff"),
-}
+
 MAX_REQUEST_BODY_MESSAGES = 4096
 
 
@@ -347,6 +347,26 @@ class Webhook(BaseModel):
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    async with runtime.startup_mutation():
+        if runtime.coordinated_mutations:
+            await finish_writer(_initialize_runtime_state())
+        else:
+            await _initialize_runtime_state()
+    monitors = [
+        asyncio.create_task(_monitor_killswitch()),
+        asyncio.create_task(_monitor_management_routing()),
+    ]
+    try:
+        yield
+    finally:
+        for monitor in monitors:
+            monitor.cancel()
+        for monitor in monitors:
+            with suppress(asyncio.CancelledError):
+                await monitor
+
+
+async def _initialize_runtime_state() -> None:
     validate_config()
     init()
     auth_security.ensure_master_key()
@@ -368,7 +388,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     if database not in _system_started_databases:
         record_event("system.started")
         _system_started_databases.add(database)
-    if setting("wireguard_configured", False):
+    if runtime.capabilities.runtime_name == "native" and setting("wireguard_configured", False):
         try:
             migrated = await wireguard_service.migrate_legacy_provider_egress(
                 setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE),
@@ -389,18 +409,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             "network.management_routing_error",
             metadata={"reason": error.code},
         )
-    monitors = [
-        asyncio.create_task(_monitor_killswitch()),
-        asyncio.create_task(_monitor_management_routing()),
-    ]
-    try:
-        yield
-    finally:
-        for monitor in monitors:
-            monitor.cancel()
-        for monitor in monitors:
-            with suppress(asyncio.CancelledError):
-                await monitor
+    if runtime.capabilities.runtime_name == "container":
+        await runtime.configure_providers()
+        await runtime.resume_provider()
 
 
 async def _monitor_killswitch() -> None:
@@ -408,46 +419,60 @@ async def _monitor_killswitch() -> None:
     previous_facts: killswitch.TunnelFacts | None = None
     while True:
         await asyncio.sleep(5)
-        configured = bool(setting(killswitch.SETTING_CONFIGURED, False))
-        transition = bool(setting(killswitch.SETTING_TRANSITION, False))
-        if not configured and not transition:
-            previous = None
-            previous_facts = None
-            continue
         try:
-            if transition:
-                # Only the transaction that armed this persisted guard may
-                # release it after its own generation and management-route
-                # postconditions have passed. The monitor is deliberately a
-                # one-way fail-closed reconciler so stale observations cannot
-                # open a newer provider transaction.
-                facts = killswitch.TunnelFacts(False, reason="provider_transition")
-                current = await killswitch.reconcile(facts)
-            else:
-                facts = await _exclusive_provider_facts()
-                current = (
-                    await killswitch.reconcile(facts)
-                    if facts != previous_facts
-                    else await killswitch.status(facts)
+            async with runtime.mutation():
+                operation = _killswitch_monitor_iteration(previous, previous_facts)
+                previous, previous_facts = (
+                    await finish_writer(operation) if runtime.coordinated_mutations
+                    else await operation
                 )
-            previous_facts = facts
-        except (killswitch.KillswitchError, ProviderNotFound):
-            if previous != "error":
-                record_event(
-                    "network.killswitch_error", metadata={"reason": "firewall_apply_failed"}
-                )
-            previous = "error"
+        except ControlError:
+            # Recovery owns the lease. Do not write an Activity event without it.
             continue
-        if current.state != previous:
-            if current.state == "enabled_protected" and previous is not None:
-                record_event("network.killswitch_released")
-            elif current.state in {
-                "enabled_waiting_for_tunnel",
-                "enabled_degraded",
-                "enabled_transition",
-            }:
-                record_event("network.killswitch_engaged", metadata={"reason": current.reason})
-            previous = current.state
+
+
+async def _killswitch_monitor_iteration(previous, previous_facts):
+    configured = bool(setting(killswitch.SETTING_CONFIGURED, False))
+    transition = bool(setting(killswitch.SETTING_TRANSITION, False))
+    if not configured and not transition:
+        previous = None
+        previous_facts = None
+        return previous, previous_facts
+    try:
+        if transition:
+            # Only the transaction that armed this persisted guard may
+            # release it after its own generation and management-route
+            # postconditions have passed. The monitor is deliberately a
+            # one-way fail-closed reconciler so stale observations cannot
+            # open a newer provider transaction.
+            facts = killswitch.TunnelFacts(False, reason="provider_transition")
+            current = await killswitch.reconcile(facts)
+        else:
+            facts = await _exclusive_provider_facts()
+            current = (
+                await killswitch.reconcile(facts)
+                if facts != previous_facts
+                else await killswitch.status(facts)
+            )
+        previous_facts = facts
+    except (killswitch.KillswitchError, ProviderNotFound):
+        if previous != "error":
+            record_event(
+                "network.killswitch_error", metadata={"reason": "firewall_apply_failed"}
+            )
+        previous = "error"
+        return previous, previous_facts
+    if current.state != previous:
+        if current.state == "enabled_protected" and previous is not None:
+            record_event("network.killswitch_released")
+        elif current.state in {
+            "enabled_waiting_for_tunnel",
+            "enabled_degraded",
+            "enabled_transition",
+        }:
+            record_event("network.killswitch_engaged", metadata={"reason": current.reason})
+        previous = current.state
+    return previous, previous_facts
 
 
 async def _monitor_management_routing() -> None:
@@ -455,16 +480,31 @@ async def _monitor_management_routing() -> None:
     while True:
         await asyncio.sleep(5)
         try:
-            await management_routing.reconcile()
-        except management_routing.ManagementRoutingError as error:
-            if previous_error != error.code:
-                record_event(
-                    "network.management_routing_error",
-                    metadata={"reason": error.code},
+            async with runtime.mutation():
+                operation = _management_monitor_iteration(previous_error)
+                previous_error = (
+                    await finish_writer(operation) if runtime.coordinated_mutations
+                    else await operation
                 )
-            previous_error = error.code
-        else:
-            previous_error = None
+        except ControlError:
+            continue
+
+
+async def _management_monitor_iteration(previous_error):
+    try:
+        await management_routing.reconcile()
+    except management_routing.ManagementRoutingError as error:
+        if previous_error != error.code:
+            record_event(
+                "network.management_routing_error",
+                metadata={"reason": error.code},
+            )
+        previous_error = error.code
+    else:
+        previous_error = None
+    return previous_error
+
+
 
 
 app = FastAPI(
@@ -681,23 +721,45 @@ async def security_baseline(request: Request, call_next):
     else:
         response = await require_authentication(request, call_next)
 
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Referrer-Policy"] = "no-referrer"
-    response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
-    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
-    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
-    response.headers["Cache-Control"] = SENSITIVE_CACHE_CONTROL
-    if "server" in response.headers:
-        del response.headers["server"]
-    if request_security(request).scheme == "https":
-        response.headers["Strict-Transport-Security"] = "max-age=31536000"
     return response
 
 
+def apply_security_headers(headers, request):
+    headers["X-Content-Type-Options"] = "nosniff"
+    headers["Referrer-Policy"] = "no-referrer"
+    headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
+    headers["X-Frame-Options"] = "DENY"
+    headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+    headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    headers["Cross-Origin-Resource-Policy"] = "same-origin"
+    headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
+    headers["Cache-Control"] = SENSITIVE_CACHE_CONTROL
+    if "server" in headers:
+        del headers["server"]
+    if request_security(request).scheme == "https":
+        headers["Strict-Transport-Security"] = "max-age=31536000"
+
+
+class SecurityHeadersMiddleware:
+    """Apply the same baseline even when mutation authority refuses a request."""
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        request = Request(scope)
+        async def secure_send(message):
+            if message["type"] == "http.response.start":
+                message = {**message, "headers": list(message.get("headers", []))}
+                apply_security_headers(MutableHeaders(scope=message), request)
+            await send(message)
+        return await self.app(scope, receive, secure_send)
+
+
 static_dir = Path(__file__).parent / "static"
+app.add_middleware(RuntimeMutationMiddleware, runtime=runtime)
+app.add_middleware(SecurityHeadersMiddleware)
 app.mount(
     "/assets",
     StaticFiles(directory=static_dir),
@@ -744,7 +806,7 @@ async def dashboard() -> DashboardResponse:
         active_provider.status,
         wireguard_status,
         __version__,
-        system_status_call=lambda: system_status(DATA),
+        system_status_call=lambda: runtime.system_status(DATA, observer=system_status),
         killswitch_status_call=_current_killswitch_status,
         active_provider_id=active_provider.id,
         active_provider_display_name=active_provider.display_name,
@@ -1193,6 +1255,7 @@ async def enable_killswitch(request: Request) -> dict:
 
 @app.post("/api/vpn/killswitch/disable")
 async def disable_killswitch(request: Request) -> dict:
+    runtime.capabilities.require("direct_egress")
     if setting(killswitch.SETTING_TRANSITION, False):
         raise HTTPException(status_code=409, detail="vpn_action_in_progress")
     try:
@@ -1318,6 +1381,18 @@ async def update_deployment_security(req: NetworkSecurityUpdate, request: Reques
     }
 
 
+@app.exception_handler(RuntimeCapabilityUnavailable)
+async def runtime_capability_error(request: Request, error: RuntimeCapabilityUnavailable):
+    return JSONResponse(
+        status_code=409, content={"detail": {"code": error.code, "capability": error.capability}}
+    )
+
+
+@app.get("/api/runtime/capabilities")
+async def runtime_capabilities() -> dict:
+    return runtime.capabilities.projection()
+
+
 @app.get("/api/setup/state")
 async def setup_state() -> dict:
     with sqlite3.connect(DB) as connection:
@@ -1404,6 +1479,7 @@ async def setup_state() -> dict:
         set_setting("setup_current_step", current_step)
 
     return {
+        "runtime_capabilities": runtime.capabilities.projection(),
         "complete": bool(setting("setup_complete", False)),
         "current_step": current_step,
         "steps": steps,
@@ -1652,7 +1728,7 @@ async def system_network() -> dict:
 
 @app.get("/api/diagnostics")
 async def diagnostic_checks() -> dict:
-    checks = await diagnostics()
+    checks = await runtime.diagnostics(observer=diagnostics)
     all_passed = all(check["ok"] for check in checks)
 
     if all_passed:
@@ -1670,6 +1746,13 @@ async def diagnostic_checks() -> dict:
 
 @app.post("/api/diagnostics/connection-runs", status_code=202)
 async def start_connection_diagnostics() -> dict:
+    runtime.capabilities.require("diagnostics")
+    if runtime.coordinated_mutations:
+        from exitlane.container_observation import connection_run
+        async def status_loader():
+            async with runtime.mutation():
+                return await finish_writer(_fresh_vpn_status())
+        return connection_diagnostics.start(status_loader, executor=connection_run)
     return connection_diagnostics.start(_fresh_vpn_status)
 
 
@@ -1683,6 +1766,9 @@ async def connection_diagnostic_run(run_id: uuid.UUID) -> dict:
 
 @app.post("/api/diagnostics/actions/{action}")
 async def run_diagnostic_action(action: str, request: DiagnosticAction) -> dict:
+    runtime.capabilities.require("diagnostics")
+    if action == "speedtest":
+        runtime.capabilities.require("speedtest")
     try:
         return await connection_diagnostics.action(
             action,
@@ -1700,6 +1786,7 @@ async def run_diagnostic_action(action: str, request: DiagnosticAction) -> dict:
 
 @app.get("/api/diagnostics/speedtest/installation")
 async def speedtest_installation_status() -> dict:
+    runtime.capabilities.require("speedtest")
     return await speedtest_installation.status()
 
 
@@ -1719,16 +1806,20 @@ async def install_speedtest(
             status_code=422,
             detail="speedtest_installation_confirmation_required",
         )
+    runtime.capabilities.require("package_installation")
+    runtime.capabilities.require("speedtest")
     return await speedtest_installation.start_installation()
 
 
 @app.post("/api/providers/nordvpn/login/token")
 async def login_token(req: Token, request: Request) -> dict:
+    runtime.capabilities.require_provider("nordvpn")
     return await _authenticate_provider(provider, req.token, request, legacy_token=True)
 
 
 @app.post("/api/providers/nordvpn/token")
 async def update_nordvpn_token(req: Token, request: Request) -> dict:
+    runtime.capabilities.require_provider("nordvpn")
     return await _authenticate_provider(provider, req.token, request, legacy_token=True)
 
 
@@ -1844,6 +1935,7 @@ def _active_provider_id() -> str:
         provider_registry.get(provider_id)
     except (ProviderNotFound, TypeError):
         return provider_registry.default_id
+    runtime.capabilities.require_provider(provider_id)
     return provider_id
 
 
@@ -2028,6 +2120,7 @@ def _provider_local_activation_state(
 
 @app.post("/api/providers/nordvpn/session/end")
 async def end_nordvpn_session(request: Request) -> dict:
+    runtime.capabilities.require_provider("nordvpn")
     return await _end_provider_session(provider, request)
 
 
@@ -2098,6 +2191,7 @@ async def _end_provider_session(provider_instance, request: Request) -> dict:
 
 @app.post("/api/providers/nordvpn/login/callback")
 async def login_callback(req: Callback) -> dict:
+    runtime.capabilities.require_provider("nordvpn")
     result = await provider.login_callback(req.callback_url)
 
     if result.get("ok"):
@@ -2108,6 +2202,7 @@ async def login_callback(req: Callback) -> dict:
 
 @app.post("/api/providers/nordvpn/configure-defaults")
 async def configure_nordvpn_defaults() -> dict:
+    runtime.capabilities.require_provider("nordvpn")
     results = await provider.defaults()
 
     return {
@@ -2118,6 +2213,7 @@ async def configure_nordvpn_defaults() -> dict:
 
 @app.get("/api/providers/nordvpn/status")
 async def nordvpn_status() -> dict:
+    runtime.capabilities.require_provider("nordvpn")
     global _pending_provider_connection
     status = await _fresh_status_for(provider)
     if _pending_provider_connection and status.get("connected"):
@@ -2139,6 +2235,7 @@ async def nordvpn_status() -> dict:
 
 @app.get("/api/providers/nordvpn/countries")
 async def nordvpn_countries() -> dict:
+    runtime.capabilities.require_provider("nordvpn")
     return {
         "countries": await provider.countries(),
     }
@@ -2260,6 +2357,7 @@ async def vpn_provider_installation_status(provider_id: str, request: Request) -
 @app.post("/api/vpn/providers/{provider_id}/installation", status_code=202)
 async def install_vpn_provider(provider_id: str, request: Request) -> dict:
     provider_instance = _provider_or_404(provider_id)
+    runtime.capabilities.require("package_installation")
     async with _provider_installation_lock:
         for registered_provider in provider_registry.all():
             status = await registered_provider.installation_status()
@@ -2323,11 +2421,13 @@ async def sign_out_vpn_provider(provider_id: str, request: Request) -> dict:
 
 @app.get("/api/vpn/providers/proton/profiles")
 async def proton_profiles() -> dict:
+    runtime.capabilities.require_provider("proton")
     return {"profiles": await proton_provider.list_profiles()}
 
 
 @app.post("/api/vpn/providers/proton/profiles")
 async def import_proton_profile(payload: ProtonProfileImport, request: Request) -> dict:
+    runtime.capabilities.require_provider("proton")
     if vpn_operations.active_snapshot():
         raise HTTPException(status_code=409, detail="vpn_action_in_progress")
     result = await proton_provider.import_profile(
@@ -2348,6 +2448,7 @@ async def import_proton_profile(payload: ProtonProfileImport, request: Request) 
 async def rename_proton_profile(
     profile_id: str, payload: ProtonProfileRename, request: Request
 ) -> dict:
+    runtime.capabilities.require_provider("proton")
     result = await proton_provider.rename_profile(profile_id, payload.display_name)
     if not result.get("ok"):
         raise HTTPException(status_code=422, detail=result["error_code"])
@@ -2359,6 +2460,7 @@ async def rename_proton_profile(
 
 @app.delete("/api/vpn/providers/proton/profiles/{profile_id}")
 async def delete_proton_profile(profile_id: str, request: Request) -> dict:
+    runtime.capabilities.require_provider("proton")
     if vpn_operations.active_snapshot():
         raise HTTPException(status_code=409, detail="vpn_action_in_progress")
     result = await proton_provider.delete_profile(profile_id)
@@ -2473,15 +2575,8 @@ async def _fresh_vpn_status(provider_instance=None) -> dict:
 
 
 async def _run_system_action(action: str, actor: dict | None) -> None:
-    command_argv = SYSTEM_ACTION_COMMANDS[action]
     try:
-        await asyncio.create_subprocess_exec(
-            *command_argv,
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-            start_new_session=True,
-        )
+        await runtime.launch_system_action(action, launcher=asyncio.create_subprocess_exec)
         record_event("system.action_started", actor=actor, metadata={"action": action})
     except OSError:
         logger.exception("Accepted system action failed to start: %s", action)
@@ -2501,6 +2596,7 @@ def schedule_system_action(action: str, actor: dict | None) -> None:
 async def system_action(action: str, request: Request) -> dict:
     if action not in SYSTEM_ACTION_COMMANDS:
         raise HTTPException(status_code=404, detail="system_action_unsupported")
+    runtime.capabilities.require_action(action)
     actor = request_actor(request)
     record_event("system.action_accepted", actor=actor, metadata={"action": action})
     schedule_system_action(action, actor)
@@ -2693,6 +2789,8 @@ async def _connect_provider_country(
     provider_instance, req: CountryConnect, request: Request
 ) -> dict:
     global _pending_provider_connection
+    if runtime.capabilities.runtime_name == "container" and not setting("wireguard_configured", False):
+        raise HTTPException(status_code=409, detail="container_ingress_required")
     code = req.country_code.upper()
     connection_id = _provider_connection_id(provider_instance)
     try:
@@ -2964,6 +3062,7 @@ async def _disconnect_provider(provider_instance, request: Request) -> dict:
 
 @app.post("/api/providers/nordvpn/connect")
 async def connect_nordvpn(req: Connect, request: Request) -> dict:
+    runtime.capabilities.require_provider("nordvpn")
     _require_active_provider(provider.id)
     return await _connect_provider(provider, req, request)
 
@@ -2976,6 +3075,8 @@ async def _connect_provider(
     reconnect: bool = False,
 ) -> dict:
     global _pending_provider_connection
+    if runtime.capabilities.runtime_name == "container" and not setting("wireguard_configured", False):
+        raise HTTPException(status_code=409, detail="container_ingress_required")
     if req.target and re.fullmatch(r"[A-Za-z]{2}", req.target):
         return await _connect_provider_country(
             provider_instance, CountryConnect(country_code=req.target), request
@@ -3100,6 +3201,7 @@ async def _connect_provider(
 
 @app.post("/api/providers/nordvpn/disconnect")
 async def disconnect_nordvpn(request: Request) -> dict:
+    runtime.capabilities.require_provider("nordvpn")
     _require_active_provider(provider.id)
     return await _disconnect_provider(provider, request)
 
@@ -3389,6 +3491,8 @@ async def _rollback_provider_switch(previous, target, actor: dict | None) -> boo
 
 @app.post("/api/vpn/providers/{provider_id}/activate")
 async def activate_vpn_provider(provider_id: str, request: Request) -> dict:
+    if runtime.capabilities.runtime_name == "container" and not setting("wireguard_configured", False):
+        raise HTTPException(status_code=409, detail="container_ingress_required")
     target = _provider_or_404(provider_id)
     previous = _active_provider()
     actor = request_actor(request)
@@ -3784,83 +3888,14 @@ async def vpn_provider_latency(provider_id: str) -> dict:
 
 @app.post("/api/providers/nordvpn/login/browser/start")
 async def start_browser_login() -> dict:
+    runtime.capabilities.require_provider("nordvpn")
     return await provider.start_browser_login()
 
 
 async def activate_wireguard_interface(interface: str) -> None:
-    source_config = WG_DIR / f"{interface}.conf"
-    system_config = SYSTEM_WIREGUARD_DIR / f"{interface}.conf"
-    service_name = f"wg-quick@{interface}.service"
-
-    if not source_config.exists():
-        raise RuntimeError(f"WireGuard-configuratie ontbreekt: {source_config}")
-
-    SYSTEM_WIREGUARD_DIR.mkdir(
-        parents=True,
-        exist_ok=True,
+    await runtime.activate_ingress(
+        interface, source_directory=WG_DIR, system_directory=SYSTEM_WIREGUARD_DIR, runner=command
     )
-
-    source_config.chmod(0o600)
-
-    if system_config.is_symlink():
-        if system_config.resolve() != source_config.resolve():
-            system_config.unlink()
-            system_config.symlink_to(source_config)
-    elif system_config.exists():
-        raise RuntimeError(f"{system_config} bestaat al en is geen symlink.")
-    else:
-        system_config.symlink_to(source_config)
-
-    enable_rc, _, enable_error = await command(
-        "systemctl",
-        "enable",
-        service_name,
-    )
-
-    if enable_rc != 0:
-        raise RuntimeError(enable_error or "De WireGuard-service kon niet worden ingeschakeld.")
-
-    service_rc, _, _ = await command(
-        "systemctl",
-        "is-active",
-        "--quiet",
-        service_name,
-    )
-
-    if service_rc != 0:
-        link_rc, _, _ = await command(
-            "ip",
-            "link",
-            "show",
-            "dev",
-            interface,
-        )
-
-        if link_rc == 0:
-            await command(
-                "wg-quick",
-                "down",
-                str(source_config),
-            )
-
-    restart_rc, _, restart_error = await command(
-        "systemctl",
-        "restart",
-        service_name,
-    )
-
-    if restart_rc != 0:
-        raise RuntimeError(restart_error or "De WireGuard-service kon niet worden gestart.")
-
-    active_rc, _, active_error = await command(
-        "systemctl",
-        "is-active",
-        "--quiet",
-        service_name,
-    )
-
-    if active_rc != 0:
-        raise RuntimeError(active_error or "De WireGuard-service is niet actief geworden.")
 
 
 async def wireguard_egress_interface() -> None:
@@ -3869,6 +3904,7 @@ async def wireguard_egress_interface() -> None:
 
 @app.post("/api/ingress/wireguard")
 async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
+    runtime.capabilities.require("ingress")
     global _wireguard_observed_state
     generation_lock = wireguard_generation_lock()
     try:
@@ -4038,6 +4074,7 @@ async def wireguard_configuration_qr() -> Response:
 
 @app.post("/api/ingress/wireguard/config/regenerate")
 async def regenerate_wireguard_configuration(request: Request) -> JSONResponse:
+    runtime.capabilities.require("ingress")
     global _wireguard_observed_state
     generation_lock = wireguard_generation_lock()
     if generation_lock.locked():
@@ -4125,16 +4162,7 @@ async def wireguard_status() -> dict:
         DEFAULT_WIREGUARD_CLIENT,
     )
 
-    service_name = f"wg-quick@{interface}.service"
-
-    service_rc, _, _ = await command(
-        "systemctl",
-        "is-active",
-        "--quiet",
-        service_name,
-    )
-
-    service_active = service_rc == 0
+    service_active = await runtime.observe_ingress(interface, runner=command)
 
     rc, out, err = await command(
         "wg",

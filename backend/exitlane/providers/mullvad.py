@@ -639,9 +639,11 @@ class Mullvad(Provider):
             dns_probe_hostname="mullvad.net",
         ).validated()
 
-    async def _complete_owned_transition(self) -> bool:
+    async def _complete_owned_transition(self, config: EgressConfig | None = None) -> bool:
         try:
-            facts = await self.network_facts()
+            facts = await self.wireguard.transition_facts(config) if config is not None else None
+            if facts is None:
+                facts = await self.network_facts()
             await killswitch.complete_provider_transition(facts)
         except (
             killswitch.KillswitchError,
@@ -704,13 +706,14 @@ class Mullvad(Provider):
                 }
                 state.pop("pending", None)
                 self._save(state)
-                if owns_transition and not await self._complete_owned_transition():
+                if owns_transition and not await self._complete_owned_transition(config):
                     return {
                         "ok": False,
                         "action": "connect",
                         "state": "error",
                         "error_code": "firewall_apply_failed",
                     }
+                await self.wireguard.committed(config)
                 return {
                     "ok": True,
                     "action": "connect",
@@ -775,6 +778,7 @@ class Mullvad(Provider):
                     }
                     state.pop("pending", None)
                     self._save(state)
+                    await self.wireguard.committed(old_config)
                     return True
             except (KeyError, TypeError, ValueError, ProviderWireGuardError):
                 pass

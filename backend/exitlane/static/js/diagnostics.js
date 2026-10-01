@@ -1,3 +1,4 @@
+import { runtimeAllows, loadRuntimeCapabilities, clearRuntimeCapabilities } from "./runtime.js";
 import { api, postJson } from "./api.js";
 import { t } from "./i18n.js";
 import { getSlice, subscribe, updateSlice } from "./state.js";
@@ -23,10 +24,10 @@ let speedtestDialogTrigger = null;
 let hasRun = false;
 let expandedSegment = null;
 
-export function speedtestInstallButtonDisabled(snapshot, inFlight = false) {
+export function speedtestInstallButtonDisabled(snapshot, inFlight = false, allowed = true) {
   const canInstall = Boolean(snapshot?.can_install) && snapshot?.supported_runtime !== false
     && !snapshot?.installation_in_progress && snapshot?.available !== true;
-  return Boolean(inFlight) || !canInstall;
+  return !allowed || Boolean(inFlight) || !canInstall;
 }
 
 export function aggregateDiagnosticStatus(probes) {
@@ -149,11 +150,14 @@ function speedtestDescription(snapshot) {
   return t("diagnostics.speedtest.unavailable_description", {}, "The official Ookla CLI is not installed. You can explicitly install it after confirming the package and terms below.");
 }
 
-function renderSpeedtestInstallation() {
+export function speedtestPanelVisible(snapshot, selected, allowed = runtimeAllows("speedtest")) {
+  return allowed && (selected || snapshot?.installation_in_progress === true);
+}
+
+export function renderSpeedtestInstallation(snapshot = speedtestInstallation, selected = speedtestSelected) {
   const management = document.querySelector("#speedtest-management");
   if (!management) return;
-  const snapshot = speedtestInstallation;
-  const show = speedtestSelected || snapshot?.installation_in_progress === true;
+  const show = speedtestPanelVisible(snapshot, selected);
   management.hidden = !show;
   if (!show) return;
   const description = document.querySelector("#speedtest-management-description");
@@ -164,9 +168,9 @@ function renderSpeedtestInstallation() {
   status.textContent = speedtestStatusText(statusValue);
   status.dataset.status = statusValue;
   const install = document.querySelector("#speedtest-install");
-  const canInstall = !speedtestInstallButtonDisabled(snapshot);
+  const canInstall = !speedtestInstallButtonDisabled(snapshot, false, runtimeAllows("package_installation"));
   install.hidden = !canInstall;
-  install.disabled = speedtestInstallButtonDisabled(snapshot, speedtestInstallationFlight);
+  install.disabled = speedtestInstallButtonDisabled(snapshot, speedtestInstallationFlight, runtimeAllows("package_installation"));
   const steps = document.querySelector("#speedtest-install-steps");
   const safeSteps = Array.isArray(snapshot?.steps) ? snapshot.steps : [];
   steps.hidden = safeSteps.length === 0;
@@ -202,6 +206,13 @@ function scheduleSpeedtestPoll(snapshot) {
 }
 
 async function refreshSpeedtestInstallation({ poll = false } = {}) {
+  await loadRuntimeCapabilities();
+  if (!runtimeAllows("speedtest")) {
+    speedtestInstallation = { status: "warning", supported_runtime: false, can_install: false,
+                             error_code: "runtime_capability_unavailable" };
+    renderSpeedtestInstallation();
+    return null;
+  }
   if (speedtestInstallationFlight && !poll) return speedtestInstallationFlight;
   const request = api(SPEEDTEST_INSTALLATION_PATH, { deduplicate: false });
   if (!poll) speedtestInstallationFlight = request;
@@ -215,7 +226,7 @@ async function refreshSpeedtestInstallation({ poll = false } = {}) {
     return speedtestInstallation;
   } catch (error) {
     if (!poll) {
-      speedtestInstallation = { status: "warning", error_code: error.code || "request_failed", supported_runtime: true, can_install: false };
+      speedtestInstallation = { status: "warning", error_code: error.code || "request_failed", supported_runtime: error.code !== "runtime_capability_unavailable", can_install: false };
       renderSpeedtestInstallation();
     }
     return null;
@@ -245,7 +256,9 @@ function openSpeedtestDialog(dialog, trigger) {
   dialog.showModal();
 }
 
-async function selectSpeedtest(button) {
+export async function selectSpeedtest(button) {
+  await loadRuntimeCapabilities();
+  if (!runtimeAllows("speedtest")) return;
   if (speedtestActionFlight || speedtestInstallationFlight) return;
   speedtestSelected = true;
   button.disabled = true;
@@ -257,7 +270,8 @@ async function selectSpeedtest(button) {
   }
 }
 
-async function installSpeedtest() {
+export async function installSpeedtest() {
+  if (!runtimeAllows("speedtest") || !runtimeAllows("package_installation")) return;
   if (speedtestInstallationFlight) return;
   const form = document.querySelector("#speedtest-install-form");
   if (!form.reportValidity()) return;
@@ -279,7 +293,7 @@ async function installSpeedtest() {
     renderSpeedtestInstallation();
     scheduleSpeedtestPoll(speedtestInstallation);
   } catch (error) {
-    speedtestInstallation = { status: "failed", error_code: error.code || "installation_failed", supported_runtime: true, can_install: true };
+    speedtestInstallation = { status: "failed", error_code: error.code || "installation_failed", supported_runtime: error.code !== "runtime_capability_unavailable", can_install: error.code !== "runtime_capability_unavailable" };
     renderSpeedtestInstallation();
   } finally {
     speedtestInstallationFlight = null;
@@ -289,7 +303,8 @@ async function installSpeedtest() {
   }
 }
 
-async function runSpeedtest() {
+export async function runSpeedtest() {
+  if (!runtimeAllows("speedtest")) return;
   if (speedtestActionFlight) return;
   const form = document.querySelector("#speedtest-run-form");
   if (!form.reportValidity()) return;
@@ -361,7 +376,7 @@ export function renderDiagnostics(slice = getSlice("diagnostics")) {
     item.append(heading, status, description);
     return item;
   }));
-  document.querySelector("#diagnostics-run").disabled = Boolean(
+  document.querySelector("#diagnostics-run").disabled = !runtimeAllows("diagnostics") || Boolean(
     run && !TERMINAL.has(run.status),
   );
   renderSpeedtestInstallation();
@@ -381,6 +396,8 @@ async function pollRun(runId) {
 }
 
 export async function runConnectionDiagnostics() {
+  await loadRuntimeCapabilities();
+  if (!runtimeAllows("diagnostics")) return;
   window.clearTimeout(pollTimer);
   updateSlice("diagnostics", { data: null, loading: true, error: null });
   try {
@@ -393,7 +410,9 @@ export async function runConnectionDiagnostics() {
   }
 }
 
-async function runAction(button) {
+export async function runAction(button) {
+  await loadRuntimeCapabilities();
+  if (!runtimeAllows("diagnostics")) return;
   const action = button.dataset.diagnosticAction;
   if (action === "speedtest") {
     await selectSpeedtest(button);
@@ -422,15 +441,21 @@ async function runAction(button) {
   }
 }
 
+export async function refreshDiagnosticCapabilities(fetchProjection) {
+  await loadRuntimeCapabilities({ force: true }, fetchProjection);
+  renderDiagnostics();
+}
+
 export function initialiseDiagnostics() {
   if (initialised) return;
   initialised = true;
   subscribe("diagnostics", renderDiagnostics, { immediate: true });
   subscribe("auth", (auth) => {
     if (auth.data?.authenticated) {
-      refreshSpeedtestInstallation();
+      refreshDiagnosticCapabilities().then(() => refreshSpeedtestInstallation());
       return;
     }
+    clearRuntimeCapabilities();
     hasRun = false;
     expandedSegment = null;
     window.clearTimeout(pollTimer);
@@ -454,7 +479,7 @@ export function initialiseDiagnostics() {
   const installDialog = document.querySelector("#speedtest-install-dialog");
   const runDialog = document.querySelector("#speedtest-run-dialog");
   document.querySelector("#speedtest-install").addEventListener("click", (event) => {
-    if (speedtestInstallation?.can_install && !speedtestInstallation?.installation_in_progress) {
+    if (runtimeAllows("speedtest") && runtimeAllows("package_installation") && speedtestInstallation?.can_install && !speedtestInstallation?.installation_in_progress) {
       openSpeedtestDialog(installDialog, event.currentTarget);
     }
   });

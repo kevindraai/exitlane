@@ -64,8 +64,19 @@ class FakeBoundary:
 class ObservedWireGuard:
     def __init__(self):
         self.started = []
+        self.committed_configs = []
         self.stopped = []
         self.ready = True
+
+    async def transition_facts(self, config):
+        return None
+
+    async def committed(self, config):
+        # The forwarding hook must observe a successfully persisted generation.
+        state = provider_secrets.load(config.provider_id)
+        assert state["active"]["generation"] == config.generation
+        assert "pending" not in state
+        self.committed_configs.append(config)
 
     async def start(self, config, ingress):
         self.started.append(config)

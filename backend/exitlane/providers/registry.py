@@ -13,7 +13,8 @@ class ProviderNotFound(LookupError):
 class ProviderRegistry:
     """Deterministic registry of shared provider instances."""
 
-    def __init__(self, providers: Iterable[Provider] = (), *, default_id: str):
+    def __init__(self, providers: Iterable[Provider] = (), *, default_id: str, capabilities=None):
+        self._capabilities = capabilities
         self._providers: dict[str, Provider] = {}
         self.default_id = default_id
         for provider in providers:
@@ -36,13 +37,19 @@ class ProviderRegistry:
         self._providers[provider.id] = provider
 
     def get(self, provider_id: str) -> Provider:
+        if provider_id in self._providers and self._capabilities is not None:
+            self._capabilities().require_provider(provider_id)
         try:
             return self._providers[provider_id]
         except KeyError as error:
             raise ProviderNotFound(provider_id) from error
 
     def all(self) -> tuple[Provider, ...]:
-        return tuple(self._providers[key] for key in sorted(self._providers))
+        return tuple(
+            self._providers[key]
+            for key in sorted(self._providers)
+            if self._capabilities is None or key in self._capabilities().providers
+        )
 
     def direct_egress_providers(self) -> tuple[Provider, ...]:
         return tuple(item for item in self.all() if item.direct_egress_interface is not None)

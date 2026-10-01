@@ -173,6 +173,8 @@ Read the [deployment guide](docs/deployment.md), [NordVPN provider guide](docs/n
 The Docker image remains for UI/API development. Its
 [appliance feasibility assessment](docs/docker-appliance-feasibility.md) classifies a Docker
 VPN gateway as **not yet suitable** pending container lifecycle and fail-closed dataplane proof.
+The [runtime architecture and delivery program](docs/docker-runtime-architecture.md) specifies the
+same-core native/container boundary and ordered implementation gates; it does not add Docker support.
 
 Direct HTTP remains available on a trusted local network. For HTTPS termination, follow the [reverse-proxy guide](docs/deployment/reverse-proxy.md); ExitLane does not terminate TLS itself.
 
