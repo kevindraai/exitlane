@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import logging
 import os
 import shutil
 import sqlite3
@@ -26,6 +27,40 @@ from exitlane.container_state import (
     ContainerStateError,
     StateInventory,
 )
+
+LOGGER = logging.getLogger(__name__)
+RESTORE_FAILURE_STAGES = frozenset({
+    "prepare_archive", "validate_archive", "stage_state", "prepare_journal", "guard",
+    "quiesce", "snapshot", "reset_egress", "publish", "revoke_sessions", "reconcile",
+    "health", "commit_journal", "reopen", "cleanup",
+})
+RESTORE_FAILURE_CODES = frozenset({
+    "authentication_failed", "container_state_recovery_required", "recovery_health_failed",
+    "recovery_component_unsafe", "recovery_component_missing", "recovery_journal_invalid",
+    "container_guard_unproven", "container_guard_resource_conflict",
+    "container_network_command_failed", "container_interface_ownership_changed",
+    "container_provider_recovery_required", "container_worker_startup_failed",
+    "container_ingress_config_invalid", "container_interface_creation_uncertain",
+    "container_interface_collision", "container_interface_ownership_unproven",
+    "container_interface_probe_failed", "container_forwarding_unavailable",
+    "container_provider_commit_unproven", "container_provider_invalid",
+    "container_provider_source_budget_exhausted", "container_worker_group_not_reaped",
+    "container_worker_process_group_invalid", "container_recovery_guard_failed",
+    "container_recovery_guard_invalid", "container_recovery_guard_unproven",
+})
+
+
+def _restore_failure(stage: str, error: Exception, outcome: str) -> None:
+    """Fixed diagnostic metadata only; logging can never interrupt recovery."""
+    with suppress(Exception):
+        code = getattr(error, "code", None)
+        LOGGER.warning(
+            "container_restore_failure stage=%s code=%s outcome=%s",
+            stage if stage in RESTORE_FAILURE_STAGES else "unclassified",
+            code if type(code) is str and code in RESTORE_FAILURE_CODES else "unclassified",
+            outcome if outcome in {"rejected", "rollback_completed", "recovery_required"}
+            else "unclassified",
+        )
 
 
 class ContainerRecoveryError(RuntimeError):
@@ -473,14 +508,17 @@ class ContainerRecoveryCoordinator:
         archive = candidate.parent / "archive"
         archive.mkdir(mode=0o700)
         journalled = False
+        stage = "prepare_archive"
         try:
             prepared = lifecycle.prepare_restore(source, passphrase, archive)
             passphrase = None
+            stage = "validate_archive"
             inventory = self.state.validate_pair(
                 prepared.database, prepared.master_key, prepared.wireguard
             )
             if inventory.recovery_required:
                 raise ContainerRecoveryError("container_state_recovery_required")
+            stage = "stage_state"
             candidate.mkdir(mode=0o700)
             staged = ContainerLayout(candidate)
             for directory in (
@@ -504,16 +542,23 @@ class ContainerRecoveryCoordinator:
                     )
                 )
             )
+            stage = "prepare_journal"
             self._record(transaction, "prepared", ingress)
             journalled = True
+            stage = "guard"
             await self.hooks.guard(ingress)
+            stage = "quiesce"
             await self.hooks.quiesce()
+            stage = "snapshot"
             self._snapshot(previous)
             self._record(transaction, "snapshot_ready", ingress)
+            stage = "reset_egress"
             await self.hooks.reset_egress()
             self._record(transaction, "publishing", ingress)
+            stage = "publish"
             self._publish(staged)
             self._record(transaction, "installed", ingress)
+            stage = "revoke_sessions"
             with sqlite3.connect(self.layout.database) as connection:
                 for statement in (
                     "DELETE FROM sessions",
@@ -525,17 +570,22 @@ class ContainerRecoveryCoordinator:
             _sync(self.layout.state)
             self._leased()
             inventory = self.state.validate()
+            stage = "reconcile"
             await self.hooks.reconcile(inventory)
+            stage = "health"
             if await self.hooks.health() is not True:
                 raise ContainerRecoveryError("recovery_health_failed")
+            stage = "commit_journal"
             self._record(transaction, "validated", ingress)
             # A committed receipt only follows all safety postconditions; startup
             # may retain this new pair and re-prove networking before reopening.
             self._record(transaction, "committed", ingress)
+            stage = "reopen"
             await self.hooks.reopen()
+            stage = "cleanup"
             self._cleanup(transaction)
             return lifecycle._backup_info(prepared.manifest)
-        except Exception:
+        except Exception as original_error:
             if journalled:
                 try:
                     await self.hooks.guard(
@@ -563,9 +613,12 @@ class ContainerRecoveryCoordinator:
                         )
                     with suppress(Exception):
                         await self.hooks.quiesce()
+                    _restore_failure(stage, original_error, "recovery_required")
                     raise ContainerRecoveryError("recovery_required") from None
+                _restore_failure(stage, original_error, "rollback_completed")
                 raise ContainerRecoveryError("restore_failed_rolled_back") from None
             shutil.rmtree(candidate.parent)
+            _restore_failure(stage, original_error, "rejected")
             raise
         finally:
             passphrase = None
