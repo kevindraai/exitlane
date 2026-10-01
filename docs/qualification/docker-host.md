@@ -166,6 +166,26 @@ unchanged. Correct restore must recover the original setting, revoke the old
 session and prove a fresh protected dataplane before acceptance. Never initialize
 or edit SQLite directly to create this evidence.
 
+A healthy-provider restore exposed an ordering defect at `reset_egress`:
+the parent attempted to arm an ingress-only policy before removing the committed
+provider's owned default route and probe selector. The unchanged shared ownership
+validator correctly returned `provider_egress_resource_conflict`. Read-only
+preflight reproduced rejection without an egress identity and acceptance with
+the proven active identity. Pending-generation restore had passed because its
+old provider route was already absent. In the healthy case, namespace restart
+recovered the old journalled state; fresh traffic, healthy management and the old
+session therefore proved recovery, not successful restore.
+
+The container reset fix observes maintenance and the existing permanent guard,
+validates every surviving provider against its persisted key/peer/endpoint/address
+and interface identity, then removes only its exact owned route and probe selector
+before deleting the interface. It cleans the exact old ingress selector before
+arming canonical ingress policy. Historical source guards and unreachable routes
+remain in place. Foreign resources, ambiguous defaults and interface changes fail
+closed; native ownership validation is unchanged. Deterministic regressions cover
+this boundary. The fixed healthy-provider restore still requires live qualification
+with the original retained backup, session-revocation checks and fresh packet proof.
+
 The pending-generation component verifies the exact pending generation and public
 keys before killing the pinned worker. A transport interruption is distinct from
 a successful API action. Healthy management may remain available while protection

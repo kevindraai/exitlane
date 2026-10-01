@@ -47,6 +47,7 @@ RESTORE_FAILURE_CODES = frozenset({
     "container_provider_source_budget_exhausted", "container_worker_group_not_reaped",
     "container_worker_process_group_invalid", "container_recovery_guard_failed",
     "container_recovery_guard_invalid", "container_recovery_guard_unproven",
+    "provider_egress_resource_conflict",
 })
 
 
