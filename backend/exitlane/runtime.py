@@ -393,27 +393,58 @@ class ContainerRuntime:
             provider.wireguard = ContainerWireGuardEgress(self.network)
 
     async def resume_provider(self):
-        from exitlane.providers import catalog
-        if self.network is None:
-            return
+        from exitlane import core
         from exitlane.container_paths import ContainerLayout
         from exitlane.container_state import ContainerState
-        inventory = ContainerState(ContainerLayout(Path("/data"))).validate()
-        selected = inventory.selected_provider
-        if selected is None:
+        from exitlane.providers import catalog
+        from exitlane.services import killswitch
+
+        if self.network is None:
             return
-        if any(item.provider_id == selected and item.status != "active" for item in inventory.intents):
+        inventory = ContainerState(ContainerLayout(Path("/data"))).validate()
+        # The parent still owns its independent maintenance guard and startup
+        # lease. Shared transition state may outlive a restored database; first
+        # prove the permanent container policy before touching that shared table.
+        await self.network.observe_guard()
+
+        async def remain_blocked():
+            if core.setting(killswitch.SETTING_CONFIGURED, False) or core.setting(
+                killswitch.SETTING_TRANSITION, False
+            ):
+                await killswitch.reconcile(killswitch.TunnelFacts(False))
+
+        selected = inventory.selected_provider
+        if selected is None or any(item.status != "active" for item in inventory.intents):
+            # A different provider's pending generation also prevents completion
+            # of the shared transaction. Never promote or register it at startup.
+            await remain_blocked()
             return
         intent = next((item for item in inventory.intents if item.provider_id == selected), None)
-        if intent is None or intent.status != "active" or intent.config is None:
+        if intent is None or intent.config is None:
+            await remain_blocked()
             return
         provider = catalog.provider_registry.get(selected)
         config = intent.config
         await provider.wireguard.start(config, (self.network.config.interface,))
         facts = await provider.wireguard.probe(config)
         if facts.get("ready") is not True:
+            await remain_blocked()
             return
         await provider.wireguard.committed(config)
+        await self.network.observe_guard()
+        # Reuse the shared transaction service only after this exact persisted
+        # active generation has fresh D3 proof. Enabled settings produce current
+        # protected rules; disabled settings remove a stale temporary table.
+        # Failure prevents the worker's initialized ACK and maintenance release.
+        await killswitch.complete_provider_transition(
+            killswitch.TunnelFacts(
+                True,
+                interface=config.interface,
+                supports_ipv4=True,
+                supports_ipv6=False,
+                protected_egress=True,
+            )
+        )
 
     def restore(self, *_args, **_kwargs):
         raise RuntimeCapabilityUnavailable("native_restore")

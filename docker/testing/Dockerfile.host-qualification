@@ -1,0 +1,7 @@
+# This derivative is exclusively synthetic qualification, never publication.
+# The base must be the reviewed immutable appliance identity.
+ARG EXITLANE_BASE
+FROM ${EXITLANE_BASE}
+COPY scripts/qualification/container_host_upstream.py /usr/local/lib/python3.13/site-packages/_exitlane_d6_upstream.py
+COPY docker/testing/sitecustomize_d6.py /usr/local/lib/python3.13/site-packages/sitecustomize.py
+LABEL org.exitlane.qualification="D6 synthetic upstream responses only"
