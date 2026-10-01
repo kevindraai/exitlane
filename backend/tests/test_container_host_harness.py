@@ -266,6 +266,64 @@ def test_remote_capture_ownership_mismatch_fails_before_control_write(configurat
     assert 'Description=ExitLane D6' in calls[0][0]
 
 
+def test_long_canonical_sender_phase_is_accepted_by_owner_check(configuration):
+    instance = harness.HostHarness(configuration)
+    calls = []
+    instance.peer.run = lambda source, **kw: calls.append((source, kw['data'])) or 'owned'
+    phase = 'state-container-recreation-01234567'
+    handle = {
+        'kind': 'sender', 'role': phase, 'host': 'peer', 'run_id': configuration['run_id'],
+        'root': '/run/exitlane-d6-' + 'a' * 32,
+        'unit': 'exitlane-d6-sender-' + 'a' * 32 + '.service',
+        'unit_sha256': 'b' * 64, 'config_sha256': 'c' * 64,
+        'interfaces': [], 'namespace': 'ed6-' + configuration['run_id'].replace('-', '')[:10] + '-client',
+        'family': 4,
+    }
+    instance.control(handle, phase)
+    assert len(calls) == 2
+    assert calls[0][1]['role'] == phase
+    assert calls[0][1]['run_id'] == configuration['run_id']
+
+
+@pytest.mark.parametrize('kind,role', [('sender', 'a' * 41), ('capture', 'bad_role')])
+def test_invalid_handle_role_fails_before_remote_control(configuration, kind, role):
+    instance = harness.HostHarness(configuration)
+    calls = []
+    instance.peer.run = lambda *a, **kw: calls.append((a, kw))
+    identifier = 'a' * 32
+    handle = {
+        'kind': kind, 'role': role, 'host': 'peer', 'run_id': configuration['run_id'],
+        'root': '/run/exitlane-d6-' + identifier,
+        'unit': 'exitlane-d6-' + kind + '-' + identifier + '.service',
+        'unit_sha256': 'b' * 64, 'config_sha256': 'c' * 64,
+        'interfaces': [],
+    }
+    with pytest.raises(harness.QualificationError, match='qualification_handle_owner_invalid'):
+        instance.control(handle, 'proof')
+    assert calls == []
+
+
+def test_sender_start_control_failure_attempts_owned_stop(configuration):
+    instance = harness.HostHarness(configuration)
+    sender = {'kind': 'sender', 'role': 'state-container-recreation-01234567'}
+    calls = []
+    instance.evidence = lambda _handle: {'phase': None}
+    instance.external_process = lambda *a, **kw: sender
+
+    def control(handle, phase, *, stop=False, calibration_phase=None):
+        calls.append((handle, phase, stop, calibration_phase))
+        if not stop:
+            raise harness.QualificationError('qualification_handle_owner_invalid')
+
+    instance.control = control
+    with pytest.raises(harness.QualificationError, match='qualification_handle_owner_invalid'):
+        instance.packet_phase('state-container-recreation-01234567', [])
+    assert calls == [(sender, 'state-container-recreation-01234567', False, None),
+                     (sender, 'state-container-recreation-01234567', True, None)]
+    assert instance.last_sender is sender
+    assert instance.last_packet_evidence['sender_handle'] is sender
+
+
 def test_invalid_calibration_phase_rejected_before_remote(configuration):
     instance = harness.HostHarness(configuration)
     instance.peer.run = lambda *a, **kw: pytest.fail('remote access before validation')

@@ -221,7 +221,9 @@ class HostHarness:
                 or unit != 'exitlane-d6-' + kind + '-' + suffix + '.service'
                 or re.fullmatch(r'[a-f0-9]{64}', handle.get('unit_sha256', '')) is None
                 or re.fullmatch(r'[a-f0-9]{64}', handle.get('config_sha256', '')) is None
-                or not isinstance(role, str) or re.fullmatch(r'[a-z][a-z0-9-]{0,30}', role) is None):
+                or not isinstance(role, str)
+                or re.fullmatch(r'[a-z][a-z0-9_-]{0,39}' if kind == 'sender'
+                                else r'[a-z][a-z0-9-]{0,30}', role) is None):
             raise QualificationError('qualification_handle_owner_invalid')
         value = {key: handle[key] for key in ('root', 'unit', 'kind', 'role', 'unit_sha256', 'config_sha256')}
         value.update(run_id=self.config['run_id'], interfaces=handle.get('interfaces', []))
@@ -663,9 +665,19 @@ print(json.dumps({'calibration_emitted':15}))
                 handle['role'] + '_phase_ack', timeout=10)
         namespace = 'ed6-' + self.config['run_id'].replace('-', '')[:10] + '-client'
         sender = self.external_process('sender', phase, namespace=namespace, source_address='10.77.0.2', family=family)
-        self.control(sender, phase)
         self.last_sender = sender
         self.last_packet_evidence = {'phase': phase, 'sender_handle': sender}
+        try:
+            self.control(sender, phase)
+        except QualificationError:
+            # The just-created process waits for its first control file. Attempt
+            # one more ownership-checked stop so a verifier/control transport
+            # failure cannot strand an idle sender on the disposable peer.
+            try:
+                self.control(sender, phase, stop=True)
+            except QualificationError as cleanup_error:
+                self.last_sender_cleanup_error = type(cleanup_error).__name__
+            raise
         try:
             self.wait(lambda: len(self.evidence(sender)['attempts']) >= 25, phase + '_pressure_active', timeout=10)
             if operation is not None:
