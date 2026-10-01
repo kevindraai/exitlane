@@ -112,6 +112,13 @@ configuration and receipts use directories mode 0700 and regular files mode
 0600. Receipt reads use bounded no-follow, nonblocking file descriptors; FIFOs,
 symlinks and other nonregular artifacts are rejected.
 
+Every mutable capture/sender handle also carries the D6 run ID and hashes of
+its exact systemd unit and stdin configuration. Before writing a control file,
+the coordinator verifies those hashes against root-owned remote files, confirms
+the unit description binds run and role, and checks that its config points back
+to the same private receipt root. Legacy or mixed handles fail closed before
+any stop/control operation.
+
 The restart driver accepts only the next pending stage. For example:
 
 ```bash

@@ -228,9 +228,42 @@ def test_sender_rejects_unknown_family_before_remote_access(configuration, famil
 def test_ipv6_capture_control_selects_separate_calibration(configuration):
     instance = harness.HostHarness(configuration)
     calls = []
-    instance.peer.run = lambda source, **kw: calls.append(kw['data'])
-    instance.control({'kind': 'capture', 'root': '/run/synthetic', 'family': 6}, 'proof6')
-    assert calls[0]['value']['calibration_phase'] == 'calibration6'
+    instance.peer.run = lambda source, **kw: calls.append((source, kw['data'])) or 'owned'
+    instance.control({'kind': 'capture', 'role': 'wan', 'host': 'peer', 'run_id': configuration['run_id'],
+        'root': '/run/exitlane-d6-' + 'a' * 32, 'unit': 'exitlane-d6-capture-' + 'a' * 32 + '.service',
+        'unit_sha256': 'b' * 64, 'config_sha256': 'c' * 64, 'interfaces': ['eth0'], 'family': 6}, 'proof6')
+    assert calls[0][1]['unit'] == 'exitlane-d6-capture-' + 'a' * 32 + '.service'
+    assert 'unit_sha256' in calls[0][0] and calls[0][1]['run_id'] == configuration['run_id']
+    assert calls[1][1]['value']['calibration_phase'] == 'calibration6'
+
+
+@pytest.mark.parametrize('run_id', [None, str(uuid.uuid4())])
+def test_stale_or_mixed_capture_handle_fails_before_remote_control(configuration, run_id):
+    instance = harness.HostHarness(configuration)
+    calls = []
+    instance.peer.run = lambda *a, **kw: calls.append((a, kw))
+    handle = {'kind': 'capture', 'role': 'wan', 'host': 'peer', 'root': '/run/exitlane-d6-' + 'a' * 32,
+        'unit': 'exitlane-d6-capture-' + 'a' * 32 + '.service', 'unit_sha256': 'b' * 64,
+        'config_sha256': 'c' * 64, 'interfaces': ['eth0'], 'run_id': run_id}
+    with pytest.raises(harness.QualificationError, match='qualification_handle_owner_invalid'):
+        instance.control(handle, 'proof')
+    assert calls == []
+
+
+def test_remote_capture_ownership_mismatch_fails_before_control_write(configuration):
+    instance = harness.HostHarness(configuration)
+    calls = []
+    def reject_owner(source, **kwargs):
+        calls.append((source, kwargs))
+        raise harness.QualificationError('qualification_remote_operation_failed')
+    instance.peer.run = reject_owner
+    handle = {'kind': 'capture', 'role': 'wan', 'host': 'peer', 'run_id': configuration['run_id'],
+        'root': '/run/exitlane-d6-' + 'a' * 32, 'unit': 'exitlane-d6-capture-' + 'a' * 32 + '.service',
+        'unit_sha256': 'b' * 64, 'config_sha256': 'c' * 64, 'interfaces': ['eth0']}
+    with pytest.raises(harness.QualificationError, match='qualification_remote_operation_failed'):
+        instance.control(handle, 'proof')
+    assert len(calls) == 1
+    assert 'Description=ExitLane D6' in calls[0][0]
 
 
 def test_invalid_calibration_phase_rejected_before_remote(configuration):

@@ -147,6 +147,36 @@ print(json.dumps({'code':r.returncode,'stdout':r.stdout,'stderr':r.stderr}))
 '''
 
 
+HANDLE_OWNER = '''from pathlib import Path
+import hashlib,json,os,re,stat
+root=Path(payload['root']);f=root.lstat()
+if not stat.S_ISDIR(f.st_mode) or f.st_uid!=0 or stat.S_IMODE(f.st_mode)!=0o700:raise SystemExit('qualification_handle_root_unowned')
+unit=Path('/etc/systemd/system')/payload['unit'];fd=os.open(unit,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+with os.fdopen(fd,'rb') as stream:
+ f=os.fstat(stream.fileno())
+ if not stat.S_ISREG(f.st_mode) or f.st_uid!=0 or stat.S_IMODE(f.st_mode)!=0o644 or f.st_size>16384:raise SystemExit('qualification_handle_unit_unowned')
+ raw=stream.read(16385)
+if hashlib.sha256(raw).hexdigest()!=payload['unit_sha256']:raise SystemExit('qualification_handle_unit_mismatch')
+text=raw.decode('utf-8')
+if 'Description=ExitLane D6 '+payload['kind']+' '+payload['run_id']+' '+payload['role']+'\\n' not in text:raise SystemExit('qualification_handle_unit_mismatch')
+lines=[line for line in text.splitlines() if line.startswith('StandardInput=')]
+if len(lines)!=1 or not lines[0].startswith('StandardInput=file:/var/lib/exitlane-qualification/') or not lines[0].endswith('.json'):raise SystemExit('qualification_handle_config_unowned')
+config_path=Path(lines[0].split('=',1)[1][5:])
+if config_path.parent!=Path('/var/lib/exitlane-qualification') or re.fullmatch('[a-f0-9]{32}\\.json',config_path.name) is None:raise SystemExit('qualification_handle_config_unowned')
+fd=os.open(config_path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+with os.fdopen(fd,'rb') as stream:
+ f=os.fstat(stream.fileno())
+ if not stat.S_ISREG(f.st_mode) or f.st_uid!=0 or stat.S_IMODE(f.st_mode)!=0o600 or f.st_size>8192:raise SystemExit('qualification_handle_config_unowned')
+ config_raw=stream.read(8193)
+if hashlib.sha256(config_raw).hexdigest()!=payload['config_sha256']:raise SystemExit('qualification_handle_config_mismatch')
+config=json.loads(config_raw)
+if config.get('run_dir')!=payload['root']:raise SystemExit('qualification_handle_config_mismatch')
+if payload['kind']=='capture' and config.get('interfaces')!=payload['interfaces']:raise SystemExit('qualification_handle_config_mismatch')
+if payload['kind']=='sender' and config.get('interface')!='wg-client':raise SystemExit('qualification_handle_config_mismatch')
+print('owned')
+'''
+
+
 class HostHarness:
     def __init__(self, config):
         self.config = validate_config(config)
@@ -177,6 +207,28 @@ class HostHarness:
                 return
             time.sleep(.25)
         raise QualificationError('qualification_bounded_gate_failed:' + stage)
+
+    def verify_handle_owner(self, handle):
+        """Bind every mutable control path to its run, role, unit and config."""
+        if not isinstance(handle, dict):
+            raise QualificationError('qualification_handle_owner_invalid')
+        root, unit = handle.get('root'), handle.get('unit')
+        kind, role, host = handle.get('kind'), handle.get('role'), handle.get('host', 'peer')
+        suffix = root.rsplit('-', 1)[-1] if isinstance(root, str) else ''
+        if (handle.get('run_id') != self.config['run_id'] or host not in {'peer', 'candidate'}
+                or kind not in {'capture', 'sender'}
+                or re.fullmatch(r'/run/exitlane-d6-[a-f0-9]{32}', root or '') is None
+                or unit != 'exitlane-d6-' + kind + '-' + suffix + '.service'
+                or re.fullmatch(r'[a-f0-9]{64}', handle.get('unit_sha256', '')) is None
+                or re.fullmatch(r'[a-f0-9]{64}', handle.get('config_sha256', '')) is None
+                or not isinstance(role, str) or re.fullmatch(r'[a-z][a-z0-9-]{0,30}', role) is None):
+            raise QualificationError('qualification_handle_owner_invalid')
+        value = {key: handle[key] for key in ('root', 'unit', 'kind', 'role', 'unit_sha256', 'config_sha256')}
+        value.update(run_id=self.config['run_id'], interfaces=handle.get('interfaces', []))
+        remote = self.candidate if host == 'candidate' else self.peer
+        result = remote.run(HANDLE_OWNER, data=value, timeout=20).strip()
+        if result != 'owned':
+            raise QualificationError('qualification_handle_owner_invalid')
 
     def preflight(self):
         from check_docker_appliance_host import validate_host
@@ -416,7 +468,7 @@ for name,content in payload.items():
         log_path = '/var/lib/exitlane-qualification/' + identifier + '.log'
         # Every command component is a fixed executable, validated namespace or
         # owned path; unit parsing has no shell and no user-supplied interpolation.
-        unit_text = ('[Unit]\nDescription=ExitLane D6 external ' + kind + '\n'
+        unit_text = ('[Unit]\nDescription=ExitLane D6 ' + kind + ' ' + self.config['run_id'] + ' ' + role + '\n'
                      '[Service]\nExecStart=' + ' '.join(command) + '\n'
                      'StandardInput=file:' + file_path + '\n'
                      'StandardOutput=append:' + log_path + '\nStandardError=append:' + log_path + '\n'
@@ -438,7 +490,9 @@ subprocess.run(['systemctl','start',payload['unit']],check=True,timeout=30)
 ''', data={'source': Path(__file__).with_name(script_name).read_text(), 'script_name': script_name,
            'unit': unit, 'unit_text': unit_text, 'config_path': file_path,
            'log_path': log_path, 'configuration': configuration})
-        handle = {'kind': kind, 'role': role, 'root': root, 'unit': unit,
+        handle = {'kind': kind, 'role': role, 'host': 'peer', 'run_id': self.config['run_id'],
+                  'root': root, 'unit': unit, 'unit_sha256': hashlib.sha256(unit_text.encode()).hexdigest(),
+                  'config_sha256': hashlib.sha256(json.dumps(configuration).encode()).hexdigest(),
                   'interfaces': list(interfaces), 'namespace': namespace, 'family': family}
         self.wait(lambda: host.run("from pathlib import Path\nprint(Path(payload).is_dir())\n",
                                    data=root).strip() == 'True', role + '_process_directory', timeout=20)
@@ -448,6 +502,7 @@ subprocess.run(['systemctl','start',payload['unit']],check=True,timeout=30)
         if (re.fullmatch('[a-z][a-z0-9_-]{0,39}', phase) is None or type(stop) is not bool
                 or calibration_phase is not None and re.fullmatch('[a-z][a-z0-9_-]{0,39}', calibration_phase) is None):
             raise QualificationError('qualification_phase_invalid')
+        self.verify_handle_owner(handle)
         value = {'phase': phase, 'stop': stop}
         if handle['kind'] == 'capture':
             value['calibration_phase'] = calibration_phase or ('calibration6' if handle.get('family', 4) == 6 else 'calibration')
@@ -520,7 +575,8 @@ finally:
         arguments = ['/usr/bin/python3', script]
         if namespace:
             arguments = ['/usr/bin/nsenter', '--net=/proc/' + str(pid) + '/ns/net', *arguments]
-        text = ('[Unit]\nDescription=ExitLane D6 candidate observation epoch\n'
+        role = 'candidate-namespace' if namespace else 'candidate-host'
+        text = ('[Unit]\nDescription=ExitLane D6 capture ' + self.config['run_id'] + ' ' + role + '\n'
                 '[Service]\nExecStart=' + ' '.join(arguments) + '\nStandardInput=file:' + path +
                 '\nStandardOutput=append:' + log + '\nStandardError=append:' + log +
                 '\nKillMode=control-group\nTimeoutStopSec=10\n')
@@ -539,9 +595,10 @@ subprocess.run(['systemctl','daemon-reload'],check=True)
 subprocess.run(['systemctl','start',payload['unit']],check=True,timeout=30)
 """, data={'script': script, 'source': source, 'path': path, 'log': log,
            'cfg': cfg, 'unit': unit, 'text': text})
-        handle = {'kind': 'capture', 'role': 'candidate-namespace' if namespace else 'candidate-host',
-                  'host': 'candidate', 'root': root, 'unit': unit, 'interfaces': interfaces,
-                  'container_pid': pid, 'namespace': namespace}
+        handle = {'kind': 'capture', 'role': role, 'host': 'candidate', 'run_id': self.config['run_id'],
+                  'root': root, 'unit': unit, 'unit_sha256': hashlib.sha256(text.encode()).hexdigest(),
+                  'config_sha256': hashlib.sha256(json.dumps(cfg).encode()).hexdigest(),
+                  'interfaces': interfaces, 'container_pid': pid, 'namespace': namespace}
         if self.assert_owned('container', self.container)['State']['Pid'] != pid:
             raise QualificationError('qualification_candidate_epoch_race')
         return handle
