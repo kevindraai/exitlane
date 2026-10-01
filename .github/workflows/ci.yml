@@ -27,7 +27,7 @@ jobs:
       - name: Install ShellCheck
         run: |
           sudo apt-get update
-          sudo apt-get install --yes shellcheck
+          sudo apt-get install --yes shellcheck python3-yaml
 
       - name: Check Bash syntax
         run: |
@@ -36,6 +36,7 @@ jobs:
             -name "*.sh" \
             -print0 |
             xargs -0 -r -n1 bash -n
+          bash -n scripts/install_security_cli.sh
 
       - name: Run ShellCheck
         run: |
@@ -44,6 +45,7 @@ jobs:
             -name "*.sh" \
             -print0 |
             xargs -0 -r shellcheck
+          shellcheck scripts/install_security_cli.sh
 
       - name: Validate workflow security policy
         run: python3 scripts/check_workflow_security.py
@@ -244,9 +246,67 @@ jobs:
       - name: Inspect installed image content without application startup or state
         if: steps.changes.outputs.run == 'true'
         run: |
+          test "$(docker image inspect exitlane-appliance:test --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
           docker run --rm --network none --read-only --cap-drop ALL \
             --security-opt no-new-privileges:true --entrypoint python \
             -i exitlane-appliance:test - < scripts/check_container_image.py
+
+      - name: Install pinned image inspection tools
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          bash scripts/install_security_cli.sh syft
+          bash scripts/install_security_cli.sh trivy
+
+      - name: Create SPDX image SBOM
+        if: steps.changes.outputs.run == 'true'
+        run: syft exitlane-appliance:test --output spdx-json=exitlane-image.spdx.json
+
+      - name: Upload SPDX image SBOM
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: exitlane-image-spdx
+          path: exitlane-image.spdx.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Scan candidate image for OS, Python and secret findings
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          trivy image --scanners vuln,secret --pkg-types os,library \
+            --ignore-unfixed=false --format json \
+            --output trivy-image-results.json --exit-code 0 \
+            exitlane-appliance:test
+          python3 - <<'PY'
+          import json
+          import os
+          from collections import Counter
+          from pathlib import Path
+
+          report = json.loads(Path("trivy-image-results.json").read_text(encoding="utf-8"))
+          counts = Counter(
+              finding.get("Severity", "UNKNOWN")
+              for result in report.get("Results") or []
+              for finding in result.get("Vulnerabilities") or []
+          )
+          summary = (
+              "Candidate image Trivy findings (informational in PR CI; the manual "
+              "release workflow blocks on HIGH/CRITICAL): "
+              f"HIGH={counts['HIGH']}, CRITICAL={counts['CRITICAL']}"
+          )
+          print(summary)
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as handle:
+              handle.write(summary + "\n")
+          PY
+
+      - name: Upload candidate image scan report
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: exitlane-image-trivy-report
+          path: trivy-image-results.json
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Qualify real application management and durable image replacement
         if: steps.changes.outputs.run == 'true'

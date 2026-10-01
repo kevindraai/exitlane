@@ -1,9 +1,19 @@
 # Experimental Docker appliance candidate
 
-D5 packages the same ExitLane core behind its container supervisor. This is an
+D5 packages the same ExitLane core behind its container supervisor. D6 has now
+qualified the candidate on a disposable whole Docker host, including synthetic
+provider failure cases and packet-level no-fallback checks. This remains an
 experimental candidate under [#90](https://github.com/kevindraai/exitlane/issues/90),
-not a supported release. D6 must still qualify a disposable whole Docker host;
-D7 must review release integration before separately authorized publication.
+not a supported release. D7 adds the manually invoked publication workflow; image
+publication and a support declaration remain separately gated. The publish job uses
+the protected `ghcr-production` GitHub Environment. Its preflight requires that
+environment to already exist, require approval from Product Owner `kevindraai` alone,
+disallow administrator bypass and restrict deployment to protected branches. The
+workflow itself additionally requires `main`, an existing published release and exact
+typed tag/SHA confirmation. Manual dispatch and confirmation are intent checks; they
+do not replace Product Owner approval. This PR does not configure the environment,
+approve a deployment or authorize any image publication. Until the release owner
+configures those protections, dispatch fails closed before scheduling publication.
 Native Debian 13 amd64/LXC remains the reference implementation. The existing
 `docker/Dockerfile` and `docker/docker-compose.yml` remain development surfaces.
 
@@ -35,8 +45,17 @@ docker run --rm --read-only --cap-drop ALL \
 The content checker reads installed package/tool/license facts and public hashes;
 it does not open the appliance volume or import application startup.
 Canonical deployment identity is the image digest or local immutable image ID.
-Moving tags, including `latest`, are not rollback identities. No public
-production image is published by D5.
+Moving tags, including `latest`, are not rollback identities. The D7 workflow
+accepts only an already published ExitLane release tag whose exact source commit
+is on qualified `main`; it publishes that version tag and records its registry
+digest. It creates no `latest` or channel alias. No production image is published
+by this implementation. The publisher checks GitHub Packages first and refuses to
+replace an existing exact version tag; a failed post-push run therefore needs a
+separately reviewed recovery path. The image digest, not the human-readable tag,
+is the immutable deployment identity. GitHub makes a newly created container
+package private by default. The workflow does not change package visibility; a
+release owner must separately make the package public and verify anonymous pulls
+before announcing a public image.
 
 ## Deployment contract
 
@@ -127,7 +146,7 @@ reviewed published image becomes available. Roll back only to an image whose
 declared state/schema interval accepts the volume; otherwise use the matching
 pre-upgrade image and verified backup. Never run two replicas on one volume.
 
-## Local qualification and remaining gates
+## Qualification, publication and remaining gates
 
 After building the candidate, run:
 
@@ -147,8 +166,32 @@ do not claim compatibility across different application releases. Synthetic cred
 on stdin/in memory and omitted from receipts. It does not restart a shared
 daemon/host, contact commercial provider accounts or publish an image.
 
-D2–D4 packet/recovery proofs remain shared integration checks. D6 additionally
-requires published UDP/Docker NAT packet evidence, the complete provider failure
-matrix and actual daemon/host restarts on a separately disposable host. Local
-container recreation is not evidence for those operations. Public release and
-support remain explicit later gates.
+D6 passed on the separately disposable Docker host recorded in issue #96. Its
+packet receipts cover the synthetic router/client, ExitLane, provider and external
+target points, including provider switching/failure, DNS UDP/TCP, IPv6 attempts
+and daemon/host restart cases. No commercial provider credentials were used.
+
+D7's PR CI builds only `linux/amd64`, verifies image contents, runs the appliance
+qualification, and retains SPDX and full Trivy reports as seven-day artifacts. The
+candidate scan is informational in PR CI so currently unfixed base-distribution
+advisories do not block unrelated development; the manual release workflow blocks
+on all HIGH/CRITICAL OS/Python vulnerability and secret findings, including unfixed
+advisories. Its complete scan report is retained for 30 days even when that gate fails.
+It publishes only
+the exact version tag, pulls/verifies the resulting digest, and attaches provenance
+and SBOM attestations. The signed provenance identifies the actual tagged application
+commit separately from the trusted workflow commit; verification enforces both,
+the image digest, workflow identity and hosted runner. This is workflow-produced
+provenance, not a claim of independently isolated or hermetic SLSA build assurance.
+The workflow is not run as part of this PR. Docker remains
+experimental and unsupported until the #90 support decision and release criteria
+are complete. Schema compatibility remains `[1,1]`; the workflow does not claim
+cross-release compatibility beyond that declaration.
+
+All workflow Actions are GitHub-owned and SHA-pinned. Syft, Trivy and Gitleaks use
+versioned CLI archives with reviewed SHA-256 digests recorded in
+`scripts/install_security_cli.sh`; mismatches fail before extraction or execution.
+The recorded digests were obtained from the same upstream GitHub release assets.
+They freeze the reviewed bytes and protect integrity against subsequent replacement,
+but do not establish an independent vendor-authenticity root. Upstream maintainers,
+GitHub release hosting and the reviewed binaries remain trusted supply-chain inputs.

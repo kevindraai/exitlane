@@ -144,6 +144,15 @@ def test_clean_content_has_public_hash_receipt_without_reading_volume(image_root
     assert "secret.key" not in str(result)
 
 
+@pytest.mark.parametrize("name", ["pip", "setuptools", "wheel"])
+def test_build_time_python_packaging_tools_are_not_part_of_runtime_image(image_root, name):
+    metadata = image_root / f"usr/local/lib/python3.13/site-packages/{name}-1.0.dist-info/METADATA"
+    metadata.parent.mkdir(parents=True)
+    metadata.write_text(f"Name: {name}\nVersion: 1.0\n")
+    with pytest.raises(image.ImageContractError, match="image_development_dependency"):
+        image.inspect_root(image_root)
+
+
 @pytest.mark.parametrize(
     "relative",
     [

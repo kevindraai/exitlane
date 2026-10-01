@@ -22,6 +22,9 @@ FORBIDDEN_DISTRIBUTIONS = frozenset(
         "httpx",
         "requests",
         "urllib3",
+        "pip",
+        "setuptools",
+        "wheel",
         "build",
         "hatchling",
     }

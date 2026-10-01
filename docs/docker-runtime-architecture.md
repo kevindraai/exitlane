@@ -1,8 +1,8 @@
 # Docker runtime architecture and implementation program
 
 - Decision date: 2026-09-30
-- Status: independently reviewed architecture, **APPROVE**; D1–D4 delivered,
-  D5 candidate implementation; **Docker is not supported**
+- Status: independently reviewed architecture, **APPROVE**; D1–D6 delivered,
+  D7 manual release integration in review; **Docker is not supported**
 - Governing deployment wave: [#87](https://github.com/kevindraai/exitlane/issues/87)
 - Reference implementation: native Debian 13 amd64, including privileged Proxmox LXC
 - Historical decision: [issue #76 feasibility assessment](docker-appliance-feasibility.md),
@@ -292,10 +292,11 @@ wrong-key detection and kill-at-each-transaction-stage recovery. Native restore 
 ## Image replacement and schema rollback
 
 Production image identity is `ghcr.io/kevindraai/exitlane:vX.Y.Z[-rc.N]` with recorded digest,
-source SHA, package/app version and supported state/schema interval. Exact tags are never
-republished; digest is the strongest deployment identity. Optional `rc` and `stable` convenience
-tags may advance only after corresponding support/release gates. `latest` is absent until the
-project explicitly adopts a stable-release policy. No alias is a durable rollback identity.
+source SHA, package/app version and supported state/schema interval. The publisher rejects an
+existing exact version tag; the registry digest is the immutable deployment identity. Optional
+`rc` and `stable` convenience tags may advance only after corresponding support/release gates.
+`latest` is absent until the project explicitly adopts a stable-release policy. No alias is a
+durable rollback identity.
 
 Operator workflow: create/verify/export encrypted backup; record current image digest and schema;
 `docker compose pull`; `docker compose up -d`; validate management/auth, guards, ingress and proven
@@ -329,15 +330,21 @@ Docker healthcheck does not itself restart an unhealthy container; supervisor/re
 must be explicit. Compose publishes only explicit host TCP/UDP addresses/ports and durable state.
 Validate effective capabilities/devices/sysctls, mount inventory and read-only behavior from inspect.
 
-D7 release workflow starts only after D1–D6 acceptance and independent security/architecture review.
-Build from exact approved release SHA/tag; pin Actions and minimize job permissions. `packages:write`
-belongs only to publication; PR images remain local/CI artifacts. Link GHCR package to this repo;
-produce SBOM and build provenance attestations tied to digest/source, artifact-content checks,
-secret scans and OS/Python vulnerability scan with actionable dispositions. Critical/High findings
-block publication unless a reviewed specific false-positive/accepted-risk policy applies. Do not
-add duplicated scans that contribute no additional boundary coverage. Attestations document source
-and build provenance, not packet safety. Verify pulling the published digest, labels, health and
-matching release receipts after publication. No production image is authorized in this planning wave.
+D7 adds a manual-only release workflow, enabled from `main` after D1–D6 acceptance and
+independent security/architecture review. It requires an already published application release,
+an exact source SHA/tag match, ancestry from the D6-qualified main baseline and an explicit
+tag-and-SHA confirmation. It builds only `linux/amd64`; Actions are full-SHA pinned and permissions
+are minimized. Only the publication job receives `packages:write`, `attestations:write` and
+`id-token:write`. It emits an SPDX SBOM, scans OS/Python and secrets, checks installed image
+contents, runs the appliance qualification, publishes only the exact release version tag (no
+`latest`/channel alias), captures its immutable digest, pulls and rechecks that digest, then attaches
+and verifies provenance and SBOM attestations. HIGH/CRITICAL findings block publication; no
+automatic risk exception is defined. Attestations document source/build provenance, not packet
+safety. This workflow was not dispatched by the implementation PR. First production publication
+and any Docker support declaration remain separate gates. A newly created GHCR package defaults
+to private and its visibility is not changed by automation; the release owner must separately make
+it public and confirm anonymous pulls before announcing public availability. See GitHub's
+[Container registry visibility and access rules](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#pushing-container-images).
 
 ## Management binding and proxy contract
 
@@ -463,8 +470,8 @@ Documentation-only planning uses ordinary required CI and no artificial runtime 
 | D3 Routing/killswitch/DNS dataplane | D2; shared direct providers integrated in private namespace | Synthetic two-peer packet proof, connect/switch/failure/rollback/IPv6/DNS/OUTPUT; relevant-change lightweight container CI |
 | D4 State/restore/recovery | D3; full volume inventory, journal, quiesce callbacks, migration/rollback contracts | Key/DB pairing, recreation, adversarial archive corpus, kill-stage restore/recovery and packet reopening gates |
 | D5 Image/Compose management surface | D4; production build, read-only mounts/capabilities/health, bindings and proxy docs | Build-content/version/secret sentinels, image inspect, health/security readiness, proxy/auth matrix; CI image checks on image/runtime/dependency changes |
-| D6 Disposable-host qualification | D5; executable harness and complete matrix above, exact supported host/runtime inventory | Independent packet/security review, no-fallback proof through daemon/host restarts; integration/release gate, not every docs PR |
-| D7 GHCR/release integration | D6 PASS and reviewed support decision; release workflow, digest/metadata/provenance/SBOM and operator upgrade guide | Versioned release build/pull verification, schema compatibility receipts and current security gates; first production publication separately authorized |
+| D6 Disposable-host qualification | D5; executable harness and complete matrix above, exact supported host/runtime inventory | Delivered in #96 / PR #110; synthetic packet no-fallback and daemon/host restart evidence |
+| D7 GHCR/release integration | D6 PASS and reviewed support decision; exact-release manual workflow, digest/metadata/provenance/SBOM and operator upgrade guide | In review in #97; CI workflow gates run without publishing; first public image needs separate authorization |
 
 The synthetic D2 lifecycle implementation and runnable lightweight proof are documented in
 [container lifecycle qualification](docker-container-lifecycle.md). They do not enable the full
