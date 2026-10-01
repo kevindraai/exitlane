@@ -1,7 +1,9 @@
-# D5 candidate image. Support and publication still require D6/D7 qualification.
+# Experimental candidate image. Publication and support remain separately gated.
 FROM python:3.13-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b AS wheel
 WORKDIR /build
-COPY backend/pyproject.toml ./pyproject.toml
+COPY backend/pyproject.toml backend/hatch_build.py ./
+COPY LICENSE THIRD_PARTY_NOTICES.md /
+COPY docs /docs
 COPY backend/exitlane ./exitlane
 RUN python -m pip wheel --no-cache-dir --no-deps --wheel-dir /wheel .
 
@@ -9,7 +11,7 @@ FROM python:3.13-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bc
 ARG EXITLANE_VERSION
 ARG EXITLANE_REVISION
 LABEL org.opencontainers.image.title="ExitLane" \
-      org.opencontainers.image.description="Experimental container appliance; D6/D7 gates pending" \
+      org.opencontainers.image.description="Experimental unsupported container appliance; publication gated" \
       org.opencontainers.image.source="https://github.com/kevindraai/exitlane" \
       org.opencontainers.image.version="${EXITLANE_VERSION}" \
       org.opencontainers.image.revision="${EXITLANE_REVISION}" \

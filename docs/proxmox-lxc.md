@@ -1,13 +1,13 @@
 # Proxmox LXC
 
-The qualified container baseline for ExitLane 0.3.0-rc.3 is **Debian 13, `amd64`, privileged LXC**.
+The native container target for ExitLane 0.3.0-rc.4 is **Debian 13, `amd64`, privileged LXC**.
 Unprivileged containers, other Debian releases and other architectures are not supported release
 targets. ExitLane runs natively inside the container and needs systemd, WireGuard, nftables and
 permission to administer its network namespace.
 
 ## Create the container
 
-Release qualification uses 2 vCPUs, 2 GiB RAM and a 16 GiB disk. These are a reference configuration,
+The native reference configuration uses 2 vCPUs, 2 GiB RAM and a 16 GiB disk. These are a reference configuration,
 not a guaranteed throughput target. Allow additional storage for encrypted backups and local
 installer recovery snapshots.
 
@@ -24,14 +24,15 @@ free cluster-wide CTID, active root/template storage and a PVE-managed Debian 13
 **Advanced settings** exposes CTID, hostname, storage, template storage, bridge, static IPv4/CIDR,
 gateway, DNS, VLAN, CPU, memory, disk, pool and startup ordering. Empty answers use engine defaults.
 
-New published helpers advertise a side-effect-free bootstrap capability and own the interactive
-installer themselves. Recommended settings retain the appliance defaults; Advanced groups container,
-network and access choices. Until such a helper is published, the launcher keeps the compatible
-older-tag menu. It never substitutes provisioning code from `main`.
+The rc.4 helper advertises a side-effect-free bootstrap capability and owns the interactive
+installer itself once its tag is published. Recommended settings retain the appliance defaults;
+Advanced groups container, network and access choices. The launcher negotiates the selected
+published helper's capability and retains the compatible older-tag menu when that capability is
+absent. It never substitutes provisioning code from `main`.
 
 ### Guest access and installation output
 
-In new tagged installers, both modes offer an optional masked, confirmed console root password and
+In the rc.4 tagged installer, once published, both modes offer an optional masked, confirmed console root password and
 SSH public-key selection: discover a host public key, paste a bare public key, read a public-key
 file, or skip. Discovered keys are shown by type, fingerprint and comment, with duplicates removed.
 Private keys and option-prefixed `authorized_keys` entries are rejected; restrictions are never
@@ -57,12 +58,12 @@ plan, log or ordinary temporary file. Local root can still inspect live process 
 The existing application onboarding remains authoritative for timezone; the helper does not copy
 the PVE host timezone. Startup ordering and inherited/local DNS remain explicit plan facts.
 
-For automation with a newly published helper, `--ssh-public-key-file` accepts public keys only and
+For automation with the rc.4 helper after publication, `--ssh-public-key-file` accepts public keys only and
 `--output standard|verbose|quiet` controls output. `--interactive` starts the built-in terminal UI;
 limited/narrow terminals use plain output. Root password entry remains interactive and masked.
 
 The tagged Python engine validates and displays one canonical plan before asking for confirmation.
-The default answer is no. The published rc.3 engine requires typing `CREATE`; newer engines use
+The default answer is no. The published rc.3 engine requires typing `CREATE`; the rc.4 engine uses
 `y` at `[y/N]`. There is no separate dry-run prerequisite or second confirmation. No container,
 template download or guest package operation starts before confirmation. Keep management on a
 trusted network; the final URL opens the first-run wizard.
@@ -74,14 +75,16 @@ channel selects the highest semantic `vX.Y.Z` or `vX.Y.Z-rc.N` version among the
 GitHub releases; a stable tag sorts above an RC of the same version. RCs are intentionally eligible
 while ExitLane is in its release-candidate phase, and are labelled in the terminal. GitHub's
 `/releases/latest` excludes prereleases and drafts and is not ExitLane's channel contract.
-The current releases have RC tags but GitHub `prerelease=false`; tag syntax therefore matters.
-A future stable-only policy requires an explicit reviewed resolver change. Drafts and arbitrary
+Channel selection uses tag syntax independently of GitHub's `prerelease` flag. Historically,
+rc.1–rc.3 used RC tags with `prerelease=false`; that setting is release-policy provenance, not a
+guarantee for future releases. A future stable-only policy requires an explicit reviewed resolver change. Drafts and arbitrary
 refs are never accepted. API/network/validation failures stop the invocation.
 
-An explicit published release can be selected without changing the script:
+An explicit published release can be selected without changing the script. Use this rc.4 example
+only after that release is published:
 
 ```bash
-EXITLANE_VERSION=v0.3.0-rc.3 \
+EXITLANE_VERSION=v0.3.0-rc.4 \
   bash -c "$(curl -fsSL https://raw.githubusercontent.com/kevindraai/exitlane/main/installer/proxmox.sh)"
 ```
 
@@ -120,36 +123,40 @@ Release API semantics are documented by [GitHub](https://docs.github.com/en/rest
 
 ### Automation and diagnosis
 
-The independently testable Python helper remains available from a reviewed tagged checkout:
+The independently testable Python helper remains available from a reviewed tagged checkout.
+These rc.4 commands require the published rc.4 checkout:
 
 ```bash
-python3 installer/create-proxmox-lxc.py --ref v0.3.0-rc.3 --dry-run
-python3 installer/create-proxmox-lxc.py --ref v0.3.0-rc.3 --yes
+python3 installer/create-proxmox-lxc.py --ref v0.3.0-rc.4 --dry-run
+python3 installer/create-proxmox-lxc.py --ref v0.3.0-rc.4 --yes
 ```
 
 Use `--help` for the advanced flags described above. The Bash launcher deliberately requires a
 TTY; it accepts no raw command options and never passes `--yes`. The engine uses explicit argv,
-refuses occupied IDs and appends only the two documented TUN entries. New engine releases use a
+refuses occupied IDs and appends only the two documented TUN entries. The rc.4 engine uses a
 single 90-second deadline for two complete successful rounds: running state, TUN, usable IPv4,
 default route, resolver configuration, `_apt` access to that configuration, and usable IPv4 DNS
 answers for `deb.debian.org`, `security.debian.org` and `github.com` **as `_apt`**. The guest address,
 route and configured resolvers must remain unchanged between the successful rounds. Package
 operations start only after this gate; actual repository fetching remains a separate hard gate.
 APT update uses `Acquire::Retries=2` and `APT::Update::Error-Mode=any`, so even transient repository
-fetch failures abort rather than continuing on warning-only/stale indexes. These engine changes
-require a new published tag; the existing rc.3 engine retains its earlier readiness/APT behavior.
+fetch failures abort rather than continuing on warning-only/stale indexes. These changes become
+available through the public launcher only after rc.4 publication; the existing rc.3 engine
+retains its earlier readiness/APT behavior.
 On partial failure, inspect
 `pct config <CTID>`, `pct status <CTID>` and guest logs. No automatic deletion occurs.
-New engine releases revalidate frozen resource choices after confirmation and template download;
+The rc.4 engine revalidates frozen resource choices after confirmation and template download;
 changed resources require a fresh plan rather than silently changing the approved allocation.
 
 Deterministic launcher/engine tests do not prove actual PVE creation. The first public creation
 attempt exposed a root-DNS/APT-readiness false positive; investigation and qualification are
 tracked in [deployment wave #87](https://github.com/kevindraai/exitlane/issues/87).
-A separate disposable NLFoundry LXC reproduced the same failure when `resolv.conf` was readable
+A separate disposable LXC reproduced the same failure when `resolv.conf` was readable
 only by root, and installed rc.3 successfully after restoring ordinary public file permissions.
 That alternative provisioner is **not** proof of public launcher creation. Public launcher →
-tagged engine → create → boot → install qualification remains outstanding.
+tagged engine → create → boot → install qualification remains outstanding for the rc.4 helper.
+Deterministic checks and alternative provisioner evidence do not close that gate. The
+[rc.4 release notes](release-notes/0.3.0-rc.4.md) record the current receipts and pending work.
 The helper uses supported [PVE container commands](https://pve.proxmox.com/pve-docs/pct.1.html)
 and [storage commands](https://pve.proxmox.com/pve-docs/pvesm.1.html).
 

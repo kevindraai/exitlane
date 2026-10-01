@@ -415,8 +415,15 @@ def test_actual_collector_pcap_preserves_icmp_output_quotes(
     capture = observer(tmp_path)
     transport = tcp(b"") if quoted_protocol == 6 else udp(b"")
     quote = ipv4(transport, protocol=quoted_protocol, source="192.0.2.5")[:28]
-    raw = frame(ipv4(bytes((icmp_type, 0)) + b"\0" * 6 + quote,
-                     protocol=1, source="192.0.2.1", destination="10.77.0.2"), 276)
+    raw = frame(
+        ipv4(
+            bytes((icmp_type, 0)) + b"\0" * 6 + quote,
+            protocol=1,
+            source="192.0.2.1",
+            destination="10.77.0.2",
+        ),
+        276,
+    )
     assert packets.parse_packet(raw, linktype=276).kind == "other"
     stamp = (capture.start_ns // 1000 + 2) * 1000
     capture.consume("eth0", raw, stamp)
@@ -428,14 +435,30 @@ def test_actual_collector_pcap_preserves_icmp_output_quotes(
     assert capture.facts["eth0"]["samples"] == capture.facts["eth0"]["calibration"] == []
 
 
-@pytest.mark.parametrize("raw", [
-    frame(ipv4(tcp(b"", destination=22), protocol=6), 276),
-    frame(ipv4(tcp(b"", destination=7778), protocol=6,
-               source="192.0.2.5", destination="192.0.2.6"), 276),
-    frame(ipv4(tcp(b"arbitrary-unmarked-content"), protocol=6), 276),
-    frame(ipv4(tcp(struct.pack("!H", len(dns("ordinary.example.test")))
-                   + dns("ordinary.example.test"), destination=53), protocol=6), 276),
-])
+@pytest.mark.parametrize(
+    "raw",
+    [
+        frame(ipv4(tcp(b"", destination=22), protocol=6), 276),
+        frame(
+            ipv4(
+                tcp(b"", destination=7778), protocol=6, source="192.0.2.5", destination="192.0.2.6"
+            ),
+            276,
+        ),
+        frame(ipv4(tcp(b"arbitrary-unmarked-content"), protocol=6), 276),
+        frame(
+            ipv4(
+                tcp(
+                    struct.pack("!H", len(dns("ordinary.example.test")))
+                    + dns("ordinary.example.test"),
+                    destination=53,
+                ),
+                protocol=6,
+            ),
+            276,
+        ),
+    ],
+)
 def test_output_control_retention_does_not_expand_unrelated_payload_capture(tmp_path, raw):
     capture = observer(tmp_path)
     capture.consume("eth0", raw, capture.start_ns + 1)
@@ -467,8 +490,9 @@ def test_truncated_unmarked_icmp_control_is_invalid_not_silent_zero(tmp_path, bo
         output.close()
 
 
-@pytest.mark.parametrize("quote", [b"\x45" + b"\0" * 10,
-                                      ipv4(tcp(b""), protocol=6, fragment=1)[:28]])
+@pytest.mark.parametrize(
+    "quote", [b"\x45" + b"\0" * 10, ipv4(tcp(b""), protocol=6, fragment=1)[:28]]
+)
 def test_actual_collected_malformed_icmp_quote_cannot_be_zero(tmp_path, quote):
     capture = observer(tmp_path)
     raw = frame(ipv4(b"\x03\0" + b"\0" * 6 + quote, protocol=1), 276)
@@ -484,8 +508,11 @@ def test_actual_collected_malformed_icmp_quote_cannot_be_zero(tmp_path, quote):
 @pytest.mark.parametrize("protocol", [6, 17])
 def test_icmp_retention_never_records_quoted_ssh_or_api_payload(tmp_path, port, protocol):
     capture = observer(tmp_path)
-    transport = tcp(b"synthetic-private-sentinel", destination=port) if protocol == 6 else udp(
-        b"synthetic-private-sentinel", destination=port)
+    transport = (
+        tcp(b"synthetic-private-sentinel", destination=port)
+        if protocol == 6
+        else udp(b"synthetic-private-sentinel", destination=port)
+    )
     quote = ipv4(transport, protocol=protocol)
     raw = frame(ipv4(b"\x03\0" + b"\0" * 6 + quote, protocol=1), 276)
     capture.consume("eth0", raw, capture.start_ns + 1)

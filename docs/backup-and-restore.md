@@ -1,7 +1,12 @@
 # Backup and restore
 
-ExitLane 0.3.0-rc.3 uses a local, root-only appliance backup. Restore is intentionally
-not exposed through the web interface.
+ExitLane 0.3.0-rc.4 retains the local, root-only native appliance backup. Restore is intentionally
+not exposed through the web interface. This guide's host paths and commands describe native Debian.
+The experimental container runtime shares the encrypted format and validation controls, with a
+[supervisor-owned recovery transaction](docker-container-recovery.md) and
+[container CLI commands](docker-appliance-candidate.md#lifecycle-recovery-and-upgrades).
+Docker remains unsupported. Exact rc.4 lifecycle receipts remain release gates in the
+[rc.4 release notes](release-notes/0.3.0-rc.4.md).
 
 ## Scope
 

@@ -26,7 +26,7 @@ trademark rights; inclusion does not imply endorsement or affiliation.
 ExitLane uses PyOTP for RFC 6238 TOTP generation and validation. PyOTP is distributed under the
 MIT License. Copyright (c) 2011-2026 Mark Percival and contributors.
 
-## cryptography 49.0.0
+## cryptography 50.0.0
 
 ExitLane uses the `cryptography` package for AES-GCM authenticated encryption. It is distributed
 under the Apache License 2.0 or BSD-3-Clause license; see the upstream package for full texts and

@@ -4,10 +4,10 @@
 
 ExitLane is a self-hosted egress appliance for routers, VLANs, and selected devices. Your router maintains one permanent WireGuard tunnel to ExitLane, while ExitLane manages outbound connection through NordVPN, Mullvad, PIA, or imported Proton VPN profiles.
 
-The **0.3.0-rc.3** release candidate includes the post-Daybreak security patches, direct PIA
-and imported Proton providers, Tuned.pixel theming and the Proxmox helper. Read the
-[release notes](docs/release-notes/0.3.0-rc.3.md) for the supported scope, upgrade procedure
-and qualification limits.
+The **0.3.0-rc.4** release candidate consolidates the guided public Proxmox installer,
+PIA and imported Proton providers, post-Daybreak security fixes, and experimental Docker
+implementation. Read the [release notes](docs/release-notes/0.3.0-rc.4.md) for qualification
+and upgrade details.
 
 The result is an experience closer to a native VPN app, but for an entire network: switch countries, reconnect, use the fastest available server, and keep provider-specific configuration away from your router.
 
@@ -17,6 +17,50 @@ The result is an experience closer to a native VPN app, but for an entire networ
 > The management interface is intended for a trusted network and must not be exposed directly to the internet.
 
 The trusted management network is a deployment assumption, not a substitute for application security. See the [hardening guide](docs/security/hardening-guide.md), [threat model](docs/security/threat-model.md), [2026-09-30 Daybreak Blue-assisted internal defensive assessment](docs/security/daybreak-blue-assessment-2026-09-30.md), and [security policy](SECURITY.md). This internal assessment is not an independent penetration test.
+
+## Installation
+
+The supported appliance baseline is Debian 13 on `amd64`. The qualified Proxmox configuration is a
+**privileged LXC** with `/dev/net/tun` and permission to manage WireGuard, routing and nftables.
+Other Debian releases, architectures and unprivileged LXC configurations are not supported release
+targets. Keep the management interface on a trusted network.
+On a Proxmox VE host, run the interactive launcher as root:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kevindraai/exitlane/main/installer/proxmox.sh)"
+```
+
+Choose Recommended or Advanced settings, then confirm the new-container plan. The launcher resolves
+an exact published release and uses the same tag for the helper and guest installation.
+See [Proxmox LXC](docs/proxmox-lxc.md) for defaults, trust, inspect-first and automation options.
+The rc.4 qualification record distinguishes candidate testing from the required fresh
+public-path installation against the published tag.
+
+For a native Debian host or manually created LXC, install a published release tag rather than the moving development branch. For this release:
+
+```bash
+git clone --branch v0.3.0-rc.4 --depth 1 https://github.com/kevindraai/exitlane.git
+cd exitlane
+sudo ./installer/install-debian.sh
+```
+
+Open `http://<host>:8787` and complete the first-run wizard.
+
+Use the tagged installation command once the candidate is published on the
+[Releases page](https://github.com/kevindraai/exitlane/releases). For an existing appliance,
+[create and verify a backup before upgrading](docs/upgrade-and-recovery.md).
+
+Read the [deployment guide](docs/deployment.md), [NordVPN provider guide](docs/nordvpn.md), [Mullvad provider guide](docs/mullvad.md), [PIA provider guide](docs/pia.md), [Proton provider guide](docs/proton.md), [backup and restore guide](docs/backup-and-restore.md), [upgrade and recovery guide](docs/upgrade-and-recovery.md), and [Proxmox LXC notes](docs/proxmox-lxc.md) before using ExitLane outside a development environment.
+
+Direct HTTP remains available on a trusted local network. For HTTPS termination, follow the [reverse-proxy guide](docs/deployment/reverse-proxy.md); ExitLane does not terminate TLS itself.
+
+## Providers
+
+Native ExitLane supports NordVPN, direct Mullvad and PIA WireGuard, and imported Proton
+WireGuard profiles. PIA needs no provider app or OpenVPN; Proton needs no CLI, NetworkManager
+or desktop keyring. PIA and Proton are implemented and synthetically / native-kernel qualified;
+live commercial-provider connectivity remains unproven. Direct providers currently offer IPv4
+egress, with IPv6 protected and blocked. See the [provider guides](docs/architecture/providers.md).
 
 ## Why ExitLane?
 
@@ -137,48 +181,29 @@ See [Architecture](docs/architecture.md), [Authentication](docs/authentication.m
 The WebUI's semantic theme adoption is recorded in the
 [ExitLane design-system mapping](docs/design-system.md).
 
-## Installation
 
-The supported appliance baseline is Debian 13 on `amd64`. The qualified Proxmox configuration is a
-**privileged LXC** with `/dev/net/tun` and permission to manage WireGuard, routing and nftables.
-Other Debian releases, architectures and unprivileged LXC configurations are not supported release
-targets. Keep the management interface on a trusted network.
-On a Proxmox VE host, run the interactive launcher as root:
+## Security posture
 
-```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/kevindraai/exitlane/main/installer/proxmox.sh)"
-```
+The supported appliance uses fail-closed provider transactions, validated WireGuard configuration
+and restore boundaries, bounded requests/provider input, encrypted provider keys, and root-only
+backup/recovery. Keep the optional killswitch enabled when protected clients must remain blocked
+also after an explicit disconnect. The Daybreak assessment is internal defensive evidence,
+not an independent external penetration test. See the [security documentation](docs/security/security-testing.md).
 
-Choose default or advanced settings, then confirm the new-container plan. The launcher resolves
-an exact published release and uses the same tag for the helper and guest installation.
-See [Proxmox LXC](docs/proxmox-lxc.md) for defaults, trust, inspect-first and automation options.
-Live disposable PVE creation qualification remains outstanding.
+## Docker experimental status
 
-For a native Debian host or manually created LXC, install a published release tag rather than the moving development branch. For this release:
+**Docker remains experimental/unsupported. No official Docker image is published.**
 
-```bash
-git clone --branch v0.3.0-rc.3 --depth 1 https://github.com/kevindraai/exitlane.git
-cd exitlane
-sudo ./installer/install-debian.sh
-```
+D1–D7 implement the same-core container boundary, supervised WireGuard lifecycle,
+provider-or-block dataplane, durable state/recovery, candidate image/Compose and gated release
+infrastructure. Whole-host D6 synthetic packet/restart qualification passed. Container providers
+are Mullvad, PIA and imported Proton; stock NordVPN 5.4.0 is incompatible with the qualified
+constrained runtime model, while native NordVPN remains supported.
 
-Open `http://<host>:8787` and complete the first-run wizard.
-
-Use the tagged installation command once the candidate is published on the
-[Releases page](https://github.com/kevindraai/exitlane/releases). For an existing appliance,
-[create and verify a backup before upgrading](docs/upgrade-and-recovery.md).
-
-Read the [deployment guide](docs/deployment.md), [NordVPN provider guide](docs/nordvpn.md), [Mullvad provider guide](docs/mullvad.md), [PIA provider guide](docs/pia.md), [Proton provider guide](docs/proton.md), [backup and restore guide](docs/backup-and-restore.md), [upgrade and recovery guide](docs/upgrade-and-recovery.md), and [Proxmox LXC notes](docs/proxmox-lxc.md) before using ExitLane outside a development environment.
-
-The Docker image remains for UI/API development. Its
-[appliance feasibility assessment](docs/docker-appliance-feasibility.md) classifies a Docker
-VPN gateway as **not yet suitable** pending container lifecycle and fail-closed dataplane proof.
-The [runtime architecture and delivery program](docs/docker-runtime-architecture.md) specifies the
-same-core native/container boundary and ordered implementation gates; it does not add Docker support.
-
-Direct HTTP remains available on a trusted local network. For HTTPS termination, follow the [reverse-proxy guide](docs/deployment/reverse-proxy.md); ExitLane does not terminate TLS itself.
-
-Docker is not currently a supported deployment method.
+Image publication remains blocked by the strict HIGH/CRITICAL security gate; remaining Debian
+findings are retained without suppression or waiver. rc.4 publishes application source/packages
+only. See the [candidate contract](docs/docker-appliance-candidate.md),
+[runtime architecture](docs/docker-runtime-architecture.md) and [release qualification](docs/qualification/0.3.0-rc.4.md).
 
 ## Development
 
@@ -188,7 +213,7 @@ See [Development](docs/development.md) and [Contributing](CONTRIBUTING.md) for c
 
 ## Roadmap
 
-Planned work, including further VPN-provider implementations and deployment options, is tracked in the [roadmap](ROADMAP.md).
+Remaining qualification, publication and development work is tracked in the [roadmap](ROADMAP.md).
 
 ## AI involvement
 

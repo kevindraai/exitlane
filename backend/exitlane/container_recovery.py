@@ -29,26 +29,56 @@ from exitlane.container_state import (
 )
 
 LOGGER = logging.getLogger(__name__)
-RESTORE_FAILURE_STAGES = frozenset({
-    "prepare_archive", "validate_archive", "stage_state", "prepare_journal", "guard",
-    "quiesce", "snapshot", "reset_egress", "publish", "revoke_sessions", "reconcile",
-    "health", "commit_journal", "reopen", "cleanup",
-})
-RESTORE_FAILURE_CODES = frozenset({
-    "authentication_failed", "container_state_recovery_required", "recovery_health_failed",
-    "recovery_component_unsafe", "recovery_component_missing", "recovery_journal_invalid",
-    "container_guard_unproven", "container_guard_resource_conflict",
-    "container_network_command_failed", "container_interface_ownership_changed",
-    "container_provider_recovery_required", "container_worker_startup_failed",
-    "container_ingress_config_invalid", "container_interface_creation_uncertain",
-    "container_interface_collision", "container_interface_ownership_unproven",
-    "container_interface_probe_failed", "container_forwarding_unavailable",
-    "container_provider_commit_unproven", "container_provider_invalid",
-    "container_provider_source_budget_exhausted", "container_worker_group_not_reaped",
-    "container_worker_process_group_invalid", "container_recovery_guard_failed",
-    "container_recovery_guard_invalid", "container_recovery_guard_unproven",
-    "provider_egress_resource_conflict",
-})
+RESTORE_FAILURE_STAGES = frozenset(
+    {
+        "prepare_archive",
+        "validate_archive",
+        "stage_state",
+        "prepare_journal",
+        "guard",
+        "quiesce",
+        "snapshot",
+        "reset_egress",
+        "publish",
+        "revoke_sessions",
+        "reconcile",
+        "health",
+        "commit_journal",
+        "reopen",
+        "cleanup",
+    }
+)
+RESTORE_FAILURE_CODES = frozenset(
+    {
+        "authentication_failed",
+        "container_state_recovery_required",
+        "recovery_health_failed",
+        "recovery_component_unsafe",
+        "recovery_component_missing",
+        "recovery_journal_invalid",
+        "container_guard_unproven",
+        "container_guard_resource_conflict",
+        "container_network_command_failed",
+        "container_interface_ownership_changed",
+        "container_provider_recovery_required",
+        "container_worker_startup_failed",
+        "container_ingress_config_invalid",
+        "container_interface_creation_uncertain",
+        "container_interface_collision",
+        "container_interface_ownership_unproven",
+        "container_interface_probe_failed",
+        "container_forwarding_unavailable",
+        "container_provider_commit_unproven",
+        "container_provider_invalid",
+        "container_provider_source_budget_exhausted",
+        "container_worker_group_not_reaped",
+        "container_worker_process_group_invalid",
+        "container_recovery_guard_failed",
+        "container_recovery_guard_invalid",
+        "container_recovery_guard_unproven",
+        "provider_egress_resource_conflict",
+    }
+)
 
 
 def _restore_failure(stage: str, error: Exception, outcome: str) -> None:
@@ -59,7 +89,8 @@ def _restore_failure(stage: str, error: Exception, outcome: str) -> None:
             "container_restore_failure stage=%s code=%s outcome=%s",
             stage if stage in RESTORE_FAILURE_STAGES else "unclassified",
             code if type(code) is str and code in RESTORE_FAILURE_CODES else "unclassified",
-            outcome if outcome in {"rejected", "rollback_completed", "recovery_required"}
+            outcome
+            if outcome in {"rejected", "rollback_completed", "recovery_required"}
             else "unclassified",
         )
 
@@ -436,7 +467,7 @@ class ContainerRecoveryCoordinator:
         try:
             self.state.validate()  # Key/manifest and private paths precede networking.
         except ContainerStateError as error:
-            if error.code != 'container_state_sqlite_recovery_required':
+            if error.code != "container_state_sqlite_recovery_required":
                 raise
             # The running namespace's known ingress must be blocked even when
             # the DB cannot yet supply restored selectors. guard(()) still owns

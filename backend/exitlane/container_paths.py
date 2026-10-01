@@ -1,4 +1,5 @@
 """Pure container paths; safe to import before application composition."""
+
 from dataclasses import dataclass
 from pathlib import Path
 

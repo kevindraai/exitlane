@@ -4,16 +4,16 @@ D5 packages the same ExitLane core behind its container supervisor. D6 has now
 qualified the candidate on a disposable whole Docker host, including synthetic
 provider failure cases and packet-level no-fallback checks. This remains an
 experimental candidate under [#90](https://github.com/kevindraai/exitlane/issues/90),
-not a supported release. D7 adds the manually invoked publication workflow; image
+not a supported release. No official Docker image is published. D7 adds the manually invoked publication workflow; image
 publication and a support declaration remain separately gated. The publish job uses
 the protected `ghcr-production` GitHub Environment. Its preflight requires that
 environment to already exist, require approval from Product Owner `kevindraai` alone,
 disallow administrator bypass and restrict deployment to protected branches. The
 workflow itself additionally requires `main`, an existing published release and exact
 typed tag/SHA confirmation. Manual dispatch and confirmation are intent checks; they
-do not replace Product Owner approval. This PR does not configure the environment,
-approve a deployment or authorize any image publication. Until the release owner
-configures those protections, dispatch fails closed before scheduling publication.
+do not replace Product Owner approval. The protected environment is configured as recorded in the release/security receipts.
+Its existence does not approve a deployment or authorize image publication. Missing or weakened
+protections still fail closed before scheduling publication.
 Native Debian 13 amd64/LXC remains the reference implementation. The existing
 `docker/Dockerfile` and `docker/docker-compose.yml` remain development surfaces.
 
@@ -201,7 +201,7 @@ and SBOM attestations. The signed provenance identifies the actual tagged applic
 commit separately from the trusted workflow commit; verification enforces both,
 the image digest, workflow identity and hosted runner. This is workflow-produced
 provenance, not a claim of independently isolated or hermetic SLSA build assurance.
-The workflow is not run as part of this PR. Docker remains
+The workflow was not dispatched by its implementation or this release consolidation. Docker remains
 experimental and unsupported until the #90 support decision and release criteria
 are complete. Schema compatibility remains `[1,1]`; the workflow does not claim
 cross-release compatibility beyond that declaration.

@@ -1,10 +1,12 @@
 # Experimental container state and recovery
 
-D4 adds durable state and recovery mechanisms to the same ExitLane core. Docker
-is still unsupported. Full application composition, image/Compose deployment,
-disposable-host restart qualification and publication remain D5–D7 gates under
-[#90](https://github.com/kevindraai/exitlane/issues/90). Native Debian/LXC remains
-the reference implementation.
+D4 delivered durable state and recovery mechanisms to the same ExitLane core. D5–D7 subsequently
+delivered the experimental image/Compose composition, historical D6 synthetic disposable-host
+qualification and publication infrastructure under
+[#90](https://github.com/kevindraai/exitlane/issues/90). Docker remains unsupported and no official
+production image has been published. Native Debian/LXC remains the reference implementation.
+See the [candidate contract](docker-appliance-candidate.md) and
+[rc.4 release notes](release-notes/0.3.0-rc.4.md) for current receipts and pending release gates.
 
 ## Durable contract
 
@@ -115,7 +117,8 @@ phases and individual publication replacements with different old/new master
 keys. The owned-volume Docker harness adds real namespace/ingress protection,
 recreation and killed-process recovery. It complements D3's connected-provider
 packet matrix; it does not claim host reboot or Docker-daemon restart evidence.
-Those operations require D6's independently disposable Docker host.
+Those operations have separate historical D6 acceptance on independently disposable Docker hosts;
+this D4 harness alone does not prove them.
 
 Image replacement must satisfy schema `[1,1]` before a worker can start. An older
 image tag alone is not a rollback guarantee; retain a compatible encrypted backup

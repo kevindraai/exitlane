@@ -1,6 +1,10 @@
 # Exitlane threat model
 
-Status: 0.3.0-rc.2 Daybreak Blue-assisted threat-model review, 2026-09-30. A trusted management network is a deployment assumption, not a substitute for application security.
+Current contract: 0.3.0-rc.4 preparation. The dated 2026-09-30 Daybreak Blue-assisted review remains
+historical internal evidence; this update is not a new assessment or release qualification.
+Exact candidate receipts and pending gates are recorded in the
+[rc.4 release notes](../release-notes/0.3.0-rc.4.md). A trusted management network is a deployment
+assumption, not a substitute for application security.
 
 ## System and trust boundaries
 
@@ -10,7 +14,7 @@ Before setup, health/session plus the allowlisted wizard operations are public o
 
 ## Assets, actors and entry points
 
-Assets are the administrator verifier and salts, session digests, provider credentials in request memory and encrypted persisted Mullvad account/device/private-key state, the shared appliance master key, WireGuard private keys/configurations, SQLite configuration/events, active-provider selection, network routing and tunnel state, root privileges, Actions token and release artifacts. Entry points are HTTP routes, cookies and headers, provider output, SQLite state, environment/default files, downloaded client configurations, installer/package inputs, Actions and operator proxy configuration.
+Assets are the administrator verifier and salts, session digests, provider credentials in request memory, encrypted persisted Mullvad account/device/private-key state, PIA renewal credentials/generations and imported Proton profile keys, the shared appliance master key, WireGuard private keys/configurations, SQLite configuration/events, active-provider selection, network routing and tunnel state, root privileges, Actions token and release artifacts. Entry points are HTTP routes, cookies and headers, provider output, SQLite state, environment/default files, downloaded client configurations, installer/package inputs, Actions and operator proxy configuration.
 
 Plausible attackers include an unauthorised management-LAN user, compromised browser/extension, stolen-cookie holder, setup-route attacker, cross-site CSRF origin, command-injection input, malicious provider output, limited local Linux user, compromised dependency/Action, misconfigured reverse-proxy operator, manipulated backup/update/restore artifact and a reader mining errors or Activity/logs for secrets.
 
@@ -92,19 +96,19 @@ records the missing container-capability and packet-level proof. The development
 example binds management only to host loopback and publishes no VPN ingress.
 
 Runtime capabilities are selected by trusted process configuration, never by a browser request.
-The initial runtime adapter implements native Debian only; unknown runtime selections fail before
-database or key initialization. The authenticated capability endpoint and public onboarding
+The explicit composition boundary implements native systemd and experimental container adapters;
+unknown runtime selections fail before database or key initialization. The authenticated capability endpoint and public onboarding
 projection contain availability facts, not host paths or secrets. UI hiding is convenience:
 API and CLI checks deny unavailable operations before state writes, privileged commands or Activity
 acceptance. Native command allowlists, provider authorization and restore validation remain in
-force. This boundary prepares container adapters without claiming a supported Docker appliance.
+force. Implemented container adapters do not imply Docker support.
 
 The D2 synthetic lifecycle installs a permanent container-owned forwarding restriction and shared
 unreachable provider routes before ingress, verifies actual rule semantics, and never executes native
 configuration hooks. Its worker supervisor keeps protection through failures and exits on uncertain
 interface ownership rather than adopting or deleting another interface. The test harness uses only
-NET_ADMIN/TUN in isolated namespaces; Docker owns all host bridge/firewall setup. Full application
-container composition remains disabled pending the later networking and recovery gates.
+NET_ADMIN/TUN in isolated namespaces; Docker owns all host bridge/firewall setup. D2's isolated
+slice did not enable full composition; D5 subsequently supplied the experimental application image.
 
 The D3 direct-provider adapter adds a shared candidate epoch and a separate commit
 gate: a handshake alone does not open forwarding. Exact route, peer, interface,
@@ -119,9 +123,9 @@ revokes its previous forwarding/probe permissions before use.
 
 Separate synthetic packet observers must prove both usable provider transport and
 zero plaintext fallback on the normal uplink; observer failure, packet drops or missing
-positive controls invalidate that evidence. These checks do not qualify daemon/host
-restart, persistent restore or production images. Those remain D4–D6 gates, and the
-development image retains its existing restrictions.
+positive controls invalidate that evidence. D3's lightweight checks do not themselves qualify
+daemon/host restart, persistent restore or appliance images; separate D4–D6 evidence covers those
+boundaries. The original development image retains its existing restrictions.
 
 D4 adds a private DB/key/manifest volume contract and a supervisor-owned mutation
 lease. Its root-only local control socket is not a Docker socket or host-control
@@ -148,8 +152,17 @@ NET_ADMIN alone, TUN and explicit namespace sysctls. Management defaults to loop
 LAN exposure requires operator selection. Proxy trust is tied to the actual peer,
 not a supplied forwarded chain. Image content, actual authentication/proxy requests,
 encrypted ingress, namespace recreation and restore have dedicated qualification
-gates. Whole-host packet/restart evidence remains D6, and first public production
-publication remains separately authorized. See [the candidate contract](../docker-appliance-candidate.md).
+gates. Historical D6 synthetic whole-host packet/restart qualification passed on the retained
+exact surface. D7 supplies manual exact-release scanning, provenance/SBOM and digest verification
+behind Product Owner approval in the protected publication environment. No official production
+image has been published; first publication and Docker support remain separately gated.
+
+The historical refreshed candidate scan retained 44 HIGH package findings across 8 distinct CVEs,
+zero CRITICAL, zero secret findings and zero Python vulnerabilities; reported Debian Trixie
+advisories remained unfixed. This is a baseline receipt, not a fresh rc.4 scan. Current candidate
+rescan remains pending, and the strict HIGH/CRITICAL/secret publication gate includes unfixed
+findings with no waiver. See [the candidate contract](../docker-appliance-candidate.md) and
+[rc.4 release record](../release-notes/0.3.0-rc.4.md).
 
 ### System power actions
 

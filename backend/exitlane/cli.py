@@ -280,8 +280,10 @@ def killswitch_status(*, effective_user_id: int | None = None) -> int:
         print("This command must be run as root or with sudo.", file=sys.stderr)
         return 77
     if runtime.capabilities.runtime_name == "container":
-        print("runtime_capability_unavailable: use container supervisor status or WebUI diagnostics.",
-              file=sys.stderr)
+        print(
+            "runtime_capability_unavailable: use container supervisor status or WebUI diagnostics.",
+            file=sys.stderr,
+        )
         return 2
     try:
         active_id = core.setting("vpn.provider_id", provider_registry.default_id)
@@ -575,8 +577,12 @@ def backup_command(arguments: argparse.Namespace) -> int:
             arguments.passphrase_file, confirmation=arguments.backup_command == "create"
         )
         source = Path(arguments.path)
-        if runtime.capabilities.runtime_name == "container" and arguments.backup_command in {"create", "restore"}:
+        if runtime.capabilities.runtime_name == "container" and arguments.backup_command in {
+            "create",
+            "restore",
+        }:
             from exitlane.container_service import BACKUP_NAME
+
             directory = runtime.paths.application_data.parent / "backups"
             command = "backup" if arguments.backup_command == "create" else "restore"
             if command == "backup" and source != directory:
@@ -587,8 +593,9 @@ def backup_command(arguments: argparse.Namespace) -> int:
                 raise ControlError("control_invalid_request")
             payload = {"passphrase": passphrase}
             if command == "restore":
-                payload.update(name=source.name,
-                               confirmation=input("Type RESTORE EXITLANE to continue: "))
+                payload.update(
+                    name=source.name, confirmation=input("Type RESTORE EXITLANE to continue: ")
+                )
             try:
                 info = asyncio.run(runtime.client.request(command, payload))
             finally:
@@ -631,7 +638,10 @@ def backup_command(arguments: argparse.Namespace) -> int:
         print(f"Files: {len(info.files)}")
         return 0
     except (lifecycle.LifecycleError, RuntimeCapabilityUnavailable, ControlError) as error:
-        print(f"Backup operation failed: {getattr(error, 'code', 'control_operation_failed')}.", file=sys.stderr)
+        print(
+            f"Backup operation failed: {getattr(error, 'code', 'control_operation_failed')}.",
+            file=sys.stderr,
+        )
         return 2
     except OSError:
         print("Backup operation failed: local_operation_failed.", file=sys.stderr)
@@ -749,8 +759,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments[:1] == ["backup"]:
         return _main(arguments)
     if arguments[:1] and arguments[0] in {
-        "restore-killswitch", "restore-provider-egress-guard",
-        "reconcile-management-routes", "prepare-management-routes",
+        "restore-killswitch",
+        "restore-provider-egress-guard",
+        "reconcile-management-routes",
+        "prepare-management-routes",
     }:
         print("runtime_capability_unavailable", file=sys.stderr)
         return 2
@@ -760,6 +772,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             # Sync recovery functions run to completion before the lease can
             # release; cancelling the awaiting thread does not stop a DB writer.
             return await finish_writer(asyncio.to_thread(_main, arguments))
+
     try:
         return asyncio.run(operation())
     except ControlError:

@@ -1,4 +1,5 @@
 """Bounded container facts; never represent host metrics as container facts."""
+
 from __future__ import annotations
 
 import os
@@ -22,6 +23,7 @@ def _integer(path: Path):
 
 async def system_status(data: Path, *, cgroup: Path = Path("/sys/fs/cgroup")):
     from exitlane.services.dashboard import SystemStatus
+
     used = _integer(cgroup / "memory.current")
     total = _integer(cgroup / "memory.max")
     try:
@@ -30,18 +32,24 @@ async def system_status(data: Path, *, cgroup: Path = Path("/sys/fs/cgroup")):
         disk = None
     return SystemStatus(
         available=used is not None or disk is not None,
-        hostname=socket.gethostname(), cpu_percent=None,
-        memory_used_bytes=used, memory_total_bytes=total,
+        hostname=socket.gethostname(),
+        cpu_percent=None,
+        memory_used_bytes=used,
+        memory_total_bytes=total,
         memory_percent=round(used / total * 100, 1) if used is not None and total else None,
-        disk_used_bytes=disk.used if disk else None, disk_total_bytes=disk.total if disk else None,
+        disk_used_bytes=disk.used if disk else None,
+        disk_total_bytes=disk.total if disk else None,
         disk_percent=round(disk.used / disk.total * 100, 1) if disk and disk.total else None,
-        uptime_seconds=max(0, time.monotonic() - _STARTED), load_average=None,
-        metric_scope="container", error=None if used is not None or disk else "container_metrics_unavailable",
+        uptime_seconds=max(0, time.monotonic() - _STARTED),
+        load_average=None,
+        metric_scope="container",
+        error=None if used is not None or disk else "container_metrics_unavailable",
     )
 
 
 async def diagnostics(network):
     from exitlane import core
+
     checks = [
         {"name": "Container root", "ok": os.geteuid() == 0, "detail": "container namespace"},
         {"name": "TUN", "ok": Path("/dev/net/tun").exists(), "detail": "/dev/net/tun"},
@@ -50,8 +58,13 @@ async def diagnostics(network):
         path = shutil.which(tool)
         checks.append({"name": tool, "ok": bool(path), "detail": path or "unavailable"})
     rc, output, _error = await core.command("ip", "-4", "route", "show", "default", timeout=5)
-    checks.append({"name": "Management route", "ok": rc == 0 and "default via " in output,
-                   "detail": "namespace management route"})
+    checks.append(
+        {
+            "name": "Management route",
+            "ok": rc == 0 and "default via " in output,
+            "detail": "namespace management route",
+        }
+    )
     # Before first-run ingress there is no protected interface to forward. Never
     # synthesize keys or claim a provider dataplane has been qualified here.
     if network is not None:
@@ -61,14 +74,16 @@ async def diagnostics(network):
             observed = False
         else:
             observed = True
-        checks.append({"name": "Protected policy", "ok": observed,
-                       "detail": "provider-or-block policy"})
+        checks.append(
+            {"name": "Protected policy", "ok": observed, "detail": "provider-or-block policy"}
+        )
     return checks
 
 
 async def connection_run(run_id, status_loader):
     """Reuse the shared run DTO, with direct-provider proof rather than host probes."""
     from exitlane.services import connection_diagnostics as shared
+
     run = shared._runs.get(run_id)
     if run is None:
         return
@@ -84,14 +99,36 @@ async def connection_run(run_id, status_loader):
     # dataplane observation. Handshake alone never produces this fact.
     results = {
         "exitlane_network": ("passed", "container_management_available", {}),
-        "vpn_interface": ("passed" if connected else "failed", "provider_interface_verified" if connected else "vpn_disconnected", {"interface": interface} if connected else {}),
-        "vpn_handshake": ("passed" if connected else "failed", "provider_dataplane_verified" if connected else "vpn_disconnected", {}),
-        "vpn_route": ("passed" if connected else "failed", "provider_policy_verified" if connected else "vpn_disconnected", {}),
-        "dns_resolution": ("passed" if connected else "failed", "provider_dns_verified" if connected else "vpn_disconnected", {}),
-        "internet_reachability": ("passed" if connected else "failed", "provider_dataplane_verified" if connected else "vpn_disconnected", {}),
+        "vpn_interface": (
+            "passed" if connected else "failed",
+            "provider_interface_verified" if connected else "vpn_disconnected",
+            {"interface": interface} if connected else {},
+        ),
+        "vpn_handshake": (
+            "passed" if connected else "failed",
+            "provider_dataplane_verified" if connected else "vpn_disconnected",
+            {},
+        ),
+        "vpn_route": (
+            "passed" if connected else "failed",
+            "provider_policy_verified" if connected else "vpn_disconnected",
+            {},
+        ),
+        "dns_resolution": (
+            "passed" if connected else "failed",
+            "provider_dns_verified" if connected else "vpn_disconnected",
+            {},
+        ),
+        "internet_reachability": (
+            "passed" if connected else "failed",
+            "provider_dataplane_verified" if connected else "vpn_disconnected",
+            {},
+        ),
         "public_ip": ("warning", "provider_public_ip_unavailable", {}),
     }
     for probe in run["probes"]:
         status, code, detail = results[probe["id"]]
-        probe.update(status=status, code=code, detail=detail, observed_at=shared._now(), duration_ms=0)
+        probe.update(
+            status=status, code=code, detail=detail, observed_at=shared._now(), duration_ms=0
+        )
     run["completed_at"] = shared._now()

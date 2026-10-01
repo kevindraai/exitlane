@@ -584,7 +584,9 @@ def test_provider_config_symlink_cannot_redirect_other_interface_teardown(contai
         path.rename(other)
         path.symlink_to(other)
         before = len(native.calls)
-        with pytest.raises(ProviderWireGuardError, match="^container_provider_teardown_config_invalid$"):
+        with pytest.raises(
+            ProviderWireGuardError, match="^container_provider_teardown_config_invalid$"
+        ):
             await adapter.stop_interface("wg-mullvad")
         assert not any(call[:2] == ("wg-quick", "down") for call in native.calls[before:])
         assert ns.kernel_policy is None
@@ -597,8 +599,12 @@ def test_provider_source_output_guard_precedes_kernel_start_and_retains_history(
 
     async def scenario():
         original_runner = adapter.runner
+
         async def check_start(*args, **kwargs):
-            if args[0] not in ("nft", "cat") and args[:3] not in (("ip", "-4", "-j"), ("ip", "-6", "-j")):
+            if args[0] not in ("nft", "cat") and args[:3] not in (
+                ("ip", "-4", "-j"),
+                ("ip", "-6", "-j"),
+            ):
                 assert ns.network.source_addresses == ("10.67.12.34",)
                 assert ns.network.probe_interface == "wg-mullvad"
             return await original_runner(*args, **kwargs)
@@ -609,8 +615,33 @@ def test_provider_source_output_guard_precedes_kernel_start_and_retains_history(
         assert ns.kernel_policy is None
         rules = ns.network.output_expressions()
         assert rules == [
-            [{"match": {"op": "==", "left": {"payload": {"protocol": "ip", "field": "saddr"}}, "right": "10.67.12.34"}}, {"match": {"op": "==", "left": {"meta": {"key": "oifname"}}, "right": "wg-mullvad"}}, {"accept": None}],
-            [{"match": {"op": "==", "left": {"payload": {"protocol": "ip", "field": "saddr"}}, "right": "10.67.12.34"}}, {"drop": None}],
+            [
+                {
+                    "match": {
+                        "op": "==",
+                        "left": {"payload": {"protocol": "ip", "field": "saddr"}},
+                        "right": "10.67.12.34",
+                    }
+                },
+                {
+                    "match": {
+                        "op": "==",
+                        "left": {"meta": {"key": "oifname"}},
+                        "right": "wg-mullvad",
+                    }
+                },
+                {"accept": None},
+            ],
+            [
+                {
+                    "match": {
+                        "op": "==",
+                        "left": {"payload": {"protocol": "ip", "field": "saddr"}},
+                        "right": "10.67.12.34",
+                    }
+                },
+                {"drop": None},
+            ],
         ]
         assert all("dport" not in json.dumps(rule) for rule in rules)
         await adapter.stop_interface("wg-mullvad")

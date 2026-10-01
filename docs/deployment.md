@@ -31,16 +31,21 @@ The reset requires explicit confirmation and revokes every browser session. Envi
 overrides retain precedence and must be corrected in the service configuration.
 
 Exitlane is currently designed as a single service on a dedicated Debian 13 `amd64` host or LXC.
-That is the supported 0.3.0-rc.3 appliance baseline; other Debian releases and architectures are not
+That is the native appliance target for 0.3.0-rc.4; other Debian releases and architectures are not
 supported release targets. The installer creates an isolated Python environment, installs the
 systemd unit, and prepares configuration, data, and log locations.
 
-ExitLane must run natively in the gateway VM or LXC. NordVPN uses `nordvpn`/`nordvpnd`; Mullvad uses
-ExitLane's own `wg-mullvad` interface and must not have an active Mullvad app daemon or firewall
-table. The Docker image is for UI/API development and is not a supported VPN gateway. The
-[Docker appliance feasibility assessment](docker-appliance-feasibility.md) records the exact
-unproven security and lifecycle gates. Do not expose the Docker socket or mount broad host
-paths to bridge that boundary.
+The supported deployment method remains native Debian in the gateway VM or privileged LXC.
+NordVPN uses `nordvpn`/`nordvpnd`; Mullvad, PIA and imported Proton profiles use ExitLane-owned
+direct WireGuard interfaces. Mullvad must not have an active app daemon or provider firewall table.
+
+The original Docker surface remains for UI/API development. A separate experimental appliance
+candidate now implements the same core's container lifecycle, direct-provider dataplane and
+state/recovery boundary. D1–D7 implementation is delivered and historical D6 synthetic
+disposable-host qualification passed. Docker remains unsupported and no official production image
+has been published. See the [candidate contract](docker-appliance-candidate.md) and
+[rc.4 release notes](release-notes/0.3.0-rc.4.md) for current evidence and pending release gates.
+Do not expose the Docker socket or mount broad host paths to bridge that boundary.
 
 The systemd service gives provider tooling a private writable home under `/var/lib/exitlane` while
 retaining `ProtectHome=true`. ExitLane does not mount host command or Docker control sockets.
@@ -61,11 +66,11 @@ It creates a new privileged Debian 13 LXC with default or advanced settings and 
 confirmation, then reuses the same Debian installer at the resolved published tag.
 See the linked guide for release selection, trust and inspect-first operation.
 
-Use the published release tag. The following command becomes available when `v0.3.0-rc.3` is
+Use the published release tag. The following command becomes available when `v0.3.0-rc.4` is
 published; do not substitute an unreviewed development branch for an appliance deployment:
 
 ```bash
-git clone --branch v0.3.0-rc.3 --depth 1 https://github.com/kevindraai/exitlane.git
+git clone --branch v0.3.0-rc.4 --depth 1 https://github.com/kevindraai/exitlane.git
 cd exitlane
 sudo ./installer/install-debian.sh
 ```
@@ -74,14 +79,20 @@ After installation, open `http://<host>:8787` from the trusted management networ
 wizard. The router imports the generated WireGuard client configuration and owns the policy that
 selects which traffic uses Exitlane. See [Router integrations](router-integrations.md).
 
+Exact rc.4 native installation and upgrade receipts remain release gates; prior appliance
+qualification does not by itself qualify this candidate. Follow the
+[rc.4 release notes](release-notes/0.3.0-rc.4.md) for their recorded status.
+
 ## First-run checklist
 
 1. Create the local administrator and enable MFA after completing setup. Store recovery codes
    somewhere other than the appliance.
-2. Choose NordVPN, Mullvad or direct egress. For NordVPN, follow the
-   [client installation and token sign-in](nordvpn.md#install-and-sign-in) instructions. For Mullvad,
-   follow the [account and device setup](mullvad.md#set-up-and-connect) instructions; the Mullvad app
-   is not required. You can configure both providers, then select one for active egress.
+2. Choose no provider for native direct egress, or configure any combination of NordVPN, Mullvad,
+   PIA and imported Proton profiles. Follow the [NordVPN client/token guide](nordvpn.md#install-and-sign-in),
+   [Mullvad account/device guide](mullvad.md#set-up-and-connect), [PIA guide](pia.md), or
+   [Proton profile-import guide](proton.md). Select exactly one provider for active egress.
+   PIA and Proton are implemented with synthetic/native-kernel qualification; live provider proof
+   remains outstanding for both.
 3. Choose the WireGuard ingress name before provisioning. A configured interface cannot be renamed
    through the API; regeneration retains its name and replaces the client identity.
 4. Import the generated profile on the router, then apply the router's routing policy to a test

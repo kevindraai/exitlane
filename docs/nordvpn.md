@@ -10,7 +10,8 @@ install or manage the NordVPN client.
 
 NordVPN is also unavailable in the experimental Docker appliance. The
 [container research decision](nordvpn-container-research.md) found the current official client
-incompatible with its qualified runtime contract. Native NordVPN behavior is unchanged.
+incompatible with its qualified runtime contract: stock client 5.4.0 still writes the IPv6 sysctl
+against retained read-only kernel paths. Native NordVPN behavior is unchanged.
 
 ## Install and sign in
 
@@ -29,8 +30,8 @@ incompatible with its qualified runtime contract. Native NordVPN behavior is unc
    disconnects. From a routed client, check internet access, DNS and the public exit address.
    Confirm that SSH and the WebUI remain accessible from the management network.
 
-NordVPN and Mullvad can both be configured, but only one commercial provider can be active at a
-time. Selecting a provider for setup is separate from activating its outbound connection. If you
+Native NordVPN, Mullvad, PIA and imported Proton profiles can be configured together, but only
+one commercial provider can be active at a time. Selecting a provider for setup is separate from activating its outbound connection. If you
 defer provider setup, routed clients can use direct internet egress; configure a provider later
 under **VPN** when you want VPN protection.
 

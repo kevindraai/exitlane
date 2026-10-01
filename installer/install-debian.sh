@@ -3,8 +3,8 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-readonly INSTALLER_VERSION="0.3.0-rc.3"
-readonly PACKAGE_VERSION="0.3.0rc3"
+readonly INSTALLER_VERSION="0.3.0-rc.4"
+readonly PACKAGE_VERSION="0.3.0rc4"
 readonly LIFECYCLE_LOCK="${EXITLANE_LIFECYCLE_LOCK:-/run/lock/exitlane-lifecycle.lock}"
 readonly RECOVERY_ROOT="${EXITLANE_RECOVERY_ROOT:-/var/lib/exitlane/recovery}"
 UPGRADE_MODE=0

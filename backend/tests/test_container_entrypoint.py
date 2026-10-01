@@ -104,7 +104,9 @@ def test_empty_namespace_reset_does_not_read_unpublished_pair(phase):
 
 
 def test_ingress_revoked_lease_refuses_before_file_or_network_access():
-    controller = ContainerController(SimpleNamespace(), Maintenance(), operation_valid=lambda: False)
+    controller = ContainerController(
+        SimpleNamespace(), Maintenance(), operation_valid=lambda: False
+    )
     with pytest.raises(EntrypointError, match="lease_revoked"):
         asyncio.run(controller.ingress({"action": "activate", "interface": "wg-office"}))
 
@@ -126,7 +128,8 @@ def test_ingress_observe_cannot_release_maintenance_after_lease_revocation(monke
     valid = True
     maintenance = Maintenance()
     controller = ContainerController(
-        SimpleNamespace(layout=SimpleNamespace(wireguard=tmp_path)), maintenance,
+        SimpleNamespace(layout=SimpleNamespace(wireguard=tmp_path)),
+        maintenance,
         operation_valid=lambda: valid,
     )
     controller.network = ns.network
@@ -142,7 +145,9 @@ def test_ingress_observe_cannot_release_maintenance_after_lease_revocation(monke
     monkeypatch.setattr(controller, "observe_policy", observed)
     monkeypatch.setattr(ns.network, "observe_owned_ingress", owned)
     with pytest.raises(EntrypointError, match="lease_revoked"):
-        asyncio.run(controller.ingress({"action": "observe", "interface": ns.network.config.interface}))
+        asyncio.run(
+            controller.ingress({"action": "observe", "interface": ns.network.config.interface})
+        )
     assert ("release",) not in maintenance.calls
 
 
@@ -278,20 +283,52 @@ class ActiveResetNamespace(Namespace):
         self.network.policy_interface = "wg-mullvad"
         self.network.probe_interface = "wg-mullvad"
         self.network.source_addresses = ("10.64.0.2", "10.65.0.2")
-        self.routes = {family: [{"type": "unreachable", "dst": "default",
-                                "metric": UNREACHABLE_METRIC, "protocol": ROUTE_PROTOCOL}]
-                       for family in (4, 6)}
-        self.routes[4].append({"dst": "default", "dev": "foreign0" if foreign_route else "wg-mullvad",
-                               "metric": 10, "protocol": ROUTE_PROTOCOL})
-        self.rules = {family: [{"priority": 0, "src": "all", "table": "local", "protocol": "kernel"},
-                               {"priority": RULE_PRIORITY, "src": "all", "iif": "wg-office",
-                                "table": TABLE_ID, "protocol": ROUTE_PROTOCOL,
-                                **({"iif_detached": True} if detached else {})}]
-                      for family in (4, 6)}
-        self.rules[4] += [{"priority": 0, "src": source, "table": TABLE_ID, "protocol": ROUTE_PROTOCOL}
-                         for source in self.network.source_addresses]
-        self.rules[4].append({"priority": PROBE_RULE_PRIORITY, "src": "all", "oif": "wg-mullvad",
-                              "table": TABLE_ID, "protocol": ROUTE_PROTOCOL})
+        self.routes = {
+            family: [
+                {
+                    "type": "unreachable",
+                    "dst": "default",
+                    "metric": UNREACHABLE_METRIC,
+                    "protocol": ROUTE_PROTOCOL,
+                }
+            ]
+            for family in (4, 6)
+        }
+        self.routes[4].append(
+            {
+                "dst": "default",
+                "dev": "foreign0" if foreign_route else "wg-mullvad",
+                "metric": 10,
+                "protocol": ROUTE_PROTOCOL,
+            }
+        )
+        self.rules = {
+            family: [
+                {"priority": 0, "src": "all", "table": "local", "protocol": "kernel"},
+                {
+                    "priority": RULE_PRIORITY,
+                    "src": "all",
+                    "iif": "wg-office",
+                    "table": TABLE_ID,
+                    "protocol": ROUTE_PROTOCOL,
+                    **({"iif_detached": True} if detached else {}),
+                },
+            ]
+            for family in (4, 6)
+        }
+        self.rules[4] += [
+            {"priority": 0, "src": source, "table": TABLE_ID, "protocol": ROUTE_PROTOCOL}
+            for source in self.network.source_addresses
+        ]
+        self.rules[4].append(
+            {
+                "priority": PROBE_RULE_PRIORITY,
+                "src": "all",
+                "oif": "wg-mullvad",
+                "table": TABLE_ID,
+                "protocol": ROUTE_PROTOCOL,
+            }
+        )
         self.network.provider_guard = ProviderWireGuard(self.run)
 
     def nft(self):
@@ -300,11 +337,23 @@ class ActiveResetNamespace(Namespace):
         value = json.loads(super().nft())
         interface = self.network.policy_interface
         if interface:
-            value["nftables"].append({"chain": {"family": "inet", "table": TABLE, "name": "postrouting",
-                                                 "type": "nat", "hook": "postrouting", "prio": 100,
-                                                 "policy": "accept"}})
-            value["nftables"] += [{"rule": {"family": "inet", "table": TABLE, "chain": "postrouting", "expr": e}}
-                                  for e in self.network.nat_expressions(interface)]
+            value["nftables"].append(
+                {
+                    "chain": {
+                        "family": "inet",
+                        "table": TABLE,
+                        "name": "postrouting",
+                        "type": "nat",
+                        "hook": "postrouting",
+                        "prio": 100,
+                        "policy": "accept",
+                    }
+                }
+            )
+            value["nftables"] += [
+                {"rule": {"family": "inet", "table": TABLE, "chain": "postrouting", "expr": e}}
+                for e in self.network.nat_expressions(interface)
+            ]
         return json.dumps(value)
 
     async def run(self, *args, **kwargs):
@@ -324,14 +373,25 @@ class ActiveResetNamespace(Namespace):
             if args[2:4] == ("rule", "del"):
                 priority, direction, interface = int(args[5]), args[6], args[7]
                 for rule in self.rules[family]:
-                    if (rule.get("priority") == priority and rule.get(direction) == interface
-                            and str(rule.get("table")) == args[9] and str(rule.get("protocol")) == args[11]):
+                    if (
+                        rule.get("priority") == priority
+                        and rule.get(direction) == interface
+                        and str(rule.get("table")) == args[9]
+                        and str(rule.get("protocol")) == args[11]
+                    ):
                         self.rules[family].remove(rule)
                         return 0, "", ""
                 return 1, "", ""
             if args[2:4] == ("rule", "add"):
-                self.rules[family].append({"priority": int(args[5]), "src": "all", args[6]: args[7],
-                                           "table": int(args[9]), "protocol": int(args[11])})
+                self.rules[family].append(
+                    {
+                        "priority": int(args[5]),
+                        "src": "all",
+                        args[6]: args[7],
+                        "table": int(args[9]),
+                        "protocol": int(args[11]),
+                    }
+                )
                 return 0, "", ""
             if args[2:4] == ("route", "replace"):
                 assert args[4] == "unreachable"
@@ -345,17 +405,38 @@ class ActiveResetNamespace(Namespace):
                 return 1, "", ""
             self.reads += 1
             index = 8 if self.race and self.reads >= self.race else 7
-            return 0, json.dumps([{"ifname": "wg-mullvad", "ifindex": index,
-                                   "linkinfo": {"info_kind": "wireguard"}}]), ""
+            return (
+                0,
+                json.dumps(
+                    [
+                        {
+                            "ifname": "wg-mullvad",
+                            "ifindex": index,
+                            "linkinfo": {"info_kind": "wireguard"},
+                        }
+                    ]
+                ),
+                "",
+            )
         if args[:3] == ("wg", "show", "wg-mullvad"):
             self.commands.append(args)
-            values = {"public-key": self.provider.peer_public_key if self.foreign_key else
-                      _public_key_for_private(self.provider.private_key), "peers": self.provider.peer_public_key,
-                      "endpoints": f"{self.provider.peer_public_key}\t{self.provider.endpoint_address}:51820"}
+            values = {
+                "public-key": self.provider.peer_public_key
+                if self.foreign_key
+                else _public_key_for_private(self.provider.private_key),
+                "peers": self.provider.peer_public_key,
+                "endpoints": f"{self.provider.peer_public_key}\t{self.provider.endpoint_address}:51820",
+            }
             return 0, values[args[-1]], ""
         if args[:4] == ("ip", "-4", "-j", "address"):
             self.commands.append(args)
-            return 0, json.dumps([{"addr_info": [{"family": "inet", "local": "10.64.0.2", "prefixlen": 32}]}]), ""
+            return (
+                0,
+                json.dumps(
+                    [{"addr_info": [{"family": "inet", "local": "10.64.0.2", "prefixlen": 32}]}]
+                ),
+                "",
+            )
         if args[:5] == ("ip", "link", "delete", "dev", "wg-mullvad"):
             self.commands.append(args)
             self.live = False
@@ -364,7 +445,9 @@ class ActiveResetNamespace(Namespace):
         return await super().run(*args, **kwargs)
 
     def entrypoint(self):
-        state = SimpleNamespace(validate=lambda: SimpleNamespace(intents=(SimpleNamespace(config=self.provider),)))
+        state = SimpleNamespace(
+            validate=lambda: SimpleNamespace(intents=(SimpleNamespace(config=self.provider),))
+        )
         maintenance = Maintenance()
         controller = ContainerController(state, maintenance, runner=self.run)
         controller.network = self.network
@@ -397,12 +480,17 @@ def test_active_provider_reset_revokes_exact_owned_residue_before_ingress_only_g
     assert not any(c[0] in {"systemctl", "wg-quick"} for c in ns.commands)
 
 
-@pytest.mark.parametrize("fault", ["foreign_route", "foreign_key", "index_race", "guard", "identity"])
+@pytest.mark.parametrize(
+    "fault", ["foreign_route", "foreign_key", "index_race", "guard", "identity"]
+)
 def test_reset_refuses_unowned_residue_before_any_mutation(fault):
     from exitlane.services.provider_wireguard import ProviderWireGuardError
 
-    ns = ActiveResetNamespace(foreign_route=fault == "foreign_route", foreign_key=fault == "foreign_key",
-                              race=3 if fault == "index_race" else 0)
+    ns = ActiveResetNamespace(
+        foreign_route=fault == "foreign_route",
+        foreign_key=fault == "foreign_key",
+        race=3 if fault == "index_race" else 0,
+    )
     ns.bad_observation = fault == "guard"
     entry = ns.entrypoint()
     if fault == "identity":
@@ -410,8 +498,10 @@ def test_reset_refuses_unowned_residue_before_any_mutation(fault):
     with pytest.raises((EntrypointError, ContainerLifecycleError, ProviderWireGuardError)):
         asyncio.run(entry.reset())
     assert ns.live
-    assert not any("del" in c or "delete" in c or "replace" in c or "add" in c or c[:2] == ("nft", "-f")
-                   for c in ns.commands)
+    assert not any(
+        "del" in c or "delete" in c or "replace" in c or "add" in c or c[:2] == ("nft", "-f")
+        for c in ns.commands
+    )
 
 
 def test_ifindex_change_after_owned_selector_cleanup_keeps_link_and_guard():
@@ -419,7 +509,9 @@ def test_ifindex_change_after_owned_selector_cleanup_keeps_link_and_guard():
     with pytest.raises(EntrypointError, match="container_interface_ownership_changed"):
         asyncio.run(ns.entrypoint().reset())
     assert ns.live and not any(c[:3] == ("ip", "link", "delete") for c in ns.commands)
-    assert ns.network.policy_interface == "wg-mullvad"  # Independent maintenance remains authoritative.
+    assert (
+        ns.network.policy_interface == "wg-mullvad"
+    )  # Independent maintenance remains authoritative.
 
 
 @pytest.mark.parametrize("fault", ["second_key", "multiple_defaults"])
@@ -433,22 +525,39 @@ def test_all_surviving_generations_and_single_default_are_proven_before_cleanup(
     async def runner(*args, **kwargs):
         if args[-1] == "wg-pia" and "link" in args and "show" in args:
             ns.commands.append(args)
-            return 0, json.dumps([{"ifname": "wg-pia", "ifindex": 9,
-                                   "linkinfo": {"info_kind": "wireguard"}}]), ""
+            return (
+                0,
+                json.dumps(
+                    [{"ifname": "wg-pia", "ifindex": 9, "linkinfo": {"info_kind": "wireguard"}}]
+                ),
+                "",
+            )
         if args[:3] == ("wg", "show", "wg-pia"):
             ns.commands.append(args)
-            values = {"public-key": pia.peer_public_key if fault == "second_key" else
-                      _public_key_for_private(pia.private_key), "peers": pia.peer_public_key,
-                      "endpoints": f"{pia.peer_public_key}\t{pia.endpoint_address}:51820"}
+            values = {
+                "public-key": pia.peer_public_key
+                if fault == "second_key"
+                else _public_key_for_private(pia.private_key),
+                "peers": pia.peer_public_key,
+                "endpoints": f"{pia.peer_public_key}\t{pia.endpoint_address}:51820",
+            }
             return 0, values[args[-1]], ""
         if args[:4] == ("ip", "-4", "-j", "address") and args[-1] == "wg-pia":
             ns.commands.append(args)
-            return 0, json.dumps([{"addr_info": [{"family": "inet", "local": "10.65.0.2", "prefixlen": 32}]}]), ""
+            return (
+                0,
+                json.dumps(
+                    [{"addr_info": [{"family": "inet", "local": "10.65.0.2", "prefixlen": 32}]}]
+                ),
+                "",
+            )
         return await original(*args, **kwargs)
 
     entry = ns.entrypoint()
     entry.controller.runner = runner
-    entry.state.validate = lambda: SimpleNamespace(intents=(SimpleNamespace(config=ns.provider), SimpleNamespace(config=pia)))
+    entry.state.validate = lambda: SimpleNamespace(
+        intents=(SimpleNamespace(config=ns.provider), SimpleNamespace(config=pia))
+    )
     if fault == "multiple_defaults":
         ns.routes[4].append({"dst": "default", "dev": "wg-pia", "metric": 10, "protocol": 196})
     with pytest.raises(EntrypointError, match="container_provider_recovery_required"):
@@ -456,11 +565,14 @@ def test_all_surviving_generations_and_single_default_are_proven_before_cleanup(
     assert not any("del" in c or "delete" in c or "replace" in c or "add" in c for c in ns.commands)
 
 
-@pytest.mark.parametrize("foreign", [
-    {"priority": 12345, "src": "all", "iif": "other-ingress", "table": 999, "protocol": 999},
-    {"priority": 20000, "src": "all", "iif": "wg-office", "table": 51820, "protocol": 999},
-    {"priority": 20000, "src": "all", "iif": "other-ingress", "table": 51820, "protocol": 196},
-])
+@pytest.mark.parametrize(
+    "foreign",
+    [
+        {"priority": 12345, "src": "all", "iif": "other-ingress", "table": 999, "protocol": 999},
+        {"priority": 20000, "src": "all", "iif": "wg-office", "table": 51820, "protocol": 999},
+        {"priority": 20000, "src": "all", "iif": "other-ingress", "table": 51820, "protocol": 196},
+    ],
+)
 def test_cleanup_never_removes_foreign_ingress_preference_or_protocol(foreign):
     from exitlane.services.provider_wireguard import ProviderWireGuardError
 
@@ -473,8 +585,12 @@ def test_cleanup_never_removes_foreign_ingress_preference_or_protocol(foreign):
         asyncio.run(ns.entrypoint().reset())
     assert foreign in ns.rules[4]
     deletions = [c for c in ns.commands if c[:4] == ("ip", "-4", "rule", "del")]
-    assert all(c[6:8] in {("oif", "wg-mullvad"), ("iif", "wg-office")}
-               and c[9] == "51820" and c[11] == "196" for c in deletions)
+    assert all(
+        c[6:8] in {("oif", "wg-mullvad"), ("iif", "wg-office")}
+        and c[9] == "51820"
+        and c[11] == "196"
+        for c in deletions
+    )
 
 
 def test_reopen_preserves_worker_policy_and_releases_only_maintenance():

@@ -134,3 +134,16 @@ def test_documentation_reader_rejects_oversized_files(tmp_path):
     path.write_bytes(b"x" * (256 * 1024 + 1))
     with pytest.raises(DocumentationError, match="size limit"):
         documentation_document("diagnostics", tmp_path)
+
+
+def test_installed_wheel_uses_bundled_guides_without_repository(monkeypatch, tmp_path):
+    from exitlane import documentation
+
+    package = tmp_path / "site-packages" / "exitlane"
+    package.mkdir(parents=True)
+    guides = package / "docs"
+    guides.mkdir()
+    (guides / "pia.md").write_text("# PIA provider\n\nPackaged guide.\n")
+    monkeypatch.setattr(documentation, "__file__", str(package / "documentation.py"))
+    assert documentation.documentation_root() == guides.resolve()
+    assert documentation_document("pia")["title"] == "PIA provider"

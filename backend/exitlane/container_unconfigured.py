@@ -1,4 +1,5 @@
 """No native network fallback before first-run ingress is configured."""
+
 from exitlane.services.provider_wireguard import ProviderWireGuardError
 
 

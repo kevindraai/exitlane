@@ -6,7 +6,9 @@ RUN apt-get -o APT::Update::Error-Mode=any update \
     && apt-get install --yes --no-install-recommends wireguard-tools iproute2 nftables iputils-ping \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
-COPY backend/pyproject.toml /src/pyproject.toml
+COPY backend/pyproject.toml backend/hatch_build.py /src/
+COPY LICENSE THIRD_PARTY_NOTICES.md /
+COPY docs /docs
 COPY backend/exitlane /src/exitlane
 RUN pip install --no-cache-dir .
 COPY scripts/qualification/container_dataplane_fixture.py /qualification/fixture.py

@@ -1,7 +1,8 @@
 # Beta release checklist
 
-This checklist is evidence-driven. An incomplete required gate blocks tagging
-and publishing the release. Evidence may be recorded in the release task, a
+This checklist is evidence-driven. An incomplete required pre-publication gate blocks tagging
+and publishing the release. The narrowly defined rc.4 public-launcher stage below
+is the only explicitly authorized post-publication gate. Evidence may be recorded in the release task, a
 release pull request, or linked GitHub evidence.
 
 Do not claim that a check is complete unless its evidence is included or linked.
@@ -38,13 +39,17 @@ not merge a release pull request unless explicitly instructed.
   wheel/sdist builds, package-content validation, and `git diff --check` pass
   from a clean checkout of the recorded release SHA.
 - [ ] Gitleaks, CodeQL, dependency review, ZAP baseline, packaging,
-  supply-chain checks, and every other required GitHub check pass on the final
-  `main` commit.
+  supply-chain checks, and every other applicable required GitHub check pass on the final
+  `main` commit. Dependency review is PR-only: record its exact approved PR-head result
+  separately, plus fresh final-main dependency auditing; never label a skipped job as a pass.
 - [ ] Built package metadata reports the expected PEP 440 version.
 - [ ] Final package contents and generated artifacts contain no secrets,
   sessions, private keys, backups, logs, databases, or unexpected files.
-- [ ] No critical or high security finding remains open; every medium finding
-  is fixed or explicitly accepted with linked rationale.
+- [ ] No blocking critical or high finding affects the application packages or supported native
+  release. Classify findings by affected artifact and native/shared applicability. Docker-only
+  base/OS findings remain blockers for the separate image publication, with complete evidence
+  retained and no waiver. Any shared/native applicable HIGH/CRITICAL still blocks the application
+  release. Review medium findings with linked disposition; do not suppress scanner evidence.
 - [ ] Commands, counts, results, and links for final validation are recorded as
   release evidence.
 
@@ -108,16 +113,38 @@ not merge a release pull request unless explicitly instructed.
 - [ ] A maintainer or explicitly authorized release agent has performed the merge only after the
   independent pre-merge approval and every required gate passed on the final pull-request head.
 
-## Tag and prerelease publication
+## Tag and release-candidate publication
 
-- [ ] Every preceding required gate is complete before creating a tag.
+- [ ] Every preceding pre-publication gate is complete before creating a tag.
 - [ ] An annotated version tag is created at the recorded release SHA and pushed
   without force.
 - [ ] The GitHub release targets that exact tag and SHA, uses reviewed English
-  release notes, and is published as a prerelease rather than the latest stable
-  release.
+  release notes and follows the current release channel policy. For rc.4, the Product Owner
+  explicitly requires consistency with rc.3: `prerelease=false`, `make_latest=true`. The rc tag,
+  runtime/package versions and prose still identify a release candidate; these GitHub channel
+  flags do not assert stable maturity.
 - [ ] Attached artifacts, when required by the established workflow, are built
   from the recorded release SHA and published with verified SHA-256 checksums.
 - [ ] The published tag resolves to the recorded SHA, release notes render
   correctly, downloadable artifacts match their checksums, and no unrelated
   branch or repository file was modified.
+
+## rc.4 public Proxmox stage (explicit Product Owner sequencing exception)
+
+All normal final-main, native lifecycle, security, package and candidate gates must pass before
+tagging. The moving public launcher cannot resolve rc.4 until the actual GitHub release exists.
+The work order therefore authorizes a two-stage sequence, solely for this public-resolution gate:
+
+- [ ] Before publication, qualify exact candidate helper/install behavior on a designated fresh
+  disposable native Debian 13 amd64 privileged LXC and qualify rc.3 → rc.4 upgrade.
+- [ ] Immediately after publication, run the ordinary public main one-liner on the authorized PVE
+  host. Prove resolution of the actual rc.4 release, exact helper integrity, new-container creation
+  and same-tag installation, networking, access/log controls, service/UI/API and stop/start.
+- [ ] Preserve the guest and secret-free receipts; CT100 and CT123 are excluded from fresh-create
+  proof. Do not auto-destroy guests. Record the final SHA and artifact digests outside that source
+  commit, in the release body and qualification receipt.
+- [ ] Mark the release fully qualified only after this second stage passes. A public-path failure
+  is an rc.4 defect: retain evidence, diagnose and use a bounded reviewed follow-up release. Never
+  move the rc.4 tag or claim #87 completed without proof.
+
+No Docker publication, support declaration, container aliases or production rollout is authorized.

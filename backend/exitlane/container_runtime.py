@@ -263,13 +263,33 @@ class ContainerWireGuardLifecycle:
         interface = self.probe_interface if probe_interface is ... else probe_interface
         rules = []
         for address in sources:
-            selector = {"match": {"op": "==", "left": {"payload": {"protocol": "ip", "field": "saddr"}}, "right": address}}
+            selector = {
+                "match": {
+                    "op": "==",
+                    "left": {"payload": {"protocol": "ip", "field": "saddr"}},
+                    "right": address,
+                }
+            }
             if interface is not None:
-                rules.append([selector, {"match": {"op": "==", "left": {"meta": {"key": "oifname"}}, "right": interface}}, {"accept": None}])
+                rules.append(
+                    [
+                        selector,
+                        {
+                            "match": {
+                                "op": "==",
+                                "left": {"meta": {"key": "oifname"}},
+                                "right": interface,
+                            }
+                        },
+                        {"accept": None},
+                    ]
+                )
             rules.append([selector, {"drop": None}])
         return rules
 
-    def validate_nft_guard(self, data: dict, *, policy_interface=..., sources=None, probe_interface=...) -> None:
+    def validate_nft_guard(
+        self, data: dict, *, policy_interface=..., sources=None, probe_interface=...
+    ) -> None:
         interface = self.policy_interface if policy_interface is ... else policy_interface
         source_inventory = self.source_addresses if sources is None else sources
         probe = self.probe_interface if probe_interface is ... else probe_interface
@@ -277,7 +297,10 @@ class ContainerWireGuardLifecycle:
             interface is None or interface in self.provider_interfaces, "container_guard_unproven"
         )
         require(probe is None or probe in self.provider_interfaces, "container_guard_unproven")
-        require(interface is None or (interface == probe and bool(source_inventory)), "container_guard_unproven")
+        require(
+            interface is None or (interface == probe and bool(source_inventory)),
+            "container_guard_unproven",
+        )
         require(
             isinstance(data, dict) and isinstance(data.get("nftables"), list),
             "container_guard_unproven",
@@ -305,7 +328,11 @@ class ContainerWireGuardLifecycle:
         expected = {
             "forward": ("filter", -200, self.forward_expressions(interface)),
             "input": ("filter", -200, self.input_expressions()),
-            "output": ("filter", 0, self.output_expressions(sources=sources, probe_interface=probe_interface)),
+            "output": (
+                "filter",
+                0,
+                self.output_expressions(sources=sources, probe_interface=probe_interface),
+            ),
         }
         if interface is not None:
             expected["postrouting"] = ("nat", 100, self.nat_expressions(interface))
@@ -353,10 +380,26 @@ class ContainerWireGuardLifecycle:
                 if rule.get("chain") != "output":
                     continue
                 selector = rule["expr"][0]["match"]
-                require(selector["op"] == "==" and selector["left"] == {"payload": {"protocol": "ip", "field": "saddr"}}, "container_guard_resource_conflict")
+                require(
+                    selector["op"] == "=="
+                    and selector["left"] == {"payload": {"protocol": "ip", "field": "saddr"}},
+                    "container_guard_resource_conflict",
+                )
                 address = selector["right"]
                 parsed = ipaddress.IPv4Address(address)
-                require(isinstance(address, str) and str(parsed) == address and not (parsed.is_unspecified or parsed.is_multicast or parsed.is_loopback or parsed.is_reserved or parsed.is_link_local or parsed in ipaddress.IPv4Network("0.0.0.0/8")), "container_guard_resource_conflict")
+                require(
+                    isinstance(address, str)
+                    and str(parsed) == address
+                    and not (
+                        parsed.is_unspecified
+                        or parsed.is_multicast
+                        or parsed.is_loopback
+                        or parsed.is_reserved
+                        or parsed.is_link_local
+                        or parsed in ipaddress.IPv4Network("0.0.0.0/8")
+                    ),
+                    "container_guard_resource_conflict",
+                )
                 sources.add(address)
             require(len(sources) <= 64, "container_guard_resource_conflict")
         except (ValueError, KeyError, TypeError, AttributeError, IndexError):
@@ -365,7 +408,9 @@ class ContainerWireGuardLifecycle:
         for interface in (None, *self.provider_interfaces):
             for probe in (None, *self.provider_interfaces):
                 try:
-                    self.validate_nft_guard(data, policy_interface=interface, sources=sources, probe_interface=probe)
+                    self.validate_nft_guard(
+                        data, policy_interface=interface, sources=sources, probe_interface=probe
+                    )
                     self.source_addresses = sources
                     return
                 except ContainerLifecycleError:
@@ -411,7 +456,18 @@ class ContainerWireGuardLifecycle:
         try:
             address = str(ipaddress.IPv4Interface(config.address).ip)
             parsed = ipaddress.IPv4Address(address)
-            require(config.interface in self.provider_interfaces and not (parsed.is_unspecified or parsed.is_multicast or parsed.is_loopback or parsed.is_reserved or parsed.is_link_local or parsed in ipaddress.IPv4Network("0.0.0.0/8")), "container_provider_invalid")
+            require(
+                config.interface in self.provider_interfaces
+                and not (
+                    parsed.is_unspecified
+                    or parsed.is_multicast
+                    or parsed.is_loopback
+                    or parsed.is_reserved
+                    or parsed.is_link_local
+                    or parsed in ipaddress.IPv4Network("0.0.0.0/8")
+                ),
+                "container_provider_invalid",
+            )
             sources = tuple(sorted(set(self.source_addresses) | {address}))
             require(len(sources) <= 64, "container_provider_source_budget_exhausted")
         except (ValueError, TypeError, AttributeError):

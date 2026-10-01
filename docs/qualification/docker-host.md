@@ -278,7 +278,16 @@ does not correlate each IPv6 attempt with a specific encapsulated ingress packet
 
 ## Current status
 
-The harness and complete D6 failure matrix are being qualified. A connected
-baseline or successful restart component does not complete D6. Docker remains
-experimental until every required scenario has accepted evidence and independent
-review. Production GHCR publication is a separate, explicitly authorized gate.
+Historical D6 synthetic disposable-host qualification passed in
+[issue #96](https://github.com/kevindraai/exitlane/issues/96) /
+[PR #110](https://github.com/kevindraai/exitlane/pull/110), on the exact source/image and host
+inventory retained with that evidence. It includes the required provider, packet, recovery,
+daemon-mode and host-reboot components. Failed and inconclusive attempts described above remain
+retained; a connected baseline or one successful component alone never completes the matrix.
+
+The later D7 implementation supplies gated release infrastructure, not publication. Docker remains
+experimental/unsupported and no official production image has been published. Historical D6
+acceptance does not automatically qualify the rc.4 source or a rebuilt image; exact candidate
+checks and refreshed scans remain release gates in the
+[rc.4 release notes](../release-notes/0.3.0-rc.4.md). First GHCR publication and any support decision
+remain separately authorized.

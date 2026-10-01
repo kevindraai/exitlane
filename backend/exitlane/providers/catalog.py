@@ -18,5 +18,6 @@ if runtime.capabilities.runtime_name == "container":
 
 if runtime.capabilities.runtime_name == "container":
     from exitlane.container_unconfigured import UnconfiguredContainerEgress
+
     for direct in provider_registry.direct_egress_providers():
         direct.wireguard = UnconfiguredContainerEgress()

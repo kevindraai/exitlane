@@ -55,6 +55,7 @@ class DocumentationError(RuntimeError):
 def documentation_root() -> Path:
     candidates = (
         Path(__file__).resolve().parents[2] / "docs",
+        Path(__file__).resolve().parent / "docs",
         Path("/opt/exitlane/docs"),
     )
     for candidate in candidates:

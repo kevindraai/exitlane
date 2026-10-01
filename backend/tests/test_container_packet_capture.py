@@ -1,4 +1,5 @@
 """Packet-evidence parsing must not mistake ciphertext for protected traffic."""
+
 import importlib.util
 import json
 import struct
@@ -38,7 +39,9 @@ def test_ciphertext_with_marker_bytes_is_only_encrypted_metadata():
     assert capture.classify(packet, ethernet=False) == ("encrypted", None)
 
 
-@pytest.mark.parametrize("payload", [b"exitlane-d3-protected-:1", b"exitlane-d3-protected-a/b:2", b"unrelated"])
+@pytest.mark.parametrize(
+    "payload", [b"exitlane-d3-protected-:1", b"exitlane-d3-protected-a/b:2", b"unrelated"]
+)
 def test_invalid_marker_does_not_create_evidence(payload):
     assert capture.classify(udp(payload), ethernet=False) is None
 
@@ -49,7 +52,10 @@ def test_fragments_and_truncated_packets_cannot_count_as_complete_markers():
 
 
 def test_only_synthetic_dns_is_counted():
-    assert capture.classify(udp(b"eld3-blocked\x07example\x04test", port=53), ethernet=False) == ("dns", None)
+    assert capture.classify(udp(b"eld3-blocked\x07example\x04test", port=53), ethernet=False) == (
+        "dns",
+        None,
+    )
     assert capture.classify(udp(b"unrelated.example", port=53), ethernet=False) is None
 
 
