@@ -29,6 +29,7 @@ class StateQualification:
         self.epoch_hook = epoch_hook or (lambda _phase, _before: None)
         self.root = "/var/lib/exitlane-qualification/state-matrix-" + str(uuid.uuid4())
         self.used = set()
+        self.last_api_failure = None
         self.h.candidate.run(
             "from pathlib import Path\np=Path(payload);p.mkdir(mode=0o700,exist_ok=False)\n",
             data=self.root,
@@ -79,6 +80,7 @@ finally:os.close(descriptor)
         if name in self.used:
             raise QualificationError("qualification_phase_reused")
         self.used.add(name)
+        self.last_api_failure = None
         phase = name + "-" + secrets.token_hex(4)
         self.record(phase, "RUNNING")
         try:
@@ -105,9 +107,10 @@ finally:os.close(descriptor)
             ):
                 raise QualificationError("qualification_state_packet_receipt_invalid")
         except Exception:
-            self.record(
-                phase, "FAIL", facts={"error": "qualification_state_phase_failed"}
-            )
+            facts = {"error": "qualification_state_phase_failed"}
+            if self.last_api_failure is not None:
+                facts["api_failure"] = self.last_api_failure
+            self.record(phase, "FAIL", facts=facts)
             raise
         self.record(phase, "PASS", facts={"packet": evidence["receipt"]})
         return evidence
@@ -161,6 +164,42 @@ print(json.dumps({'schema':v.schema,'selected_provider':v.selected_provider,'int
             )
         ):
             raise QualificationError("qualification_state_intent_invalid")
+        return value
+
+    def ingress_keys(self):
+        """Validate durable ingress and return public identities for both keypairs."""
+        source = """from pathlib import Path
+import asyncio,configparser,hashlib,json
+from exitlane.container_state import ContainerState,ContainerLayout
+from exitlane.container_runtime import IngressConfig
+from exitlane.providers.wireguard_keys import _public_key_for_private
+from exitlane.services import wireguard
+from exitlane import core
+s=ContainerState(ContainerLayout(Path('/data')));s.validate()
+interface=core.setting('wireguard_interface');client=core.setting('wireguard_client_name')
+c=IngressConfig.from_file(s.layout.wireguard/(interface+'.conf'))
+current=asyncio.run(wireguard.read_current(interface,client))
+if current is None:raise SystemExit('qualification_state_ingress_invalid')
+p=configparser.ConfigParser(interpolation=None);p.read_string(current['client_config'])
+server=_public_key_for_private(c.private_key);client_public=_public_key_for_private(p['Interface']['PrivateKey'])
+if p['Peer']['PublicKey']!=server or client_public!=c.public_key:raise SystemExit('qualification_state_ingress_keypair_invalid')
+print(json.dumps({'interface':interface,'server_public_fingerprint':hashlib.sha256(server.encode()).hexdigest(),
+ 'client_public_fingerprint':hashlib.sha256(client_public.encode()).hexdigest()}))
+"""
+        value = json.loads(
+            self.h.docker("exec", self.h.container, "python", "-c", source)["stdout"]
+        )
+        if (
+            not isinstance(value, dict)
+            or set(value)
+            != {"interface", "server_public_fingerprint", "client_public_fingerprint"}
+            or value["interface"] != "wg-office"
+            or any(
+                re.fullmatch("[a-f0-9]{64}", value[field]) is None
+                for field in ("server_public_fingerprint", "client_public_fingerprint")
+            )
+        ):
+            raise QualificationError("qualification_state_ingress_invalid")
         return value
 
     def polling_interval(self):
@@ -377,6 +416,48 @@ print(json.dumps({'deleted':interface,'ifindex':index}))
             data=json.dumps({"interface": interface, "provider": self.provider}),
         )
 
+    def api_failure(self, operation, result):
+        """Retain bounded protocol facts; never a response/profile dump."""
+        if operation not in {
+            "ingress_post",
+            "ingress_profile_get",
+            "provider_reconnect",
+        }:
+            raise QualificationError("qualification_state_api_operation_invalid")
+        body = result.get("body")
+        detail = (
+            body.get("detail", body.get("error", body.get("error_code")))
+            if isinstance(body, dict)
+            else None
+        )
+        allowed = {
+            "wireguard_reload_failed",
+            "wireguard_configuration_invalid",
+            "wireguard_generation_in_progress",
+            "vpn_action_in_progress",
+            "management_routing_failed",
+            "provider_state_unavailable",
+            "wireguard_interface_change_requires_disconnect",
+            "wireguard_interface_change_unsupported",
+            "runtime_capability_unavailable",
+            "provider_connect_failed",
+            "provider_egress_readiness_failed",
+            "container_ingress_required",
+        }
+        status = result.get("status")
+        self.last_api_failure = {
+            "operation": operation,
+            "http_status": status
+            if type(status) is int and 100 <= status <= 599
+            else None,
+            "error_code": detail
+            if isinstance(detail, str) and detail in allowed
+            else None,
+            "detail_type": type(detail).__name__
+            if type(detail) in {str, list, dict, type(None)}
+            else "other",
+        }
+
     def recover_provider(self):
         result = self.h.api(
             "/api/vpn/providers/" + self.provider + "/reconnect",
@@ -385,7 +466,68 @@ print(json.dumps({'deleted':interface,'ifindex':index}))
             timeout=90,
         )
         if result["status"] != 200 or result["body"].get("success") is not True:
+            self.api_failure("provider_reconnect", result)
             raise QualificationError("qualification_state_provider_recovery_failed")
+
+    def recover_ingress(self):
+        # Parent cached ownership deliberately refuses an externally
+        # deleted link. Rebuild only this owned namespace from the same
+        # durable pair; never regenerate credentials or adopt a link.
+        before = self.ingress_keys()
+        self.recreate(self.image, phase="ingress")
+        if self.ingress_keys() != before:
+            raise QualificationError("qualification_state_ingress_keys_changed")
+        # A retained failed regeneration may have left the external
+        # router on an older pair. Consume the existing validated profile
+        # without generating keys; peer helper retains its owned ifindex.
+        profile = self.h.api("/api/ingress/wireguard/config")
+        if (
+            profile.get("status") != 200
+            or profile.get("body", {}).get("available") is not True
+            or not isinstance(profile["body"].get("configuration"), str)
+            or not 1 <= len(profile["body"]["configuration"]) <= 8192
+        ):
+            self.api_failure("ingress_profile_get", profile)
+            raise QualificationError("qualification_state_ingress_profile_unavailable")
+        ownership_args = [
+            "python3",
+            "/var/lib/exitlane-qualification/container_host_peer.py",
+            "ownership",
+        ]
+        ownership_input = json.dumps(
+            {"run_id": self.h.config["run_id"], "role": "client"}
+        )
+        owned = json.loads(
+            self.h.command(self.h.peer, ownership_args, data=ownership_input)["stdout"]
+        )
+        namespace = "ed6-" + self.h.config["run_id"].replace("-", "")[:10] + "-client"
+        if (
+            owned.get("run_id") != self.h.config["run_id"]
+            or owned.get("namespace") != namespace
+        ):
+            raise QualificationError("qualification_state_client_ownership_invalid")
+        self.h.command(
+            self.h.peer,
+            [
+                "python3",
+                "/var/lib/exitlane-qualification/container_host_peer.py",
+                "client",
+            ],
+            data=json.dumps(
+                {
+                    "run_id": self.h.config["run_id"],
+                    "endpoint": self.h.config["candidate"]["address"] + ":51820",
+                    "configuration": profile["body"]["configuration"],
+                }
+            ),
+        )
+        after_owned = json.loads(
+            self.h.command(self.h.peer, ownership_args, data=ownership_input)["stdout"]
+        )
+        if after_owned != owned:
+            raise QualificationError("qualification_state_client_ownership_changed")
+        if self.ingress_keys() != before:
+            raise QualificationError("qualification_state_ingress_keys_changed")
 
     def interface_deletion(self, *, ingress=False):
         interface = "wg-office" if ingress else DIRECT[self.provider]
@@ -403,48 +545,9 @@ print(json.dumps({'deleted':interface,'ifindex':index}))
 
         def recover():
             if ingress:
-                result = self.h.api(
-                    "/api/ingress/wireguard",
-                    method="POST",
-                    timeout=90,
-                    body={
-                        "endpoint": self.h.config["candidate"]["address"],
-                        "interface": "wg-office",
-                        "subnet": "10.77.0.0/24",
-                        "client": "synthetic_router",
-                        "dns": "10.64.0.1",
-                        "port": 51820,
-                    },
-                )
-                if result["status"] != 200:
-                    raise QualificationError(
-                        "qualification_state_ingress_recovery_failed"
-                    )
-                profile = self.h.api("/api/ingress/wireguard/config")
-                if (
-                    profile["status"] != 200
-                    or profile["body"].get("available") is not True
-                ):
-                    raise QualificationError(
-                        "qualification_state_ingress_recovery_failed"
-                    )
-                self.h.command(
-                    self.h.peer,
-                    [
-                        "python3",
-                        "/var/lib/exitlane-qualification/container_host_peer.py",
-                        "client",
-                    ],
-                    data=json.dumps(
-                        {
-                            "run_id": self.h.config["run_id"],
-                            "endpoint": self.h.config["candidate"]["address"]
-                            + ":51820",
-                            "configuration": profile["body"]["configuration"],
-                        }
-                    ),
-                )
-            self.recover_provider()
+                self.recover_ingress()
+            else:
+                self.recover_provider()
 
         return self.phase("state-" + kind + "-recovery", recover)
 

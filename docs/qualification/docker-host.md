@@ -145,7 +145,17 @@ revokes browser sessions. `StateQualification` verifies exact UUID resource
 ownership, durable schema/key/manifest/user count, selected provider generation
 and derived public-key fingerprints. It retains the volume across namespace,
 image and bridge replacement. A separate deleted-interface transition and
-strict blocked phase precede explicit recovery. The OOM injector must increase
+strict blocked phase precede explicit recovery. If an externally deleted owned
+ingress leaves a cached parent identity, API regeneration deliberately refuses
+that missing ownership rather than adopting a replacement. Ingress recovery
+therefore recreates only the UUID-owned container namespace with the same image
+and durable volume, validates both persisted ingress keypairs before/after, reconciles the owned
+synthetic router from that existing profile through stdin, and requires fresh
+protected packet delivery. This profile read creates no credentials and retains
+the router's owned interface identity. The original regeneration attempt is
+retained as failed/inconclusive because its exact HTTP response was unavailable;
+deterministic controller/API reproduction proves the refusal boundary but does
+not retroactively qualify that attempt. The OOM injector must increase
 actual owned cgroup `oom_kill`; it claims cgroup/injector OOM, not worker OOM.
 Worker/supervisor death is proved independently.
 

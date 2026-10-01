@@ -1,6 +1,7 @@
 """Bounded D6 state operations without infrastructure or commercial credentials."""
 
 import ast
+import asyncio
 import importlib.util
 import json
 import sys
@@ -50,6 +51,12 @@ class Harness:
         self.image = FIRST
         self.cookie = "synthetic-session-only"
         self.calls, self.phases = [], []
+        self.command_inputs = []
+        self.ingress_identity = {
+            "interface": "wg-office",
+            "server_public_fingerprint": "c" * 64,
+            "client_public_fingerprint": "d" * 64,
+        }
         self.interval = 10
         self.intent_value = {
             "schema": 1,
@@ -157,6 +164,8 @@ class Harness:
             self.endpoints = {}
         if args[0] == "exec" and "memory.events" in args[-1]:
             return {"stdout": json.dumps(self.oom), "code": 0}
+        if args[0] == "exec" and "server_public_fingerprint" in args[-1]:
+            return {"stdout": json.dumps(self.ingress_identity), "code": 0}
         if args[0] == "exec" and "local_public_fingerprint" in args[-1]:
             return {"stdout": json.dumps(self.intent_value), "code": 0}
         if args[0] == "exec" and "current_general_settings" in args[-1]:
@@ -176,10 +185,31 @@ class Harness:
 
     def command(self, host, args, **kwargs):
         self.calls.append(("command", args))
+        self.command_inputs.append((args, kwargs.get("data")))
+        if args[-1] == "ownership":
+            return {
+                "stdout": json.dumps(
+                    {
+                        "run_id": self.config["run_id"],
+                        "role": "client",
+                        "namespace": "ed6-"
+                        + self.config["run_id"].replace("-", "")[:10]
+                        + "-client",
+                        "namespace_inode": [1, 2],
+                        "interface_ifindexes": {"wg-client": 42},
+                    }
+                ),
+                "code": 0,
+            }
         return {"stdout": json.dumps([{"dst": "172.17.0.0/16"}]), "code": 0}
 
     def api(self, path, **kwargs):
         self.calls.append(("api", path, kwargs))
+        if path == "/api/ingress/wireguard/config":
+            return {
+                "status": 200,
+                "body": {"available": True, "configuration": "synthetic-client-profile-only"},
+            }
         if path == "/api/settings" and kwargs.get("method") == "PUT":
             self.interval = kwargs["body"]["general"]["provider_refresh_interval_seconds"]
         return (
@@ -435,3 +465,186 @@ def test_oom_secondary_receipt_uses_actual_unique_pressure_phase(qualification):
     assert len(receipts) == 3
     assert {r["phase"] for r in receipts} == {result["receipt"]["phase"]}
     assert receipts[-1]["facts"]["oom"]["claim"] == "owned_cgroup_oom_only"
+
+
+def test_deleted_cached_owned_ingress_refuses_adoption_and_maps_real_api_reload_failure(
+    monkeypatch, tmp_path
+):
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+
+    from exitlane import main
+    from exitlane.container_entrypoint import ContainerController
+    from exitlane.container_runtime import ContainerWireGuardLifecycle, IngressConfig
+    from exitlane.services import wireguard
+
+    config = IngressConfig(
+        "wg-office", "10.77.0.1/24", "A" * 43 + "=", "B" * 43 + "=", "10.77.0.2/32", 51820
+    )
+    commands, guards = [], []
+
+    async def runner(*argv, **kwargs):
+        commands.append(argv)
+        if argv[:3] == ("ip", "-j", "link"):
+            return 1, "", "synthetic missing owned interface"
+        pytest.fail("unexpected network mutation")
+
+    class Maintenance:
+        async def arm(self, identities):
+            guards.append(identities)
+
+    controller = ContainerController(
+        SimpleNamespace(layout=SimpleNamespace(wireguard=tmp_path)), Maintenance(), runner=runner
+    )
+    network = ContainerWireGuardLifecycle(config, runner=runner)
+    network.active = True
+    network.owned_ifindex = 42
+    controller.network = network
+    monkeypatch.setattr(IngressConfig, "from_file", classmethod(lambda cls, path: config))
+    monkeypatch.setattr(wireguard, "WG_DIR", tmp_path)
+    old = {"wg-office": "synthetic-old-server", "synthetic_router": "synthetic-old-client"}
+    for name, content in old.items():
+        (tmp_path / (name + ".conf")).write_text(content)
+
+    async def create(**kwargs):
+        for name in old:
+            (tmp_path / (name + ".conf")).write_text("synthetic-new-unused")
+        return {"interface": "wg-office"}
+
+    async def activate(interface):
+        await controller.ingress({"action": "activate", "interface": interface})
+
+    monkeypatch.setattr(wireguard, "create", create)
+    monkeypatch.setattr(main, "activate_wireguard_interface", activate)
+    monkeypatch.setattr(main, "wireguard_generation_lock", asyncio.Lock)
+    monkeypatch.setattr(main.provider_registry, "direct_egress_providers", list)
+    monkeypatch.setattr(
+        main,
+        "setting",
+        lambda key, default=None: "wg-office" if key == "wireguard_interface" else default,
+    )
+    with pytest.raises(HTTPException) as failure:
+        asyncio.run(
+            main.create_wireguard_ingress(
+                main.WireGuard(
+                    endpoint="192.168.99.10",
+                    interface="wg-office",
+                    subnet="10.77.0.0/24",
+                    client="synthetic_router",
+                    dns="10.64.0.1",
+                    port=51820,
+                ),
+                None,
+            )
+        )
+    assert failure.value.status_code == 500 and failure.value.detail == "wireguard_reload_failed"
+    assert len(guards) == 2  # Primary attempt and bounded rollback activation.
+    assert commands == [("ip", "-j", "link", "show", "dev", "wg-office")] * 2
+    assert network.active is True and network.owned_ifindex == 42
+    assert all(
+        (tmp_path / (name + ".conf")).read_text() == content for name, content in old.items()
+    )
+
+
+def test_ingress_deleted_recovery_recreates_namespace_preserving_keys_without_api_generation(
+    qualification,
+):
+    original = dict(qualification.h.ingress_identity)
+    qualification.interface_deletion(ingress=True)
+    assert qualification.h.identity == 2 and qualification.image == FIRST
+    assert qualification.h.ingress_identity == original
+    assert [name.rsplit("-", 1)[0] for name, _ in qualification.h.phases] == [
+        "state-ingress-delete",
+        "state-ingress-absent",
+        "state-ingress-recovery",
+    ]
+    assert qualification.h.phases[1][1]["blocked"] is True
+    assert qualification.h.phases[2][1]["require_recovery"] is True
+    apis = [c for c in qualification.h.calls if c[0] == "api"]
+    assert apis == [("api", "/api/ingress/wireguard/config", {})]
+    transfers = [c for c in qualification.h.calls if c[0] == "command" and c[1][-1] == "client"]
+    assert len(transfers) == 1 and "synthetic-client-profile-only" not in str(transfers[0])
+    supplied = json.loads(
+        next(data for args, data in qualification.h.command_inputs if args[-1] == "client")
+    )
+    assert supplied == {
+        "run_id": qualification.h.config["run_id"],
+        "endpoint": "192.168.99.10:51820",
+        "configuration": "synthetic-client-profile-only",
+    }
+    program = next(
+        c[0][-1]
+        for c in qualification.h.calls
+        if isinstance(c[0], tuple) and c[0][0] == "exec" and "server_public_fingerprint" in c[0][-1]
+    )
+    compile(program, "actual-ingress-identity", "exec")
+    assert "client_public!=c.public_key" in program and "p['Peer']['PublicKey']!=server" in program
+
+
+def test_ingress_recreation_refuses_changed_public_keypair(qualification):
+    original = qualification.h.create
+
+    def changed(image):
+        original(image)
+        qualification.h.ingress_identity["client_public_fingerprint"] = "e" * 64
+
+    qualification.h.create = changed
+    with pytest.raises(state.QualificationError, match="ingress_keys_changed"):
+        qualification.interface_deletion(ingress=True)
+
+
+@pytest.mark.parametrize(
+    "detail,expected",
+    [
+        ("management_routing_failed", "management_routing_failed"),
+        ("wireguard_reload_failed", "wireguard_reload_failed"),
+        ("synthetic-secret-never-log", None),
+        ([{"input": "synthetic-secret-never-log"}], None),
+    ],
+)
+def test_api_failure_receipt_keeps_only_bounded_status_static_code(qualification, detail, expected):
+    def failure():
+        qualification.api_failure(
+            "ingress_post",
+            {
+                "status": 503,
+                "body": {"detail": detail, "configuration": "synthetic-secret-never-log"},
+            },
+        )
+        raise state.QualificationError("qualification_state_ingress_recovery_failed")
+
+    with pytest.raises(state.QualificationError):
+        qualification.phase("state-diagnostic", failure)
+    receipts = [
+        data["receipt"]
+        for _, data in qualification.h.candidate.calls
+        if isinstance(data, dict) and "receipt" in data
+    ]
+    facts = receipts[-1]["facts"]["api_failure"]
+    assert facts == {
+        "operation": "ingress_post",
+        "http_status": 503,
+        "error_code": expected,
+        "detail_type": type(detail).__name__,
+    }
+    assert "synthetic-secret-never-log" not in str(receipts)
+
+
+def test_ingress_sync_rejects_changed_router_owned_ifindex(qualification):
+    original = qualification.h.command
+    reads = []
+
+    def changed(host, args, **kwargs):
+        value = original(host, args, **kwargs)
+        if args[-1] == "ownership":
+            reads.append(True)
+            if len(reads) == 2:
+                facts = json.loads(value["stdout"])
+                facts["interface_ifindexes"]["wg-client"] += 1
+                value["stdout"] = json.dumps(facts)
+        return value
+
+    qualification.h.command = changed
+    with pytest.raises(state.QualificationError, match="client_ownership_changed"):
+        qualification.interface_deletion(ingress=True)
