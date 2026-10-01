@@ -163,11 +163,13 @@ packet receipts cover the synthetic router/client, ExitLane, provider and extern
 target points, including provider switching/failure, DNS UDP/TCP, IPv6 attempts
 and daemon/host restart cases. No commercial provider credentials were used.
 
-D7's manual workflow builds only `linux/amd64`, verifies image contents, runs the
-appliance qualification, blocks on HIGH/CRITICAL OS/Python vulnerabilities and
-secrets, emits an SPDX SBOM, publishes only the exact version tag, pulls/verifies
-the resulting digest, and attaches provenance and SBOM attestations. The workflow
-is not run as part of this PR. Docker remains experimental and unsupported until
-the #90 support decision and release criteria are complete. Schema compatibility
-remains `[1,1]`; the workflow does not claim cross-release compatibility beyond
-that declaration.
+D7's PR CI builds only `linux/amd64`, verifies image contents, runs the appliance
+qualification, and retains SPDX and full Trivy reports as seven-day artifacts. The
+candidate scan is informational in PR CI so currently unfixed base-distribution
+advisories do not block unrelated development; the manual release workflow blocks
+on all HIGH/CRITICAL OS/Python vulnerability and secret findings. It publishes only
+the exact version tag, pulls/verifies the resulting digest, and attaches provenance
+and SBOM attestations. The workflow is not run as part of this PR. Docker remains
+experimental and unsupported until the #90 support decision and release criteria
+are complete. Schema compatibility remains `[1,1]`; the workflow does not claim
+cross-release compatibility beyond that declaration.

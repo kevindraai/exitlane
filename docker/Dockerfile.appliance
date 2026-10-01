@@ -33,6 +33,10 @@ RUN python -m pip install --no-cache-dir --no-compile --require-hashes -r /tmp/r
     && python -m pip check \
     && python -c 'import os,re,exitlane; assert os.environ["EXITLANE_VERSION"] == "v"+exitlane.__version__; assert re.fullmatch(r"[0-9a-f]{40}",os.environ["EXITLANE_REVISION"])' \
     && rm -rf /tmp/requirements-runtime.txt /tmp/wheel /root/.cache \
+    && rm -rf /usr/local/lib/python3.13/site-packages/pip /usr/local/lib/python3.13/site-packages/pip-*.dist-info \
+              /usr/local/lib/python3.13/site-packages/setuptools /usr/local/lib/python3.13/site-packages/setuptools-*.dist-info \
+              /usr/local/lib/python3.13/site-packages/pkg_resources \
+              /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.13 \
     && find /usr/local/lib/python3.13/site-packages -type d -name __pycache__ -exec rm -rf '{}' + \
     && install -d -m 0700 /data
 COPY LICENSE /usr/share/doc/exitlane/LICENSE
