@@ -315,13 +315,19 @@ class ContainerEntrypoint:
         await self.controller.deactivate()
 
     async def reset(self):
-        await self.controller.reset_policy()
+        await self.controller.maintenance.observed(self.controller.maintenance.identities)
+        if self.controller.network:
+            if self.controller.identity(self.controller.network.config) not in self.controller.maintenance.identities:
+                raise EntrypointError("container_ingress_config_invalid")
+            await self.controller.observe_policy()
         # Recognize only interfaces matching validated persisted generations;
         # fixed names alone are never ownership evidence. Ambiguity exits this
         # namespace rather than adopting or deleting an unrelated interface.
         from exitlane.providers.wireguard_keys import _public_key_for_private
+        from exitlane.services.provider_wireguard import TABLE_ID, ProviderWireGuard
 
         configs = None
+        owned = []
         for name in ("wg-mullvad", "wg-pia", "wg-proton"):
             rc, output, _ = await self.controller.runner(
                 "ip", "-j", "-d", "link", "show", "dev", name, timeout=5
@@ -382,7 +388,50 @@ class ContainerEntrypoint:
             )
             if len(current) != 1 or current[0].get("ifindex") != index:
                 raise EntrypointError("container_interface_ownership_changed")
-            await self.controller.checked("ip", "link", "delete", "dev", name)
+            owned.append((name, index))
+
+        guard = ProviderWireGuard(self.controller.runner)
+        if owned:
+            # Validate every survivor before accepting any route residue. The
+            # shared native ownership checker remains authoritative; ambiguous
+            # multiple defaults or an unproved device are never adopted.
+            routes = json.loads(await self.controller.checked(
+                "ip", "-j", "-4", "route", "show", "table", str(TABLE_ID)
+            ))
+            if not isinstance(routes, list) or any(not isinstance(item, dict) for item in routes):
+                raise EntrypointError("container_provider_recovery_required")
+            devices = {item.get("dev") for item in routes if item.get("type", "unicast") == "unicast"}
+            if len(devices) > 1 or not devices <= {name for name, _ in owned}:
+                raise EntrypointError("container_provider_recovery_required")
+            active = next(iter(devices), None)
+            for family in (4, 6):
+                await guard._check_table_ownership(family, active)
+            ordered = sorted(owned, key=lambda item: item[0] != active)
+
+            async def unchanged(name, index):
+                current = json.loads(await self.controller.checked(
+                    "ip", "-j", "link", "show", "dev", name
+                ))
+                if len(current) != 1 or current[0].get("ifindex") != index:
+                    raise EntrypointError("container_interface_ownership_changed")
+
+            for name, index in ordered:
+                await unchanged(name, index)
+
+                async def owned_runner(*argv, _name=name, _index=index, **kwargs):
+                    if argv[0] == "ip" and any(verb in argv for verb in ("add", "del", "replace")):
+                        await unchanged(_name, _index)
+                    return await self.controller.runner(*argv, **kwargs)
+
+                # Keep source guards/unreachable defaults while removing only
+                # this proven generation's exact route/probe selector. An
+                # ingress-only arm would classify its live route as foreign.
+                await ProviderWireGuard(owned_runner).disarm((), name)
+                await unchanged(name, index)
+                await self.controller.checked("ip", "link", "delete", "dev", name)
+        if self.controller.network:
+            await guard.disarm((self.controller.network.config.interface,))
+            await self.controller.reset_policy()
 
     async def reconcile(self, inventory):
         await self.controller.reconcile(inventory)
