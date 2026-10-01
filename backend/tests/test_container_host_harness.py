@@ -132,6 +132,31 @@ def test_sender_needs_owned_namespace_before_any_unit(configuration):
         instance.external_process('sender', 'synthetic', namespace=name, source_address='10.77.0.2')
 
 
+@pytest.mark.parametrize('phase', [
+    'state-container-recreation-01234567',
+    'state_' + 'a' * 25 + '-01234567',
+])
+def test_canonical_state_phase_reaches_sender_ownership_gate(configuration, phase):
+    from container_host_sender import PHASE
+    assert PHASE.fullmatch(phase) is not None
+    instance = harness.HostHarness(configuration)
+    instance.command = lambda *a, **kw: {'stdout': json.dumps({
+        'run_id': configuration['run_id'], 'role': 'client', 'namespace': 'foreign'})}
+    instance.peer.run = lambda *a, **kw: pytest.fail('unit created before namespace ownership')
+    name = 'ed6-' + configuration['run_id'].replace('-', '')[:10] + '-client'
+    with pytest.raises(harness.QualificationError, match='qualification_namespace_ownership_mismatch'):
+        instance.external_process('sender', phase, namespace=name, source_address='10.77.0.2')
+
+
+@pytest.mark.parametrize('phase', [None, 'a' * 41, 'unsafe;command', ''])
+def test_invalid_packet_phase_fails_before_observer_changes(configuration, phase):
+    instance = harness.HostHarness(configuration)
+    instance.evidence = lambda *a: pytest.fail('observer read before phase validation')
+    instance.control = lambda *a, **kw: pytest.fail('observer changed before phase validation')
+    with pytest.raises(harness.QualificationError, match='qualification_phase_invalid'):
+        instance.packet_phase(phase, [{'role': 'synthetic'}])
+
+
 @pytest.mark.parametrize('code,marker,accepted', [(0, 'qualification_signal_sent', True),
     (137, 'qualification_signal_sent', True), (137, '', False), (1, 'qualification_signal_sent', False)])
 def test_parent_signal_requires_intent_marker_and_actual_recovery(configuration, code, marker, accepted):

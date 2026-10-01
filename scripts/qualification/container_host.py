@@ -335,7 +335,8 @@ for name,content in payload.items():
         """Start an independent sender/observer; no credentials in its process arguments."""
         if type(family) is not int or family not in {4, 6}:
             raise QualificationError('qualification_family_invalid')
-        if kind not in {'capture', 'sender'} or re.fullmatch('[a-z][a-z0-9-]{0,30}', role) is None:
+        role_pattern = '[a-z][a-z0-9_-]{0,39}' if kind == 'sender' else '[a-z][a-z0-9-]{0,30}'
+        if kind not in {'capture', 'sender'} or re.fullmatch(role_pattern, role) is None:
             raise QualificationError('qualification_process_invalid')
         if kind == 'sender' and namespace is None:
             raise QualificationError('qualification_namespace_required')
@@ -555,6 +556,8 @@ print(json.dumps({'calibration_emitted':15}))
         from container_host_packets import validate_receipts
         from container_host_sender import STREAMS
 
+        if not isinstance(phase, str) or re.fullmatch('[a-z][a-z0-9_-]{0,39}', phase) is None:
+            raise QualificationError('qualification_phase_invalid')
         if (type(family) is not int or family not in {4, 6}
                 or family == 6 and (blocked is not True or require_recovery is not False)):
             raise QualificationError('qualification_family_state_invalid')
