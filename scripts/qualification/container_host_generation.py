@@ -96,7 +96,13 @@ class GenerationQualification:
             raise FailureEvidenceError('generation_control_contract_invalid') from None
 
     def _pending_safe(self, expected, original_worker):
-        status = self._cli('status')
+        try:
+            status = self._cli('status')
+        except FailureEvidenceError as error:
+            if error.args != ('generation_control_unavailable',):
+                raise
+            self.last_control_status = {'probe': 'control_temporarily_unavailable'}
+            return False
         if isinstance(status, dict):
             self.last_control_status = {
                 'state': status.get('state') if status.get('state') in {'ready', 'recovery_required'} else None,
@@ -105,14 +111,14 @@ class GenerationQualification:
             }
         if (not isinstance(status, dict) or status.get('state') not in {'ready', 'recovery_required'}
                 or any(type(status.get(field)) is not bool for field in ('worker_running', 'available', 'recovery_required'))):
-            return False
+            raise FailureEvidenceError('generation_control_contract_invalid')
         inventory = self._inventory()
         # Healthy management is permitted. Pending generation must remain exact,
         # with no automatic promotion/replacement, and the killed worker cannot
         # still be the observed live worker. Packet proof independently denies
         # protected delivery at both provider peers and the normal WAN.
         if inventory != expected or any(item['provider'] == 'pia' and item['status'] == 'active' for item in inventory['intents']):
-            return False
+            raise FailureEvidenceError('generation_baseline_invalid')
         if status['worker_running'] and self.h.process_identity()['worker'] == original_worker:
             return False
         link = self.h.docker('exec', self.h.container, 'ip', '-j', 'link', 'show', 'dev', 'wg-pia', check=False)

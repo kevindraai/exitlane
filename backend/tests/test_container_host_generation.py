@@ -231,10 +231,12 @@ def test_pending_guard_refuses_changed_generation_or_automatic_promotion_even_wh
     changed = json.loads(json.dumps(expected))
     changed['intents'][0]['generation'] = 'different-generation'
     value._inventory = lambda: changed
-    assert value._pending_safe(expected, [18, '1100']) is False
+    with pytest.raises(generation.FailureEvidenceError, match='generation_baseline_invalid'):
+        value._pending_safe(expected, [18, '1100'])
     changed['intents'][0]['generation'] = 'candidate-generation'
     changed['intents'][0]['status'] = 'active'
-    assert value._pending_safe(expected, [18, '1100']) is False
+    with pytest.raises(generation.FailureEvidenceError, match='generation_baseline_invalid'):
+        value._pending_safe(expected, [18, '1100'])
 
 
 def test_pending_blocked_packet_failure_never_claims_pass_or_auto_restores():
@@ -246,3 +248,49 @@ def test_pending_blocked_packet_failure_never_claims_pass_or_auto_restores():
     metadata = [data for name, data in receipts.values.items() if name.endswith('-metadata.json')][-1]
     assert metadata['result'] == 'FAILED' and metadata['transition']
     assert PASSPHRASE not in json.dumps(receipts.values)
+
+
+def test_pending_readiness_tolerates_exact_transient_control_unavailability_then_reads_stable_state():
+    value, h, _receipts, _prep = qualification()
+    h.pending = h.refused = True
+    expected = value._inventory()
+    original_cli = value._cli
+    calls = []
+    def transient(command):
+        calls.append(command)
+        if len(calls) == 1:
+            raise generation.FailureEvidenceError('generation_control_unavailable')
+        return original_cli(command)
+    value._cli = transient
+    assert value._pending_safe(expected, [18, '1100']) is False
+    assert value.last_control_status == {'probe': 'control_temporarily_unavailable'}
+    assert value._pending_safe(expected, [18, '1100'])['inventory'] == expected
+    assert calls == ['status', 'status']
+    assert not h.fault_calls and not h.restore_called
+
+
+def test_permanent_control_unavailability_fails_existing_bounded_gate_and_preserves_pending_evidence():
+    value, h, receipts, prep = qualification()
+    h.control_missing = True
+    with pytest.raises(generation.FailureEvidenceError, match='failure_component_failed'):
+        value.run(catalog_preparation=prep, passphrase=PASSPHRASE)
+    metadata = [data for name, data in receipts.values.items() if name.endswith('-metadata.json')][-1]
+    assert metadata['result'] == 'FAILED'
+    assert metadata['next_gate'] == 'pending_startup_safe'
+    assert metadata['last_control_status'] == {'probe': 'control_temporarily_unavailable'}
+    assert metadata['pending_inventory']['intents'][0]['status'] == 'pending'
+    assert not h.restore_called and h.fault_calls == [('b', 'handshake_off')]
+
+
+def test_pending_readiness_does_not_hide_malformed_control_or_other_known_errors():
+    value, _h, _receipts, _prep = qualification()
+    def malformed(_command):
+        return {'state': 'ready', 'worker_running': 'true'}
+    value._cli = malformed
+    with pytest.raises(generation.FailureEvidenceError, match='generation_control_contract_invalid'):
+        value._pending_safe({}, [18, '1100'])
+    def other(_command):
+        raise generation.FailureEvidenceError('generation_control_contract_invalid')
+    value._cli = other
+    with pytest.raises(generation.FailureEvidenceError, match='generation_control_contract_invalid'):
+        value._pending_safe({}, [18, '1100'])
