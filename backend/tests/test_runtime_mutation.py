@@ -303,3 +303,81 @@ def test_actual_killswitch_monitor_busy_retry_never_writes_unleased(monkeypatch)
         await asyncio.gather(monitor, return_exceptions=True)
         assert attempts == ['claim', 'claim', 'release']
     asyncio.run(scenario())
+
+
+def test_inherited_startup_grant_is_consumed_once_and_acknowledged():
+    import socket
+
+    import pytest
+
+    from exitlane.container_control import _read, _write
+    from exitlane.runtime_mutation import StartupBorrower
+
+    async def scenario():
+        parent, child = socket.socketpair()
+        parent.setblocking(False)
+        reader, writer = await asyncio.open_connection(sock=parent)
+        borrower = StartupBorrower(child.detach())
+        await _write(writer, {'command': 'startup-grant', 'version': 1})
+        async with borrower.context():
+            pass
+        assert await _read(reader, 1) == {'command': 'initialized', 'version': 1}
+        with pytest.raises(ControlError, match='control_startup_handoff_required'):
+            async with borrower.context():
+                raise AssertionError
+        writer.close()
+        await writer.wait_closed()
+    asyncio.run(scenario())
+
+
+def test_startup_failure_sends_only_fixed_failure_code():
+    import socket
+
+    import pytest
+
+    from exitlane.container_control import _read, _write
+    from exitlane.runtime_mutation import StartupBorrower
+
+    async def scenario():
+        parent, child = socket.socketpair()
+        parent.setblocking(False)
+        reader, writer = await asyncio.open_connection(sock=parent)
+        await _write(writer, {'command': 'startup-grant', 'version': 1})
+        with pytest.raises(ValueError, match='synthetic-private-fixture'):
+            async with StartupBorrower(child.detach()).context():
+                raise ValueError('synthetic-private-fixture')
+        assert await _read(reader, 1) == {'command': 'startup-failed', 'version': 1}
+        writer.close()
+        await writer.wait_closed()
+    asyncio.run(scenario())
+
+
+def test_orphaned_bootstrap_channel_refuses_initialization():
+    import socket
+
+    import pytest
+
+    from exitlane.runtime_mutation import StartupBorrower
+
+    async def scenario():
+        parent, child = socket.socketpair()
+        parent.close()
+        with pytest.raises(ControlError):
+            async with StartupBorrower(child.detach()).context():
+                raise AssertionError('orphan initialized')
+    asyncio.run(scenario())
+
+
+def test_startup_fd_environment_consumed_and_invalid_descriptor_is_safe(monkeypatch):
+    import pytest
+
+    from exitlane.runtime_mutation import StartupBorrower
+
+    monkeypatch.setenv('EXITLANE_STARTUP_FD', '65535')
+    borrower = StartupBorrower.from_environment()
+    assert 'EXITLANE_STARTUP_FD' not in __import__('os').environ
+    async def scenario():
+        with pytest.raises(ControlError, match='control_startup_handoff_required'):
+            async with borrower.context():
+                pytest.fail('invalid descriptor initialized state')
+    asyncio.run(scenario())

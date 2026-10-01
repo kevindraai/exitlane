@@ -528,13 +528,20 @@ class ContainerWireGuardLifecycle:
             await self.observe_guard()
 
     async def activate(self) -> None:
+        await self._activate(self.arm_guard, self.observe_guard)
+
+    async def activate_already_guarded(self, observer: Callable[[], Awaitable[None]]) -> None:
+        """Create only our ingress; a live worker remains the sole policy owner."""
+        await self._activate(observer, observer)
+
+    async def _activate(self, arm, observe) -> None:
         require(not self.uncertain_creation, "container_interface_creation_uncertain")
         rc, _, _ = await self.runner("ip", "link", "show", "dev", self.config.interface, timeout=5)
         require(rc != 0, "container_interface_collision")
         require(rc == 1, "container_interface_probe_failed")
         forwarding = await self.checked("cat", "/proc/sys/net/ipv4/ip_forward")
         require(forwarding.strip() == "1", "container_forwarding_unavailable")
-        await self.arm_guard()
+        await arm()
         try:
             self.uncertain_creation = True
             await self.checked(
@@ -554,7 +561,7 @@ class ContainerWireGuardLifecycle:
                 "ip", "-4", "address", "add", self.config.address, "dev", self.config.interface
             )
             await self.checked("ip", "link", "set", "dev", self.config.interface, "up")
-            await self.observe_guard()
+            await observe()
         except BaseException:
             if self.uncertain_creation:
                 # The kernel may have created an interface even when the command
@@ -590,6 +597,16 @@ class ContainerWireGuardLifecycle:
             await self.checked("ip", "link", "delete", "dev", self.config.interface)
             self.active = False
             self.owned_ifindex = None
+
+    async def observe_owned_ingress(self) -> bool:
+        """Read interface ownership without reading another process's policy cache."""
+        if not self.active:
+            return False
+        require(
+            await self.interface_index() == self.owned_ifindex,
+            "container_interface_ownership_changed",
+        )
+        return True
 
     async def observe(self) -> bool:
         await self.observe_guard()

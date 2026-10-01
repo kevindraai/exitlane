@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from exitlane import core
 from exitlane.config import CONFIG_DIR, SESSION_IDLE_TIMEOUT_SECONDS, SESSION_MAX_AGE_SECONDS
+from exitlane.runtime import runtime
 
 RECOVERY_CODE_COUNT = 10
 MFA_CHALLENGE_SECONDS = 300
@@ -29,6 +30,8 @@ class AuthSecurityError(ValueError):
 
 
 def master_key_path() -> Path:
+    if runtime.capabilities.runtime_name == "container":
+        return runtime.paths.config / "secret.key"
     configured = os.getenv("EXITLANE_MASTER_KEY_FILE")
     if configured:
         return Path(configured)

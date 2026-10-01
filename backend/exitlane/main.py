@@ -23,6 +23,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from exitlane import __version__
@@ -387,7 +388,7 @@ async def _initialize_runtime_state() -> None:
     if database not in _system_started_databases:
         record_event("system.started")
         _system_started_databases.add(database)
-    if setting("wireguard_configured", False):
+    if runtime.capabilities.runtime_name == "native" and setting("wireguard_configured", False):
         try:
             migrated = await wireguard_service.migrate_legacy_provider_egress(
                 setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE),
@@ -408,6 +409,9 @@ async def _initialize_runtime_state() -> None:
             "network.management_routing_error",
             metadata={"reason": error.code},
         )
+    if runtime.capabilities.runtime_name == "container":
+        await runtime.configure_providers()
+        await runtime.resume_provider()
 
 
 async def _monitor_killswitch() -> None:
@@ -717,24 +721,45 @@ async def security_baseline(request: Request, call_next):
     else:
         response = await require_authentication(request, call_next)
 
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Referrer-Policy"] = "no-referrer"
-    response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
-    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
-    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
-    response.headers["Cache-Control"] = SENSITIVE_CACHE_CONTROL
-    if "server" in response.headers:
-        del response.headers["server"]
-    if request_security(request).scheme == "https":
-        response.headers["Strict-Transport-Security"] = "max-age=31536000"
     return response
+
+
+def apply_security_headers(headers, request):
+    headers["X-Content-Type-Options"] = "nosniff"
+    headers["Referrer-Policy"] = "no-referrer"
+    headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
+    headers["X-Frame-Options"] = "DENY"
+    headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+    headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    headers["Cross-Origin-Resource-Policy"] = "same-origin"
+    headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
+    headers["Cache-Control"] = SENSITIVE_CACHE_CONTROL
+    if "server" in headers:
+        del headers["server"]
+    if request_security(request).scheme == "https":
+        headers["Strict-Transport-Security"] = "max-age=31536000"
+
+
+class SecurityHeadersMiddleware:
+    """Apply the same baseline even when mutation authority refuses a request."""
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        request = Request(scope)
+        async def secure_send(message):
+            if message["type"] == "http.response.start":
+                message = {**message, "headers": list(message.get("headers", []))}
+                apply_security_headers(MutableHeaders(scope=message), request)
+            await send(message)
+        return await self.app(scope, receive, secure_send)
 
 
 static_dir = Path(__file__).parent / "static"
 app.add_middleware(RuntimeMutationMiddleware, runtime=runtime)
+app.add_middleware(SecurityHeadersMiddleware)
 app.mount(
     "/assets",
     StaticFiles(directory=static_dir),
@@ -1722,6 +1747,12 @@ async def diagnostic_checks() -> dict:
 @app.post("/api/diagnostics/connection-runs", status_code=202)
 async def start_connection_diagnostics() -> dict:
     runtime.capabilities.require("diagnostics")
+    if runtime.coordinated_mutations:
+        from exitlane.container_observation import connection_run
+        async def status_loader():
+            async with runtime.mutation():
+                return await finish_writer(_fresh_vpn_status())
+        return connection_diagnostics.start(status_loader, executor=connection_run)
     return connection_diagnostics.start(_fresh_vpn_status)
 
 
@@ -2758,6 +2789,8 @@ async def _connect_provider_country(
     provider_instance, req: CountryConnect, request: Request
 ) -> dict:
     global _pending_provider_connection
+    if runtime.capabilities.runtime_name == "container" and not setting("wireguard_configured", False):
+        raise HTTPException(status_code=409, detail="container_ingress_required")
     code = req.country_code.upper()
     connection_id = _provider_connection_id(provider_instance)
     try:
@@ -3042,6 +3075,8 @@ async def _connect_provider(
     reconnect: bool = False,
 ) -> dict:
     global _pending_provider_connection
+    if runtime.capabilities.runtime_name == "container" and not setting("wireguard_configured", False):
+        raise HTTPException(status_code=409, detail="container_ingress_required")
     if req.target and re.fullmatch(r"[A-Za-z]{2}", req.target):
         return await _connect_provider_country(
             provider_instance, CountryConnect(country_code=req.target), request
@@ -3456,6 +3491,8 @@ async def _rollback_provider_switch(previous, target, actor: dict | None) -> boo
 
 @app.post("/api/vpn/providers/{provider_id}/activate")
 async def activate_vpn_provider(provider_id: str, request: Request) -> dict:
+    if runtime.capabilities.runtime_name == "container" and not setting("wireguard_configured", False):
+        raise HTTPException(status_code=409, detail="container_ingress_required")
     target = _provider_or_404(provider_id)
     previous = _active_provider()
     actor = request_actor(request)

@@ -1,7 +1,8 @@
 # Docker runtime architecture and implementation program
 
 - Decision date: 2026-09-30
-- Status: independently reviewed architecture, **APPROVE**; **not implemented or supported**
+- Status: independently reviewed architecture, **APPROVE**; D1–D4 delivered,
+  D5 candidate implementation; **Docker is not supported**
 - Governing deployment wave: [#87](https://github.com/kevindraai/exitlane/issues/87)
 - Reference implementation: native Debian 13 amd64, including privileged Proxmox LXC
 - Historical decision: [issue #76 feasibility assessment](docker-appliance-feasibility.md),
@@ -472,10 +473,11 @@ application container runtime or satisfy D3–D6 dataplane/recovery/support acce
 The D3 implementation and isolated packet harness are described in
 [direct-provider dataplane qualification](docker-container-dataplane.md). They reuse shared
 provider transactions with a container-specific lifecycle adapter. Full application runtime
-selection remains disabled pending production composition gates. The experimental
+selection was disabled through D4; the experimental D5 image now supplies the composition
+boundary described in [the image candidate contract](docker-appliance-candidate.md). The experimental
 [durable state and recovery mechanisms](docker-container-recovery.md) retain the
 native encrypted archive format and add supervisor-owned mutation leases and
-journalled container orchestration. D5 must explicitly complete the worker startup
+journalled container orchestration. D5 supplies a one-use, supervisor-held worker startup
 handoff; D6 must qualify daemon/host restart on an independently disposable host.
 
 The subsequent deployment-wave work order authorizes sequential D1–D7 implementation.
@@ -490,7 +492,7 @@ D5 cannot turn a failed dataplane into a supported appliance. A future NordVPN d
 
 Umbrella [#90](https://github.com/kevindraai/exitlane/issues/90) owns acceptance; deployment wave
 [#87](https://github.com/kevindraai/exitlane/issues/87) records the Proxmox and planning evidence.
-Implementation has not started. Sequential issues:
+D1–D4 are delivered; D5 is the current implementation slice. Sequential issues:
 
 - [D1 — #91](https://github.com/kevindraai/exitlane/issues/91)
 - [D2 — #92](https://github.com/kevindraai/exitlane/issues/92)
@@ -520,5 +522,7 @@ This architecture is a delivery contract, not runtime evidence. The program beco
 when D1–D7 gates and a reviewed release/support decision pass. Remaining unknowns are bounded:
 minimal-capability tooling (including ping/DNS), read-only root compatibility, container guard
 ordering, Docker NAT/source/proxy behavior, crash/restore/schema recovery and whole-host packet
-qualification. Each has a slice and test gate. No native runtime change, production Compose,
-production image build/publication or Docker host mutation accompanies this planning document.
+qualification. Each has a slice and test gate. The original architecture PR performed no
+runtime changes, image builds, publication or Docker host mutation. Subsequent bounded
+implementation PRs supply experimental evidence; they do not imply production support or
+authorize publication before D6 and the explicit first-publication gate.

@@ -541,3 +541,174 @@ def test_restore_caller_disconnect_guards_before_callback_finishes(tmp_path):
             assert server.authority.owner is None
 
     asyncio.run(scenario())
+
+
+def test_ingress_borrows_only_owned_worker_lease_and_blocks_release(tmp_path):
+    async def scenario():
+        started = asyncio.Event()
+        finish = asyncio.Event()
+        calls = []
+        async def safe(_owner, _reason):
+            return True
+        async def ingress(payload):
+            calls.append(payload)
+            started.set()
+            await finish.wait()
+            return {'active': True}
+        path = tmp_path / 'run' / 'control.sock'
+        authority = MutationAuthority(safe)
+        server = UnixControlServer(authority, callbacks={}, path=path,
+                                   allowed_uid=os.getuid(), ingress_callback=ingress,
+                                   worker_authorized=lambda pid: pid == os.getpid())
+        await server.start()
+        client = UnixControlClient(path, _test_uid=os.getuid())
+        try:
+            with pytest.raises(ControlError, match='control_unauthorized'):
+                await client.request('ingress', {'action': 'activate', 'interface': 'wg0'})
+            async def writer():
+                async with client.mutation():
+                    request = asyncio.create_task(client.request('ingress',
+                        {'action': 'activate', 'interface': 'wg0'}))
+                    await started.wait()
+                return await request
+            task = asyncio.create_task(writer())
+            await started.wait()
+            await asyncio.sleep(0.01)
+            assert authority.owner is not None and not task.done()
+            finish.set()
+            assert await task == {'active': True}
+            assert authority.owner is None
+            assert calls == [{'action': 'activate', 'interface': 'wg0'}]
+        finally:
+            await server.stop()
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('payload', [
+    {'action': 'shell', 'interface': 'wg0'},
+    {'action': 'activate', 'interface': '../wg0'},
+    {'action': 'activate', 'interface': 'wg0', 'config': 'synthetic-private-fixture'},
+])
+def test_ingress_rejects_raw_configuration_and_invalid_action(tmp_path, payload):
+    async def scenario():
+        async def safe(_owner, _reason):
+            return True
+        async def forbidden(_payload):
+            pytest.fail('invalid network command executed')
+        path = tmp_path / 'run' / 'control.sock'
+        server = UnixControlServer(MutationAuthority(safe), callbacks={}, path=path,
+                                   allowed_uid=os.getuid(), ingress_callback=forbidden,
+                                   worker_authorized=lambda _pid: True)
+        await server.start()
+        client = UnixControlClient(path, _test_uid=os.getuid())
+        try:
+            async with client.mutation():
+                with pytest.raises(ControlError, match='control_unauthorized'):
+                    await client.request('ingress', payload)
+        finally:
+            await server.stop()
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('loss', ['disconnect', 'expire'])
+def test_lost_lease_joins_paused_ingress_before_final_guard(tmp_path, loss):
+    async def scenario():
+        events = []
+        entered = asyncio.Event()
+        finish = asyncio.Event()
+        async def safe(_owner, _reason):
+            events.append('final-guard-blocked')
+            return True
+        async def ingress(_payload):
+            entered.set()
+            await finish.wait()
+            events.append('subordinate-finished')
+            return {'active': True}
+        path = tmp_path / 'run' / 'control.sock'
+        authority = MutationAuthority(safe)
+        server = UnixControlServer(authority, callbacks={}, path=path,
+                                   allowed_uid=os.getuid(), ingress_callback=ingress,
+                                   worker_authorized=lambda _pid: True)
+        await server.start()
+        client = UnixControlClient(path, _test_uid=os.getuid())
+        reader, writer = await asyncio.open_unix_connection(path)
+        try:
+            await _write(writer, {'command': 'acquire', 'timeout': 0.04 if loss == 'expire' else 1})
+            await _read(reader, 1)
+            rpc = asyncio.create_task(client.request('ingress', {'action': 'observe', 'interface': 'wg0'}))
+            await entered.wait()
+            if loss == 'disconnect':
+                writer.close()
+                await writer.wait_closed()
+            for _ in range(100):
+                if authority.revoking:
+                    break
+                await asyncio.sleep(0.001)
+            assert authority.revoking
+            assert events == [] and authority.owner is not None
+            with pytest.raises(ControlError, match='control_busy'):
+                async with client.mutation(wait_timeout=0.01):
+                    pytest.fail('new lease before subordinate join/final guard')
+            finish.set()
+            await rpc
+            for _ in range(100):
+                if authority.owner is None:
+                    break
+                await asyncio.sleep(0.001)
+            assert events == ['subordinate-finished', 'final-guard-blocked']
+            assert authority.owner is None
+        finally:
+            writer.close()
+            await writer.wait_closed()
+            await server.stop()
+    asyncio.run(scenario())
+
+
+def test_failing_rpc_invalidates_sibling_and_final_guard_follows_join(tmp_path):
+    async def scenario():
+        entered = asyncio.Event()
+        finish = asyncio.Event()
+        initial_guard = asyncio.Event()
+        events = []
+        async def safe(_owner, _reason):
+            events.append('guard')
+            initial_guard.set()
+            return True
+        authority = MutationAuthority(safe)
+        async def ingress(payload):
+            if payload['action'] == 'activate':
+                entered.set()
+                await finish.wait()
+                assert authority.revoking
+                events.append('sibling-joined-without-reopen')
+                return {'active': False}
+            raise ControlError('control_operation_failed')
+        server = UnixControlServer(authority, callbacks={}, path=tmp_path / 'run' / 'control.sock',
+                                   allowed_uid=os.getuid(), ingress_callback=ingress,
+                                   worker_authorized=lambda _pid: True)
+        await server.start()
+        client = UnixControlClient(server.path, _test_uid=os.getuid())
+        try:
+            async def writer():
+                async with client.mutation():
+                    sibling = asyncio.create_task(client.request('ingress',
+                        {'action': 'activate', 'interface': 'wg0'}))
+                    await entered.wait()
+                    with pytest.raises(ControlError, match='control_operation_failed'):
+                        await client.request('ingress', {'action': 'observe', 'interface': 'wg0'})
+                    # A buggy caller ignores failure and tries to release early.
+                    return sibling
+            owner = asyncio.create_task(writer())
+            await initial_guard.wait()
+            await asyncio.sleep(0.01)
+            assert authority.revoking and authority.owner is not None
+            assert not owner.done()
+            finish.set()
+            sibling = await owner
+            assert await sibling == {'active': False}
+            assert events == ['guard', 'sibling-joined-without-reopen', 'guard']
+            assert authority.owner is None
+        finally:
+            finish.set()
+            await server.stop()
+    asyncio.run(scenario())

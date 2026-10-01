@@ -195,6 +195,63 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         run: python3 scripts/qualification/container_recovery.py --image exitlane-lifecycle:test
 
+  container-appliance:
+    name: Container appliance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Select relevant image and runtime changes
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+          base = os.environ.get("BASE_SHA", "")
+          relevant = True
+          if re.fullmatch(r"[0-9a-f]{40}", base) and set(base) != {"0"}:
+              result = subprocess.run(["git", "diff", "--name-only", base, "HEAD"],
+                                      capture_output=True, text=True, check=False)
+              if result.returncode == 0:
+                  relevant = any(
+                      name.startswith(("backend/exitlane/", "docker/", "scripts/qualification/",
+                                       "backend/tests/test_container"))
+                      or name in {"backend/pyproject.toml", "backend/uv.lock", "LICENSE",
+                                  ".dockerignore", ".github/workflows/ci.yml",
+                                  "scripts/check_container_image.py", "scripts/check_docker_appliance_host.py"}
+                      for name in result.stdout.splitlines())
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+              output.write(f"run={str(relevant).lower()}\n")
+          PY
+
+      - name: Build candidate from exact source with locked runtime dependencies
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          version=$(PYTHONPATH=backend python3 -c 'import exitlane; print("v" + exitlane.__version__)')
+          docker build -f docker/Dockerfile.appliance \
+            --build-arg EXITLANE_VERSION="$version" \
+            --build-arg EXITLANE_REVISION="$(git rev-parse HEAD)" \
+            -t exitlane-appliance:test .
+
+      - name: Inspect installed image content without application startup or state
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges:true --entrypoint python \
+            -i exitlane-appliance:test - < scripts/check_container_image.py
+
+      - name: Qualify real application management and durable image replacement
+        if: steps.changes.outputs.run == 'true'
+        run: python3 scripts/qualification/container_appliance.py --image exitlane-appliance:test
+
   package:
     name: Package build
     runs-on: ubuntu-latest

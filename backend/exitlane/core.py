@@ -8,9 +8,9 @@ import os
 import sqlite3
 
 from exitlane.config import MIN_PASSWORD_LENGTH
-from exitlane.runtime import RuntimePaths
+from exitlane.runtime import runtime
 
-DATA = RuntimePaths.native().application_data
+DATA = runtime.paths.application_data
 DB = DATA / "exitlane.db"
 WG_DIR = DATA / "wireguard"
 

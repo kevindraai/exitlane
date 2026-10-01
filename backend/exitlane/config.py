@@ -4,7 +4,7 @@ import ipaddress
 import os
 from urllib.parse import urlsplit
 
-from exitlane.runtime import RuntimePaths, validate_runtime_selection
+from exitlane.runtime import runtime, validate_runtime_selection
 
 validate_runtime_selection()
 
@@ -40,9 +40,9 @@ APP_NAME = "Exitlane"
 WEB_HOST = os.getenv("EXITLANE_HOST", "0.0.0.0")  # nosec B104
 WEB_PORT = environment_int("EXITLANE_PORT", 8787)
 
-CONFIG_DIR = RuntimePaths.native().config
-DATA_DIR = RuntimePaths.native().service_data
-LOG_DIR = RuntimePaths.native().logs
+CONFIG_DIR = runtime.paths.config
+DATA_DIR = runtime.paths.service_data
+LOG_DIR = runtime.paths.logs
 
 MIN_PASSWORD_LENGTH = environment_int(
     "EXITLANE_MIN_PASSWORD_LENGTH",

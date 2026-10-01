@@ -7,12 +7,15 @@ Native mutation contexts remain no-ops. Container activation belongs to D5.
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
+import os
+import socket
+import stat
+from contextlib import asynccontextmanager, suppress
 
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from exitlane.container_control import ControlError
+from exitlane.container_control import ControlError, _read, _write
 
 
 class ContainerMutationBoundary:
@@ -26,13 +29,64 @@ class ContainerMutationBoundary:
     def mutation(self):
         return self.client.mutation()
 
+    def startup_mutation(self):
+        return StartupBorrower.from_environment().context()
+
+
+class StartupBorrower:
+    """One inherited supervisor channel authorizes initialization only once."""
+    def __init__(self, fd: int):
+        self.fd = fd
+        self.used = False
+
+    @classmethod
+    def from_environment(cls):
+        value = os.environ.pop("EXITLANE_STARTUP_FD", None)
+        if value is None or not value.isascii() or not value.isdecimal():
+            raise ControlError("control_startup_handoff_required")
+        fd = int(value)
+        if not 3 <= fd <= 65535:
+            raise ControlError("control_startup_handoff_required")
+        return cls(fd)
+
     @asynccontextmanager
-    async def startup_mutation(self):
-        # D5 must implement an explicit supervisor-to-worker bootstrap handoff.
-        # Requesting another lease while restore owns it would deadlock; silently
-        # skipping it would permit startup writes during restore.
-        raise ControlError("control_startup_handoff_required")
-        yield  # pragma: no cover -- keep this a contextmanager, never authorize startup
+    async def context(self):
+        if self.used:
+            raise ControlError("control_startup_handoff_required")
+        self.used = True
+        writer = None
+        try:
+            facts = os.fstat(self.fd)
+            if not stat.S_ISSOCK(facts.st_mode):
+                raise ControlError("control_startup_handoff_required")
+            sock = socket.socket(fileno=self.fd)
+            self.fd = -1
+            if sock.family != socket.AF_UNIX or sock.type != socket.SOCK_STREAM:
+                sock.close()
+                raise ControlError("control_startup_handoff_required")
+            sock.setblocking(False)
+            reader, writer = await asyncio.open_connection(sock=sock, limit=16384)
+            grant = await _read(reader, 30)
+            if grant != {"command": "startup-grant", "version": 1} or type(grant['version']) is not int:
+                raise ControlError("control_startup_handoff_required")
+            try:
+                async with asyncio.timeout(30):
+                    yield
+            except BaseException:
+                await _write(writer, {"command": "startup-failed", "version": 1})
+                raise
+            else:
+                await _write(writer, {"command": "initialized", "version": 1})
+        except OSError:
+            raise ControlError("control_startup_handoff_required") from None
+        finally:
+            if writer is not None:
+                writer.close()
+                await writer.wait_closed()
+            elif self.fd >= 0:
+                with suppress(OSError):
+                    os.close(self.fd)
+                self.fd = -1
 
 
 class RuntimeMutationMiddleware:

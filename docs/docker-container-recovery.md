@@ -70,10 +70,13 @@ commit/rollback. Quiesce must not wait on the control callback that is awaiting
 quiesce. Worker process groups must be created as owned sessions, stopped and
 reaped; a crashed parent alone is insufficient proof that child writers stopped.
 
-The application startup boundary remains explicitly fail-closed for a container
-worker until D5 supplies the supervisor-held bootstrap handoff. This avoids a
-nested lease deadlock while restore validates a newly started worker. D4 does not
-silently enable the full application runtime.
+The D5 image candidate supplies a one-use inherited socket handoff while the
+supervisor holds the startup mutation lease. The worker acknowledges initialized
+state before normal requests acquire their own leases. This avoids a nested
+lease deadlock while restore validates a newly started worker. Lost or expired
+leases revoke subordinate operations and drain them before final guard/quiesce
+and the next writer grant; they cannot release protection after revocation.
+This experimental composition does not make Docker supported.
 
 ## Backup, restore and interrupted recovery
 
