@@ -24,6 +24,24 @@ application wheel and hash-locked runtime dependencies. The installed image has
 public CA certificates, the PIA CA, timezone data and licensing, without the
 repository checkout, tests, development dependencies or appliance state.
 
+The runtime build refreshes APT indexes with any repository error treated as fatal,
+installs the required tools, then upgrades already installed packages from the
+base's signed `trixie`, `trixie-updates` and `trixie-security` repositories. Ordinary
+`apt-get upgrade` adds no packages; `--no-remove` additionally forbids removals.
+It does not use dist-upgrade, another Debian suite or permanently pinned security
+package versions. All APT metadata is removed in the same layer. Package operations
+are build-time only; the application does not install packages at runtime.
+
+The base digest identifies the starting filesystem, not an immutable final Debian
+package snapshot. Build-time repository resolution deliberately consumes supported
+updates. Retain the complete SPDX, scan, image/source/base identities and installed
+package inventory for each candidate. Review package deltas when refreshing that
+baseline; qualify changed runtime/network layers and investigate held-back updates
+rather than treating a successful APT command as security acceptance. Rebuild with
+`--pull --no-cache` at security/release boundaries so a cached APT layer cannot
+preserve superseded packages. The HIGH/CRITICAL publication gate includes unfixed
+findings and remains unchanged.
+
 Build only from the source revision you intend to review. The package version
 and exact source SHA are separate OCI metadata; a candidate built after rc.3
 does not become the published rc.3 application merely because its package version

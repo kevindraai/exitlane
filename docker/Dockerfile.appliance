@@ -25,6 +25,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HOME=/run/exitlane
 RUN apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=3 update \
     && apt-get install --yes --no-install-recommends ca-certificates tzdata wireguard-tools iproute2 nftables iputils-ping \
+    && apt-get upgrade --yes --no-install-recommends --no-remove \
     && rm -rf /var/lib/apt/lists/*
 COPY docker/requirements-runtime.txt /tmp/requirements-runtime.txt
 COPY --from=wheel /wheel /tmp/wheel
