@@ -93,7 +93,9 @@ def preflight():
             "root_readonly": bool(os.statvfs("/").f_flag & os.ST_RDONLY),
             "data_mount": "/data" in mountpoints,
             "run_private": private_directory("/run"),
-            "tmp_private": private_directory("/tmp"),
+            # Checks root ownership/mode of the dedicated namespace tmpfs;
+            # no temporary file is created or trusted at a predictable path.
+            "tmp_private": private_directory("/tmp"),  # nosec B108
             "runtime": os.environ.get("EXITLANE_RUNTIME"),
         }
     )
@@ -535,7 +537,9 @@ def main():
 
         from exitlane.main import app
 
-        uvicorn.run(app, host="0.0.0.0", port=8787, proxy_headers=False, access_log=False)
+        # Container namespace only; Compose binds host management to loopback
+        # unless explicitly selected. Actual proxy peers are validated by ASGI.
+        uvicorn.run(app, host="0.0.0.0", port=8787, proxy_headers=False, access_log=False)  # nosec B104
         return 0
     try:
         preflight()

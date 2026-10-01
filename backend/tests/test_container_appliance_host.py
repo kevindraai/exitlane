@@ -1,6 +1,7 @@
 """Operator preflight rejects unsafe hosts and altered Compose contracts."""
 import copy
 import importlib.util
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -23,8 +24,8 @@ def configuration():
         'ports': [{'host_ip': '127.0.0.1', 'published': '8787', 'target': 8787, 'protocol': 'tcp'},
                   {'host_ip': '127.0.0.1', 'published': '51820', 'target': 51820, 'protocol': 'udp'}],
         'sysctls': {'net.ipv4.ip_forward': '1', 'net.ipv6.conf.all.forwarding': '0'},
-    }}, 'networks': {'exitlane': {'driver': 'bridge', 'enable_ipv6': False}},
-        'volumes': {'exitlane-state': {}}}
+    }}, 'networks': {'exitlane': {'name': 'owned-network', 'driver': 'bridge', 'enable_ipv6': False}},
+        'volumes': {'exitlane-state': {'name': 'owned-state'}}}
 
 
 @pytest.mark.parametrize('section,field,value,error', [
@@ -54,6 +55,41 @@ def test_extra_runtime_privilege_surfaces_refused(field, value):
     config['services']['exitlane'][field] = value
     with pytest.raises(host.PreflightError, match='unsafe_compose_runtime'):
         host.validate_compose(config, IMAGE, '127.0.0.1', '127.0.0.1')
+
+
+@pytest.mark.parametrize('existing', [False, True])
+def test_actual_private_or_absent_resources_allowed(monkeypatch, existing):
+    config = configuration()
+    config['volumes']['exitlane-state']['name'] = 'owned-state'
+    config['networks']['exitlane']['name'] = 'owned-network'
+    def listing(args, **_kwargs):
+        value = ('owned-state' if args[1] == 'volume' else 'synthetic-network-id') if existing else ''
+        return subprocess.CompletedProcess(args, 0, value, '')
+    monkeypatch.setattr(host.subprocess, 'run', listing)
+    def inspect(kind, *_args):
+        return [{'Driver': 'local' if kind == 'volume' else 'bridge', 'Scope': 'local', 'Options': None}]
+    monkeypatch.setattr(host, 'checked', inspect)
+    host.validate_existing_resources(config)
+
+
+@pytest.mark.parametrize('kind,facts,code', [
+    ('volume', {'Driver': 'local', 'Scope': 'local', 'Options': {'type': 'none', 'o': 'bind', 'device': '/'}},
+     'unsafe_existing_volume'),
+    ('volume', {'Driver': 'foreign-plugin', 'Scope': 'local'}, 'unsafe_existing_volume'),
+    ('network', {'Driver': 'host', 'Scope': 'local'}, 'unsafe_existing_network'),
+    ('network', {'Driver': 'bridge', 'Scope': 'local', 'EnableIPv6': True}, 'unsafe_existing_network'),
+])
+def test_actual_resource_options_not_only_yaml_are_checked(monkeypatch, kind, facts, code):
+    config = configuration()
+    config['volumes']['exitlane-state']['name'] = 'owned-state'
+    config['networks']['exitlane']['name'] = 'owned-network'
+    def listing(args, **_kwargs):
+        value = ('owned-state' if kind == 'volume' else 'synthetic-network-id') if args[1] == kind else ''
+        return subprocess.CompletedProcess(args, 0, value, '')
+    monkeypatch.setattr(host.subprocess, 'run', listing)
+    monkeypatch.setattr(host, 'checked', lambda *_args: [facts])
+    with pytest.raises(host.PreflightError, match=code):
+        host.validate_existing_resources(config)
 
 
 def test_supported_host_and_minimal_compose():
@@ -122,6 +158,13 @@ def test_host_preflight_only_executes_readonly_commands(monkeypatch, capsys):
                 'org.exitlane.support': 'experimental', 'org.opencontainers.image.revision': 'a' * 40}}}]
         return configuration()
     monkeypatch.setattr(host, 'checked', execute)
+    listed = []
+    def listing(args, **_kwargs):
+        listed.append(args)
+        return subprocess.CompletedProcess(args, 0, '', '')
+    monkeypatch.setattr(host.subprocess, 'run', listing)
     assert host.main(['--image', IMAGE]) == 0
     assert 'PASS' in capsys.readouterr().out
     assert len(calls) == 5 and all(c[0] in {'version', 'info', 'compose', 'image'} for c in calls)
+    assert len(listed) == 2 and all(command[:3] in (
+        ['docker', 'volume', 'ls'], ['docker', 'network', 'ls']) for command in listed)

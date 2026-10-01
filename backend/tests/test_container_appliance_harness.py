@@ -76,3 +76,33 @@ def test_http_credentials_use_stdin_not_process_arguments():
     assert 'synthetic-password' not in calls[0][1]
     assert 'synthetic-cookie' not in calls[0][1]
     assert json.loads(calls[0][2])['body']['password'] == 'synthetic-password'
+
+
+@pytest.mark.parametrize('capabilities,mask,allowed', [
+    (['NET_ADMIN'], 1 << 12, True),
+    (['CAP_NET_ADMIN'], 1 << 12, True),
+    (['CAP_NET_ADMIN', 'CAP_NET_RAW'], (1 << 12) | (1 << 13), False),
+    (['CAP_SYS_ADMIN'], 1 << 21, False),
+    (['CAP_NET_ADMIN'], (1 << 12) | (1 << 13), False),
+])
+def test_docker_capability_prefix_does_not_relax_kernel_contract(capabilities, mask, allowed):
+    instance = object.__new__(harness.ApplianceHarness)
+    instance.network = 'owned-private-network'
+    instance.receipts = []
+    facts = {'HostConfig': {'ReadonlyRootfs': True, 'Privileged': False, 'Init': True,
+                           'CapDrop': ['ALL'], 'CapAdd': capabilities,
+                           'NetworkMode': instance.network, 'PidMode': '', 'Binds': [],
+                           'PidsLimit': 128, 'SecurityOpt': ['no-new-privileges']},
+             'Mounts': [{'Type': 'volume', 'Destination': '/data'}]}
+    instance.docker = lambda *_: subprocess.CompletedProcess([], 0, json.dumps([facts]), '')
+    def python(_name, _source, *, check=True):
+        if check:
+            return subprocess.CompletedProcess([], 0, json.dumps({'CapEff': hex(mask), 'NoNewPrivs': '1'}), '')
+        return subprocess.CompletedProcess([], 1, '', 'synthetic read-only refusal')
+    instance.python = python
+    if allowed:
+        instance.inspect('owned-app')
+        assert instance.receipts == ['readonly minimal privilege inspect']
+    else:
+        with pytest.raises(AssertionError):
+            instance.inspect('owned-app')

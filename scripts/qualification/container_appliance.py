@@ -254,7 +254,8 @@ class ApplianceHarness:
         facts = json.loads(self.docker('inspect', name).stdout)[0]
         host = facts['HostConfig']
         assert host['ReadonlyRootfs'] and not host['Privileged'] and host['Init']
-        assert host['CapDrop'] == ['ALL'] and host['CapAdd'] == ['NET_ADMIN']
+        assert host['CapDrop'] == ['ALL']
+        assert host['CapAdd'] in (['NET_ADMIN'], ['CAP_NET_ADMIN'])
         assert host['NetworkMode'] == self.network and host['PidMode'] != 'host'
         assert not host['Binds'] and host['PidsLimit'] == 128
         assert any('no-new-privileges' in value for value in host['SecurityOpt'])

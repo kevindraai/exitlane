@@ -102,6 +102,33 @@ def validate_compose(configuration, image, management, ingress):
         raise PreflightError('unsafe_compose_sysctls')
 
 
+def validate_existing_resources(configuration):
+    for kind, section, key in (('volume', 'volumes', 'exitlane-state'),
+                               ('network', 'networks', 'exitlane')):
+        name = configuration[section][key].get('name')
+        if not isinstance(name, str) or re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', name) is None:
+            raise PreflightError('resolved_resource_name_required')
+        try:
+            listed = subprocess.run(['docker', kind, 'ls', '--quiet', '--filter',
+                                     'name=^' + re.escape(name) + '$'], capture_output=True,
+                                    text=True, timeout=15, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            raise PreflightError('docker_preflight_command_failed') from None
+        if listed.returncode:
+            raise PreflightError('docker_preflight_command_failed')
+        if not listed.stdout.strip():
+            continue  # Compose may create the canonical private resource.
+        if kind == 'volume' and listed.stdout.strip() != name:
+            raise PreflightError('docker_resource_inventory_invalid')
+        facts = checked(kind, 'inspect', name)[0]
+        if kind == 'volume':
+            if facts.get('Driver') != 'local' or facts.get('Options') or facts.get('Scope') != 'local':
+                raise PreflightError('unsafe_existing_volume')
+        elif (facts.get('Driver') != 'bridge' or facts.get('Options') or facts.get('Internal')
+              or facts.get('EnableIPv6') or facts.get('Scope') != 'local'):
+            raise PreflightError('unsafe_existing_network')
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--image', default=os.getenv('EXITLANE_IMAGE', ''))
@@ -129,6 +156,7 @@ def main(argv=None):
         config = checked('compose', '-f', str(COMPOSE), 'config', '--format', 'json',
                          environment=environment)
         validate_compose(config, args.image, management, ingress)
+        validate_existing_resources(config)
         print(json.dumps({'preflight': 'PASS', 'support': 'experimental', 'engine': version,
                           'image': image['Id'], 'management_bind': management, 'ingress_bind': ingress}))
         return 0
