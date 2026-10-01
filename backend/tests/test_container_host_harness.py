@@ -270,3 +270,158 @@ def test_remote_receipt_reader_rejects_unsafe_artifacts_immediately(configuratio
         with pytest.raises(OSError): instance.evidence(handle)
     else:
         with pytest.raises(SystemExit, match='qualification_receipt_unsafe'): instance.evidence(handle)
+
+
+@pytest.fixture
+def daemon_preparation(configuration):
+    """Model daemon mode + exact stopped container, not restart auto-recovery."""
+    instance = harness.HostHarness(configuration)
+    events = []
+    state = {'mode': True, 'running': True, 'image': configuration['image'],
+             'pair': {'database': 'public-digest', 'key': 'public-key-digest'},
+             'start_failure': False, 'final_mode': None}
+    def owned(kind, name):
+        events.append('inspect')
+        return {'Id': 'c' * 64, 'Image': state['image'],
+                'Mounts': [{'Name': instance.volume, 'Destination': '/data'}],
+                'State': {'Running': state['running'],
+                          'Status': 'running' if state['running'] else 'exited'}}
+    def docker(*argv, **kwargs):
+        if argv[0] == 'info':
+            events.append('mode')
+            value = state['mode'] if state['final_mode'] is None else state['final_mode']
+            return {'stdout': json.dumps(value)}
+        events.append(argv[0])
+        assert argv[-1] == 'c' * 64
+        if argv[0] == 'stop':
+            state['running'] = False
+        elif argv[0] == 'start':
+            if state['start_failure']:
+                raise harness.QualificationError('qualification_command_failed')
+            state['running'] = True
+        else:
+            pytest.fail('unexpected Docker mutation')
+        return {'stdout': ''}
+    def prepare(source, **kwargs):
+        events.append('edit-restart')
+        assert not state['running'], 'mode transition attempted on live-restore task'
+        compile(source, '<daemon-preparation>', 'exec')
+        assert kwargs['timeout'] == 110
+        state['mode'] = kwargs['data']
+    def healthy():
+        events.append('healthy')
+        return state['running']
+    instance.assert_disposable = lambda: events.append('disposable')
+    instance.assert_owned = owned
+    instance.docker = docker
+    instance.candidate.run = prepare
+    instance.healthy = healthy
+    instance.pair = lambda: dict(state['pair'])
+    instance.wait = lambda probe, stage, timeout: probe() or pytest.fail('unhealthy')
+    return instance, events, state
+
+
+def test_daemon_true_to_false_stops_owned_uuid_before_mode_restart(daemon_preparation):
+    instance, events, state = daemon_preparation
+    instance.configure_daemon_mode(False)
+    assert events == ['disposable', 'inspect', 'healthy', 'mode', 'stop', 'inspect',
+                      'edit-restart', 'mode', 'inspect', 'start', 'healthy', 'inspect', 'mode']
+    assert state['running'] and state['mode'] is False
+    assert instance.receipts[-1]['outside_pressure'] is True
+    assert instance.receipts[-1]['state_pair_preserved'] is True
+
+
+def test_daemon_current_mode_is_readonly_and_healthy(daemon_preparation):
+    instance, events, _ = daemon_preparation
+    instance.configure_daemon_mode(True)
+    assert events == ['disposable', 'inspect', 'healthy', 'mode', 'mode']
+
+
+def test_daemon_preparation_foreign_refused_before_stop_or_edit(configuration):
+    instance = harness.HostHarness(configuration)
+    instance.docker = lambda *a, **kw: {'stdout': 'foreign-appliance\n'}
+    instance.candidate.run = lambda *a, **kw: pytest.fail('foreign host edited')
+    with pytest.raises(harness.QualificationError, match='qualification_foreign_container_present'):
+        instance.configure_daemon_mode(False)
+
+
+def test_daemon_start_failure_has_no_recovery_retry(daemon_preparation):
+    instance, events, state = daemon_preparation
+    state['start_failure'] = True
+    with pytest.raises(harness.QualificationError, match='qualification_command_failed'):
+        instance.configure_daemon_mode(False)
+    assert events.count('start') == 1 and events.count('edit-restart') == 1
+    assert not state['running'] and not instance.receipts
+
+
+def test_daemon_final_mode_mismatch_fails_without_start(daemon_preparation):
+    instance, events, state = daemon_preparation
+    state['final_mode'] = True
+    with pytest.raises(harness.QualificationError, match='qualification_daemon_mode_unproven'):
+        instance.configure_daemon_mode(False)
+    assert 'start' not in events and not state['running']
+
+
+def test_daemon_preparation_state_pair_change_fails(daemon_preparation):
+    instance, events, state = daemon_preparation
+    original = instance.candidate.run
+    def changed(*a, **kw):
+        original(*a, **kw)
+        state['pair']['database'] = 'changed'
+    instance.candidate.run = changed
+    with pytest.raises(harness.QualificationError, match='qualification_daemon_preparation_state_changed'):
+        instance.configure_daemon_mode(False)
+    assert events.count('start') == 1 and not instance.receipts
+
+
+def test_daemon_stop_failure_prevents_config_edit(daemon_preparation):
+    instance, events, _ = daemon_preparation
+    original = instance.docker
+    def failed(*argv, **kwargs):
+        if argv[0] == 'stop':
+            raise harness.QualificationError('qualification_command_failed')
+        return original(*argv, **kwargs)
+    instance.docker = failed
+    with pytest.raises(harness.QualificationError, match='qualification_command_failed'):
+        instance.configure_daemon_mode(False)
+    assert 'edit-restart' not in events and 'start' not in events
+
+
+def test_daemon_preparation_replaced_image_never_started(daemon_preparation):
+    instance, events, state = daemon_preparation
+    original = instance.candidate.run
+    def changed(*a, **kw):
+        original(*a, **kw)
+        state['image'] = 'sha256:' + 'd' * 64
+    instance.candidate.run = changed
+    with pytest.raises(harness.QualificationError, match='qualification_daemon_preparation_identity_changed'):
+        instance.configure_daemon_mode(False)
+    assert 'start' not in events
+
+
+def test_daemon_final_mode_readback_after_start_cannot_pass_on_changed_mode(daemon_preparation):
+    instance, events, state = daemon_preparation
+    original = instance.docker
+    def changed(*argv, **kwargs):
+        value = original(*argv, **kwargs)
+        if argv[0] == 'start':
+            state['mode'] = True
+        return value
+    instance.docker = changed
+    with pytest.raises(harness.QualificationError, match='qualification_daemon_mode_unproven'):
+        instance.configure_daemon_mode(False)
+    assert events.count('start') == 1 and not instance.receipts
+
+
+def test_daemon_mount_change_never_started(daemon_preparation):
+    instance, events, state = daemon_preparation
+    original = instance.assert_owned
+    def changed(*args):
+        facts = original(*args)
+        if 'edit-restart' in events:
+            facts['Mounts'] = [{'Name': 'foreign-volume', 'Destination': '/data'}]
+        return facts
+    instance.assert_owned = changed
+    with pytest.raises(harness.QualificationError, match='qualification_daemon_preparation_identity_changed'):
+        instance.configure_daemon_mode(False)
+    assert 'start' not in events and not state['running']

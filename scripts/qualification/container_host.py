@@ -730,6 +730,32 @@ print(json.dumps(values[0]))
         if type(enabled) is not bool or not self.config['allow_host_restart']:
             raise QualificationError('qualification_host_fault_not_authorized')
         self.assert_disposable()
+        original = self.assert_owned('container', self.container)
+        if original['State'].get('Running') is not True or not self.healthy():
+            raise QualificationError('qualification_daemon_preparation_not_ready')
+        identity = (original['Id'], original['Image'], original['Mounts'])
+        original_pair = self.pair()
+        current = json.loads(self.docker('info', '--format', '{{json .LiveRestoreEnabled}}')['stdout'])
+        if type(current) is not bool:
+            raise QualificationError('qualification_daemon_mode_unproven')
+        if current is enabled:
+            self.assert_daemon_mode(enabled)
+            if self.pair() != original_pair:
+                raise QualificationError('qualification_daemon_preparation_state_changed')
+            return
+        # https://github.com/moby/moby/blob/docker-v29.8.2/daemon/daemon.go
+        # Lines1438–1444 retain old live-restore tasks; lines434–442 stop them
+        # when the new daemon restores with live-restore disabled.
+        # Docker29.8.2 daemon.go: old live-restore shutdown leaves tasks alive,
+        # but startup with live-restore=false explicitly shuts those tasks down.
+        # Stop/start this exact owned container outside measured packet pressure;
+        # never assume unless-stopped auto-starts across that mode transition.
+        self.docker('stop', '--time', '15', original['Id'])
+        stopped = self.assert_owned('container', self.container)
+        if (stopped['State'].get('Running') is not False
+                or stopped['State'].get('Status') != 'exited'
+                or (stopped['Id'], stopped['Image'], stopped['Mounts']) != identity):
+            raise QualificationError('qualification_daemon_preparation_stop_unproven')
         self.candidate.run("""from pathlib import Path
 p=Path('/etc/docker/daemon.json')
 if p.is_symlink():raise SystemExit('qualification_daemon_config_invalid')
@@ -739,8 +765,23 @@ v['live-restore']=payload
 p.write_text(json.dumps(v));p.chmod(0o600)
 subprocess.run(['systemctl','restart','docker'],check=True,timeout=90)
 """, data=enabled, timeout=110)
-        self.wait(self.healthy, 'daemon_mode_preparation_recovered', timeout=180)
         self.assert_daemon_mode(enabled)
+        retained = self.assert_owned('container', self.container)
+        if ((retained['Id'], retained['Image'], retained['Mounts']) != identity
+                or retained['State'].get('Running') is not False
+                or retained['State'].get('Status') != 'exited'):
+            raise QualificationError('qualification_daemon_preparation_identity_changed')
+        self.docker('start', original['Id'])
+        self.wait(self.healthy, 'daemon_mode_preparation_recovered', timeout=180)
+        recovered = self.assert_owned('container', self.container)
+        if ((recovered['Id'], recovered['Image'], recovered['Mounts']) != identity
+                or recovered['State'].get('Running') is not True):
+            raise QualificationError('qualification_daemon_preparation_identity_changed')
+        if self.pair() != original_pair:
+            raise QualificationError('qualification_daemon_preparation_state_changed')
+        self.assert_daemon_mode(enabled)
+        self.receipts.append({'stage': 'daemon_mode_preparation', 'outside_pressure': True,
+                              'live_restore': enabled, 'state_pair_preserved': True})
 
     def assert_daemon_mode(self, enabled):
         value = json.loads(self.docker('info', '--format', '{{json .LiveRestoreEnabled}}')['stdout'])

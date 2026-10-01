@@ -210,6 +210,26 @@ prove replacement at schema 1. They do not prove compatibility of an unknown
 future release or downgrade. Incompatible-schema/missing-key startup refusal
 uses the D5 actual-image negative gates alongside this continuous witness.
 
+## Daemon-mode preparation
+
+Establish each daemon mode before its measured restart fault. Docker 29.8.2
+has an important mode-transition boundary: the old daemon with live-restore
+keeps tasks alive, but a new daemon started with live-restore disabled stops
+those surviving tasks. See the [tagged daemon source](https://github.com/moby/moby/blob/docker-v29.8.2/daemon/daemon.go#L434)
+and [live-restore contract](https://docs.docker.com/engine/daemon/live-restore/).
+The retained true-to-false preparation failed before packet pressure or the
+measured restart began; it is not evidence that an unchanged-mode restart passed
+or failed. Explicit recovery started only the same owned container and proved
+its unchanged durable pair and fresh protected delivery.
+
+The harness now skips changes when the desired mode already matches. When it
+changes mode, it first proves the exact UUID-owned running container, image,
+mounts and durable pair, stops that container, edits/restarts the daemon, verifies
+the mode and retained identity, and starts it once. It requires health, identity,
+state-pair and final mode readback. This preparation is outside measured pressure;
+errors stop without retry or recreation. The actual unchanged-mode fault remains
+under continuous pressure; live-restore must preserve the process identity.
+
 ## IPv6 sensitivity and blocking
 
 Use fresh IPv6 collector epochs after retaining/draining IPv4 evidence. Calibrate
