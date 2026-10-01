@@ -76,6 +76,9 @@ jobs:
   publish:
     needs: validate
     if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.validate.result == 'success' }}
+    concurrency:
+      group: docker-publish-${{ needs.validate.outputs.tag }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -153,10 +156,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish one immutable version tag
+      - name: Publish one version tag without replacing an existing release
         id: push
         env:
           IMAGE: ${{ needs.validate.outputs.image }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/push_ghcr_image.py --image "$IMAGE" --github-output "$GITHUB_OUTPUT"
 
       - name: Pull the exact published digest

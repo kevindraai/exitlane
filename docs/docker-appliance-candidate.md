@@ -41,7 +41,13 @@ Moving tags, including `latest`, are not rollback identities. The D7 workflow
 accepts only an already published ExitLane release tag whose exact source commit
 is on qualified `main`; it publishes that version tag and records its registry
 digest. It creates no `latest` or channel alias. No production image is published
-by this implementation.
+by this implementation. The publisher checks GitHub Packages first and refuses to
+replace an existing exact version tag; a failed post-push run therefore needs a
+separately reviewed recovery path. The image digest, not the human-readable tag,
+is the immutable deployment identity. GitHub makes a newly created container
+package private by default. The workflow does not change package visibility; a
+release owner must separately make the package public and verify anonymous pulls
+before announcing a public image.
 
 ## Deployment contract
 

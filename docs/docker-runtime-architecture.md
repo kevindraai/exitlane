@@ -292,8 +292,8 @@ wrong-key detection and kill-at-each-transaction-stage recovery. Native restore 
 ## Image replacement and schema rollback
 
 Production image identity is `ghcr.io/kevindraai/exitlane:vX.Y.Z[-rc.N]` with recorded digest,
-source SHA, package/app version and supported state/schema interval. Exact tags are never
-republished; digest is the strongest deployment identity. Optional `rc` and `stable` convenience
+source SHA, package/app version and supported state/schema interval. The publisher rejects an
+existing exact version tag; the registry digest is the immutable deployment identity. Optional `rc` and `stable` convenience
 tags may advance only after corresponding support/release gates. `latest` is absent until the
 project explicitly adopts a stable-release policy. No alias is a durable rollback identity.
 
@@ -340,7 +340,10 @@ contents, runs the appliance qualification, publishes only the exact release ver
 and verifies provenance and SBOM attestations. HIGH/CRITICAL findings block publication; no
 automatic risk exception is defined. Attestations document source/build provenance, not packet
 safety. This workflow was not dispatched by the implementation PR. First production publication
-and any Docker support declaration remain separate gates.
+and any Docker support declaration remain separate gates. A newly created GHCR package defaults
+to private and its visibility is not changed by automation; the release owner must separately make
+it public and confirm anonymous pulls before announcing public availability. See GitHub's
+[Container registry visibility and access rules](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#pushing-container-images).
 
 ## Management binding and proxy contract
 

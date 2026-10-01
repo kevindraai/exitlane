@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -180,6 +181,60 @@ def test_push_parses_one_registry_digest_without_echoing_other_output():
         return subprocess.CompletedProcess(argv, 0, f"v1.2.3-rc.4: digest: {digest} size: 123\n", "")
 
     assert push.push_digest("ghcr.io/kevindraai/exitlane:v1.2.3-rc.4", run=run) == digest
+
+
+def test_publication_fails_closed_on_existing_exact_registry_tag():
+    digest = "sha256:" + "e" * 64
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, size):
+            assert size == push.MAX_PACKAGE_RESPONSE + 1
+            return json.dumps([
+                {"name": digest, "metadata": {"container": {"tags": ["v1.2.3-rc.4"]}}}
+            ]).encode()
+
+    def open_url(request, timeout):
+        assert request.full_url.endswith("?per_page=100&page=1")
+        assert request.get_header("Authorization") == "Bearer synthetic-token"
+        assert timeout <= 15
+        return Response()
+
+    with pytest.raises(push.PushError, match="docker_release_tag_already_published"):
+        push._existing_release_digest(
+            "v1.2.3-rc.4", "kevindraai/exitlane", "synthetic-token", open_url=open_url
+        )
+
+
+def test_publication_refuses_unknown_registry_state_and_malformed_metadata():
+    def unavailable(*args, **kwargs):
+        raise TimeoutError
+
+    with pytest.raises(push.PushError, match="docker_release_tag_registry_state_unknown"):
+        push._existing_release_digest(
+            "v1.2.3-rc.4", "kevindraai/exitlane", "synthetic-token", open_url=unavailable
+        )
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, size):
+            return b'[{"name":"invalid","metadata":{}}]'
+
+    with pytest.raises(push.PushError, match="docker_release_tag_registry_response_invalid"):
+        push._existing_release_digest(
+            "v1.2.3-rc.4", "kevindraai/exitlane", "synthetic-token",
+            open_url=lambda *args, **kwargs: Response(),
+        )
 
 
 @pytest.mark.parametrize(
