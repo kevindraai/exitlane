@@ -36,6 +36,29 @@ def test_roundtrip_program_uses_four_protocols_and_bounded_sockets():
     assert 'str(e)' not in application.PROGRAM
 
 
+def test_dns_tcp_early_eof_is_failure_instead_of_endless_receive(monkeypatch, capsys):
+    import json
+    import socket
+
+    class TruncatedSocket:
+        def __init__(self):
+            self.reads = 0
+        def settimeout(self, seconds):
+            assert seconds == 3
+        def connect(self, destination): pass
+        def send(self, payload): return len(payload)
+        def recv(self, count):
+            self.reads += 1
+            if self.reads > 2:
+                pytest.fail('receiver repeated an EOF read')
+            return b'\x00\x10' if self.reads == 1 else b''
+        def close(self): pass
+
+    monkeypatch.setattr(socket, 'socket', lambda *args: TruncatedSocket())
+    exec(application.PROGRAM, {})  # noqa: S102 -- exercise the fixed socket probe itself
+    assert json.loads(capsys.readouterr().out)['dns_tcp'] == 'EOFError'
+
+
 @pytest.mark.parametrize('observed,accepted', [
     ({'udp': True, 'tcp': True, 'dns_udp': True, 'dns_tcp': True}, True),
     ({'udp': 'TimeoutError', 'tcp': True, 'dns_udp': True, 'dns_tcp': True}, False),

@@ -381,6 +381,108 @@ def observer(tmp_path):
     return packets.HostCapture(("eth0",), {"10.77.0.2", "1.1.1.1"}, tmp_path / "owned")
 
 
+@pytest.mark.parametrize("flags", [0x02, 0x04, 0x14, 0x10])
+@pytest.mark.parametrize("port", [53, 7778])
+def test_actual_collector_pcap_preserves_empty_output_tcp(tmp_path, monkeypatch, flags, port):
+    monkeypatch.syspath_prepend(str(Path(__file__).parents[2] / "scripts/qualification"))
+    from container_host_output import scan_pcap
+
+    capture = observer(tmp_path)
+    segment = bytearray(tcp(b"", destination=port))
+    segment[13] = flags
+    # NAT/source rewriting cannot hide the explicitly selected destination.
+    raw = frame(ipv4(bytes(segment), protocol=6, source="192.0.2.5"), 276)
+    assert packets.parse_packet(raw, linktype=276).kind == "other"
+    stamp = (capture.start_ns // 1000 + 2) * 1000
+    capture.consume("eth0", raw, stamp)
+    for output in capture.files.values():
+        output.close()
+    proof = scan_pcap((capture.root / "eth0.pcap").read_bytes(), stamp - 1000, stamp + 1000)
+    assert len(proof["tuples"]) == 1
+    assert proof["tuples"][0]["protocol"] == "tcp"
+    assert proof["tuples"][0]["destination_port"] == port
+    assert capture.facts["eth0"]["samples"] == capture.facts["eth0"]["calibration"] == []
+
+
+@pytest.mark.parametrize("icmp_type", [3, 11, 12])
+@pytest.mark.parametrize("quoted_protocol", [6, 17])
+def test_actual_collector_pcap_preserves_icmp_output_quotes(
+    tmp_path, monkeypatch, icmp_type, quoted_protocol
+):
+    monkeypatch.syspath_prepend(str(Path(__file__).parents[2] / "scripts/qualification"))
+    from container_host_output import scan_pcap
+
+    capture = observer(tmp_path)
+    transport = tcp(b"") if quoted_protocol == 6 else udp(b"")
+    quote = ipv4(transport, protocol=quoted_protocol, source="192.0.2.5")[:28]
+    raw = frame(ipv4(bytes((icmp_type, 0)) + b"\0" * 6 + quote,
+                     protocol=1, source="192.0.2.1", destination="10.77.0.2"), 276)
+    assert packets.parse_packet(raw, linktype=276).kind == "other"
+    stamp = (capture.start_ns // 1000 + 2) * 1000
+    capture.consume("eth0", raw, stamp)
+    for output in capture.files.values():
+        output.close()
+    proof = scan_pcap((capture.root / "eth0.pcap").read_bytes(), stamp - 1000, stamp + 1000)
+    assert len(proof["tuples"]) == 1 and proof["tuples"][0]["quoted"] is True
+    assert proof["tuples"][0]["destination"] == "1.1.1.1"
+    assert capture.facts["eth0"]["samples"] == capture.facts["eth0"]["calibration"] == []
+
+
+@pytest.mark.parametrize("raw", [
+    frame(ipv4(tcp(b"", destination=22), protocol=6), 276),
+    frame(ipv4(tcp(b"", destination=7778), protocol=6,
+               source="192.0.2.5", destination="192.0.2.6"), 276),
+    frame(ipv4(tcp(b"arbitrary-unmarked-content"), protocol=6), 276),
+    frame(ipv4(tcp(struct.pack("!H", len(dns("ordinary.example.test")))
+                   + dns("ordinary.example.test"), destination=53), protocol=6), 276),
+])
+def test_output_control_retention_does_not_expand_unrelated_payload_capture(tmp_path, raw):
+    capture = observer(tmp_path)
+    capture.consume("eth0", raw, capture.start_ns + 1)
+    for output in capture.files.values():
+        output.close()
+    assert (capture.root / "eth0.pcap").stat().st_size == 24
+
+
+@pytest.mark.parametrize("tags", [1, 2])
+def test_output_control_retention_preserves_cooked_vlan_packet(tmp_path, tags):
+    capture = observer(tmp_path)
+    raw = frame(ipv4(tcp(b""), protocol=6), 276)
+    tagged = b"\x81\x00" + raw[2:20]
+    for index in range(tags):
+        tagged += struct.pack("!HH", 135, 0x0800 if index == tags - 1 else 0x8100)
+    tagged += raw[20:]
+    capture.consume("eth0", tagged, capture.start_ns + 1)
+    for output in capture.files.values():
+        output.close()
+    assert (capture.root / "eth0.pcap").read_bytes()[40:] == tagged
+
+
+@pytest.mark.parametrize("body", [b"\x03", b"\x0b\0\0", b"\x0c" + b"\0" * 6])
+def test_truncated_unmarked_icmp_control_is_invalid_not_silent_zero(tmp_path, body):
+    capture = observer(tmp_path)
+    capture.consume("eth0", frame(ipv4(body, protocol=1), 276), capture.start_ns + 1)
+    assert capture.facts["eth0"]["invalid_packets"] == 1
+    for output in capture.files.values():
+        output.close()
+
+
+@pytest.mark.parametrize("quote", [b"\x45" + b"\0" * 10,
+                                      ipv4(tcp(b""), protocol=6, fragment=1)[:28]])
+def test_actual_collected_malformed_icmp_quote_cannot_be_zero(tmp_path, monkeypatch, quote):
+    monkeypatch.syspath_prepend(str(Path(__file__).parents[2] / "scripts/qualification"))
+    from container_host_output import OutputEvidenceError, scan_pcap
+
+    capture = observer(tmp_path)
+    raw = frame(ipv4(b"\x03\0" + b"\0" * 6 + quote, protocol=1), 276)
+    stamp = (capture.start_ns // 1000 + 2) * 1000
+    capture.consume("eth0", raw, stamp)
+    for output in capture.files.values():
+        output.close()
+    with pytest.raises(OutputEvidenceError):
+        scan_pcap((capture.root / "eth0.pcap").read_bytes(), stamp - 1000, stamp + 1000)
+
+
 def test_observer_filters_unrelated_dns_uncertainty_but_rejects_synthetic(tmp_path):
     capture = observer(tmp_path)
     capture.facts["eth0"]["ifindex"] = 7

@@ -689,7 +689,13 @@ def _uncertain_relevant(frame, addresses):
         if fragment & 0xBFFF or protocol in EXTENSIONS:
             return True
         if protocol in {1, 58}:
-            return PREFIX in frame[transport:] or b"exitlane-d6-" in frame[transport:]
+            return (
+                protocol == 1
+                and len(frame) > transport
+                and frame[transport] in {3, 11, 12}
+                or PREFIX in frame[transport:]
+                or b"exitlane-d6-" in frame[transport:]
+            )
         if protocol in {6, 17} and len(frame) >= transport + 4:
             ports = struct.unpack_from("!HH", frame, transport)
             if set(ports) & {7777, 7778, 51820, 51821}:
@@ -869,6 +875,31 @@ def attach_kernel_filter(sock, name, addresses):
         raise EvidenceInvalid("capture_filter_unavailable") from exc
 
 
+def _output_control_relevant(frame, result):
+    """Retain synthetic TCP controls/ICMP quotes without recording ordinary DNS.
+
+    The caller has already decoded a valid packet and requires an explicitly
+    selected endpoint. These packets have no marker identity: preserving their
+    raw records lets the separate OUTPUT scanner inspect SYN/RST and quoted
+    tuples; they must never count as calibrated marker streams.
+    """
+    ether_type, offset = struct.unpack_from("!H", frame)[0], 20
+    for _ in range(2):
+        if ether_type not in {0x8100, 0x88A8}:
+            break
+        ether_type = struct.unpack_from("!H", frame, offset + 2)[0]
+        offset += 4
+    if ether_type != 0x0800:
+        return False
+    transport = offset + (frame[offset] & 15) * 4
+    end = offset + struct.unpack_from("!H", frame, offset + 2)[0]
+    if result.protocol == "tcp" and {result.source_port, result.destination_port} & {53, 7778}:
+        # Valid empty TCP segments, including SYN, RST and ACK. No arbitrary
+        # application/DNS payload becomes part of this additional capture path.
+        return transport + (frame[transport + 12] >> 4) * 4 == end
+    return result.protocol == "icmp" and frame[transport] in {3, 11, 12}
+
+
 class HostCapture:
     """One bounded observer, one point per explicitly selected interface."""
 
@@ -1018,10 +1049,12 @@ class HostCapture:
             if _uncertain_relevant(frame, self.addresses):
                 facts["invalid_packets"] += 1
             return
-        if result.kind == "other" or (
+        if (
             result.source not in self.addresses
             and result.destination not in self.addresses
         ):
+            return
+        if result.kind == "other" and not _output_control_relevant(frame, result):
             return
         if result.kind == "wireguard":
             facts["wireguard_packets"] += 1
