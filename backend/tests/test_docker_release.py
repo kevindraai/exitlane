@@ -25,6 +25,36 @@ def test_release_tag_maps_to_package_version(tag, expected):
     assert release.package_version_for_tag(tag) == expected
 
 
+def test_project_metadata_is_read_as_data_from_only_the_validated_git_sha(monkeypatch):
+    calls = []
+
+    def show(args, **kwargs):
+        calls.append((args, kwargs))
+        if args[:2] == ["git", "cat-file"]:
+            return "32"
+        return '[project]\nversion = "1.2.3rc4"\n'
+
+    monkeypatch.setattr(release.subprocess, "check_output", show)
+    assert release._project_version(SHA) == "1.2.3rc4"
+    assert calls[0][0] == ["git", "cat-file", "-s", f"{SHA}:backend/pyproject.toml"]
+    assert calls[1][0] == ["git", "show", f"{SHA}:backend/pyproject.toml"]
+    assert all(call[1]["stderr"] == release.subprocess.DEVNULL for call in calls)
+    with pytest.raises(release.ReleaseValidationError, match="docker_release_source_sha_invalid"):
+        release._project_version("main")
+
+
+def test_project_metadata_size_is_bounded_before_contents_are_read(monkeypatch):
+    def size_only(args, **kwargs):
+        assert args[:3] == ["git", "cat-file", "-s"]
+        return str(release.MAX_PROJECT_METADATA + 1)
+
+    monkeypatch.setattr(release.subprocess, "check_output", size_only)
+    with pytest.raises(
+        release.ReleaseValidationError, match="docker_release_project_metadata_invalid"
+    ):
+        release._project_version(SHA)
+
+
 @pytest.mark.parametrize(
     "tag",
     ["main", "v1.2", "v01.2.3", "v1.2.3-rc.0", "v1.2.3-rc.04", "v1.2.3+local", "v1.2.3/evil"],
@@ -45,7 +75,7 @@ def test_release_validation_binds_confirmation_release_tag_sha_and_qualified_mai
         tag="v1.2.3-rc.4",
         source_sha=SHA,
         confirmation=f"PUBLISH EXITLANE v1.2.3-rc.4 {SHA}",
-        current_sha=SHA,
+        current_sha=MAIN,
         main_sha=MAIN,
         project_version="1.2.3rc4",
         release=RELEASE,
@@ -68,6 +98,7 @@ def test_release_validation_binds_confirmation_release_tag_sha_and_qualified_mai
         {"confirmation": "PUBLISH EXITLANE v1.2.3-rc.4"},
         {"source_sha": "d" * 40},
         {"current_sha": "d" * 40},
+        {"main_sha": "d" * 40},
         {"tag_commit": "d" * 40},
         {"project_version": "9.9.9"},
     ],
@@ -77,7 +108,7 @@ def test_release_validation_rejects_source_or_confirmation_mismatch(changes):
         "tag": "v1.2.3-rc.4",
         "source_sha": SHA,
         "confirmation": f"PUBLISH EXITLANE v1.2.3-rc.4 {SHA}",
-        "current_sha": SHA,
+        "current_sha": MAIN,
         "main_sha": MAIN,
         "project_version": "1.2.3rc4",
         "release": RELEASE,
@@ -104,7 +135,7 @@ def test_release_validation_requires_qualified_source_ancestry(ancestor_results)
             tag="v1.2.3-rc.4",
             source_sha=SHA,
             confirmation=f"PUBLISH EXITLANE v1.2.3-rc.4 {SHA}",
-            current_sha=SHA,
+            current_sha=MAIN,
             main_sha=MAIN,
             project_version="1.2.3rc4",
             release=RELEASE,
@@ -170,6 +201,11 @@ def test_release_workflow_is_manual_exact_tag_and_limits_package_write():
     assert "packages: write" in publish
     assert "packages: write" not in source.split("  publish:\n", maxsplit=1)[0]
     assert "release_tag" in source and "source_sha" in source and "confirmation" in source
+    assert "Checkout trusted workflow source and full ancestry" in source
+    assert "Checkout the exact validated application source as build input" in source
+    assert "path: release-source" in source
+    assert "-t \"$IMAGE\" release-source" in source
+    assert "scripts/push_ghcr_image.py" in source
 
 
 def test_push_parses_one_registry_digest_without_echoing_other_output():

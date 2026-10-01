@@ -293,9 +293,10 @@ wrong-key detection and kill-at-each-transaction-stage recovery. Native restore 
 
 Production image identity is `ghcr.io/kevindraai/exitlane:vX.Y.Z[-rc.N]` with recorded digest,
 source SHA, package/app version and supported state/schema interval. The publisher rejects an
-existing exact version tag; the registry digest is the immutable deployment identity. Optional `rc` and `stable` convenience
-tags may advance only after corresponding support/release gates. `latest` is absent until the
-project explicitly adopts a stable-release policy. No alias is a durable rollback identity.
+existing exact version tag; the registry digest is the immutable deployment identity. Optional
+`rc` and `stable` convenience tags may advance only after corresponding support/release gates.
+`latest` is absent until the project explicitly adopts a stable-release policy. No alias is a
+durable rollback identity.
 
 Operator workflow: create/verify/export encrypted backup; record current image digest and schema;
 `docker compose pull`; `docker compose up -d`; validate management/auth, guards, ingress and proven

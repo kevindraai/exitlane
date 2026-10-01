@@ -43,12 +43,18 @@ jobs:
           if not re.fullmatch(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-rc\.[1-9][0-9]*)?", os.environ.get("RELEASE_TAG", "")):
               print("docker_release_tag_invalid", file=sys.stderr)
               raise SystemExit(1)
+          if not re.fullmatch(r"[0-9a-f]{40}", os.environ.get("RELEASE_SOURCE_SHA", "")):
+              print("docker_release_source_sha_invalid", file=sys.stderr)
+              raise SystemExit(1)
           PY
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
 
-      - name: Checkout exact release source and full ancestry
+      - name: Checkout trusted workflow source and full ancestry
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.source_sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -89,17 +95,28 @@ jobs:
     outputs:
       digest: ${{ steps.push.outputs.digest }}
     steps:
-      - name: Checkout validated release source
+      - name: Checkout trusted release workflow source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.validate.outputs.source_sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Verify checkout identity
+      - name: Checkout the exact validated application source as build input
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate.outputs.source_sha }}
+          path: release-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify trusted workflow and application source identities
         env:
           EXPECTED_SHA: ${{ needs.validate.outputs.source_sha }}
-        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$WORKFLOW_SHA"
+          test "$(git -C release-source rev-parse HEAD)" = "$EXPECTED_SHA"
 
       - name: Build exact versioned amd64 image
         env:
@@ -107,10 +124,10 @@ jobs:
           SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
           IMAGE: ${{ needs.validate.outputs.image }}
         run: |
-          docker build --platform linux/amd64 -f docker/Dockerfile.appliance \
+          docker build --platform linux/amd64 -f release-source/docker/Dockerfile.appliance \
             --build-arg EXITLANE_VERSION="$APP_VERSION" \
             --build-arg EXITLANE_REVISION="$SOURCE_SHA" \
-            -t "$IMAGE" .
+            -t "$IMAGE" release-source
           test "$(docker image inspect "$IMAGE" --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
           test "$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')" = "$APP_VERSION"
           test "$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "$SOURCE_SHA"

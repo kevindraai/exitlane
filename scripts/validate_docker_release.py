@@ -25,6 +25,7 @@ SHA = re.compile(r"[0-9a-f]{40}\Z")
 REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 MINIMUM_DOCKER_RELEASE_SHA = "be97510c8ef5468b38e8ef6cbac7a738fa329620"
 MAX_RELEASE_RESPONSE = 1024 * 1024
+MAX_PROJECT_METADATA = 64 * 1024
 
 
 class ReleaseValidationError(RuntimeError):
@@ -72,6 +73,35 @@ def _tag_commit(tag: str) -> str:
     if result.returncode != 0 or SHA.fullmatch(value) is None:
         raise ReleaseValidationError("docker_release_tag_commit_invalid")
     return value
+
+
+def _project_version(source_sha: str) -> str:
+    if SHA.fullmatch(source_sha or "") is None:
+        raise ReleaseValidationError("docker_release_source_sha_invalid")
+    path = f"{source_sha}:backend/pyproject.toml"
+    try:
+        size = subprocess.check_output(
+            ["git", "cat-file", "-s", path],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+        ).strip()
+        if not size.isdecimal() or int(size) > MAX_PROJECT_METADATA:
+            raise ReleaseValidationError("docker_release_project_metadata_invalid")
+        source = subprocess.check_output(
+            ["git", "show", path],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+        )
+        project = tomllib.loads(source)
+    except (OSError, subprocess.SubprocessError, tomllib.TOMLDecodeError):
+        raise ReleaseValidationError("docker_release_project_metadata_invalid") from None
+    metadata = project.get("project")
+    version = metadata.get("version") if isinstance(metadata, dict) else None
+    if not isinstance(version, str):
+        raise ReleaseValidationError("docker_release_project_metadata_invalid")
+    return version
 
 
 def _fetch_release(tag: str, repository: str, token: str) -> dict[str, Any]:
@@ -124,7 +154,7 @@ def validate(
         or SHA.fullmatch(main_sha or "") is None
         or SHA.fullmatch(tag_commit or "") is None
         or SHA.fullmatch(minimum_sha or "") is None
-        or source_sha != current_sha
+        or current_sha != main_sha
         or source_sha != tag_commit
         or project_version != app_version
         or confirmation != f"PUBLISH EXITLANE {tag} {source_sha}"
@@ -160,7 +190,6 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         app_version = package_version_for_tag(args.tag)
-        project = tomllib.loads(Path("backend/pyproject.toml").read_text(encoding="utf-8"))
         release = _fetch_release(args.tag, repository, token)
         facts = validate(
             tag=args.tag,
@@ -170,7 +199,7 @@ def main(argv: list[str] | None = None) -> int:
                 ["git", "rev-parse", "HEAD"], text=True, timeout=15
             ).strip(),
             main_sha=os.environ.get("GITHUB_SHA", ""),
-            project_version=project.get("project", {}).get("version", ""),
+            project_version=_project_version(args.source_sha),
             release=release,
             tag_commit=_tag_commit(args.tag),
         )
