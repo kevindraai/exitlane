@@ -1,5 +1,7 @@
 # ExitLane killswitch
 
+> Docker always enforces provider-or-block for protected clients, including disconnect and an unconfigured provider. Disabling the optional killswitch cannot enable plaintext Docker egress. The boot units and native recovery commands below apply to Debian installations; use [Docker operations](docker-operations.md) for container recovery.
+
 The ExitLane killswitch is a system-level, provider-independent protection for
 forwarded client traffic. It is distinct from any provider-client killswitch.
 

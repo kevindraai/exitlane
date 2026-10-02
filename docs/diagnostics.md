@@ -1,5 +1,7 @@
 # Connection diagnostics
 
+> Docker uses the same connection tests with container-scoped process/network facts. Speedtest, managed package installation and systemd commands below are native-only and unavailable in Docker. See [Docker diagnosis and recovery](docker-operations.md#diagnose-blocked-traffic).
+
 The authenticated **Diagnostics** view tests the path used by routed clients:
 
 ```text

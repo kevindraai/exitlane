@@ -1,6 +1,6 @@
-"""Explicit runtime composition; native Debian remains the only implemented runtime.
+"""Explicit native Debian and experimental container runtime composition.
 
-Container coordination will acquire an outer lifecycle lease before provider claims
+Container coordination acquires an outer lifecycle lease before provider claims
 and network locks. Existing native backup/restore locking does not cover ordinary
 application mutations. This module does not introduce a global native lease.
 """

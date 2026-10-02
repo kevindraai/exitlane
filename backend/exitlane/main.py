@@ -785,7 +785,7 @@ async def health() -> dict:
 @app.get("/api/help/documents")
 async def help_documents() -> dict:
     try:
-        return documentation_index()
+        return documentation_index(runtime_name=runtime.capabilities.runtime_name)
     except DocumentationError as error:
         raise HTTPException(status_code=503, detail="documentation_unavailable") from error
 
@@ -793,7 +793,7 @@ async def help_documents() -> dict:
 @app.get("/api/help/documents/{slug}")
 async def help_document(slug: str) -> dict:
     try:
-        return documentation_document(slug)
+        return documentation_document(slug, runtime_name=runtime.capabilities.runtime_name)
     except KeyError as error:
         raise HTTPException(status_code=404, detail="documentation_not_found") from error
     except DocumentationError as error:

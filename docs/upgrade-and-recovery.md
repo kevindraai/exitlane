@@ -1,5 +1,7 @@
 # Upgrade and recovery
 
+> For Docker, use [image replacement and recovery](docker-operations.md#image-replacement-and-recovery). The Debian installer and systemd commands below apply only to native installations.
+
 The 0.3.0-rc.4 candidate retains the native in-place upgrade path from `v0.3.0-rc.3`,
 `v0.3.0-rc.2`, `v0.3.0-rc.1` and the published `v0.2.0` tag
 on Debian 13 `amd64`. The historical `v0.2.0` tag reports runtime version `0.2.0-rc.1` and Python package

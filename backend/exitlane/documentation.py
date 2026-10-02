@@ -18,6 +18,7 @@ class DocumentDefinition:
 
 
 DOCUMENTS = (
+    DocumentDefinition("docker-operations", "appliance-management", "docker-operations.md"),
     DocumentDefinition("deployment", "getting-started", "deployment.md"),
     DocumentDefinition("proxmox-lxc", "getting-started", "proxmox-lxc.md"),
     DocumentDefinition("router-integrations", "getting-started", "router-integrations.md"),
@@ -36,6 +37,19 @@ DOCUMENTS = (
     DocumentDefinition("upgrade-and-recovery", "appliance-management", "upgrade-and-recovery.md"),
     DocumentDefinition("activity-log", "appliance-management", "activity-log.md"),
 )
+# The literal catalog is also the wheel/sdist packaging inventory. Runtime filtering
+# changes navigation, never the installed set or authentication requirements.
+NATIVE_ONLY = frozenset({"deployment", "proxmox-lxc", "nordvpn", "hardening-guide"})
+CONTAINER_ONLY = frozenset({"docker-operations"})
+
+
+def runtime_documents(runtime_name: str) -> tuple[DocumentDefinition, ...]:
+    if runtime_name not in {"native", "container"}:
+        raise DocumentationError("Unknown documentation runtime")
+    excluded = NATIVE_ONLY if runtime_name == "container" else CONTAINER_ONLY
+    return tuple(document for document in DOCUMENTS if document.slug not in excluded)
+
+
 DOCUMENT_BY_SLUG = {document.slug: document for document in DOCUMENTS}
 SLUG_BY_PATH = {document.path: document.slug for document in DOCUMENTS}
 CATEGORIES = (
@@ -286,10 +300,12 @@ def parse_markdown(source_text: str, source: DocumentDefinition) -> list[dict[st
     return blocks
 
 
-def documentation_index(root: Path | None = None) -> dict[str, object]:
+def documentation_index(
+    root: Path | None = None, *, runtime_name: str = "native"
+) -> dict[str, object]:
     docs_root = (root or documentation_root()).resolve()
     documents = []
-    for definition in DOCUMENTS:
+    for definition in runtime_documents(runtime_name):
         text = _read_document(definition, docs_root)
         title_match = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
         documents.append(
@@ -303,13 +319,36 @@ def documentation_index(root: Path | None = None) -> dict[str, object]:
     return {"categories": list(CATEGORIES), "documents": documents}
 
 
-def documentation_document(slug: str, root: Path | None = None) -> dict[str, object]:
+def documentation_document(
+    slug: str, root: Path | None = None, *, runtime_name: str = "native"
+) -> dict[str, object]:
     definition = DOCUMENT_BY_SLUG.get(slug)
-    if definition is None:
+    available = {item.slug for item in runtime_documents(runtime_name)}
+    if definition is None or slug not in available:
         raise KeyError(slug)
     docs_root = (root or documentation_root()).resolve()
     source_text = _read_document(definition, docs_root)
     blocks = parse_markdown(source_text, definition)
+
+    def project_links(value):
+        if isinstance(value, list):
+            for item in value:
+                project_links(item)
+        elif isinstance(value, dict):
+            href = value.get("href", "")
+            if value.get("type") == "link" and href.startswith("#help/"):
+                target, separator, fragment = href[6:].partition("#")
+                if target not in available:
+                    source = DOCUMENT_BY_SLUG[target]
+                    suffix = f"#{fragment}" if separator else ""
+                    value.update(
+                        href=f"{GITHUB_DOCS_BASE}docs/{source.path}{suffix}", external=True
+                    )
+            for item in value.values():
+                if isinstance(item, (list, dict)):
+                    project_links(item)
+
+    project_links(blocks)
     title = next(
         (
             str(block["text"])
