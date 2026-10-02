@@ -21,7 +21,7 @@ def test_documentation_catalog_uses_only_existing_allowlisted_markdown_sources()
     payload = documentation_index(DOCS_ROOT)
     assert payload["categories"] == list(CATEGORIES)
     assert {item["slug"] for item in payload["documents"]} == {
-        definition.slug for definition in DOCUMENTS
+        definition.slug for definition in DOCUMENTS if definition.slug != "docker-operations"
     }
     assert all(item["source"].startswith("docs/") for item in payload["documents"])
     assert all((DOCS_ROOT / definition.path).is_file() for definition in DOCUMENTS)
@@ -147,3 +147,55 @@ def test_installed_wheel_uses_bundled_guides_without_repository(monkeypatch, tmp
     monkeypatch.setattr(documentation, "__file__", str(package / "documentation.py"))
     assert documentation.documentation_root() == guides.resolve()
     assert documentation_document("pia")["title"] == "PIA provider"
+
+
+def test_container_catalog_and_direct_routes_use_runtime_guidance():
+    index = documentation_index(DOCS_ROOT, runtime_name="container")
+    slugs = {item["slug"] for item in index["documents"]}
+    assert "docker-operations" in slugs
+    assert {"mullvad", "pia", "proton", "diagnostics", "backup-and-restore"} <= slugs
+    for slug in ("nordvpn", "proxmox-lxc", "deployment", "hardening-guide"):
+        assert slug not in slugs
+        with pytest.raises(KeyError):
+            documentation_document(slug, DOCS_ROOT, runtime_name="container")
+    guide = documentation_document("docker-operations", DOCS_ROOT, runtime_name="container")
+    assert guide["source"] == "docs/docker-operations.md"
+    assert "experimental and unsupported" in repr(guide)
+    assert "exitlane.container_cli" in repr(guide)
+    with pytest.raises(KeyError):
+        documentation_document("docker-operations", DOCS_ROOT)
+
+
+@pytest.mark.parametrize("runtime_name", ["native", "container"])
+def test_runtime_help_has_no_links_to_unavailable_local_guides(runtime_name):
+    index = documentation_index(DOCS_ROOT, runtime_name=runtime_name)
+    slugs = {item["slug"] for item in index["documents"]}
+
+    def links(value):
+        if isinstance(value, list):
+            for child in value:
+                yield from links(child)
+        elif isinstance(value, dict):
+            if value.get("type") == "link":
+                yield value
+            for child in value.values():
+                if isinstance(child, (list, dict)):
+                    yield from links(child)
+
+    for slug in slugs:
+        document = documentation_document(slug, DOCS_ROOT, runtime_name=runtime_name)
+        for link in links(document["blocks"]):
+            if link["href"].startswith("#help/"):
+                assert link["href"][6:].split("#", 1)[0] in slugs
+    guide = documentation_document("diagnostics", DOCS_ROOT, runtime_name=runtime_name)
+    docker_link = next(
+        link for link in links(guide["blocks"]) if "docker-operations" in link["href"]
+    )
+    assert docker_link["external"] is (runtime_name == "native")
+
+
+def test_unknown_help_runtime_fails_closed():
+    with pytest.raises(DocumentationError):
+        documentation_index(DOCS_ROOT, runtime_name="unknown")
+    with pytest.raises(DocumentationError):
+        documentation_document("diagnostics", DOCS_ROOT, runtime_name="unknown")

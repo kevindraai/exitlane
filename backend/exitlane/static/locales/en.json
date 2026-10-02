@@ -811,6 +811,7 @@
     "other": "Other"
   },
   "documents": {
+    "docker-operations": "Docker operations (experimental)",
     "nordvpn": "NordVPN provider",
     "deployment": "Deployment",
     "proxmox-lxc": "Proxmox LXC",

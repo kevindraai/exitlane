@@ -245,3 +245,24 @@ def test_authenticated_documentation_api_keeps_security_headers_and_structured_c
     assert "<script" not in document.text.lower()
     assert document.headers["cache-control"] == "no-store"
     assert document.headers["content-security-policy"] == main.CONTENT_SECURITY_POLICY
+
+
+def test_container_help_api_filters_native_guides_and_preserves_authentication(client, monkeypatch):
+    from dataclasses import replace
+
+    monkeypatch.setattr(
+        main.runtime, "capabilities", replace(main.runtime.capabilities, runtime_name="container")
+    )
+    assert client.get("/api/help/documents/docker-operations").status_code == 401
+    monkeypatch.setattr(main, "session_user", lambda token: {"id": 1} if token else None)
+    client.cookies.set(main.SESSION_COOKIE, "test-session")
+    index = client.get("/api/help/documents")
+    assert index.status_code == 200
+    slugs = {item["slug"] for item in index.json()["documents"]}
+    assert "docker-operations" in slugs
+    assert "nordvpn" not in slugs
+    assert client.get("/api/help/documents/nordvpn").status_code == 404
+    guide = client.get("/api/help/documents/docker-operations")
+    assert guide.status_code == 200
+    assert guide.headers["cache-control"] == "no-store"
+    assert guide.headers["content-security-policy"] == main.CONTENT_SECURITY_POLICY

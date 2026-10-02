@@ -38,6 +38,7 @@ REQUIRED_TOOLS = (
     "usr/bin/ping",
 )
 REQUIRED_ASSETS = (
+    "docs/docker-operations.md",
     "static/index.html",
     "static/js/app.js",
     "static/locales/en.json",

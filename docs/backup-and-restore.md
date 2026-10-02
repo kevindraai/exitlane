@@ -1,5 +1,7 @@
 # Backup and restore
 
+> For Docker, use the local [Docker operations guide](docker-operations.md#backup-and-restore) for supervisor backup/restore commands and durable volume handling. The commands below describe native Debian.
+
 ExitLane 0.3.0-rc.4 retains the local, root-only native appliance backup. Restore is intentionally
 not exposed through the web interface. This guide's host paths and commands describe native Debian.
 The experimental container runtime shares the encrypted format and validation controls, with a
