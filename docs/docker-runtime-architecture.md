@@ -520,6 +520,12 @@ to bypass the documented merge, infrastructure, qualification or publication gat
 
 ## NordVPN research disposition
 
+The independently reviewed [separate gateway decision](nordvpn-gateway-decision.md) is
+NO-GO for the evaluated stock sibling-container candidates. It is a distinct ownership/lifecycle
+question from the same-container client decision below. Neither optional path blocks the
+direct-provider runtime or native v1; the [canonical readiness matrix](release-checklist.md#canonical-v1-readiness-matrix)
+owns their separate release boundaries.
+
 The [current-client research decision](nordvpn-container-research.md) for
 [issue #98](https://github.com/kevindraai/exitlane/issues/98) is **NOT SUITABLE** for stock
 official NordVPN Linux 5.4.0 under the qualified Docker contract. Firewall and routing can be

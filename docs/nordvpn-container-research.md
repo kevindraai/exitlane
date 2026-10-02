@@ -5,6 +5,10 @@ ExitLane baseline: `d9e6e85fe2acb028bb85b570ee5197db8a753ca6`.
 
 ## Decision: NOT SUITABLE
 
+The later [separate-namespace gateway investigation](nordvpn-gateway-decision.md) reached its
+own reviewed NO-GO for the evaluated stock helpers. That distinct topology does not reopen or
+replace this same-container stock-client decision.
+
 The current stock official NordVPN Linux client **5.4.0** cannot connect under ExitLane's
 existing qualified Docker contract. Its mandatory IPv6 sysctl write fails against Docker's
 read-only `/proc/sys`, even when the desired value was supplied at container creation.
