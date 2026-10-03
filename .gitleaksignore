@@ -6,3 +6,7 @@ backend/tests/test_settings.py:generic-api-key:447
 # Exact false-positive fingerprints: Mullvad's public repository signing-key fingerprint.
 installer/install-mullvad.sh:generic-api-key:7
 backend/tests/test_mullvad_installer.py:generic-api-key:38
+
+# Exact historical false positive: prose "master key," followed by "ingress/default".
+# It contains no key value; the current receipt separates those preservation statements.
+1f60d3ccbf7d7a1e9d6a0b101791d85e88f995ac:docs/qualification/remaining-release-evidence-2026-10-03.md:generic-api-key:51

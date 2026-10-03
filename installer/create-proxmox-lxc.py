@@ -291,7 +291,10 @@ def plan(
             f"Pool {args.pool!r} does not exist",
         )
     template, download = select_template(template_storage)
-    net = f"name=eth0,bridge={bridge},ip={args.ip},ip6=manual"
+    # Leave IPv6 unconfigured. Explicit ip6=manual makes PVE emit a second
+    # inet6 stanza; Debian ifupdown2 merges it with inet DHCP and waits for
+    # DHCPv6 even on an IPv4-only network, blocking networking.service.
+    net = f"name=eth0,bridge={bridge},ip={args.ip}"
     if args.gateway:
         net += f",gw={args.gateway}"
     if args.vlan:
@@ -307,6 +310,10 @@ def plan(
         "debian",
         "--unprivileged",
         "0",
+        # PVE requires nesting for systemd's service mount namespaces. Keep
+        # the installed service isolation rather than weakening its units.
+        "--features",
+        "nesting=1",
         "--hostname",
         args.hostname,
         "--cores",
@@ -826,7 +833,9 @@ if ssh or existing_ssh:
  wanted={"passwordauthentication":"yes" if settings["password_auth"] else "no","kbdinteractiveauthentication":"no","pubkeyauthentication":"yes","permitrootlogin":"yes" if settings["password_auth"] else "without-password","authenticationmethods":"any" if settings["password_auth"] else "publickey"}
  if any(facts.get(k)!=v for k,v in wanted.items()): sys.exit(1)
  subprocess.run(["systemctl","enable","--now","ssh"],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
- subprocess.run(["systemctl","reload","ssh"],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+ # Restart reacquires systemd's listening socket; SIGHUP reload can lose the
+ # inherited descriptor on a socket-activated Debian template.
+ subprocess.run(["systemctl","restart","ssh"],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 """
 
 
@@ -880,7 +889,9 @@ def main(
         )
         print(f"Network: {create[create.index('--net0') + 1]}")
         print(f"DNS: {args.dns or 'PVE host default'}; pool: {args.pool or 'none'}")
-        print(f"Startup: {args.startup or 'default'}; on boot: yes; TUN: yes")
+        print(
+            f"Startup: {args.startup or 'default'}; on boot: yes; TUN: yes; systemd nesting: yes"
+        )
         print(f"ExitLane release: {args.ref}")
         print("Access:")
         print(

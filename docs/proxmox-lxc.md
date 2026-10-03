@@ -5,6 +5,11 @@ Unprivileged containers, other Debian releases and other architectures are not s
 targets. ExitLane runs natively inside the container and needs systemd, WireGuard, nftables and
 permission to administer its network namespace.
 
+The new container enables PVE's `nesting` feature because systemd requires it for the existing
+service mount isolation (`ProtectSystem`, `ProtectHome` and `PrivateTmp`). Those protections stay
+enabled. Nesting exposes the host's procfs/sysfs surfaces to the privileged container; keep this
+trusted appliance on its designated host and do not use it to run untrusted nested workloads.
+
 ## Create the container
 
 The native reference configuration uses 2 vCPUs, 2 GiB RAM and a 16 GiB disk. These are a reference configuration,
@@ -23,6 +28,11 @@ repairs or destroys an existing guest. Choose **Default settings** for 2 CPUs, 2
 free cluster-wide CTID, active root/template storage and a PVE-managed Debian 13 template.
 **Advanced settings** exposes CTID, hostname, storage, template storage, bridge, static IPv4/CIDR,
 gateway, DNS, VLAN, CPU, memory, disk, pool and startup ordering. Empty answers use engine defaults.
+
+The helper configures management IPv4 only and leaves IPv6 unconfigured. It omits an explicit
+`ip6=manual`: PVE otherwise writes a second `inet6 manual` stanza which Debian's ifupdown2 can
+merge with IPv4 DHCP, starting an unwanted DHCPv6 client and blocking installation on IPv4-only
+networks. This does not disable the kernel's IPv6 protection or add IPv6 management support.
 
 The rc.4 helper advertises a side-effect-free bootstrap capability and owns the interactive
 installer itself once its tag is published. Recommended settings retain the appliance defaults;
@@ -45,6 +55,9 @@ in the new Debian guest and configures its policy. Key-only SSH is the default; 
 explicitly enable SSH password authentication with a configured root password. If all guest login
 credentials are skipped, the installer confirms that PVE-managed container access remains the
 recovery path. SSH instructions appear only when SSH is configured.
+
+After syntax and effective-policy validation, the helper restarts SSH in the new guest. This also
+preserves systemd socket activation; a SIGHUP reload can lose its inherited listening socket.
 
 Standard output shows stage progress and suppresses normal package output. Verbose additionally
 streams child output; Quiet is intended for explicit-flag automation. Every confirmed provisioning
