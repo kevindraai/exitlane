@@ -49,7 +49,16 @@ Archive entries never select restore paths. Only the fixed logical types
 links, devices, sockets, FIFOs, duplicate or nested names, traversal, unexpected
 files, missing required files, excessive sizes, excessive file counts, and
 excessive compression ratios. It verifies the manifest, every checksum, the
-database schema, and SQLite integrity before replacing active data.
+database schema, and SQLite integrity before replacing active data. Native inspect/verify and
+restore also authenticate every stored MFA secret, pending enrollment secret, and ExitLane-owned
+provider payload against the backed-up master key. A mismatched key or invalid encrypted record
+fails with `backup_secret_pairing_invalid` before restore changes active files, services, or forwarding.
+This check uses only staged files and does not sign in to any provider. Pending enrollments are
+validated for consistency, then discarded along with sessions and challenges during restore.
+
+Backup creation captures the current database/key pair without promising it can decrypt every
+record. Run inspect or verify on the encrypted backup before relying on it for recovery. Successful
+pairing verifies stored encryption, not remote provider account validity or complete appliance health.
 
 ## Commands
 

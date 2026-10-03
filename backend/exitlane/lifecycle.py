@@ -31,7 +31,7 @@ from packaging.version import InvalidVersion, Version
 
 from exitlane import __version__, core
 from exitlane.config import CONFIG_DIR
-from exitlane.services import killswitch
+from exitlane.services import auth_security, killswitch, provider_secrets
 
 MAGIC = b"EXITLANE-BACKUP\x00"
 FORMAT_VERSION = 1
@@ -395,6 +395,58 @@ def _inspect_database(path: Path) -> None:
         raise LifecycleError("invalid_database")
 
 
+def _validate_secret_pairing(database: Path, master_key: Path) -> None:
+    """Authenticate staged encrypted state without selecting active runtime paths."""
+    try:
+        key = master_key.read_bytes()
+        if len(key) != KEY_LENGTH:
+            raise ValueError("invalid key length")
+        with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
+            # SQLite resolves identifiers case-insensitively. Metadata lookup
+            # must use the same rule and distinguish physical tables/columns
+            # from views, virtual/shadow tables and computed/hidden values.
+            present = set()
+            for table, columns in (
+                ("users", ("encrypted_totp_secret",)),
+                ("mfa_enrollments", ("encrypted_secret",)),
+                ("provider_secrets", ("provider_id", "encrypted_payload")),
+            ):
+                kinds = connection.execute(
+                    "SELECT type FROM pragma_table_list(?) WHERE schema='main'", (table,)
+                ).fetchall()
+                # Historical format-1/schema-1 backups predate direct providers.
+                if not kinds and table == "provider_secrets":
+                    continue
+                if kinds != [("table",)]:
+                    raise ValueError("invalid secret table")
+                for column in columns:
+                    fields = connection.execute(
+                        "SELECT hidden FROM pragma_table_xinfo(?, 'main') "
+                        "WHERE name = ? COLLATE NOCASE",
+                        (table, column),
+                    ).fetchall()
+                    if fields != [(0,)]:
+                        raise ValueError("invalid secret column")
+                present.add(table)
+            for query in (
+                "SELECT encrypted_totp_secret FROM users WHERE encrypted_totp_secret IS NOT NULL",
+                "SELECT encrypted_secret FROM mfa_enrollments",
+            ):
+                for (encrypted,) in connection.execute(query):
+                    if not isinstance(encrypted, bytes):
+                        raise TypeError("invalid encrypted value type")
+                    auth_security.decrypt_secret_with_key(encrypted, key)
+            if "provider_secrets" in present:
+                for provider_id, encrypted in connection.execute(
+                    "SELECT provider_id,encrypted_payload FROM provider_secrets"
+                ):
+                    if not isinstance(encrypted, bytes):
+                        raise TypeError("invalid encrypted value type")
+                    provider_secrets.decode(provider_id, encrypted, key)
+    except (OSError, sqlite3.DatabaseError, TypeError, ValueError, RuntimeError):
+        raise LifecycleError("backup_secret_pairing_invalid") from None
+
+
 def inspect_backup(
     source: Path,
     passphrase: str,
@@ -411,6 +463,10 @@ def inspect_backup(
             entry["name"] for entry in manifest["files"] if entry["type"] == "database"
         )
         _inspect_database(staging / database_name)
+        key_name = next(
+            entry["name"] for entry in manifest["files"] if entry["type"] == "master_key"
+        )
+        _validate_secret_pairing(staging / database_name, staging / key_name)
     return _backup_info(manifest)
 
 
@@ -556,6 +612,7 @@ def restore_backup(
             staging / entry["name"] for entry in entries if entry["type"] == "master_key"
         )
         _inspect_database(database)
+        _validate_secret_pairing(database, master_key)
         ingress = tuple(dict.fromkeys((*_restore_ingress(core.DB), *_restore_ingress(database))))
         if service_action is not None and forwarding_guard is None:
             raise LifecycleError("restore_guard_required")
@@ -670,6 +727,7 @@ def prepare_restore(source: Path, passphrase: str, staging: Path) -> PreparedRes
     database = next(staging / item["name"] for item in entries if item["type"] == "database")
     master_key = next(staging / item["name"] for item in entries if item["type"] == "master_key")
     _inspect_database(database)
+    _validate_secret_pairing(database, master_key)
     wireguard = staging / "wireguard"
     wireguard.mkdir(mode=0o700)
     for entry in entries:

@@ -618,7 +618,9 @@ def backup_command(arguments: argparse.Namespace) -> int:
         elif arguments.backup_command in {"inspect", "verify"}:
             info = lifecycle.inspect_backup(source, passphrase)
             if arguments.backup_command == "verify":
-                print("Backup authentication, manifest, checksums, and database verified.")
+                print(
+                    "Backup authentication, manifest, checksums, database, and secret pairing verified."
+                )
         else:
             confirmation = input("Type RESTORE EXITLANE to continue: ")
             info = runtime.restore(
