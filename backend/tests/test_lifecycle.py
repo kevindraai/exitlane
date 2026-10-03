@@ -688,3 +688,373 @@ def test_reset_cleans_every_registered_direct_interface(
         ("stop_ingress", "wg0"),
     ]
     assert list(configs.iterdir()) == []
+
+
+PASSPHRASE = "synthetic pairing fixture only"
+
+
+def _state_hashes(appliance: dict[str, Path]) -> dict[str, str]:
+    return {
+        str(path): hashlib.sha256(path.read_bytes()).hexdigest()
+        for root in (appliance["data"], appliance["config"])
+        for path in root.rglob("*")
+        if path.is_file()
+    }
+
+
+def _insert_secret(kind: str, encrypted: object) -> None:
+    with sqlite3.connect(core.DB) as connection:
+        if kind in {"enabled_mfa", "dormant_mfa"}:
+            connection.execute(
+                "INSERT INTO users(id,username,mfa_enabled,encrypted_totp_secret) VALUES(?,?,?,?)",
+                (1, "fixture", int(kind == "enabled_mfa"), encrypted),
+            )
+        elif kind == "enrollment":
+            connection.execute(
+                "INSERT INTO mfa_enrollments VALUES(?,?,?,?,?,?)",
+                ("fixture", 1, "fixture", encrypted, 1, 9999999999),
+            )
+        else:
+            connection.execute("INSERT INTO provider_secrets VALUES(?,?,?)", (kind, encrypted, 1))
+
+
+def _exercise(
+    operation: str, backup: Path, tmp_path: Path, appliance: dict[str, Path], calls: list
+) -> None:
+    if operation == "inspect":
+        lifecycle.inspect_backup(backup, PASSPHRASE, effective_user_id=0)
+    elif operation == "prepare":
+        staging = tmp_path / "prepared"
+        staging.mkdir(mode=0o700)
+        lifecycle.prepare_restore(backup, PASSPHRASE, staging)
+    else:
+        lifecycle.restore_backup(
+            backup,
+            PASSPHRASE,
+            confirmation="RESTORE EXITLANE",
+            effective_user_id=0,
+            lock_path=appliance["lock"],
+            service_action=lambda action: calls.append(("service", action)),
+            forwarding_guard=lambda ingress, enabled: calls.append(("guard", enabled)),
+            health_check=lambda: calls.append(("health", True)) or True,
+        )
+
+
+@pytest.mark.parametrize("operation", ["inspect", "prepare", "restore"])
+@pytest.mark.parametrize(
+    "kind", ["enabled_mfa", "dormant_mfa", "enrollment", "pia", "proton", "mullvad"]
+)
+def test_unpaired_secret_refused_before_live_state_change(
+    appliance: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    kind: str,
+) -> None:
+    key = appliance["config"] / "secret.key"
+    monkeypatch.setattr(auth_security, "master_key_path", lambda: key)
+    # Real, valid ciphertext under another key, not an arbitrary malformed blob.
+    key.write_bytes(b"x" * 32)
+    if kind in {"enabled_mfa", "dormant_mfa", "enrollment"}:
+        encrypted = auth_security.encrypt_secret("JBSWY3DPEHPK3PXP")
+        _insert_secret(kind, encrypted)
+    else:
+        provider_secrets.save(kind, {"synthetic": "fixture only"})
+    key.write_bytes(b"k" * 32)
+    backup = tmp_path / "unpaired.elb"
+    lifecycle.create_backup(backup, PASSPHRASE, effective_user_id=0, lock_path=appliance["lock"])
+    before = _state_hashes(appliance)
+    calls = []
+    with pytest.raises(lifecycle.LifecycleError) as error:
+        _exercise(operation, backup, tmp_path, appliance, calls)
+    assert error.value.code == "backup_secret_pairing_invalid"
+    assert str(error.value) == "backup_secret_pairing_invalid"
+    assert calls == []
+    assert _state_hashes(appliance) == before
+
+
+@pytest.mark.parametrize("kind", ["enabled_mfa", "enrollment", "pia"])
+@pytest.mark.parametrize("encrypted", [2**62, "not a blob", b"short"])
+def test_invalid_encrypted_record_refused_without_runtime_action(
+    appliance: dict[str, Path],
+    tmp_path: Path,
+    kind: str,
+    encrypted: object,
+) -> None:
+    _insert_secret(kind, encrypted)
+    backup = tmp_path / "invalid.elb"
+    lifecycle.create_backup(backup, PASSPHRASE, effective_user_id=0, lock_path=appliance["lock"])
+    before = _state_hashes(appliance)
+    calls = []
+    with pytest.raises(lifecycle.LifecycleError, match="^backup_secret_pairing_invalid$"):
+        _exercise("restore", backup, tmp_path, appliance, calls)
+    assert not calls
+    assert _state_hashes(appliance) == before
+
+
+@pytest.mark.parametrize("operation", ["inspect", "prepare", "restore"])
+def test_matching_secret_pair_succeeds_with_native_nord_selected(
+    appliance: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    key = appliance["config"] / "secret.key"
+    monkeypatch.setattr(auth_security, "master_key_path", lambda: key)
+    _insert_secret("enabled_mfa", auth_security.encrypt_secret("JBSWY3DPEHPK3PXP"))
+    _insert_secret("enrollment", auth_security.encrypt_secret("JBSWY3DPEHPK3PXP"))
+    for provider in ("mullvad", "pia", "proton"):
+        provider_secrets.save(provider, {"synthetic": provider})
+    core.set_setting("vpn.provider_id", "nordvpn")
+    backup = tmp_path / "matching.elb"
+    lifecycle.create_backup(backup, PASSPHRASE, effective_user_id=0, lock_path=appliance["lock"])
+    _exercise(operation, backup, tmp_path, appliance, [])
+    assert core.setting("vpn.provider_id") == "nordvpn"
+    for provider in ("mullvad", "pia", "proton"):
+        assert provider_secrets.load(provider) == {"synthetic": provider}
+    with sqlite3.connect(core.DB) as connection:
+        encrypted = connection.execute("SELECT encrypted_totp_secret FROM users").fetchone()[0]
+        assert auth_security.decrypt_secret(encrypted) == "JBSWY3DPEHPK3PXP"
+        if operation == "restore":
+            for table in ("sessions", "mfa_challenges", "mfa_enrollments"):
+                assert connection.execute(f"SELECT count(*) FROM {table}").fetchone() == (0,)
+
+
+@pytest.mark.parametrize("operation", ["inspect", "prepare", "restore"])
+def test_schema_one_pre_provider_backup_remains_accepted(
+    appliance: dict[str, Path],
+    tmp_path: Path,
+    operation: str,
+) -> None:
+    # Historical v0.2.0 format-1 backups have MFA tables but no provider_secrets.
+    with sqlite3.connect(core.DB) as connection:
+        connection.execute("DROP TABLE provider_secrets")
+    backup = tmp_path / "historical-layout.elb"
+    lifecycle.create_backup(backup, PASSPHRASE, effective_user_id=0, lock_path=appliance["lock"])
+    _exercise(operation, backup, tmp_path, appliance, [])
+    # Normal application startup supplies the additive table, not the validator.
+    with sqlite3.connect(core.DB) as connection:
+        assert (
+            connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE name='provider_secrets'"
+            ).fetchone()
+            is None
+        )
+    core.init()
+    assert provider_secrets.load("pia") is None
+
+
+def test_provider_view_cannot_hide_pairing_failure(
+    appliance: dict[str, Path],
+    tmp_path: Path,
+) -> None:
+    with sqlite3.connect(core.DB) as connection:
+        connection.execute("DROP TABLE provider_secrets")
+        connection.execute(
+            "CREATE VIEW provider_secrets AS SELECT 'pia' AS provider_id, "
+            "X'010203' AS encrypted_payload, 1 AS updated_at"
+        )
+    backup = tmp_path / "provider-view.elb"
+    lifecycle.create_backup(backup, PASSPHRASE, effective_user_id=0, lock_path=appliance["lock"])
+    before = _state_hashes(appliance)
+    calls = []
+    with pytest.raises(lifecycle.LifecycleError, match="^backup_secret_pairing_invalid$"):
+        _exercise("restore", backup, tmp_path, appliance, calls)
+    assert not calls
+    assert _state_hashes(appliance) == before
+
+
+@pytest.mark.parametrize("table", ["users", "mfa_enrollments"])
+@pytest.mark.parametrize("operation", ["inspect", "prepare", "restore"])
+def test_mfa_view_cannot_supply_secret_records(
+    appliance: dict[str, Path],
+    tmp_path: Path,
+    table: str,
+    operation: str,
+) -> None:
+    with sqlite3.connect(core.DB) as connection:
+        connection.execute(f"DROP TABLE {table}")
+        if table == "users":
+            connection.execute("CREATE VIEW users AS SELECT 1 AS id, NULL AS encrypted_totp_secret")
+        else:
+            connection.execute(
+                "CREATE VIEW mfa_enrollments AS SELECT NULL AS encrypted_secret WHERE 0"
+            )
+    backup = tmp_path / "mfa-view.elb"
+    lifecycle.create_backup(backup, PASSPHRASE, effective_user_id=0, lock_path=appliance["lock"])
+    before = _state_hashes(appliance)
+    calls = []
+    with pytest.raises(lifecycle.LifecycleError, match="^backup_secret_pairing_invalid$"):
+        _exercise(operation, backup, tmp_path, appliance, calls)
+    assert not calls
+    assert _state_hashes(appliance) == before
+
+
+@pytest.mark.parametrize("operation", ["inspect", "prepare", "restore"])
+@pytest.mark.parametrize("table", ["users", "mfa_enrollments", "provider_secrets"])
+@pytest.mark.parametrize("kind", ["table", "view"])
+def test_mixed_case_secret_sources_are_not_treated_as_absent(
+    appliance: dict[str, Path],
+    tmp_path: Path,
+    operation: str,
+    table: str,
+    kind: str,
+) -> None:
+    mixed = table.title()
+    with sqlite3.connect(core.DB) as connection:
+        if kind == "table":
+            if table == "users":
+                connection.execute(
+                    "INSERT INTO users(id,encrypted_totp_secret) VALUES(1,X'010203')"
+                )
+            elif table == "mfa_enrollments":
+                connection.execute(
+                    "INSERT INTO mfa_enrollments VALUES('x',1,'x',X'010203',1,9999999999)"
+                )
+            else:
+                connection.execute("INSERT INTO provider_secrets VALUES('pia',X'010203',1)")
+            connection.execute(f"ALTER TABLE {table} RENAME TO pairing_temporary")
+            connection.execute(f"ALTER TABLE pairing_temporary RENAME TO {mixed}")
+        else:
+            connection.execute(f"DROP TABLE {table}")
+            projections = {
+                "users": "1 AS id, NULL AS encrypted_totp_secret",
+                "mfa_enrollments": "NULL AS encrypted_secret",
+                "provider_secrets": "'pia' AS provider_id, NULL AS encrypted_payload",
+            }
+            connection.execute(f"CREATE VIEW {mixed} AS SELECT {projections[table]} WHERE 0")
+    backup = tmp_path / "mixed-case.elb"
+    lifecycle.create_backup(backup, PASSPHRASE, effective_user_id=0, lock_path=appliance["lock"])
+    before = _state_hashes(appliance)
+    calls = []
+    with pytest.raises(lifecycle.LifecycleError, match="^backup_secret_pairing_invalid$"):
+        _exercise(operation, backup, tmp_path, appliance, calls)
+    assert not calls
+    assert _state_hashes(appliance) == before
+
+
+@pytest.mark.parametrize("operation", ["inspect", "prepare", "restore"])
+def test_ordinary_mixed_case_tables_and_columns_remain_compatible(
+    appliance: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    key = appliance["config"] / "secret.key"
+    monkeypatch.setattr(auth_security, "master_key_path", lambda: key)
+    _insert_secret("enabled_mfa", auth_security.encrypt_secret("JBSWY3DPEHPK3PXP"))
+    _insert_secret("enrollment", auth_security.encrypt_secret("JBSWY3DPEHPK3PXP"))
+    provider_secrets.save("pia", {"synthetic": "fixture only"})
+    with sqlite3.connect(core.DB) as connection:
+        for table, columns in (
+            ("users", ("encrypted_totp_secret",)),
+            ("mfa_enrollments", ("encrypted_secret",)),
+            ("provider_secrets", ("provider_id", "encrypted_payload")),
+        ):
+            connection.execute(f"ALTER TABLE {table} RENAME TO pairing_temporary")
+            connection.execute(f"ALTER TABLE pairing_temporary RENAME TO {table.title()}")
+            for column in columns:
+                connection.execute(f"ALTER TABLE {table} RENAME COLUMN {column} TO pairing_column")
+                connection.execute(
+                    f"ALTER TABLE {table} RENAME COLUMN pairing_column TO {column.title()}"
+                )
+    backup = tmp_path / "ordinary-mixed-case.elb"
+    lifecycle.create_backup(backup, PASSPHRASE, effective_user_id=0, lock_path=appliance["lock"])
+    _exercise(operation, backup, tmp_path, appliance, [])
+    assert provider_secrets.load("pia") == {"synthetic": "fixture only"}
+
+
+@pytest.mark.parametrize("operation", ["inspect", "prepare", "restore"])
+@pytest.mark.parametrize("storage", ["VIRTUAL", "STORED"])
+@pytest.mark.parametrize(
+    "table,column",
+    [
+        ("users", "encrypted_totp_secret"),
+        ("mfa_enrollments", "encrypted_secret"),
+        ("provider_secrets", "encrypted_payload"),
+        ("provider_secrets", "provider_id"),
+    ],
+)
+def test_generated_secret_fields_refused_before_data_select(
+    appliance: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    storage: str,
+    table: str,
+    column: str,
+) -> None:
+    with sqlite3.connect(core.DB) as connection:
+        connection.execute(f"DROP TABLE {table}")
+        if table == "provider_secrets":
+            other = (
+                "provider_id TEXT" if column == "encrypted_payload" else "encrypted_payload BLOB"
+            )
+        else:
+            other = "id INTEGER"
+        # Cheap deterministic expression: rejection is established by metadata,
+        # not by causing a large allocation or timing out an expression.
+        connection.execute(
+            f"CREATE TABLE {table}(seed INTEGER, {other}, "
+            f"{column} BLOB GENERATED ALWAYS AS (zeroblob(1)) {storage})"
+        )
+        connection.execute(f"INSERT INTO {table}(seed) VALUES(1)")
+    backup = tmp_path / "generated-field.elb"
+    lifecycle.create_backup(backup, PASSPHRASE, effective_user_id=0, lock_path=appliance["lock"])
+    before = _state_hashes(appliance)
+    real_connect = sqlite3.connect
+    reads = []
+    statements = []
+
+    def observed_connect(*args, **kwargs):
+        connection = real_connect(*args, **kwargs)
+        connection.set_trace_callback(statements.append)
+
+        def authorize(action, arg1, arg2, _database, _trigger):
+            if action == sqlite3.SQLITE_READ and str(arg1).lower() == table:
+                reads.append((arg1, arg2))
+            return sqlite3.SQLITE_OK
+
+        connection.set_authorizer(authorize)
+        return connection
+
+    monkeypatch.setattr(sqlite3, "connect", observed_connect)
+    calls = []
+    with pytest.raises(lifecycle.LifecycleError, match="^backup_secret_pairing_invalid$"):
+        _exercise(operation, backup, tmp_path, appliance, calls)
+    assert not calls
+    assert not reads
+    assert not any(f"from {table}" in statement.lower() for statement in statements)
+    assert _state_hashes(appliance) == before
+
+
+@pytest.mark.parametrize("operation", ["inspect", "prepare", "restore"])
+def test_virtual_secret_source_refused_before_data_select(
+    appliance: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    with sqlite3.connect(core.DB) as connection:
+        connection.execute("DROP TABLE provider_secrets")
+        connection.execute(
+            "CREATE VIRTUAL TABLE provider_secrets USING fts5(provider_id, encrypted_payload)"
+        )
+    backup = tmp_path / "virtual-source.elb"
+    lifecycle.create_backup(backup, PASSPHRASE, effective_user_id=0, lock_path=appliance["lock"])
+    before = _state_hashes(appliance)
+    real_connect = sqlite3.connect
+    statements = []
+
+    def observed_connect(*args, **kwargs):
+        connection = real_connect(*args, **kwargs)
+        connection.set_trace_callback(statements.append)
+        return connection
+
+    monkeypatch.setattr(sqlite3, "connect", observed_connect)
+    calls = []
+    with pytest.raises(lifecycle.LifecycleError, match="^backup_secret_pairing_invalid$"):
+        _exercise(operation, backup, tmp_path, appliance, calls)
+    assert not calls
+    assert not any("from provider_secrets" in statement.lower() for statement in statements)
+    assert _state_hashes(appliance) == before
