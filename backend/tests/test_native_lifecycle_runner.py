@@ -358,6 +358,8 @@ def mocked_clean_chain(run, runner, monkeypatch, *, mutate_defaults=False, mutat
     monkeypatch.setattr(runner.state, "compare", lambda *_: [])
 
     def command(argv, label, **kwargs):
+        if label in {"restore-wrong-passphrase", "restore-tampered"}:
+            assert kwargs["expected"] == 2  # Native CLI validation failures.
         runner.private_bytes(run.directory / (label + ".log"), b"mocked operation only")
         if label == "api-seed":
             runner.private_write(run.directory / "fixture.json", {"synthetic": True})

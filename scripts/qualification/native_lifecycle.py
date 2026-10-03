@@ -964,7 +964,7 @@ class Run:
                     "restore",
                     "restore-wrong-passphrase",
                     password="wrong-passphrase",
-                    expected=1,
+                    expected=2,
                 )
             )
             self.compare(canary, self.snapshot("wrong-passphrase-after"), "preserved")
@@ -975,7 +975,7 @@ class Run:
             private_bytes(self.directory / "tampered.elb", damaged)
             artifacts.append(
                 self.backup_cli(
-                    "restore", "restore-tampered", source="tampered.elb", expected=1
+                    "restore", "restore-tampered", source="tampered.elb", expected=2
                 )
             )
             self.compare(canary, self.snapshot("tampered-after"), "preserved")
