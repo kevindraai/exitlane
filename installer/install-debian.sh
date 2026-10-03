@@ -489,7 +489,10 @@ stop_existing_service() {
 copy_application() {
   log "Copying ExitLane to ${TARGET}"
 
+  # Separate Git checkouts can have equal timestamps and file sizes despite
+  # different release content. Verify bytes when reusing an installation.
   rsync -a \
+    --checksum \
     --delete \
     --exclude='.git/' \
     --exclude='.github/' \
