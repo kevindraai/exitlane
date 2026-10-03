@@ -48,8 +48,8 @@ plaintext markers, capture drops and unexplained errors were **zero**. An ordina
 provider disconnect exercised fail-closed IPv4/IPv6/DNS: 29 ingress observations per stream,
 zero provider or physical plaintext observations.
 
-Encrypted profile identity, active generation, cache values, relevant settings, master key,
-ingress/default configuration and associated hashes were preserved; no reconnection was required.
+Encrypted profile identity, active generation, cache values and relevant settings were preserved.
+Master-secret and ingress/default file hashes were unchanged; no reconnection was required.
 Exact topology cleanup and restored sysctl state passed. Separate runner sampling recorded
 145 successful SSH TCP connections and 135 HTTP 200 health responses; ten HTTP failures occurred
 during the intentional service restart. This is sampled TCP reachability, not uninterrupted HTTP
