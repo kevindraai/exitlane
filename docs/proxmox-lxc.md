@@ -56,6 +56,9 @@ explicitly enable SSH password authentication with a configured root password. I
 credentials are skipped, the installer confirms that PVE-managed container access remains the
 recovery path. SSH instructions appear only when SSH is configured.
 
+After syntax and effective-policy validation, the helper restarts SSH in the new guest. This also
+preserves systemd socket activation; a SIGHUP reload can lose its inherited listening socket.
+
 Standard output shows stage progress and suppresses normal package output. Verbose additionally
 streams child output; Quiet is intended for explicit-flag automation. Every confirmed provisioning
 run records stages, release, CTID, non-secret argv and streamed subprocess output in a root-only

@@ -12,6 +12,8 @@
 
 ### Fixed
 
+- Restart fresh-guest SSH after validating access policy so socket-activated templates retain
+  their listener when applying key-only authentication.
 - Enable the PVE nesting prerequisite for the existing systemd service isolation in fresh guests.
 - Leave PVE management IPv6 unconfigured so Debian ifupdown2 does not start DHCPv6 and block
   installation on an IPv4-only DHCP network.

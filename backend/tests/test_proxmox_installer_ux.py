@@ -231,6 +231,9 @@ def test_guest_ssh_effective_policy_and_password_stdin(tmp_path, enabled):
     assert calls[0][0] == ["chpasswd"]
     assert calls[0][1]["input"] == "root:synthetic-marker\n"
     assert any(command[:2] == ["sshd", "-T"] for command, _ in calls)
+    commands = [command for command, _ in calls]
+    assert commands[-1] == ["systemctl", "restart", "ssh"]
+    assert ["systemctl", "reload", "ssh"] not in commands
 
 
 def test_advanced_grouped_inputs_password_ssh_explicit(monkeypatch):

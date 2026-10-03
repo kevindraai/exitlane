@@ -833,7 +833,9 @@ if ssh or existing_ssh:
  wanted={"passwordauthentication":"yes" if settings["password_auth"] else "no","kbdinteractiveauthentication":"no","pubkeyauthentication":"yes","permitrootlogin":"yes" if settings["password_auth"] else "without-password","authenticationmethods":"any" if settings["password_auth"] else "publickey"}
  if any(facts.get(k)!=v for k,v in wanted.items()): sys.exit(1)
  subprocess.run(["systemctl","enable","--now","ssh"],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
- subprocess.run(["systemctl","reload","ssh"],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+ # Restart reacquires systemd's listening socket; SIGHUP reload can lose the
+ # inherited descriptor on a socket-activated Debian template.
+ subprocess.run(["systemctl","restart","ssh"],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 """
 
 
