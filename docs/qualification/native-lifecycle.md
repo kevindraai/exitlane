@@ -96,7 +96,10 @@ The fault wrapper sources the unmodified installer and invokes `main` directly w
 its normal error handling. It neither patches production source nor supplies a runtime
 fault flag. A rollback log line is insufficient: independently compare installed
 content, database state, key, configuration, unit/helper files and private modes, then
-check service health and API/decryption. A failed rollback remains a failure even if
+wait for bounded HTTP readiness within one stable service invocation, then check
+API/decryption. Rejected restores compare native nftables rules as well as compatibility
+iptables rules, service identity, routes and staging; volatile handles/counters are
+excluded from semantic nftables comparison. A failed rollback remains a failure even if
 its installer trap suppresses a restart error.
 
 ## Disaster recovery on the second guest

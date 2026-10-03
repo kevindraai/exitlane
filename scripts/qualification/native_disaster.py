@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import re
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -36,7 +37,7 @@ def private_directory(path):
     info = path.lstat()
     if (
         not stat.S_ISDIR(info.st_mode)
-        or info.st_uid != 0
+        or info.st_uid != native.ROOT_UID
         or stat.S_IMODE(info.st_mode) != 0o700
     ):
         native.fail("qualification_bundle_directory_invalid")
@@ -160,6 +161,20 @@ def restore_bundle(run, bundle, isolation_reference):
         or before["state_files"][key]["sha256"] == source["state_files"][key]["sha256"]
     ):
         native.fail("qualification_disaster_fresh_key_and_database_required")
+    if (
+        set(before["wireguard"]) != {native.state.STATE_TREE}
+        or before["database"]["tables"]["provider_secrets"]["rows"]
+    ):
+        native.fail("qualification_disaster_unconfigured_target_required")
+    # Fingerprints intentionally hide setting names/values. Query this one local
+    # marker through SQLite without loading or rewriting application configuration.
+    database = native.ROOT / native.state.DATABASE
+    with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
+        configured = connection.execute(
+            "SELECT value FROM settings WHERE key='wireguard_configured'"
+        ).fetchone()
+    if configured is not None and json.loads(configured[0]) is not False:
+        native.fail("qualification_disaster_unconfigured_target_required")
     staging = native.rejected_restore_state()["staging"]
     # Once started, no overwrite/retry is permitted, including after import or CLI
     # failure. Preserve all evidence for a separately authorized recovery decision.
@@ -234,6 +249,7 @@ def main():
                 )
             )
             return 0
+        native.verify_entrypoint(config["source"], Path(__file__))
         native.preflight(config)
         run = native.Run(config)
         run.open()
@@ -261,6 +277,7 @@ def main():
         AttributeError,
         AssertionError,
         subprocess.SubprocessError,
+        sqlite3.Error,
     ):
         print(
             "qualification_disaster_failed; retain private evidence; do not retry",

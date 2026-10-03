@@ -189,14 +189,14 @@ def environment():
     }
 
 
-def read_command(arguments):
+def read_command(arguments, *, timeout=30):
     result = subprocess.run(
         arguments,
         env=environment(),
         capture_output=True,
         text=True,
         cwd="/",
-        timeout=30,
+        timeout=timeout,
         check=False,
     )
     if result.returncode or len(result.stdout) > 2_000_000:
@@ -245,7 +245,18 @@ def verify_source(path, sha):
     return read_command(["git", "-C", path, "rev-parse", "HEAD^{tree}"])
 
 
+def verify_entrypoint(source, entrypoint):
+    expected = Path(source) / "scripts/qualification" / Path(entrypoint).name
+    if (
+        Path(entrypoint).absolute() != expected
+        or Path(entrypoint).resolve() != expected
+    ):
+        fail("qualification_harness_source_mismatch")
+
+
 def preflight(config):
+    verify_entrypoint(config["source"], Path(__file__))
+    verify_entrypoint(config["source"], Path(state.__file__))
     if (
         ROOT != Path("/")
         or os.geteuid() != 0
@@ -415,25 +426,115 @@ def native_runtime():
             fail("qualification_native_paths_required")
 
 
-def healthy():
-    read_command(["systemctl", "is-active", "exitlane.service"])
-    value = json.loads(
-        read_command(
-            [
-                "curl",
-                "--disable",
-                "--noproxy",
-                "*",
-                "--fail",
-                "--silent",
-                "--max-time",
-                "10",
-                "http://127.0.0.1:8787/api/health",
-            ]
-        )
-    )
-    if value.get("ok") is not True:
-        fail("qualification_health_failed")
+def healthy(*, timeout=30):
+    """Wait for actual HTTP readiness within one stable systemd invocation."""
+    deadline = time.monotonic() + timeout
+    observed_identity = None
+    previous_success = False
+    while time.monotonic() < deadline:
+
+        def observe():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                fail("qualification_health_deadline")
+            value = read_command(
+                [
+                    "systemctl",
+                    "show",
+                    "exitlane.service",
+                    "--property=ActiveState",
+                    "--property=SubState",
+                    "--property=MainPID",
+                    "--property=InvocationID",
+                ],
+                timeout=min(2, remaining),
+            )
+            fields = dict(
+                line.split("=", 1) for line in value.splitlines() if "=" in line
+            )
+            if (
+                fields.get("ActiveState") != "active"
+                or fields.get("SubState") != "running"
+            ):
+                return None
+            if (
+                not re.fullmatch("[a-f0-9]{32}", fields.get("InvocationID", ""))
+                or not fields.get("MainPID", "").isdecimal()
+                or int(fields["MainPID"]) <= 1
+            ):
+                return None
+            return fields["InvocationID"], fields["MainPID"]
+
+        success = False
+        identities = []
+        try:
+            before = observe()
+            if before is not None:
+                identities.append(before)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    fail("qualification_health_deadline")
+                value = json.loads(
+                    read_command(
+                        [
+                            "curl",
+                            "--fail",
+                            "--silent",
+                            "--max-time",
+                            "2",
+                            "http://127.0.0.1:8787/api/health",
+                        ],
+                        timeout=min(2, remaining),
+                    )
+                )
+                after = observe()
+                if after is not None:
+                    identities.append(after)
+                success = (
+                    isinstance(value, dict)
+                    and value.get("ok") is True
+                    and after == before
+                )
+        except (QualificationError, OSError, ValueError, subprocess.SubprocessError):
+            # Connection refusal while Type=simple starts Python is transient.
+            success = False
+        for identity in identities:
+            if observed_identity is not None and identity != observed_identity:
+                fail("qualification_health_service_replaced")
+            observed_identity = identity
+        if success and previous_success:
+            return
+        previous_success = success
+        time.sleep(min(0.25, max(0, deadline - time.monotonic())))
+    fail("qualification_health_failed")
+
+
+def nft_state():
+    value = json.loads(read_command(["nft", "-j", "list", "ruleset"]))
+    if (
+        not isinstance(value, dict)
+        or not isinstance(value.get("nftables"), list)
+        or any(not isinstance(item, dict) for item in value["nftables"])
+    ):
+        fail("qualification_nft_observation_invalid")
+
+    def stable(item, *, counter=False):
+        if isinstance(item, list):
+            return [stable(child) for child in item]
+        if isinstance(item, dict):
+            return {
+                key: (
+                    0
+                    if counter and key in {"bytes", "packets"}
+                    else stable(child, counter=key == "counter")
+                )
+                for key, child in item.items()
+                if key != "handle"
+            }
+        return item
+
+    rules = [stable(item) for item in value["nftables"] if set(item) != {"metainfo"}]
+    return hashlib.sha256(json.dumps(rules, sort_keys=True).encode()).hexdigest()
 
 
 def rejected_restore_state():
@@ -478,7 +579,7 @@ def rejected_restore_state():
             for item in sorted(directory.glob(pattern)):
                 info = item.lstat()
                 staging.append((str(item), info.st_ino, info.st_mode, info.st_mtime_ns))
-    return {"observations": observed, "staging": staging}
+    return {"observations": observed, "nft": nft_state(), "staging": staging}
 
 
 class Run:

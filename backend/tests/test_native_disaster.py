@@ -4,6 +4,7 @@ import copy
 import importlib
 import json
 import os
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -14,7 +15,14 @@ import pytest
 def disaster(monkeypatch, tmp_path):
     monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[2] / "scripts/qualification"))
     module = importlib.import_module("native_disaster")
+    # Model the private fixture owner; execution preflight still requires root.
+    monkeypatch.setattr(module.native, "ROOT_UID", os.getuid())
     monkeypatch.setattr(module.native, "RUNS", tmp_path / "runs")
+    monkeypatch.setattr(module.native, "ROOT", tmp_path / "target-root")
+    database = module.native.ROOT / module.native.state.DATABASE
+    database.parent.mkdir(parents=True)
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT)")
     return module
 
 
@@ -51,7 +59,14 @@ def snapshot(module, *, source=False, restored=False):
             },
             "etc/default/exitlane": {"sha256": "source-defaults" if source else "target-defaults"},
         },
-        "wireguard": {"synthetic": "preserved"},
+        "wireguard": {
+            module.native.state.STATE_TREE: {"directory": True},
+            **(
+                {"etc/exitlane/wireguard/wg-qa.conf": {"sha256": "synthetic"}}
+                if source or restored
+                else {}
+            ),
+        },
     }
 
 
@@ -180,6 +195,9 @@ def test_disaster_checks_real_restore_order_and_retains_private_receipt(disaster
         "existing-user",
         "no-install",
         "setup-complete",
+        "ingress-file",
+        "provider-state",
+        "ingress-marker",
     ],
 )
 def test_disaster_preconditions_fail_before_cli_and_started_marker(
@@ -209,9 +227,16 @@ def test_disaster_preconditions_fail_before_cli_and_started_marker(
             "read_command",
             lambda argv: '{"setup_complete":true,"authenticated":false}',
         )
+    elif failure == "ingress-marker":
+        with sqlite3.connect(disaster.native.ROOT / disaster.native.state.DATABASE) as connection:
+            connection.execute("INSERT INTO settings VALUES('wireguard_configured', 'true')")
     else:
         before = snapshot(disaster)
-        if failure == "same-key":
+        if failure == "ingress-file":
+            before["wireguard"]["etc/exitlane/wireguard/wg-old.conf"] = {"sha256": "old"}
+        elif failure == "provider-state":
+            before["database"]["tables"]["provider_secrets"]["rows"] = ["retained-provider"]
+        elif failure == "same-key":
             before["state_files"]["etc/exitlane/secret.key"]["sha256"] = "source-key"
         else:
             before["database"]["tables"]["users"]["rows"] = ["existing-user"]

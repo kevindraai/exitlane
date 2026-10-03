@@ -320,11 +320,13 @@ def test_rejected_restore_observes_routes_service_and_staging(runner, monkeypatc
 
     def observe(argv):
         calls.append(argv)
+        if argv[0] == "nft":
+            return '{"nftables": []}'
         return "# variable generated timestamp\n" + output["value"]
 
     monkeypatch.setattr(runner, "read_command", observe)
     before = runner.rejected_restore_state()
-    assert len(calls) == 7
+    assert len(calls) == 8
     assert runner.rejected_restore_state() == before
     output["value"] = "changed"
     assert runner.rejected_restore_state() != before
@@ -485,3 +487,115 @@ def test_installed_package_is_exact_including_bundled_docs(runner, tmp_path, mon
             runner.installed(source)
     else:
         runner.installed(source)
+
+
+@pytest.mark.parametrize(
+    "entry", ["native_lifecycle.py", "native_lifecycle_state.py", "native_disaster.py"]
+)
+def test_harness_must_belong_to_exact_candidate(runner, tmp_path, entry):
+    candidate = tmp_path / "candidate"
+    location = candidate / "scripts/qualification" / entry
+    location.parent.mkdir(parents=True)
+    location.write_text("synthetic source")
+    runner.verify_entrypoint(str(candidate), location)
+    with pytest.raises(runner.QualificationError, match="harness_source_mismatch"):
+        runner.verify_entrypoint(str(tmp_path / "other"), location)
+
+
+def test_wrong_harness_fails_preflight_before_host_observation(runner, monkeypatch):
+    monkeypatch.setattr(runner.socket, "gethostname", lambda: pytest.fail("observed host"))
+    with pytest.raises(runner.QualificationError, match="harness_source_mismatch"):
+        runner.preflight({"source": "/another/reviewed/candidate"})
+
+
+def readiness_clock(runner, monkeypatch):
+    clock = {"now": 0.0}
+    monkeypatch.setattr(runner.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(runner.time, "sleep", lambda delay: clock.update(now=clock["now"] + delay))
+    return clock
+
+
+def service_identity(number=1, active=True):
+    return (
+        "ActiveState=" + ("active" if active else "failed") + "\nSubState=running\n"
+        f"MainPID={100 + number}\nInvocationID={number:032x}"
+    )
+
+
+def test_readiness_waits_through_connection_refusal(runner, monkeypatch):
+    clock = readiness_clock(runner, monkeypatch)
+    health = []
+
+    def observe(argv, **kwargs):
+        assert 0 < kwargs["timeout"] <= 2
+        if argv[0] == "systemctl":
+            return service_identity()
+        health.append(clock["now"])
+        if len(health) == 1:
+            raise runner.QualificationError("qualification_observation_failed")
+        return '{"ok":true}'
+
+    monkeypatch.setattr(runner, "read_command", observe)
+    runner.healthy(timeout=2)
+    assert len(health) == 3 and clock["now"] > 0
+
+
+@pytest.mark.parametrize("failure", ["connection", "service", "json"])
+def test_readiness_deadline_cannot_be_health_pass(runner, monkeypatch, failure):
+    clock = readiness_clock(runner, monkeypatch)
+
+    def observe(argv, **kwargs):
+        if argv[0] == "systemctl":
+            return service_identity(active=failure != "service")
+        if failure == "connection":
+            raise runner.subprocess.TimeoutExpired("synthetic observation", kwargs["timeout"])
+        return "invalid-json"
+
+    monkeypatch.setattr(runner, "read_command", observe)
+    with pytest.raises(runner.QualificationError, match="health_failed"):
+        runner.healthy(timeout=1)
+    assert clock["now"] == 1
+
+
+def test_readiness_rejects_new_service_invocation_even_if_http_ok(runner, monkeypatch):
+    readiness_clock(runner, monkeypatch)
+    calls = iter([service_identity(1), service_identity(2)])
+    monkeypatch.setattr(
+        runner,
+        "read_command",
+        lambda argv, **kwargs: next(calls) if argv[0] == "systemctl" else '{"ok":true}',
+    )
+    with pytest.raises(runner.QualificationError, match="service_replaced"):
+        runner.healthy()
+
+
+def test_native_inet_changes_detected_but_counters_handles_are_volatile(runner, monkeypatch):
+    nft = {
+        "nftables": [
+            {"metainfo": {"version": "synthetic"}},
+            {"table": {"family": "inet", "name": "exitlane_restore", "handle": 7}},
+            {
+                "rule": {
+                    "family": "inet",
+                    "table": "exitlane_restore",
+                    "chain": "forward",
+                    "handle": 8,
+                    "expr": [{"counter": {"packets": 2, "bytes": 5}}, {"drop": None}],
+                }
+            },
+        ]
+    }
+    monkeypatch.setattr(runner, "read_command", lambda argv: json.dumps(nft))
+    before = runner.nft_state()
+    nft["nftables"][2]["rule"]["handle"] = 99
+    nft["nftables"][2]["rule"]["expr"][0]["counter"] = {"packets": 3, "bytes": 15}
+    assert runner.nft_state() == before
+    nft["nftables"][2]["rule"]["expr"][1] = {"accept": None}
+    assert runner.nft_state() != before
+
+
+@pytest.mark.parametrize("value", ["invalid", "[]", '{"nftables":[1]}'])
+def test_malformed_nft_observation_cannot_be_runtime_pass(runner, monkeypatch, value):
+    monkeypatch.setattr(runner, "read_command", lambda argv: value)
+    with pytest.raises((ValueError, runner.QualificationError)):
+        runner.nft_state()
