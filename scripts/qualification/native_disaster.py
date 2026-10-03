@@ -140,6 +140,9 @@ def restore_bundle(run, bundle, isolation_reference):
         native.read_command(
             [
                 "curl",
+                "--disable",
+                "--noproxy",
+                "*",
                 "--fail",
                 "--silent",
                 "--max-time",

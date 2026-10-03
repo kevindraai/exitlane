@@ -478,6 +478,9 @@ def healthy(*, timeout=30):
                     read_command(
                         [
                             "curl",
+                            "--disable",
+                            "--noproxy",
+                            "*",
                             "--fail",
                             "--silent",
                             "--max-time",

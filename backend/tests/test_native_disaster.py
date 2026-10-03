@@ -102,9 +102,13 @@ def prepared(disaster, monkeypatch, tmp_path):
     monkeypatch.setattr(target, "previous", lambda name: name == "candidate-install")
     monkeypatch.setattr(native, "installed", lambda path: None)
     monkeypatch.setattr(native, "healthy", lambda: None)
-    monkeypatch.setattr(
-        native, "read_command", lambda argv: '{"setup_complete":false,"authenticated":false}'
-    )
+
+    def local_session(argv):
+        assert argv[:4] == ["curl", "--disable", "--noproxy", "*"]
+        assert argv[-1] == "http://127.0.0.1:8787/api/auth/session"
+        return '{"setup_complete":false,"authenticated":false}'
+
+    monkeypatch.setattr(native, "read_command", local_session)
     monkeypatch.setattr(native, "rejected_restore_state", lambda: {"staging": []})
     observations = iter([snapshot(disaster), snapshot(disaster, restored=True)])
     monkeypatch.setattr(native.state, "capture", lambda root: next(observations))

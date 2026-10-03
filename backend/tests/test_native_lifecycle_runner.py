@@ -530,6 +530,7 @@ def test_readiness_waits_through_connection_refusal(runner, monkeypatch):
         assert 0 < kwargs["timeout"] <= 2
         if argv[0] == "systemctl":
             return service_identity()
+        assert argv[:4] == ["curl", "--disable", "--noproxy", "*"]
         health.append(clock["now"])
         if len(health) == 1:
             raise runner.QualificationError("qualification_observation_failed")
