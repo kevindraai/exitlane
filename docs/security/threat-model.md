@@ -173,3 +173,20 @@ action identifier to an absolute `systemctl` argv and invokes it with
 POST endpoints, and accepted or failed launches are written to the Activity
 audit log. The service already runs as root for network gateway management, so
 this feature installs no broader sudoers rule or generic privileged helper.
+
+## Disposable native qualification tools
+
+The source-only native qualification scripts require an explicitly authorized disposable
+root-controlled guest; they are not product routes, installed recovery commands or a
+provisioning service. Execution binds hostname, machine ID, exact clean source, harness
+hashes and private single-use stage receipts. The default action is plan-only. Synthetic
+credentials, cookies, key material, backups and child logs stay in root-private run state
+and must not become public CI artifacts. The loopback API client disables inherited
+proxies and redirects; the runner uses a clean child environment and the unmodified
+installer's own rollback path. A root operator can forge these local receipts, so they
+are auditable observations within that trust boundary, not cryptographic attestation.
+
+Fixture results cannot establish real guest lifecycle or protected packet behavior.
+A separate disaster target must be authorized, initially clean and distinct from the
+source; the source must be isolated before activating duplicate restored ingress.
+The tool cannot infer that external isolation or expand the operator's authorization.
