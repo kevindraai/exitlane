@@ -142,6 +142,24 @@ jobs:
             --security-opt no-new-privileges:true --entrypoint python \
             -i "$IMAGE" - < scripts/check_container_image.py
 
+      - name: Qualify release image provider TLS
+        env:
+          IMAGE: ${{ needs.validate.outputs.image }}
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+        run: |
+          image_id=$(docker image inspect "$IMAGE" --format '{{.Id}}')
+          python3 scripts/qualification/container_tls.py --image "$image_id" \
+            --source-sha "$SOURCE_SHA" > docker-release-provider-tls.json
+
+      - name: Retain release TLS evidence even when qualification fails
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docker-release-provider-tls
+          path: docker-release-provider-tls.json
+          if-no-files-found: ignore
+          retention-days: 30
+
       - name: Qualify release image health and state contract
         env:
           IMAGE: ${{ needs.validate.outputs.image }}
@@ -210,7 +228,19 @@ jobs:
           docker run --rm --network none --read-only --cap-drop ALL \
             --security-opt no-new-privileges:true --entrypoint python \
             -i "$immutable_image" - < scripts/check_container_image.py
+          image_id=$(docker image inspect "$immutable_image" --format '{{.Id}}')
+          python3 scripts/qualification/container_tls.py --image "$image_id" \
+            --source-sha "$SOURCE_SHA" > docker-pulled-provider-tls.json
           python3 scripts/qualification/container_appliance.py --image "$immutable_image"
+
+      - name: Retain pulled-image TLS evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docker-pulled-provider-tls
+          path: docker-pulled-provider-tls.json
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Record validated application and trusted workflow sources
         env:

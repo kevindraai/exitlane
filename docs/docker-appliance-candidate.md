@@ -184,6 +184,43 @@ do not claim compatibility across different application releases. Synthetic cred
 on stdin/in memory and omitted from receipts. It does not restart a shared
 daemon/host, contact commercial provider accounts or publish an image.
 
+The same Container appliance CI job separately qualifies the image's real TLS
+certificate verification for Mullvad HTTPS, PIA public HTTPS, and PIA's pinned
+catalog-IP/hostname path. To repeat it against an already built local image:
+
+```bash
+python3 scripts/qualification/container_tls.py \
+  --image "$EXITLANE_IMAGE" --source-sha "$(git rev-parse HEAD)"
+```
+
+This command requires the immutable local `sha256:` image ID and matching OCI
+source/revision labels. It never pulls an image. One UUID-owned container runs
+with `--network none`, no capabilities, no mounts or published ports, read-only
+root, `no-new-privileges`, and bounded private tmpfs. The host runner uses only
+the local Docker daemon; the image receives no Docker socket or host credentials.
+The probe is transferred on stdin and runs the installed production clients with
+an empty environment. Endpoint and trust inputs change only inside this synthetic
+qualification process; the installed trust store and production code are unchanged.
+Ephemeral fixture keys are private and removed with the temporary directory/container.
+
+Each client must accept a valid certificate and JSON response, then refuse unknown
+CA, wrong hostname, and expired certificates with zero requests reaching the
+server's HTTP handler. The actual exception chain must contain the expected
+OpenSSL certificate-verification code. Generic transport failures, timeouts,
+failed positive controls, or only a safe wrapper error cannot pass. The receipt
+binds the local image ID, OCI source/version, harness/probe hashes, installed client
+hashes, Python/OpenSSL versions, and all 12 outcomes. CI retains the fixed safe
+receipt even when a positive control fails. The protected manual D7 workflow
+repeats this check before publication and after pulling the published digest; its
+existing approval and security gates remain unchanged. The source labels identify the build
+claim; installed-content, build provenance and release checks remain separate gates.
+
+These synthetic TLS checks use no provider account or live server. They complement
+packet/transition tests and live interoperability qualification; they do not establish
+provider parity, protected-traffic routing, supported-host D6 evidence, or publication
+readiness. A failure blocks that qualification job without changing vulnerability or
+release policies.
+
 D6 passed on the separately disposable Docker host recorded in issue #96. Its
 packet receipts cover the synthetic router/client, ExitLane, provider and external
 target points, including provider switching/failure, DNS UDP/TCP, IPv6 attempts
