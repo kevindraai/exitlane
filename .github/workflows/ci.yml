@@ -251,6 +251,22 @@ jobs:
             --security-opt no-new-privileges:true --entrypoint python \
             -i exitlane-appliance:test - < scripts/check_container_image.py
 
+      - name: Qualify real provider TLS in the exact installed image
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          image_id=$(docker image inspect exitlane-appliance:test --format '{{.Id}}')
+          python3 scripts/qualification/container_tls.py --image "$image_id" \
+            --source-sha "$(git rev-parse HEAD)" > exitlane-provider-tls.json
+
+      - name: Retain provider TLS evidence, including failed positive controls
+        if: always() && steps.changes.outputs.run == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: exitlane-provider-tls
+          path: exitlane-provider-tls.json
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Install pinned image inspection tools
         if: steps.changes.outputs.run == 'true'
         run: |
