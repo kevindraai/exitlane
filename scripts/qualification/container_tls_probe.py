@@ -252,6 +252,7 @@ def qualify(checks):
                 pia_api.CA_PATH = trust
                 mullvad.API_ORIGIN = "https://localhost:1337"
                 context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                context.minimum_version = ssl.TLSVersion.TLSv1_2
                 context.load_cert_chain(certificate_file, key_file)
                 with Server(context) as server:
                     worker = threading.Thread(
