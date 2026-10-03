@@ -12,6 +12,8 @@
 
 ### Fixed
 
+- Compare application content during native installation so equal file sizes and timestamps
+  cannot retain an older release file during upgrade.
 - Harden PVE resolver readability, `_apt` DNS/readiness, helper/application umask isolation,
   repository failure handling and bounded retries.
 - Preserve fail-closed container state through restore and startup convergence.

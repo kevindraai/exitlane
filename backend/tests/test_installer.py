@@ -1,3 +1,4 @@
+import os
 import shlex
 import subprocess
 from pathlib import Path
@@ -9,6 +10,34 @@ INSTALLER = ROOT / "installer" / "install-debian.sh"
 DEFAULTS = ROOT / "installer" / "exitlane.default"
 DEPLOY_SCRIPT = ROOT / "scripts" / "deploy_worktree_to_test.sh"
 WIREGUARD_DROPIN = ROOT / "systemd" / "wg-quick@.service.d" / "exitlane.conf"
+
+
+def test_application_copy_replaces_same_size_same_timestamp_release_content(tmp_path):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+    target.mkdir()
+    (source / "installer").mkdir()
+    fixture_installer = source / "installer" / "install-debian.sh"
+    fixture_installer.write_bytes(INSTALLER.read_bytes())
+    original = target / "version.py"
+    candidate = source / "version.py"
+    original.write_text('VERSION="rc.3"\n')
+    candidate.write_text('VERSION="rc.4"\n')
+    for path in (original, candidate):
+        os.utime(path, (1_700_000_000, 1_700_000_000))
+    (target / "venv").mkdir()
+    (target / "venv" / "retained").write_text("operator environment")
+    (target / "obsolete.py").write_text("obsolete")
+    command = f"""
+export TARGET={shlex.quote(str(target))}
+source {shlex.quote(str(fixture_installer))}
+copy_application
+"""
+    subprocess.run(["bash", "-c", command], check=True, capture_output=True, text=True)
+    assert original.read_bytes() == candidate.read_bytes()
+    assert (target / "venv" / "retained").read_text() == "operator environment"
+    assert not (target / "obsolete.py").exists()
 
 
 def test_new_installer_defaults_omit_optional_reverse_proxy_environment_variables():
