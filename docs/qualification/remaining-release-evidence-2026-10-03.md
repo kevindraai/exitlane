@@ -16,7 +16,7 @@ Those receipts are reused explicitly; this work adds the previously missing acti
 upgrade-packet, current OS assurance and fresh launcher-helper evidence.
 
 [PR #127](https://github.com/kevindraai/exitlane/pull/127) repairs only the provisioning helper,
-its focused tests and documentation. The backend, frontend, ordinary Debian installer, systemd
+its focused tests and documentation. The backend runtime, frontend, ordinary Debian installer, systemd
 units and provider/routing implementation are byte-identical to candidate `941f736`.
 Successful helper source: `5659aeb65d96674bd7d623ccf35bd4b0866e59a2`, helper SHA-256
 `12c724a24398b95051ab166364bdefbee8e79b3b59bd16c5783cd6808629beac`.
