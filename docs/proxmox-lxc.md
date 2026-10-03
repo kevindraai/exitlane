@@ -24,6 +24,11 @@ free cluster-wide CTID, active root/template storage and a PVE-managed Debian 13
 **Advanced settings** exposes CTID, hostname, storage, template storage, bridge, static IPv4/CIDR,
 gateway, DNS, VLAN, CPU, memory, disk, pool and startup ordering. Empty answers use engine defaults.
 
+The helper configures management IPv4 only and leaves IPv6 unconfigured. It omits an explicit
+`ip6=manual`: PVE otherwise writes a second `inet6 manual` stanza which Debian's ifupdown2 can
+merge with IPv4 DHCP, starting an unwanted DHCPv6 client and blocking installation on IPv4-only
+networks. This does not disable the kernel's IPv6 protection or add IPv6 management support.
+
 The rc.4 helper advertises a side-effect-free bootstrap capability and owns the interactive
 installer itself once its tag is published. Recommended settings retain the appliance defaults;
 Advanced groups container, network and access choices. The launcher negotiates the selected

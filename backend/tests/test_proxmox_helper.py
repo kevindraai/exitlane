@@ -128,7 +128,7 @@ def test_default_selection_and_command_generation(pve):
     assert create[:3] == ["pct", "create", "200"]
     assert create[create.index("--unprivileged") + 1] == "0"
     assert create[create.index("--rootfs") + 1] == "local-lvm:16"
-    assert create[create.index("--net0") + 1] == "name=eth0,bridge=vmbr0,ip=dhcp,ip6=manual"
+    assert create[create.index("--net0") + 1] == "name=eth0,bridge=vmbr0,ip=dhcp"
     assert create[create.index("--onboot") + 1] == "1"
     assert commands[-1][-1] == "/root/exitlane-source/installer/install-debian.sh"
     assert commands[-2][commands[-2].index("--branch") + 1] == "v0.3.0-rc.4"
@@ -185,7 +185,7 @@ def test_static_vlan_dns_pool_and_startup_rendered(pve):
     _, _, commands, _ = helper.plan(args, config_dir, bridge_root)
     create = commands[1]
     assert create[create.index("--net0") + 1] == (
-        "name=eth0,bridge=vmbr0,ip=192.0.2.20/24,ip6=manual,gw=192.0.2.1,tag=42"
+        "name=eth0,bridge=vmbr0,ip=192.0.2.20/24,gw=192.0.2.1,tag=42"
     )
     for flag, value in (
         ("--nameserver", "192.0.2.53"),

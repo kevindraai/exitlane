@@ -12,6 +12,8 @@
 
 ### Fixed
 
+- Leave PVE management IPv6 unconfigured so Debian ifupdown2 does not start DHCPv6 and block
+  installation on an IPv4-only DHCP network.
 - Compare application content during native installation so equal file sizes and timestamps
   cannot retain an older release file during upgrade.
 - Harden PVE resolver readability, `_apt` DNS/readiness, helper/application umask isolation,

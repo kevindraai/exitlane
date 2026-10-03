@@ -291,7 +291,10 @@ def plan(
             f"Pool {args.pool!r} does not exist",
         )
     template, download = select_template(template_storage)
-    net = f"name=eth0,bridge={bridge},ip={args.ip},ip6=manual"
+    # Leave IPv6 unconfigured. Explicit ip6=manual makes PVE emit a second
+    # inet6 stanza; Debian ifupdown2 merges it with inet DHCP and waits for
+    # DHCPv6 even on an IPv4-only network, blocking networking.service.
+    net = f"name=eth0,bridge={bridge},ip={args.ip}"
     if args.gateway:
         net += f",gw={args.gateway}"
     if args.vlan:
