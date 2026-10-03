@@ -124,10 +124,11 @@ original source/image scope. Current exact-source qualification and support clai
 - Run fresh whole-product security/readiness checks and reconcile applicable findings against the
   actual native package inventory. Complete the bounded installation/diagnostics gap review; fix
   material failure-comprehension, recovery or security gaps rather than broad cosmetic polish.
-- Reconcile the existing managed Speedtest installation evidence blocker
-  [#117](https://github.com/kevindraai/exitlane/issues/117). Verify prior receipts or qualify the
-  bounded installer on an authorized appliance with applicable terms authority. A real bandwidth
-  measurement is not required by this installation gate.
+- Managed Speedtest installation evidence is reconciled in
+  [#117](https://github.com/kevindraai/exitlane/issues/117): the actual beta.3 appliance receipt
+  proves the unchanged pinned installer, four confirmations, package/status checks and zero
+  measurements. Current integration regressions and native candidate lifecycle gates remain;
+  this historical acceptance requires no new installation or terms approval.
 - Refresh exact-candidate Docker build/content/runtime, security and affected packet/recovery
   evidence. Review D6 reuse against precise source/image/package deltas or execute required fresh
   host proof; implementation delivery alone is not completed publication/support acceptance.
