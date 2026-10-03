@@ -310,6 +310,10 @@ def plan(
         "debian",
         "--unprivileged",
         "0",
+        # PVE requires nesting for systemd's service mount namespaces. Keep
+        # the installed service isolation rather than weakening its units.
+        "--features",
+        "nesting=1",
         "--hostname",
         args.hostname,
         "--cores",
@@ -883,7 +887,9 @@ def main(
         )
         print(f"Network: {create[create.index('--net0') + 1]}")
         print(f"DNS: {args.dns or 'PVE host default'}; pool: {args.pool or 'none'}")
-        print(f"Startup: {args.startup or 'default'}; on boot: yes; TUN: yes")
+        print(
+            f"Startup: {args.startup or 'default'}; on boot: yes; TUN: yes; systemd nesting: yes"
+        )
         print(f"ExitLane release: {args.ref}")
         print("Access:")
         print(

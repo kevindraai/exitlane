@@ -5,6 +5,11 @@ Unprivileged containers, other Debian releases and other architectures are not s
 targets. ExitLane runs natively inside the container and needs systemd, WireGuard, nftables and
 permission to administer its network namespace.
 
+The new container enables PVE's `nesting` feature because systemd requires it for the existing
+service mount isolation (`ProtectSystem`, `ProtectHome` and `PrivateTmp`). Those protections stay
+enabled. Nesting exposes the host's procfs/sysfs surfaces to the privileged container; keep this
+trusted appliance on its designated host and do not use it to run untrusted nested workloads.
+
 ## Create the container
 
 The native reference configuration uses 2 vCPUs, 2 GiB RAM and a 16 GiB disk. These are a reference configuration,

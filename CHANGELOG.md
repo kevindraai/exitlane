@@ -12,6 +12,7 @@
 
 ### Fixed
 
+- Enable the PVE nesting prerequisite for the existing systemd service isolation in fresh guests.
 - Leave PVE management IPv6 unconfigured so Debian ifupdown2 does not start DHCPv6 and block
   installation on an IPv4-only DHCP network.
 - Compare application content during native installation so equal file sizes and timestamps

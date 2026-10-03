@@ -127,6 +127,7 @@ def test_default_selection_and_command_generation(pve):
     create = commands[1]
     assert create[:3] == ["pct", "create", "200"]
     assert create[create.index("--unprivileged") + 1] == "0"
+    assert create[create.index("--features") + 1] == "nesting=1"
     assert create[create.index("--rootfs") + 1] == "local-lvm:16"
     assert create[create.index("--net0") + 1] == "name=eth0,bridge=vmbr0,ip=dhcp"
     assert create[create.index("--onboot") + 1] == "1"
