@@ -47,8 +47,7 @@ sudo ./installer/install-debian.sh
 
 Open `http://<host>:8787` and complete the first-run wizard.
 
-Use the tagged installation command once the candidate is published on the
-[Releases page](https://github.com/kevindraai/exitlane/releases). For an existing appliance,
+The tagged installation command uses the published [stable v1.0.0 release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0). For an existing appliance,
 [create and verify a backup before upgrading](docs/upgrade-and-recovery.md).
 
 Read the [deployment guide](docs/deployment.md), [NordVPN provider guide](docs/nordvpn.md), [Mullvad provider guide](docs/mullvad.md), [PIA provider guide](docs/pia.md), [Proton provider guide](docs/proton.md), [backup and restore guide](docs/backup-and-restore.md), [upgrade and recovery guide](docs/upgrade-and-recovery.md), and [Proxmox LXC notes](docs/proxmox-lxc.md) before using ExitLane outside a development environment.
