@@ -1,14 +1,14 @@
 # Exitlane threat model
 
-Current contract: v1 native/container release candidate. The dated 2026-09-30 Daybreak Blue-assisted review remains
-historical internal evidence; this update is not a new assessment or release qualification.
-Exact candidate receipts and pending gates are recorded in the
-[v1 RC release notes](../release-notes/1.0.0-rc.1.md). A trusted management network is a deployment
-assumption, not a substitute for application security.
+Current contract: stable v1 native/container appliance. The dated 2026-09-30 Daybreak
+Blue-assisted review remains historical internal evidence; this document is not a new assessment.
+Exact-source and image qualification receipts are linked by the
+[published v1.0.0 release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0).
+A trusted management network is a deployment assumption, not a substitute for application security.
 
 ## System and trust boundaries
 
-The browser loads same-origin static HTML/JavaScript and sends credentials and a HttpOnly session cookie to FastAPI. FastAPI validates authentication, setup state, CSRF source and request models before reading SQLite or invoking explicit-argv subprocesses. SQLite and generated WireGuard files cross the application/filesystem boundary. NordVPN CLI/daemon, the Mullvad HTTPS API, `wg`, `ip`, `systemctl` and `wg-quick` cross into privileged host or provider-controlled components. systemd starts Exitlane as root because the beta candidate directly configures networking and WireGuard; Linux, the NordVPN daemon, Mullvad's remote control plane, and the router are separate trust domains. The router consumes a downloaded private client configuration.
+The browser loads same-origin static HTML/JavaScript and sends credentials and a HttpOnly session cookie to FastAPI. FastAPI validates authentication, setup state, CSRF source and request models before reading SQLite or invoking explicit-argv subprocesses. SQLite and generated WireGuard files cross the application/filesystem boundary. NordVPN CLI/daemon, the Mullvad HTTPS API, `wg`, `ip`, `systemctl` and `wg-quick` cross into privileged host or provider-controlled components. systemd starts Exitlane as root because the native appliance directly configures networking and WireGuard; Linux, the NordVPN daemon, Mullvad's remote control plane, and the router are separate trust domains. The router consumes a downloaded private client configuration.
 
 Before setup, health/session plus the allowlisted wizard operations are public on the management network. Completion closes that bootstrap boundary; all API routes except health, login and session then require a valid session. `/`, static assets and passive partials remain public; docs/OpenAPI require authentication.
 
@@ -51,14 +51,15 @@ appliance master key; database-only theft does not reveal those encrypted values
 permits offline verification/decryption. Local root compromise
 defeats the application key, CLI and filesystem boundaries.
 
-## Beta assumptions and boundaries
+## Operational assumptions and boundaries
 
 Exitlane is single-administrator, single-appliance software on a firewalled management VLAN.
 MFA, one-time recovery codes, active-session management, encrypted backup, verified local restore,
 and an appliance upgrade/recovery path are present. Root service execution, headerless non-browser
-writes, public static shell assets and memory-only login throttling remain explicit beta risks.
+writes, public static shell assets and memory-only login throttling remain explicit operating risks.
 Public Internet exposure, untrusted shared hosting and permanent active-scan targets are
-unsupported. See `security-assurance-matrix.md` for test traceability and open appliance gates.
+unsupported. See `security-assurance-matrix.md` for test traceability and the published v1 release
+for final appliance qualification receipts.
 
 The [2026-09-30 Daybreak Blue-assisted assessment](daybreak-blue-assessment-2026-09-30.md)
 challenged these boundaries as an internal defensive exercise. It found and remediated two
@@ -88,7 +89,7 @@ the public moving bootstrap preserves compatible behavior for older published he
 
 ## Docker deployment boundary
 
-The original Docker image remains a development WebUI/API surface, not a VPN appliance. Its private
+The development Docker Compose surface remains a WebUI/API development environment. Its private
 container namespace has no qualified WireGuard ingress, fail-closed forwarding, DNS protection,
 startup guard or restore path. Docker owns its host bridge/NAT firewall state; ExitLane must not
 modify those host tables. The [issue #76 feasibility matrix](../docker-appliance-feasibility.md)
@@ -96,19 +97,20 @@ records the missing container-capability and packet-level proof. The development
 example binds management only to host loopback and publishes no VPN ingress.
 
 Runtime capabilities are selected by trusted process configuration, never by a browser request.
-The explicit composition boundary implements native systemd and experimental container adapters;
+The explicit composition boundary implements native systemd and container adapters;
 unknown runtime selections fail before database or key initialization. The authenticated capability endpoint and public onboarding
 projection contain availability facts, not host paths or secrets. UI hiding is convenience:
 API and CLI checks deny unavailable operations before state writes, privileged commands or Activity
 acceptance. Native command allowlists, provider authorization and restore validation remain in
-force. Implemented container adapters do not imply Docker support.
+force. Container support follows the bounded [v1 operator contract](../docker-deployment.md).
 
 The D2 synthetic lifecycle installs a permanent container-owned forwarding restriction and shared
 unreachable provider routes before ingress, verifies actual rule semantics, and never executes native
 configuration hooks. Its worker supervisor keeps protection through failures and exits on uncertain
 interface ownership rather than adopting or deleting another interface. The test harness uses only
 NET_ADMIN/TUN in isolated namespaces; Docker owns all host bridge/firewall setup. D2's isolated
-slice did not enable full composition; D5 subsequently supplied the experimental application image.
+slice did not enable full composition; the historical D5 stage subsequently supplied the candidate
+application image. The supported v1 appliance uses the separate versioned operator path.
 
 The D3 direct-provider adapter adds a shared candidate epoch and a separate commit
 gate: a handshake alone does not open forwarding. Exact route, peer, interface,
@@ -138,8 +140,8 @@ recovery state retained. Root-equivalent container processes already share this
 trust boundary; the manifest key digest does not authenticate externally supplied
 state. See [container recovery](../docker-container-recovery.md).
 
-The experimental D5 image supplies full container composition without changing the
-development image or claiming Docker support. The parent owns ingress and mutation
+The appliance image supplies full container composition, separate from the
+development image. The parent owns ingress and mutation
 authority; the worker owns live direct-provider generations and proofs. A one-use
 inherited socket grants initialization while the parent holds the startup lease.
 No startup credential travels through argv, environment values or persistent files.
@@ -147,16 +149,15 @@ Subordinate ingress operations are revoked on lease loss, drained before the fin
 guard/quiesce, and cannot release protection after revocation. Unsupported native
 service, package, host-power and upgrade operations remain unavailable in API/CLI.
 
-The candidate uses a read-only root, one private state volume, bounded private tmpfs,
+The appliance uses a read-only root, one private state volume, bounded private tmpfs,
 NET_ADMIN alone, TUN and explicit namespace sysctls. Management defaults to loopback;
 LAN exposure requires operator selection. Proxy trust is tied to the actual peer,
 not a supplied forwarded chain. Image content, actual authentication/proxy requests,
 encrypted ingress, namespace recreation and restore have dedicated qualification
 gates. Historical D6 synthetic whole-host packet/restart qualification passed on the retained
 exact surface. D7 supplies manual exact-release scanning, provenance/SBOM and digest verification
-behind Product Owner approval in the protected publication environment. No official production
-image is claimed by this candidate; authorized stable publication and exact-image qualification
-remain required delivery steps.
+behind Product Owner approval in the protected publication environment. The published v1.0.0 release
+records official image identities and exact-image qualification receipts.
 
 The historical refreshed candidate scan retained 44 HIGH package findings across 8 distinct CVEs,
 zero CRITICAL, zero secret findings and zero Python vulnerabilities; reported Debian Trixie

@@ -113,27 +113,24 @@ Beta.5 inherits the beta.4 UX, accessibility, design-system and integrated-docum
 - Active administrator session management
 - Trusted reverse-proxy support and HTTPS awareness
 
-## Current v1 delivery
+## Delivered in v1.0.0
 
-The 2026-10-04 executive order authorizes the complete rc.4 → v1 RC → stable/image ladder.
-Product scope is fixed: native Debian 13 amd64 supports NordVPN/Mullvad/PIA/imported Proton;
-Docker v1 supports the three direct providers on rootful Linux amd64, Engine >=28 and Compose v2.
-Stock container NordVPN and the separate NordVPN gateway are excluded.
+The stable v1 scope is native Debian 13 amd64 with NordVPN, Mullvad, PIA and imported Proton,
+and the Docker appliance with the three direct providers on rootful Linux amd64,
+Engine >=28 and Compose v2. Stock container NordVPN and the separate NordVPN gateway are excluded.
 
-- Complete the qualified rc.4 public Proxmox path (#87), then qualify the exact v1 RC including
-  upgrade from rc.4 and independent architecture/security challenge.
-- Publish stable v1 after exact-source checks/review and native install/upgrade qualification.
-- Deliver the official versioned image, immutable digest, full scan/SBOM/provenance, exact-image
-  runtime/recovery/dataplane qualification, D6 delta reconciliation and anonymous pull (#90/#97).
-- Maintain one reviewed implementation/release PR at a time and passing final-main checks.
-- Apply [the residual-risk release policy](SECURITY.md) without hiding findings; consume available
-  supported fixes and repair concrete security/isolation defects.
-- Keep #72 claim-specific: live PIA/Proton interoperability is unqualified, not a product blocker.
-  No commercial credentials are requested or awaited.
+- Guided public Proxmox installation, exact-tag/source binding and appliance lifecycle (#87).
+- Native installation, upgrades from qualified rc.4/v1 RC and encrypted recovery.
+- Versioned official Docker image, complete deployment Quick Start, explicit LAN bindings,
+  durable state and backup/restore/upgrade/compatible rollback instructions (#90/#97).
+- Full security evidence with reviewed Debian residual-risk dispositions; actionable findings
+  remain release blockers. No scanner suppression, unsupported suite or package surgery.
+- Source/image/digest binding, SBOM/provenance and published-image operator qualification.
 
-Historical delivery sections above describe their original scope; older experimental status and
-strict all-HIGH policy are superseded. Closed issue/release claims require actual receipts.
-See the [Docker operator path](docs/docker-deployment.md) and versioned release qualification.
+The [published v1.0.0 release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0) records
+immutable identities, qualification results and issue acceptance. Historical implementation
+sections retain their original scope. Live PIA/Proton interoperability remains unqualified (#72);
+it is claim-specific and does not change the accepted product scope. No Docker latest alias exists.
 
 ## After v1
 

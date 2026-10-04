@@ -5,7 +5,10 @@
 > The 2026-10-04 executive order supersedes them: the v1 support matrix is fixed, publication
 > is authorized, and reviewed unfixed Debian risks follow [SECURITY](../SECURITY.md).
 > Use the [Docker deployment guide](docker-deployment.md) for current operator instructions.
-> Stable publication, exact-image qualification and anonymous pull remain mandatory evidence.
+> Final publication, exact-image qualification and anonymous-pull receipts are recorded in the
+> [published v1.0.0 release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0).
+
+## Dated architecture evidence
 
 - Decision date: 2026-09-30
 - Status: independently reviewed architecture, **APPROVE**; D1–D7 implementation delivered,

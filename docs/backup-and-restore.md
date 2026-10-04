@@ -2,13 +2,12 @@
 
 > For Docker, use the local [Docker operations guide](docker-operations.md#backup-and-restore) for supervisor backup/restore commands and durable volume handling. The commands below describe native Debian.
 
-ExitLane 0.3.0-rc.4 retains the local, root-only native appliance backup. Restore is intentionally
+ExitLane v1 retains the local, root-only native appliance backup. Restore is intentionally
 not exposed through the web interface. This guide's host paths and commands describe native Debian.
-The experimental container runtime shares the encrypted format and validation controls, with a
-[supervisor-owned recovery transaction](docker-container-recovery.md) and
-[container CLI commands](docker-appliance-candidate.md#lifecycle-recovery-and-upgrades).
-Docker remains unsupported. Exact rc.4 lifecycle receipts remain release gates in the
-[rc.4 release notes](release-notes/0.3.0-rc.4.md).
+The container runtime shares the encrypted format and validation controls, with a supervisor-owned
+recovery transaction. Use the [complete Docker backup/export/verify/restore path](docker-deployment.md#backup-export-verify-and-restore)
+for container operations. The [published v1.0.0 release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0)
+links final native/container lifecycle receipts.
 
 ## Scope
 

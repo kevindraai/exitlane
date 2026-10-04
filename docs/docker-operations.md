@@ -2,7 +2,8 @@
 
 Use the [Docker deployment Quick Start](docker-deployment.md#quick-start) for versioned files,
 verified official-image digest, explicit LAN bindings, setup and lifecycle commands.
-The v1 support matrix is fixed; stable image publication and exact-image qualification are pending.
+The v1 support matrix is fixed; verify stable image publication and exact-image qualification
+in the [v1 release receipts](release-notes/1.0.0.md#release-and-image-receipts) before deploying.
 Native Debian 13 amd64 remains reference runtime. The development Compose is a separate surface.
 
 ## Capabilities and protected traffic
@@ -23,31 +24,19 @@ native in-place upgrades, host timezone changes and Speedtest are unavailable. R
 metrics describe the container. Use the Docker host's administration tools for container
 lifecycle; the application has no Docker socket or authority over the host.
 
-## Start and access the candidate
+## Start and access the appliance
 
-Use the reviewed appliance Compose file from the matching source checkout. The target is
-rootful Linux Docker Engine 28 or newer, Compose v2 and amd64, with host WireGuard/nftables
-and TUN prerequisites. See the [candidate build and deployment contract](docker-appliance-candidate.md).
-Supply `EXITLANE_IMAGE` as the exact reviewed image digest or local immutable image ID.
-Keep that identity and the matching Compose configuration for recovery.
+Use the [Docker deployment Quick Start](docker-deployment.md#quick-start). It provides the
+exact v1.0.0 source checkout, official versioned image and digest verification, saved `.env`,
+explicit host LAN bindings, immutable-image preflight and Compose startup commands.
+Use Linux amd64, rootful Engine >=28 and Compose v2 with kernel WireGuard/nftables and TUN.
+The development Compose and historical candidate build instructions are separate surfaces.
 
-Both management TCP and ingress UDP bind to loopback by default. Set
-`EXITLANE_INGRESS_BIND` to the intended host address for the router. Direct trusted-LAN
-management requires an explicit `EXITLANE_MANAGEMENT_BIND`. Keep management access limited
-to the intended network; check Docker's actual forwarding path as well as host firewall policy.
-
-From the matching source checkout on the Docker host:
-
-```bash
-python3 scripts/check_docker_appliance_host.py
-docker compose -f docker/compose.appliance.yml up -d
-docker compose -f docker/compose.appliance.yml ps
-```
-
-Open the configured management address on port 8787, complete administrator/MFA setup and
-configure WireGuard ingress and a direct provider. Setup may finish without a provider;
-protected clients remain blocked. Verify DNS and the expected public VPN exit from an actual
-routed client after connecting.
+Run lifecycle commands from that same deployment directory, with its saved `.env` and project
+name. Open the configured management address on port 8787, complete administrator/MFA setup,
+configure WireGuard ingress and connect a supported direct provider. Setup may finish without
+a provider; protected clients remain blocked. Verify DNS and the expected VPN public exit from
+an actual routed client after connecting.
 
 For HTTPS, follow the [reverse-proxy guide](deployment/reverse-proxy.md). Trust only the
 verified immediate proxy peer. A bridge gateway or an entire private subnet is not implicitly
@@ -89,9 +78,9 @@ Create a backup through the supervisor, using a masked interactive passphrase pr
 docker compose -f docker/compose.appliance.yml exec exitlane python -m exitlane.container_cli backup
 ```
 
-The result identifies the generated backup under `/data/backups`. Copy that encrypted file
-to a protected off-host location and verify it with the compatible backup verification tooling
-described in the backup guide. Retain the passphrase separately. Do not put a passphrase in
+The result identifies the generated backup under `/data/backups`. Follow the
+[Docker backup/export/verify/restore commands](docker-deployment.md#backup-export-verify-and-restore)
+to verify and copy that encrypted file to a protected off-host location. Retain the passphrase separately. Do not put a passphrase in
 arguments, environment variables, logs or shell history. Automated supervisor calls accept
 one bounded passphrase line on stdin with `--passphrase-stdin`.
 
@@ -115,9 +104,10 @@ and the matching Compose/host configuration. Layout 1 currently accepts schema i
 `[1,1]`; a label-only replacement test does not prove arbitrary cross-release compatibility.
 
 Select the reviewed compatible target image in `EXITLANE_IMAGE`, rerun the host preflight
-and recreate with the appliance Compose file. Pull only an explicitly reviewed image digest
-when a published image becomes available. The official stable target is `ghcr.io/kevindraai/exitlane:v1.0.0`; verify publication and its
-digest receipt first. No `latest` alias is defined.
+and recreate with the appliance Compose file. Follow the
+[upgrade/rollback commands](docker-deployment.md#upgrade-and-rollback) and verify the published
+image digest against its release receipt. The official versioned image is
+`ghcr.io/kevindraai/exitlane:v1.0.0`; no `latest` alias is defined.
 Keep the existing volume. Verify login/MFA, saved state and fresh protected client traffic.
 
 Rollback may reuse the volume only if the previous image accepts its state/schema. Otherwise,

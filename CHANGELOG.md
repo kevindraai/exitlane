@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.0] - 2026-10-04
+
+### Changed
+
+- Promote the v1 RC to the stable version with the same native/Docker provider and privilege contract.
+- Provide one versioned Docker operator path, digest pinning, health and first-run checks,
+  encrypted backup/export/verification/restore and compatible upgrades/rollback.
+- Retain transparent reviewed Debian residual risks and full scanner/SBOM/provenance evidence.
+- Preserve the live-commercial PIA/Proton qualification limitation and native-only NordVPN.
+
+Publication and exact final source/image acceptance are recorded in the
+[stable release receipts](docs/release-notes/1.0.0.md#release-and-image-receipts).
+
 ## [1.0.0-rc.1] - 2026-10-04
 
 ### Changed
