@@ -11,8 +11,8 @@ for versioned files, the official `ghcr.io/kevindraai/exitlane:v1.0.0` image, ve
 pinning, explicit trusted-LAN bindings, preflight, first-run setup and health checks. Its
 [lifecycle instructions](../docs/docker-deployment.md#lifecycle-and-state) cover restart,
 volume ownership, encrypted backup/export/verification/restore, upgrades and compatible rollback.
-Stable source/image publication and final digest evidence are pending until recorded in the
-[v1.0.0 release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0).
+Verify source/image publication and the immutable digest against the
+[v1 release receipts](../docs/release-notes/1.0.0.md#release-and-image-receipts) before deployment.
 
 Use `compose.appliance.yml` for the appliance. It gives ExitLane its own nftables/routing namespace
 while Docker owns host bridge/NAT. Keep the minimum privilege contract: no privileged container,

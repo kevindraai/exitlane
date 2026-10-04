@@ -158,6 +158,10 @@ checks remain required. No Docker latest alias or protected production-data muta
 
 ## Canonical v1 readiness matrix
 
+Stable promotion changes version metadata and documentation only. Preserve qualified RC receipts
+and bind final v1.0.0 source/image results in the [stable release receipts](release-notes/1.0.0.md#release-and-image-receipts).
+Record each result in the published release and linked acceptance issues.
+
 The 2026-10-04 executive order is the current Product Owner authority for all publication stages.
 The support matrix and product exclusions are accepted decisions, not review questions. Every
 completion claim below still requires exact-source/runtime evidence; the historical receipts
@@ -174,7 +178,7 @@ following this matrix remain intact and must not be relabelled as a fresh candid
 | v1 RC | Fresh bounded Astra High challenge, exact candidate checks and upgrade from qualified rc.4 | Engineering gates remain; publication authorized without another approval question. |
 | Stable release | Exact-source checks, independent review, native install/upgrade, verified tag/artifacts/checksums, stable/latest designation | Complete after qualified RC; no unrelated features or arbitrary soak period. |
 | Official Docker (#90/#97) | Versioned v1.0.0 image, immutable digest, verified provenance/SBOM, public anonymous pull, Compose runtime/backup/restore/provider-or-block | Mandatory part of v1 completion; attach exact final image receipts before closing issues. No latest alias. |
-| Operator documentation | Complete versioned [Docker Quick Start](docker-deployment.md#quick-start), lifecycle and accurate native/Docker Help | Candidate documentation prepared; replace pending publication statements only with actual stable/image receipts. |
+| Operator documentation | Complete versioned [Docker Quick Start](docker-deployment.md#quick-start), lifecycle and accurate native/Docker Help | Stable documentation prepared; [release/image receipts](release-notes/1.0.0.md#release-and-image-receipts) must establish final publication and qualification. |
 | Repository/CI | One PR at a time, exact-head review/checks, fresh-main reconciliation and all applicable CI/security tests | Required after each relevant merge and on final clean main. |
 
 The release ladder is rc.4 public qualification → exact v1 RC qualification/publication → stable

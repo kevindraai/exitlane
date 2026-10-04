@@ -2,16 +2,16 @@
 
 > For Docker, use [image replacement and recovery](docker-operations.md#image-replacement-and-recovery). The Debian installer and systemd commands below apply only to native installations.
 
-The 0.3.0-rc.4 candidate retains the native in-place upgrade path from `v0.3.0-rc.3`,
-`v0.3.0-rc.2`, `v0.3.0-rc.1` and the published `v0.2.0` tag
-on Debian 13 `amd64`. The historical `v0.2.0` tag reports runtime version `0.2.0-rc.1` and Python package
-version `0.2.0rc1`; this is expected metadata, not evidence that another installation was selected.
-The target runtime version is `0.3.0-rc.4` and its Python package version is `0.3.0rc4`.
-Exact rc.4 upgrade, preservation and rollback receipts remain release gates; consult the
-[rc.4 release notes](release-notes/0.3.0-rc.4.md) before treating this candidate as qualified.
-This guide covers the native Debian installer. Experimental container image replacement uses the
-[candidate lifecycle contract](docker-appliance-candidate.md#lifecycle-recovery-and-upgrades);
-Docker remains unsupported and no official production image is available.
+Stable v1 provides the native in-place upgrade path on Debian 13 amd64, including upgrades
+from qualified rc.4 and v1 RC appliances. Existing supported historical upgrade paths remain
+regression obligations. The historical `v0.2.0` tag reports runtime `0.2.0-rc.1` and package
+`0.2.0rc1`; this is expected metadata. Stable target runtime and Python package versions are `1.0.0`.
+Final installation/upgrade/preservation/recovery receipts are linked by the
+[published v1.0.0 release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0).
+
+This guide covers the native Debian installer. Docker uses the separate
+[image upgrade/rollback operator path](docker-deployment.md#upgrade-and-rollback), retaining
+the same persistent volume only when the target image accepts its state/schema.
 
 ## Before upgrading
 
@@ -20,16 +20,16 @@ client-traffic interruption. Record any custom `/etc/default/exitlane`, systemd,
 router settings separately. Do not change settings in the browser during the upgrade.
 
 ```bash
-sudo exitlane-cli backup create /var/lib/exitlane/backups/pre-0.3.0-rc.4.elb
-sudo exitlane-cli backup verify /var/lib/exitlane/backups/pre-0.3.0-rc.4.elb
+sudo exitlane-cli backup create /var/lib/exitlane/backups/pre-1.0.0.elb
+sudo exitlane-cli backup verify /var/lib/exitlane/backups/pre-1.0.0.elb
 ```
 
 Keep a protected copy outside the appliance. Once the target tag is published, use a separate
 release checkout so the installer source is never the live `/opt/exitlane` directory:
 
 ```bash
-git clone --branch v0.3.0-rc.4 --depth 1 https://github.com/kevindraai/exitlane.git exitlane-0.3.0-rc.4
-cd exitlane-0.3.0-rc.4
+git clone --branch v1.0.0 --depth 1 https://github.com/kevindraai/exitlane.git exitlane-1.0.0
+cd exitlane-1.0.0
 sudo ./installer/install-debian.sh
 ```
 

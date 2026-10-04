@@ -4,7 +4,10 @@
 > and all-HIGH scanner policy statements describe the original delivery boundary.
 > The executive order fixes v1 support and authorizes publication under the residual-risk
 > policy. Use [Docker deployment](docker-deployment.md) and [SECURITY](../SECURITY.md)
-> for the current operator/support contract. Exact stable-image delivery remains pending.
+> for the current operator/support contract. Final source/image receipts are recorded in the
+> [published v1.0.0 release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0).
+
+## Dated implementation evidence
 
 D2 delivered container network lifecycle primitives and a bounded worker supervisor. Its isolated
 slice did not enable the full application container runtime or durable recovery. D3–D7 subsequently

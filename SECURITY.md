@@ -2,14 +2,13 @@
 
 ## Supported versions
 
-ExitLane remains pre-release software. Security fixes target the most recent published release or
-release candidate. This policy accompanies `v1.0.0-rc.1` and takes effect when that candidate is
-published; a preparation branch or draft release does not supersede the current published version.
+Security fixes target the current published stable release. This policy accompanies `v1.0.0`
+and takes effect on publication.
 
 | Version | Supported |
 | --- | --- |
-| v1.0.0-rc.1 | Yes, upon publication |
-| v0.3.0-rc.4 and earlier | Superseded upon publication of v1.0.0-rc.1 |
+| v1.0.0 | Yes, upon publication |
+| v1.0.0-rc.1 and earlier | Superseded upon publication of v1.0.0 |
 | v0.2.0 | No |
 | Earlier prereleases and v0.1.x | No |
 
@@ -64,7 +63,8 @@ privileged LXC. ExitLane needs root-level network administration to operate its 
 Use a dedicated appliance and keep local console recovery available. Unprivileged LXC, other Debian releases and other architectures are outside native support.
 The Docker v1 target is rootful Linux amd64, Engine >=28 and Compose v2, NET_ADMIN/TUN,
 read-only root and a private durable state volume; see the [Docker deployment guide](docs/docker-deployment.md).
-Final stable-image qualification/publication and anonymous pull remain required before announcing availability.
+Use the [v1 release/image receipts](docs/release-notes/1.0.0.md#release-and-image-receipts)
+to establish final qualification, publication and anonymous-pull acceptance before deployment.
 
 Mullvad egress currently supports IPv4. Its mandatory routing guard protects active and interrupted
 connections, while the optional ExitLane killswitch controls whether routed clients may use direct

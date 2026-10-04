@@ -4,11 +4,11 @@
 
 ExitLane is a self-hosted egress appliance for routers, VLANs, and selected devices. Your router maintains one permanent WireGuard tunnel to ExitLane, while ExitLane manages outbound connection through NordVPN, Mullvad, PIA, or imported Proton VPN profiles.
 
-The **1.0.0-rc.1** release candidate fixes the v1 support matrix: native Debian 13 amd64
-with NordVPN, Mullvad, PIA and imported Proton, and the constrained Docker appliance with the
-three direct providers. See [v1 RC release notes](docs/release-notes/1.0.0-rc.1.md).
-Stable source and official image publication remain the final delivery steps; this candidate
-does not claim the stable image is already available.
+ExitLane **1.0.0** provides the v1 appliance contract: native Debian 13 amd64 supports
+NordVPN, Mullvad, PIA and imported Proton WireGuard; the Docker appliance supports the three
+direct providers. See [v1.0.0 release notes](docs/release-notes/1.0.0.md) for scope and the
+[published release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0) for source, artifact
+and image qualification receipts.
 
 The result is an experience closer to a native VPN app, but for an entire network: switch countries, reconnect, use the fastest available server, and keep provider-specific configuration away from your router.
 
@@ -40,7 +40,7 @@ public-path installation against the published tag.
 For a native Debian host or manually created LXC, install a published release tag rather than the moving development branch. For this release:
 
 ```bash
-git clone --branch v1.0.0-rc.1 --depth 1 https://github.com/kevindraai/exitlane.git
+git clone --branch v1.0.0 --depth 1 https://github.com/kevindraai/exitlane.git
 cd exitlane
 sudo ./installer/install-debian.sh
 ```
@@ -202,8 +202,9 @@ Live commercial PIA/Proton interoperability remains unqualified.
 Follow the [complete Docker Quick Start](docs/docker-deployment.md#quick-start) for exact
 versioned files, explicit host LAN binds, image digest pinning, preflight and setup. It also
 covers health, persistence, backup/export/verification/restore, upgrades and rollback. The
-official target is `ghcr.io/kevindraai/exitlane:v1.0.0`; stable image publication, attestations,
-exact-image qualification and anonymous pull are mandatory remaining delivery evidence.
+official versioned image is `ghcr.io/kevindraai/exitlane:v1.0.0`; use the
+[v1 release receipts](docs/release-notes/1.0.0.md#release-and-image-receipts) to verify its published
+digest, attestations, exact-image qualification and anonymous-pull acceptance before deploying.
 No `latest` alias is defined. Reviewed unfixed Debian findings receive transparent residual-risk
 dispositions under [SECURITY](SECURITY.md); actionable findings still block publication.
 

@@ -5,10 +5,10 @@ reference runtime. Docker v1 supports Mullvad, PIA and imported Proton WireGuard
 additionally supports NordVPN. NordVPN is unavailable inside Docker. Live commercial PIA/Proton
 interoperability remains unqualified; synthetic qualification is not a live-provider claim.
 
-Publication status: the stable `v1.0.0` source and official image are being delivered. Use the
-commands below only after the [v1.0.0 release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0)
-and its image/digest receipt are published. This guide does not assert that publication or final
-image qualification has already completed.
+Use the published [v1.0.0 release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0)
+and its [source/image qualification receipts](release-notes/1.0.0.md#release-and-image-receipts)
+to verify availability, immutable digest and acceptance before running deployment commands.
+
 
 ## Prerequisites
 

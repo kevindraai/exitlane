@@ -5,7 +5,7 @@ may be configured, but exactly one registered provider can be selected as active
 active provider may receive a connect, reconnect, location-selection, or latency-selection mutation
 from ExitLane. The Docker v1 container registry exposes only the three direct providers;
 NordVPN is unavailable there. The [operator contract](../docker-deployment.md) fixes the supported
-host/privilege matrix; stable-image publication and final qualification remain pending.
+host/privilege matrix; the [v1 release receipts](../release-notes/1.0.0.md#release-and-image-receipts) bind publication and final qualification.
 PIA and Proton have synthetic/native-kernel qualification; live provider proof remains outstanding.
 
 ## Boundaries

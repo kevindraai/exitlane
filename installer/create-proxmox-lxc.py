@@ -114,7 +114,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--startup", help="PVE startup order, for example order=2,up=30"
     )
     parser.add_argument(
-        "--ref", default="v1.0.0-rc.1", help="published ExitLane release tag"
+        "--ref", default="v1.0.0", help="published ExitLane release tag"
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="show planned commands; make no changes"
