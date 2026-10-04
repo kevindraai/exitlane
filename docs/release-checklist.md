@@ -45,11 +45,15 @@ not merge a release pull request unless explicitly instructed.
 - [ ] Built package metadata reports the expected PEP 440 version.
 - [ ] Final package contents and generated artifacts contain no secrets,
   sessions, private keys, backups, logs, databases, or unexpected files.
-- [ ] No blocking critical or high finding affects the application packages or supported native
-  release. Classify findings by affected artifact and native/shared applicability. Docker-only
-  base/OS findings remain blockers for the separate image publication, with complete evidence
-  retained and no waiver. Any shared/native applicable HIGH/CRITICAL still blocks the application
-  release. Review medium findings with linked disposition; do not suppress scanner evidence.
+- [ ] Complete scanner evidence and original severities are retained. Secrets, applicable
+  application/shared dependency findings, unconsumed supported fixes, concrete remediable
+  exploits and security/isolation regressions block release. Unfixed upstream Debian findings
+  may receive an explicit residual-platform-risk disposition with exact package/version/CVE,
+  applicability, mitigations, owner and evidence; no scanner ignores, severity changes,
+  unsupported suites or manual library replacements. Reconcile native and Docker inventories
+  separately against the exact candidate. The Docker policy gate must pass and its decision
+  report must reference the complete scan hash; reviewed OS residuals never excuse an
+  application advisory or a newly available fix. See [security policy](../SECURITY.md).
 - [ ] Commands, counts, results, and links for final validation are recorded as
   release evidence.
 
@@ -147,11 +151,17 @@ The work order therefore authorizes a two-stage sequence, solely for this public
   is an rc.4 defect: retain evidence, diagnose and use a bounded reviewed follow-up release. Never
   move the rc.4 tag or claim #87 completed without proof.
 
-No Docker publication, support declaration, container aliases or production rollout is authorized.
+The 2026-10-04 Product Owner executive order authorizes the complete rc.4 → v1 RC →
+stable v1 release ladder, protected versioned GHCR publication and public-package acceptance.
+Earlier authorization holds in historical matrix entries below are superseded. Engineering
+checks remain required. No Docker latest alias or protected production-data mutation is implied.
 
 ## Canonical v1 readiness matrix
 
-This section owns the v1 blocker classification. The preceding checklist remains the qualification
+The executive order supersedes historical blocker classifications below: live PIA/Proton
+credentials are claim-specific (#72), reviewed supported-unfixed Debian findings are residual
+platform risks, and Docker publication is part of v1 delivery. This section records the prior
+readiness matrix; current source-bound completion receipts must reconcile every row. The preceding checklist remains the qualification
 contract; the roadmap links here rather than maintaining a second acceptance matrix. Source-bound
 receipts, hashes and hosted run results belong in linked issue/release records. A historical receipt
 is not a fresh candidate result. Reconcile this matrix after each accepted merge and before RC

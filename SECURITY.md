@@ -67,3 +67,31 @@ other Debian releases and other architectures are not supported release targets.
 Mullvad egress currently supports IPv4. Its mandatory routing guard protects active and interrupted
 connections, while the optional ExitLane killswitch controls whether routed clients may use direct
 egress after an explicit disconnect. See the [Mullvad operator guide](docs/mullvad.md).
+
+## v1 release vulnerability decisions
+
+The Product Owner's 2026-10-04 release policy applies to native Debian and the Docker
+image. Preserve complete scanner results and original severities. Secrets, materially
+applicable application/shared dependency vulnerabilities, supported fixes not consumed,
+concrete exploitable conditions we can remediate, and security/isolation regressions block
+release. Application/Python HIGH/CRITICAL findings remain conservatively blocking in the
+Docker automated gate; they cannot borrow an OS risk disposition.
+
+An upstream Debian vulnerability with no supported fix can be a documented residual platform
+risk after exact CVE/package/version/severity review, applicability assessment and available
+mitigations. It does not indefinitely prevent publication. Unsupported-suite substitution,
+manual replacement of distribution libraries, severity changes and scanner ignores are forbidden.
+The [native disposition](docs/qualification/native-os-advisories-2026-10-03.json) retains the
+native inventory; the [Docker residual manifest](docs/security/docker-residual-risks.json)
+records exactly reviewed Debian image identities and prerequisite/mitigation evidence.
+These historical inventories must be reconciled against each new release scan.
+
+The Docker workflow retains full Trivy JSON and a separate decision report bound to its SHA-256.
+`scripts/check_release_scan.py` blocks every secret, every HIGH/CRITICAL application finding,
+every HIGH/CRITICAL finding with a supported scanner fix, and every unreviewed HIGH/CRITICAL
+OS identity. Only unfixed, exact reviewed Debian identities receive residual status. A changed
+package version, CVE, severity or distribution requires fresh review. Scan errors or missing OS/
+Python coverage fail closed. Review new scanner findings through a normal independently reviewed
+PR, rather than adding ignores. Runtime/security qualification remains mandatory independently
+of scanner disposition. Maintainers monitor Debian updates and consume supported fixes in the
+next applicable release; operators keep their Docker host and native appliance maintained.

@@ -16,3 +16,12 @@ or attached qualification report. Historical scan results do not complete a new 
 - [ ] GitHub security-settings checklist reviewed
 - [ ] changelog contains a security section
 - [ ] each open finding records severity, owner, status and rationale
+
+- [ ] Complete native/image scanner evidence retained with unchanged severities and hashes;
+  release decisions follow [the v1 policy](../../SECURITY.md#v1-release-vulnerability-decisions)
+- [ ] Every unfixed Debian HIGH/CRITICAL residual has exact CVE/package/version identity,
+  applicability, mitigations, owner and reviewed evidence; supported fixes are consumed
+- [ ] Docker `check_release_scan.py` passes against the exact image report and reviewed manifest;
+  secrets, application findings, fixable OS findings and unreviewed identities block publication
+- [ ] No runtime/isolation regression remains; scanner residual dispositions do not replace
+  installer, lifecycle, recovery, TLS or no-plaintext-fallback qualification
