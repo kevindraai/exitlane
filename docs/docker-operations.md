@@ -114,3 +114,22 @@ Rollback may reuse the volume only if the previous image accepts its state/schem
 use the matching pre-upgrade image and verified backup under the recovery contract. Preserve
 failed state for diagnosis. Never use `down -v` as a recovery step or run the Debian installer
 inside the container.
+
+
+## Recovering an incomplete image attestation
+
+A version tag is immutable even when a later attestation step fails. Maintainers use the
+protected Docker release workflow's explicit `resume_digest` and `original_run_id` inputs
+with the same published application tag/source and typed confirmation. This path never
+rebuilds or pushes the image. It requires a completed original official run whose exact
+build, security, publication and pulled-image qualification steps passed and whose only
+failed step was provenance attestation. The original push log must bind the exact tag and
+digest; fresh metadata/content, TLS, state, scanner and SBOM checks still run.
+
+Corrected provenance uses the GitHub Actions workflow build type. It describes the original
+build's source/workflow/invocation separately from the current recovery workflow and signing
+invocation; recovery does not claim a new image build. The protected environment and normal
+review remain required. Complete original logs, digest decision, SPDX, predicates, signed
+bundles and verification JSON are retained as workflow evidence and a uniquely named, checksum-bound
+GitHub release asset. Recovery never replaces an existing release asset. Never move the release tag,
+overwrite the registry version, or weaken environment protection to recover an attestation.

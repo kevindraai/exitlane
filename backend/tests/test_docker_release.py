@@ -10,6 +10,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import docker_release_provenance as provenance
 import push_ghcr_image as push
+import resume_docker_release as resume
 import validate_docker_release as release
 
 SHA = "a" * 40
@@ -315,7 +316,9 @@ def test_verified_signature_alone_cannot_accept_wrong_application_provenance(fie
             "gitCommit"
         ] = "e" * 40
     elif field == "tag":
-        statement["predicate"]["buildDefinition"]["externalParameters"]["releaseTag"] = "v9.9.9"
+        statement["predicate"]["buildDefinition"]["externalParameters"]["inputs"]["release_tag"] = (
+            "v9.9.9"
+        )
     elif field == "digest":
         statement["subject"][0]["digest"]["sha256"] = "e" * 64
     else:
@@ -429,3 +432,154 @@ def test_push_rejects_failed_missing_or_ambiguous_digest(output, code):
 def test_push_accepts_only_exact_release_tags_for_project_image(image):
     with pytest.raises(push.PushError, match="docker_push_image_invalid"):
         push.push_digest(image, run=lambda *a, **k: pytest.fail("must validate before push"))
+
+
+def resume_origin():
+    run = {
+        "id": 123,
+        "head_sha": SHA,
+        "head_branch": "main",
+        "event": "workflow_dispatch",
+        "path": ".github/workflows/docker-release.yml",
+        "status": "completed",
+        "conclusion": "failure",
+        "repository": {"full_name": "kevindraai/exitlane"},
+        "run_attempt": 1,
+    }
+    steps = [{"name": name, "conclusion": "success"} for name in resume.QUALIFIED_STEPS]
+    steps.append({"name": "Attest image build provenance", "conclusion": "failure"})
+    return (
+        run,
+        [{"name": "publish", "steps": steps}],
+        ("Pushed ghcr.io/kevindraai/exitlane:v1.2.3 with digest sha256:" + "d" * 64),
+    )
+
+
+def recover(run=None, jobs=None, log=None):
+    original_run, original_jobs, original_log = resume_origin()
+    return resume.validate_origin(
+        run=original_run if run is None else run,
+        jobs=original_jobs if jobs is None else jobs,
+        log=original_log if log is None else log,
+        run_id="123",
+        tag="v1.2.3",
+        source_sha=SHA,
+        digest="sha256:" + "d" * 64,
+    )
+
+
+def test_resume_binds_qualified_failed_run_without_any_push():
+    result = recover()
+    assert result["original_invocation"] == "123/1"
+    assert result["original_workflow_sha"] == SHA
+    assert result["digest"] == "sha256:" + "d" * 64
+
+
+@pytest.mark.parametrize(
+    "field", ["head_sha", "head_branch", "event", "path", "status", "conclusion"]
+)
+def test_resume_refuses_untrusted_or_unfinished_origin(field):
+    run, _, _ = resume_origin()
+    run[field] = "different"
+    with pytest.raises(release.ReleaseValidationError):
+        recover(run=run)
+
+
+@pytest.mark.parametrize("step", resume.QUALIFIED_STEPS)
+def test_resume_requires_every_original_qualification_and_publication_step(step):
+    _, jobs, _ = resume_origin()
+    next(s for s in jobs[0]["steps"] if s["name"] == step)["conclusion"] = "failure"
+    with pytest.raises(release.ReleaseValidationError):
+        recover(jobs=jobs)
+
+
+@pytest.mark.parametrize(
+    "log",
+    [
+        "",
+        "different digest",
+        "Pushed ghcr.io/kevindraai/exitlane:v9.9.9 with digest sha256:" + "d" * 64,
+    ],
+)
+def test_resume_refuses_missing_or_other_tag_push_evidence(log):
+    with pytest.raises(release.ReleaseValidationError):
+        recover(log=log)
+
+
+def test_resume_refuses_mismatched_digest_even_after_qualified_push():
+    _, _, log = resume_origin()
+    with pytest.raises(release.ReleaseValidationError):
+        recover(log=log.replace("d" * 64, "e" * 64))
+
+
+def test_recovery_provenance_names_original_build_and_current_attestor_separately():
+    recovered = recover()
+    result = provenance.predicate(
+        tag="v1.2.3", source_sha=SHA, workflow_sha=MAIN, invocation="456/1", recovery=recovered
+    )
+    definition = result["buildDefinition"]
+    assert definition["buildType"] == "https://actions.github.io/buildtypes/workflow/v1"
+    assert definition["externalParameters"]["workflow"] == {
+        "ref": "refs/heads/main",
+        "repository": provenance.REPOSITORY,
+        "path": ".github/workflows/docker-release.yml",
+    }
+    assert definition["resolvedDependencies"][1]["digest"]["gitCommit"] == SHA
+    assert result["runDetails"]["metadata"]["invocationId"].endswith("/123/attempts/1")
+    recovery = definition["internalParameters"]["exitlaneRecovery"]
+    assert recovery["operation"] == "qualify-and-attest-existing-image"
+    assert recovery["attestingWorkflowSha"] == MAIN
+    assert definition["resolvedDependencies"][2] == {
+        "uri": "git+" + provenance.REPOSITORY + "@" + MAIN,
+        "digest": {"gitCommit": MAIN},
+        "annotations": {"exitlane:role": "attestation-recovery-workflow"},
+    }
+    assert recovery["attestationInvocation"].endswith("/456/attempts/1")
+
+
+def test_verified_recovery_provenance_cannot_be_reused_for_another_digest():
+    expected = provenance.predicate(
+        tag="v1.2.3", source_sha=SHA, workflow_sha=MAIN, invocation="456/1", recovery=recover()
+    )
+    with pytest.raises(release.ReleaseValidationError, match="recovery_digest_mismatch"):
+        provenance.verify([], digest="sha256:" + "e" * 64, expected=expected)
+
+
+def test_workflow_recovery_skips_build_and_push_and_retains_original_evidence():
+    workflow = (
+        Path(__file__).resolve().parents[2] / ".github/workflows/docker-release.yml"
+    ).read_text()
+    assert "if: ${{ inputs.resume_digest == '' }}" in workflow
+    assert "scripts/resume_docker_release.py" in workflow
+    assert "recovery-original-build.log" in workflow
+    assert "steps.provenance.outputs.bundle-path" in workflow
+    assert "sbom-verification.json" in workflow
+
+
+def test_recovery_evidence_is_permanently_attached_without_replacing_release_assets():
+    workflow = (
+        Path(__file__).resolve().parents[2] / ".github/workflows/docker-release.yml"
+    ).read_text()
+    assert (
+        'archive="docker-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-evidence.tar.gz"'
+        in workflow
+    )
+    assert 'sha256sum "$archive" > "$archive.sha256"' in workflow
+    assert 'gh release upload "$RELEASE_TAG"' in workflow
+    assert "--clobber" not in workflow
+
+
+def test_resume_rejects_other_failure_or_duplicate_publish_jobs():
+    _, jobs, _ = resume_origin()
+    jobs[0]["steps"][-1]["name"] = "Create SPDX SBOM for exact release image"
+    with pytest.raises(release.ReleaseValidationError):
+        recover(jobs=jobs)
+    _, jobs, _ = resume_origin()
+    with pytest.raises(release.ReleaseValidationError):
+        recover(jobs=jobs + jobs)
+
+
+def test_resume_rejects_ambiguous_push_receipt():
+    _, _, log = resume_origin()
+    with pytest.raises(release.ReleaseValidationError):
+        recover(log=log + "\n" + log)
