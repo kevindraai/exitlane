@@ -66,15 +66,15 @@ provider proof remains outstanding. WireGuard is the separate ingress boundary: 
 clients send selected traffic to ExitLane without router-specific logic in the core.
 
 An explicit runtime composition boundary selects native systemd adapters or the separate
-experimental container supervisor. Both share the application, provider transactions and
+container supervisor. Both share the application, provider transactions and
 validation controls; capabilities deny unavailable actions in API/UI/CLI. The container registry
 excludes NordVPN, uses a permanent provider-or-block ingress policy, supervises mutation leases and
 journalled recovery, reports cgroup-aware resource facts and treats timezone as an application IANA
 setting. Native host timezone, service and power behavior remains unchanged. D1–D7 implementation
-is delivered and historical D6 synthetic disposable-host qualification passed. Docker remains
-unsupported and no official production image has been published. See the
-[runtime architecture](docker-runtime-architecture.md), [candidate contract](docker-appliance-candidate.md)
-and [rc.4 release notes](release-notes/0.3.0-rc.4.md) for evidence and remaining release gates.
+is delivered and historical D6 synthetic disposable-host qualification passed. The v1 Docker
+support matrix is fixed; exact stable-image qualification, public registry/digest and attestations
+remain delivery requirements. See the [Docker operator path](docker-deployment.md),
+[runtime architecture](docker-runtime-architecture.md) and version-bound release receipts.
 
 Provider status keeps installation, authentication, and tunnel connection as separate states and
 includes backend-determined capabilities. The capability model currently exposes sign-in,
@@ -126,5 +126,4 @@ repository nor signing key, and installation never starts a measurement. See
   management network.
 
 These boundaries retain one appliance core with encrypted backup/restore and four native provider
-integrations. Further providers and a supported public API remain future work; experimental
-container implementation does not imply Docker support or completed rc.4 release qualification.
+integrations. Further providers and a supported public API remain future work; container support requires the documented host contract and exact published-image qualification.

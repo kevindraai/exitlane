@@ -1,5 +1,11 @@
 # Docker appliance feasibility — issue #76
 
+> Historical implementation/qualification record. Older unsupported/publication-hold
+> and all-HIGH scanner policy statements describe the original delivery boundary.
+> The executive order fixes v1 support and authorizes publication under the residual-risk
+> policy. Use [Docker deployment](docker-deployment.md) and [SECURITY](../SECURITY.md)
+> for the current operator/support contract. Exact stable-image delivery remains pending.
+
 - Assessment date: 2026-09-30
 - Baseline: `main` at `55cc970` (after the Proxmox helper)
 - Decision: **Not yet suitable as an ExitLane VPN appliance**

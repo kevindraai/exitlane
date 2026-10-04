@@ -1,5 +1,12 @@
 # Docker runtime architecture and implementation program
 
+> Historical architecture/program record (2026-09-30). Statements below about experimental
+> status, publication holds and the former all-HIGH gate describe that dated baseline.
+> The 2026-10-04 executive order supersedes them: the v1 support matrix is fixed, publication
+> is authorized, and reviewed unfixed Debian risks follow [SECURITY](../SECURITY.md).
+> Use the [Docker deployment guide](docker-deployment.md) for current operator instructions.
+> Stable publication, exact-image qualification and anonymous pull remain mandatory evidence.
+
 - Decision date: 2026-09-30
 - Status: independently reviewed architecture, **APPROVE**; D1–D7 implementation delivered,
   historical D6 synthetic host qualification passed; **Docker is not supported**

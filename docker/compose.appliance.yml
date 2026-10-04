@@ -1,5 +1,5 @@
-# Experimental D5 appliance. Use the checked launcher; Engine >=28/Compose v2 required.
-# No public production image exists yet. Supply an immutable locally built image identity.
+# V1 appliance: rootful Linux amd64, Engine >=28/Compose v2. Run host preflight first.
+# Supply the verified published registry digest, or a reviewed local immutable image ID.
 services:
   exitlane:
     image: ${EXITLANE_IMAGE:?Supply an immutable image digest or locally loaded image ID}

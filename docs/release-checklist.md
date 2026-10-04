@@ -1,4 +1,4 @@
-# Beta release checklist
+# Release checklist
 
 This checklist is evidence-driven. An incomplete required pre-publication gate blocks tagging
 and publishing the release. The narrowly defined rc.4 public-launcher stage below
@@ -157,6 +157,33 @@ Earlier authorization holds in historical matrix entries below are superseded. E
 checks remain required. No Docker latest alias or protected production-data mutation is implied.
 
 ## Canonical v1 readiness matrix
+
+The 2026-10-04 executive order is the current Product Owner authority for all publication stages.
+The support matrix and product exclusions are accepted decisions, not review questions. Every
+completion claim below still requires exact-source/runtime evidence; the historical receipts
+following this matrix remain intact and must not be relabelled as a fresh candidate result.
+
+| Item | Accepted contract / required outcome | Current decision and remaining evidence |
+| --- | --- | --- |
+| Native support | Debian 13 amd64; NordVPN, Mullvad, PIA and imported Proton | Accepted product scope; exact installer/package/lifecycle/recovery checks remain mandatory. |
+| Docker support | Linux amd64, rootful Engine >=28, Compose v2, NET_ADMIN/TUN, read-only root, durable state; three direct providers | Accepted product scope; exact stable-image/runtime/packet/state evidence, D6 delta reconciliation and publication required. |
+| NordVPN Docker/gateway | Stock NordVPN unavailable inside Docker; separate gateway NO-GO | Settled exclusions; reviewers assess implementation against them. |
+| PIA/Proton live claims (#72) | Truthful unqualified commercial interoperability limit | Claim-specific, not a release blocker; no credentials requested, extracted or awaited. |
+| Security release decision | Resolve actionable findings; preserve full scans and reviewed exact Debian residual dispositions | Exact native/image scans and current applicability/fix review required. Unfixed upstream Debian risk alone does not block. |
+| rc.4/public Proxmox (#87) | Published exact rc.4, fresh moving-main public path and complete lifecycle | Must be qualified before RC preparation; attach real source/tag/helper/access/health/reboot receipts. |
+| v1 RC | Fresh bounded Astra High challenge, exact candidate checks and upgrade from qualified rc.4 | Engineering gates remain; publication authorized without another approval question. |
+| Stable release | Exact-source checks, independent review, native install/upgrade, verified tag/artifacts/checksums, stable/latest designation | Complete after qualified RC; no unrelated features or arbitrary soak period. |
+| Official Docker (#90/#97) | Versioned v1.0.0 image, immutable digest, verified provenance/SBOM, public anonymous pull, Compose runtime/backup/restore/provider-or-block | Mandatory part of v1 completion; attach exact final image receipts before closing issues. No latest alias. |
+| Operator documentation | Complete versioned [Docker Quick Start](docker-deployment.md#quick-start), lifecycle and accurate native/Docker Help | Candidate documentation prepared; replace pending publication statements only with actual stable/image receipts. |
+| Repository/CI | One PR at a time, exact-head review/checks, fresh-main reconciliation and all applicable CI/security tests | Required after each relevant merge and on final clean main. |
+
+The release ladder is rc.4 public qualification → exact v1 RC qualification/publication → stable
+qualification/publication → official stable-image acceptance. Independent reviews discover defects;
+they do not reopen Product Owner scope/risk acceptance. Historical authorization holds and old
+all-HIGH gating below are superseded, while their raw evidence and technical acceptance checks
+remain useful. Post-v1 features stay outside this wave.
+
+## Historical readiness receipts and prior sequencing
 
 The executive order supersedes historical blocker classifications below: live PIA/Proton
 credentials are claim-specific (#72), reviewed supported-unfixed Debian findings are residual

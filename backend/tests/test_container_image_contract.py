@@ -102,7 +102,7 @@ def test_dockerfile_selective_build_and_real_supervised_entrypoint():
     assert "--require-hashes" in text and "--no-deps /tmp/wheel/*.whl" in text
     assert "COPY backend /" not in text and "COPY . " not in text
     assert "COPY LICENSE /usr/share/doc/exitlane/LICENSE" in text
-    assert 'org.exitlane.support="experimental"' in text
+    assert 'org.exitlane.support="v1"' in text
     assert (
         "org.opencontainers.image.revision" in text and "org.opencontainers.image.version" in text
     )
