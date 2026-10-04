@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import subprocess
 import sys
@@ -320,8 +321,8 @@ def test_provenance_distinguishes_older_application_source_from_workflow_source(
     )
     provenance.verify(results, digest="sha256:" + "d" * 64, expected=expected)
     dependencies = expected["buildDefinition"]["resolvedDependencies"]
-    assert dependencies[0]["digest"]["gitCommit"] == SHA
-    assert dependencies[1]["digest"]["gitCommit"] == MAIN
+    assert dependencies[0]["digest"]["gitCommit"] == MAIN
+    assert dependencies[1]["digest"]["gitCommit"] == SHA
 
 
 @pytest.mark.parametrize("field", ["source", "workflow", "tag", "digest", "builder"])
@@ -332,7 +333,7 @@ def test_verified_signature_alone_cannot_accept_wrong_application_provenance(fie
     )
     statement = results[0]["verificationResult"]["statement"]
     if field in ("source", "workflow"):
-        index = 0 if field == "source" else 1
+        index = 1 if field == "source" else 0
         statement["predicate"]["buildDefinition"]["resolvedDependencies"][index]["digest"][
             "gitCommit"
         ] = "e" * 40
@@ -546,7 +547,8 @@ def test_recovery_provenance_names_original_build_and_current_attestor_separatel
         "repository": provenance.REPOSITORY,
         "path": ".github/workflows/docker-release.yml",
     }
-    assert definition["resolvedDependencies"][1]["digest"]["gitCommit"] == MAIN
+    assert definition["resolvedDependencies"][0]["digest"]["gitCommit"] == MAIN
+    assert definition["resolvedDependencies"][1]["digest"]["gitCommit"] == SHA
     assert result["runDetails"]["metadata"]["invocationId"].endswith("/456/attempts/1")
     assert definition["externalParameters"]["inputs"]["resume_digest"] == recovered["digest"]
     assert definition["externalParameters"]["inputs"]["original_run_id"] == "123"
@@ -610,11 +612,23 @@ def test_resume_rejects_ambiguous_push_receipt():
         recover(log=log + "\n" + log)
 
 
-@pytest.mark.parametrize("recovery", [False, True])
-def test_full_canonical_core_matches_executed_pinned_official_generator(recovery):
+def assert_canonical_github_core(actual):
     canonical = json.loads(
         (Path(__file__).parent / "fixtures/github_actions_provenance_v1.json").read_text()
     )
+    core = copy.deepcopy(actual)
+    definition = core["buildDefinition"]
+    # Remove only our documented extensions; preserve every canonical field and order.
+    del definition["externalParameters"]["inputs"]
+    definition["internalParameters"].pop("exitlaneRecovery", None)
+    definition["resolvedDependencies"] = definition["resolvedDependencies"][
+        : len(canonical["buildDefinition"]["resolvedDependencies"])
+    ]
+    assert core == canonical
+
+
+@pytest.mark.parametrize("recovery", [False, True])
+def test_full_canonical_core_matches_executed_pinned_official_generator(recovery):
     actual = provenance.predicate(
         tag="v1.2.3",
         source_sha=SHA,
@@ -622,23 +636,30 @@ def test_full_canonical_core_matches_executed_pinned_official_generator(recovery
         invocation="123/1",
         recovery=recover() if recovery else None,
     )
+    assert_canonical_github_core(actual)
     definition = actual["buildDefinition"]
-    assert definition["buildType"] == canonical["buildDefinition"]["buildType"]
-    assert (
-        definition["externalParameters"]["workflow"]
-        == canonical["buildDefinition"]["externalParameters"]["workflow"]
-    )
-    assert (
-        definition["internalParameters"]["github"]
-        == canonical["buildDefinition"]["internalParameters"]["github"]
-    )
-    assert (
-        definition["resolvedDependencies"][1]
-        == canonical["buildDefinition"]["resolvedDependencies"][0]
-    )
-    assert actual["runDetails"] == canonical["runDetails"]
+    assert definition["resolvedDependencies"][1] == {
+        "uri": "git+" + provenance.REPOSITORY + "@refs/tags/v1.2.3",
+        "digest": {"gitCommit": SHA},
+    }
+    assert len(definition["resolvedDependencies"]) == (3 if recovery else 2)
     if recovery:
         assert definition["internalParameters"]["exitlaneRecovery"]["originalBuild"] == recover()
+
+
+@pytest.mark.parametrize("recovery", [False, True])
+def test_application_first_dependency_fails_complete_canonical_core_check(recovery):
+    actual = provenance.predicate(
+        tag="v1.2.3",
+        source_sha=SHA,
+        workflow_sha=MAIN,
+        invocation="123/1",
+        recovery=recover() if recovery else None,
+    )
+    dependencies = actual["buildDefinition"]["resolvedDependencies"]
+    dependencies[0], dependencies[1] = dependencies[1], dependencies[0]
+    with pytest.raises(AssertionError):
+        assert_canonical_github_core(actual)
 
 
 @pytest.mark.parametrize(
