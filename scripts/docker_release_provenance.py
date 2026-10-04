@@ -114,13 +114,14 @@ def predicate(
             },
             "internalParameters": internal,
             "resolvedDependencies": [
-                {
-                    "uri": "git+" + REPOSITORY + "@refs/tags/" + tag,
-                    "digest": {"gitCommit": source_sha},
-                },
+                # GitHub validates the first dependency as the attesting workflow source.
                 {
                     "uri": "git+" + REPOSITORY + "@refs/heads/main",
                     "digest": {"gitCommit": workflow_sha},
+                },
+                {
+                    "uri": "git+" + REPOSITORY + "@refs/tags/" + tag,
+                    "digest": {"gitCommit": source_sha},
                 },
                 *(
                     [
