@@ -11,6 +11,16 @@ on:
         description: Exact 40-character commit currently tagged by release_tag
         required: true
         type: string
+      resume_digest:
+        description: Existing digest from an otherwise qualified publication run; never repush
+        required: false
+        default: ''
+        type: string
+      original_run_id:
+        description: Failed original Docker publication run (required with resume_digest)
+        required: false
+        default: ''
+        type: string
       confirmation:
         description: Type PUBLISH EXITLANE <release_tag> <source_sha>
         required: true
@@ -47,10 +57,16 @@ jobs:
           if not re.fullmatch(r"[0-9a-f]{40}", os.environ.get("RELEASE_SOURCE_SHA", "")):
               print("docker_release_source_sha_invalid", file=sys.stderr)
               raise SystemExit(1)
+          digest = os.environ.get("RESUME_DIGEST", "")
+          origin = os.environ.get("ORIGINAL_RUN_ID", "")
+          if bool(digest) != bool(origin) or (digest and (not re.fullmatch(r"sha256:[0-9a-f]{64}", digest) or not re.fullmatch(r"[1-9][0-9]*", origin))):
+              raise SystemExit("docker_resume_inputs_invalid")
           PY
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
           RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
+          RESUME_DIGEST: ${{ inputs.resume_digest }}
+          ORIGINAL_RUN_ID: ${{ inputs.original_run_id }}
 
       - name: Checkout trusted workflow source and full ancestry
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -90,12 +106,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
-      contents: read
+      contents: write
       packages: write
       attestations: write
+      actions: read
       id-token: write
     outputs:
-      digest: ${{ steps.push.outputs.digest }}
+      digest: ${{ steps.subject.outputs.digest }}
     steps:
       - name: Checkout trusted release workflow source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -120,7 +137,35 @@ jobs:
           test "$(git rev-parse HEAD)" = "$WORKFLOW_SHA"
           test "$(git -C release-source rev-parse HEAD)" = "$EXPECTED_SHA"
 
+      - name: Bind recovery to the original qualified publication
+        if: ${{ inputs.resume_digest != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ORIGINAL_RUN_ID: ${{ inputs.original_run_id }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+          DIGEST: ${{ inputs.resume_digest }}
+        run: |
+          python3 scripts/resume_docker_release.py --run-id "$ORIGINAL_RUN_ID" \
+            --tag "$RELEASE_TAG" --source-sha "$SOURCE_SHA" --digest "$DIGEST" \
+            --output recovery-origin.json --log-output recovery-original-build.log
+
+      - name: Pull existing version for recovery without rebuilding or pushing
+        if: ${{ inputs.resume_digest != '' }}
+        env:
+          IMAGE: ${{ needs.validate.outputs.image }}
+          DIGEST: ${{ inputs.resume_digest }}
+          APP_VERSION: ${{ needs.validate.outputs.app_version }}
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+        run: |
+          docker pull "$IMAGE"
+          docker image inspect "$IMAGE" --format '{{range .RepoDigests}}{{println .}}{{end}}' | grep -Fx "${IMAGE%:*}@$DIGEST"
+          test "$(docker image inspect "$IMAGE" --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
+          test "$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')" = "$APP_VERSION"
+          test "$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "$SOURCE_SHA"
+
       - name: Build exact versioned amd64 image
+        if: ${{ inputs.resume_digest == '' }}
         env:
           APP_VERSION: ${{ needs.validate.outputs.app_version }}
           SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
@@ -204,6 +249,7 @@ jobs:
         run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USER" --password-stdin
 
       - name: Publish one version tag without replacing an existing release
+        if: ${{ inputs.resume_digest == '' }}
         id: push
         env:
           IMAGE: ${{ needs.validate.outputs.image }}
@@ -211,16 +257,31 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/push_ghcr_image.py --image "$IMAGE" --github-output "$GITHUB_OUTPUT"
 
+      - name: Select qualified publication or recovery digest
+        id: subject
+        env:
+          PUBLISHED_DIGEST: ${{ steps.push.outputs.digest }}
+          RESUME_DIGEST: ${{ inputs.resume_digest }}
+        run: |
+          python3 - <<'PY'
+          import os,re
+          values = [v for v in (os.environ["PUBLISHED_DIGEST"], os.environ["RESUME_DIGEST"]) if v]
+          if len(values) != 1 or not re.fullmatch(r"sha256:[0-9a-f]{64}", values[0]):
+              raise SystemExit("docker_release_subject_invalid")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("digest=" + values[0] + "\n")
+          PY
+
       - name: Pull the exact published digest
         env:
           IMAGE: ${{ needs.validate.outputs.image }}
-          DIGEST: ${{ steps.push.outputs.digest }}
+          DIGEST: ${{ steps.subject.outputs.digest }}
         run: docker pull "${IMAGE%:*}@$DIGEST"
 
       - name: Verify pulled digest metadata and contents
         env:
           IMAGE: ${{ needs.validate.outputs.image }}
-          DIGEST: ${{ steps.push.outputs.digest }}
+          DIGEST: ${{ steps.subject.outputs.digest }}
           APP_VERSION: ${{ needs.validate.outputs.app_version }}
           SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
         run: |
@@ -251,35 +312,42 @@ jobs:
           SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
           WORKFLOW_SHA: ${{ github.sha }}
         run: |
+          recovery=()
+          if test -f recovery-origin.json; then recovery=(--recovery recovery-origin.json); fi
           python3 scripts/docker_release_provenance.py create \
             --tag "$RELEASE_TAG" --source-sha "$SOURCE_SHA" --workflow-sha "$WORKFLOW_SHA" \
-            --invocation "$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT" --output release-provenance.json
+            --invocation "$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT" --output release-provenance.json \
+            "${recovery[@]}"
 
       - name: Attest image build provenance
+        id: provenance
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
           subject-name: ghcr.io/kevindraai/exitlane
-          subject-digest: ${{ steps.push.outputs.digest }}
+          subject-digest: ${{ steps.subject.outputs.digest }}
           predicate-type: https://slsa.dev/provenance/v1
           predicate-path: release-provenance.json
           push-to-registry: true
 
       - name: Attest SPDX SBOM to the image digest
+        id: sbom
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
           subject-name: ghcr.io/kevindraai/exitlane
-          subject-digest: ${{ steps.push.outputs.digest }}
+          subject-digest: ${{ steps.subject.outputs.digest }}
           sbom-path: exitlane.spdx.json
           push-to-registry: true
 
       - name: Verify provenance and SBOM attestations
         env:
           GH_TOKEN: ${{ github.token }}
-          DIGEST: ${{ steps.push.outputs.digest }}
+          DIGEST: ${{ steps.subject.outputs.digest }}
           RELEASE_TAG: ${{ needs.validate.outputs.tag }}
           SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
           WORKFLOW_SHA: ${{ github.sha }}
         run: |
+          recovery=()
+          if test -f recovery-origin.json; then recovery=(--recovery recovery-origin.json); fi
           subject="oci://ghcr.io/kevindraai/exitlane@$DIGEST"
           gh attestation verify "$subject" --repo kevindraai/exitlane \
             --signer-workflow kevindraai/exitlane/.github/workflows/docker-release.yml \
@@ -288,9 +356,44 @@ jobs:
           python3 scripts/docker_release_provenance.py verify \
             --tag "$RELEASE_TAG" --source-sha "$SOURCE_SHA" --workflow-sha "$WORKFLOW_SHA" \
             --invocation "$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT" \
-            --input provenance-verification.json --digest "$DIGEST"
+            --input provenance-verification.json --digest "$DIGEST" "${recovery[@]}"
           gh attestation verify "$subject" --repo kevindraai/exitlane \
             --signer-workflow kevindraai/exitlane/.github/workflows/docker-release.yml \
             --source-ref refs/heads/main --source-digest "$WORKFLOW_SHA" \
             --deny-self-hosted-runners \
-            --predicate-type https://spdx.dev/Document/v2.3
+            --predicate-type https://spdx.dev/Document/v2.3 --format json > sbom-verification.json
+
+      - name: Attach immutable supply chain evidence to the application release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          PROVENANCE_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+          SBOM_BUNDLE: ${{ steps.sbom.outputs.bundle-path }}
+        run: |
+          mkdir -m 0700 docker-release-evidence
+          for file in release-provenance.json exitlane.spdx.json provenance-verification.json sbom-verification.json docker-release-trivy.json docker-release-security-decision.json docker-release-provider-tls.json docker-pulled-provider-tls.json recovery-origin.json recovery-original-build.log; do
+            if test -f "$file"; then cp -- "$file" docker-release-evidence/; fi
+          done
+          cp -- "$PROVENANCE_BUNDLE" docker-release-evidence/provenance.sigstore.json
+          cp -- "$SBOM_BUNDLE" docker-release-evidence/sbom.sigstore.json
+          archive="docker-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-evidence.tar.gz"
+          tar -czf "$archive" docker-release-evidence
+          sha256sum "$archive" > "$archive.sha256"
+          gh release upload "$RELEASE_TAG" "$archive" "$archive.sha256" --repo kevindraai/exitlane
+
+      - name: Retain complete publication and recovery evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docker-release-supply-chain-evidence
+          path: |
+            release-provenance.json
+            exitlane.spdx.json
+            provenance-verification.json
+            sbom-verification.json
+            ${{ steps.provenance.outputs.bundle-path }}
+            ${{ steps.sbom.outputs.bundle-path }}
+            recovery-origin.json
+            recovery-original-build.log
+          if-no-files-found: warn
+          retention-days: 90
