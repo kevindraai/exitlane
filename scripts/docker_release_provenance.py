@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -17,6 +18,40 @@ REPOSITORY = "https://github.com/kevindraai/exitlane"
 WORKFLOW = REPOSITORY + "/.github/workflows/docker-release.yml@refs/heads/main"
 IMAGE = "ghcr.io/kevindraai/exitlane"
 MAX_VERIFICATION_BYTES = 8 * 1024 * 1024
+
+
+def github_context(workflow_sha: str, invocation: str, environ=None) -> dict:
+    """Validate the nonsecret context used by the pinned GitHub provenance generator."""
+    env = os.environ if environ is None else environ
+    required = {
+        "GITHUB_SERVER_URL": "https://github.com",
+        "GITHUB_REPOSITORY": "kevindraai/exitlane",
+        "GITHUB_REF": "refs/heads/main",
+        "GITHUB_SHA": workflow_sha,
+        "GITHUB_WORKFLOW_SHA": workflow_sha,
+        "GITHUB_WORKFLOW_REF": "kevindraai/exitlane/.github/workflows/docker-release.yml@refs/heads/main",
+        "GITHUB_EVENT_NAME": "workflow_dispatch",
+        "RUNNER_ENVIRONMENT": "github-hosted",
+    }
+    if any(env.get(key) != value for key, value in required.items()):
+        raise ReleaseValidationError("docker_release_provenance_github_context_invalid")
+    if (
+        env.get("GITHUB_REPOSITORY_ID") != "1300425127"
+        or env.get("GITHUB_REPOSITORY_OWNER_ID") != "1483233"
+    ):
+        raise ReleaseValidationError(
+            "docker_release_provenance_github_repository_invalid"
+        )
+    if invocation != f"{env.get('GITHUB_RUN_ID')}/{env.get('GITHUB_RUN_ATTEMPT')}":
+        raise ReleaseValidationError(
+            "docker_release_provenance_github_invocation_invalid"
+        )
+    return {
+        "event_name": env["GITHUB_EVENT_NAME"],
+        "repository_id": env["GITHUB_REPOSITORY_ID"],
+        "repository_owner_id": env["GITHUB_REPOSITORY_OWNER_ID"],
+        "runner_environment": env["RUNNER_ENVIRONMENT"],
+    }
 
 
 def predicate(
@@ -32,9 +67,7 @@ def predicate(
         raise ReleaseValidationError("docker_release_provenance_sha_invalid")
     if re.fullmatch(r"[1-9][0-9]*/[1-9][0-9]*", invocation) is None:
         raise ReleaseValidationError("docker_release_provenance_invocation_invalid")
-    original_sha = workflow_sha
-    original_invocation = invocation
-    internal = {}
+    internal = {"github": github_context(workflow_sha, invocation)}
     if recovery is not None:
         if recovery.get("source_sha") != source_sha or recovery.get("tag") != tag:
             raise ReleaseValidationError("docker_release_recovery_source_mismatch")
@@ -52,15 +85,13 @@ def predicate(
             or re.fullmatch(r"[1-9][0-9]*/[1-9][0-9]*", original_invocation) is None
         ):
             raise ReleaseValidationError("docker_release_recovery_identity_invalid")
-        internal = {
-            "exitlaneRecovery": {
-                "operation": "qualify-and-attest-existing-image",
-                "attestingWorkflowSha": workflow_sha,
-                "attestationInvocation": REPOSITORY
-                + "/actions/runs/"
-                + invocation.replace("/", "/attempts/"),
-                "originalBuild": recovery,
-            }
+        internal["exitlaneRecovery"] = {
+            "operation": "qualify-and-attest-existing-image",
+            "attestingWorkflowSha": workflow_sha,
+            "attestationInvocation": REPOSITORY
+            + "/actions/runs/"
+            + invocation.replace("/", "/attempts/"),
+            "originalBuild": recovery,
         }
     return {
         "buildDefinition": {
@@ -75,6 +106,10 @@ def predicate(
                     "release_tag": tag,
                     "source_sha": source_sha,
                     "confirmation": f"PUBLISH EXITLANE {tag} {source_sha}",
+                    "resume_digest": recovery["digest"] if recovery else "",
+                    "original_run_id": recovery["original_invocation"].split("/")[0]
+                    if recovery
+                    else "",
                 },
             },
             "internalParameters": internal,
@@ -85,15 +120,17 @@ def predicate(
                 },
                 {
                     "uri": "git+" + REPOSITORY + "@refs/heads/main",
-                    "digest": {"gitCommit": original_sha},
+                    "digest": {"gitCommit": workflow_sha},
                 },
                 *(
                     [
                         {
-                            "uri": "git+" + REPOSITORY + "@" + workflow_sha,
-                            "digest": {"gitCommit": workflow_sha},
+                            "uri": "oci://" + IMAGE + "@" + recovery["digest"],
+                            "digest": {
+                                "sha256": recovery["digest"].removeprefix("sha256:")
+                            },
                             "annotations": {
-                                "exitlane:role": "attestation-recovery-workflow"
+                                "exitlane:role": "existing-qualified-image"
                             },
                         }
                     ]
@@ -107,7 +144,7 @@ def predicate(
             "metadata": {
                 "invocationId": REPOSITORY
                 + "/actions/runs/"
-                + original_invocation.replace("/", "/attempts/")
+                + invocation.replace("/", "/attempts/")
             },
         },
     }

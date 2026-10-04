@@ -311,6 +311,10 @@ jobs:
           RELEASE_TAG: ${{ needs.validate.outputs.tag }}
           SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
           WORKFLOW_SHA: ${{ github.sha }}
+          # Nonsecret context mirrors the pinned attestation generator/OIDC claims.
+          GITHUB_REPOSITORY_ID: ${{ github.repository_id }}
+          GITHUB_REPOSITORY_OWNER_ID: ${{ github.repository_owner_id }}
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
         run: |
           recovery=()
           if test -f recovery-origin.json; then recovery=(--recovery recovery-origin.json); fi
@@ -345,6 +349,10 @@ jobs:
           RELEASE_TAG: ${{ needs.validate.outputs.tag }}
           SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
           WORKFLOW_SHA: ${{ github.sha }}
+          # Nonsecret context mirrors the pinned attestation generator/OIDC claims.
+          GITHUB_REPOSITORY_ID: ${{ github.repository_id }}
+          GITHUB_REPOSITORY_OWNER_ID: ${{ github.repository_owner_id }}
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
         run: |
           recovery=()
           if test -f recovery-origin.json; then recovery=(--recovery recovery-origin.json); fi

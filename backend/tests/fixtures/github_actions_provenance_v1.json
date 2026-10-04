@@ -1,0 +1,36 @@
+{
+  "buildDefinition": {
+    "buildType": "https://actions.github.io/buildtypes/workflow/v1",
+    "externalParameters": {
+      "workflow": {
+        "ref": "refs/heads/main",
+        "repository": "https://github.com/kevindraai/exitlane",
+        "path": ".github/workflows/docker-release.yml"
+      }
+    },
+    "internalParameters": {
+      "github": {
+        "event_name": "workflow_dispatch",
+        "repository_id": "1300425127",
+        "repository_owner_id": "1483233",
+        "runner_environment": "github-hosted"
+      }
+    },
+    "resolvedDependencies": [
+      {
+        "uri": "git+https://github.com/kevindraai/exitlane@refs/heads/main",
+        "digest": {
+          "gitCommit": "cccccccccccccccccccccccccccccccccccccccc"
+        }
+      }
+    ]
+  },
+  "runDetails": {
+    "builder": {
+      "id": "https://github.com/kevindraai/exitlane/.github/workflows/docker-release.yml@refs/heads/main"
+    },
+    "metadata": {
+      "invocationId": "https://github.com/kevindraai/exitlane/actions/runs/123/attempts/1"
+    }
+  }
+}
