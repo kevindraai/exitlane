@@ -268,7 +268,7 @@ def test_get_settings_as_authenticated_user(client):
     }
     assert body["system"]["hostname"] == "exitlane-host"
     assert body["about"]["product"] == "Exitlane"
-    assert body["about"]["release_channel"] == "release candidate"
+    assert body["about"]["release_channel"] == "stable"
     assert "Europe/London" in body["timezones"]
     assert body["timezones"] == sorted(body["timezones"])
     assert len(body["timezones"]) == len(set(body["timezones"]))
