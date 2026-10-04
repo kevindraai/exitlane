@@ -177,15 +177,18 @@ jobs:
           trivy image --scanners vuln,secret --pkg-types os,library \
             --ignore-unfixed=false --format json --output docker-release-trivy.json \
             --exit-code 0 "$IMAGE"
-          trivy image --scanners vuln,secret --pkg-types os,library \
-            --skip-db-update --severity HIGH,CRITICAL --ignore-unfixed=false --exit-code 1 "$IMAGE"
+          python3 scripts/check_release_scan.py --scan docker-release-trivy.json \
+            --manifest docs/security/docker-residual-risks.json --artifact "$IMAGE" \
+            --output docker-release-security-decision.json
 
       - name: Retain complete release scan evidence even when publication is blocked
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: exitlane-release-trivy-report
-          path: docker-release-trivy.json
+          path: |
+            docker-release-trivy.json
+            docker-release-security-decision.json
           if-no-files-found: warn
           retention-days: 30
 

@@ -1,22 +1,24 @@
-# Docker runtime
+# ExitLane Docker appliance
 
-The image in this directory is intended for UI and API development only. It is **not a supported
-VPN gateway deployment**. The [Docker appliance feasibility assessment](../docs/docker-appliance-feasibility.md)
-records the capability matrix and the missing network, lifecycle and recovery proof.
+The v1 appliance supports **Linux amd64, rootful Docker Engine >=28 and Compose v2**, with
+`NET_ADMIN`, `/dev/net/tun`, a read-only root filesystem and durable ExitLane state. Docker v1
+providers are Mullvad, PIA and imported Proton WireGuard. Native Debian additionally supports
+NordVPN; NordVPN is unavailable inside Docker. Live commercial PIA/Proton interoperability
+has not been qualified.
 
-The Compose example binds management TCP only to host loopback, publishes no WireGuard UDP port,
-drops all Linux capabilities and gives the container no host device. Use a trusted local browser
-or an explicitly configured development reverse proxy. Its named `/data` volume holds both the
-development database and master key; protect or delete that volume deliberately. Removing the
-container does not remove the volume. This development setup cannot route protected client traffic.
+Follow the complete [Docker deployment Quick Start](../docs/docker-deployment.md#quick-start)
+for versioned files, the official `ghcr.io/kevindraai/exitlane:v1.0.0` image, verified digest
+pinning, explicit trusted-LAN bindings, preflight, first-run setup and health checks. Its
+[lifecycle instructions](../docs/docker-deployment.md#lifecycle-and-state) cover restart,
+volume ownership, encrypted backup/export/verification/restore, upgrades and compatible rollback.
+Stable source/image publication and final digest evidence are pending until recorded in the
+[v1.0.0 release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0).
 
-Do not mount the Docker socket, broad host directories, or arbitrary host-command interfaces to
-work around this boundary. ExitLane's supported deployment is native systemd execution on the
-same dedicated Debian VM or LXC where the NordVPN client and daemon run. Use:
+Use `compose.appliance.yml` for the appliance. It gives ExitLane its own nftables/routing namespace
+while Docker owns host bridge/NAT. Keep the minimum privilege contract: no privileged container,
+host network/PID, Docker socket or `SYS_ADMIN`. Protected clients remain provider-or-block.
 
-```bash
-sudo ./installer/install-debian.sh
-```
-
-The native service and an interactive `nordvpn status` command then communicate with the same
-local `nordvpnd` instance.
+`Dockerfile` and `docker-compose.yml` remain development-only UI/API surfaces; they cannot route
+protected clients. Appliance build/release details are in the
+[appliance contract](../docs/docker-appliance-candidate.md) and
+[runtime architecture](../docs/docker-runtime-architecture.md).

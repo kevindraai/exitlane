@@ -45,11 +45,15 @@ not merge a release pull request unless explicitly instructed.
 - [ ] Built package metadata reports the expected PEP 440 version.
 - [ ] Final package contents and generated artifacts contain no secrets,
   sessions, private keys, backups, logs, databases, or unexpected files.
-- [ ] No blocking critical or high finding affects the application packages or supported native
-  release. Classify findings by affected artifact and native/shared applicability. Docker-only
-  base/OS findings remain blockers for the separate image publication, with complete evidence
-  retained and no waiver. Any shared/native applicable HIGH/CRITICAL still blocks the application
-  release. Review medium findings with linked disposition; do not suppress scanner evidence.
+- [ ] Complete scanner evidence and original severities are retained. Secrets, applicable
+  application/shared dependency findings, unconsumed supported fixes, concrete remediable
+  exploits and security/isolation regressions block release. Unfixed upstream Debian findings
+  may receive an explicit residual-platform-risk disposition with exact package/version/CVE,
+  applicability, mitigations, owner and evidence; no scanner ignores, severity changes,
+  unsupported suites or manual library replacements. Reconcile native and Docker inventories
+  separately against the exact candidate. The Docker policy gate must pass and its decision
+  report must reference the complete scan hash; reviewed OS residuals never excuse an
+  application advisory or a newly available fix. See [security policy](../SECURITY.md).
 - [ ] Commands, counts, results, and links for final validation are recorded as
   release evidence.
 

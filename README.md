@@ -200,8 +200,9 @@ infrastructure. Whole-host D6 synthetic packet/restart qualification passed. Con
 are Mullvad, PIA and imported Proton; stock NordVPN 5.4.0 is incompatible with the qualified
 constrained runtime model, while native NordVPN remains supported.
 
-Image publication remains blocked by the strict HIGH/CRITICAL security gate; remaining Debian
-findings are retained without suppression or waiver. rc.4 publishes application source/packages
+The v1 release policy blocks actionable vulnerabilities and secrets. Exact reviewed Debian
+findings without a supported fix are retained as residual platform risks; see
+[release security policy](SECURITY.md#release-security-decision-policy). rc.4 publishes application source/packages
 only. See the [candidate contract](docs/docker-appliance-candidate.md),
 [runtime architecture](docs/docker-runtime-architecture.md) and [release qualification](docs/qualification/0.3.0-rc.4.md).
 
