@@ -19,6 +19,27 @@ MAIN = "c" * 40
 RELEASE = {"tag_name": "v1.2.3-rc.4", "draft": False, "published_at": "2026-10-01T00:00:00Z"}
 
 
+@pytest.fixture(autouse=True)
+def github_actions_context(monkeypatch):
+    context = {
+        "GITHUB_SERVER_URL": "https://github.com",
+        "GITHUB_REPOSITORY": "kevindraai/exitlane",
+        "GITHUB_REF": "refs/heads/main",
+        "GITHUB_SHA": MAIN,
+        "GITHUB_WORKFLOW_SHA": MAIN,
+        "GITHUB_WORKFLOW_REF": "kevindraai/exitlane/.github/workflows/docker-release.yml@refs/heads/main",
+        "GITHUB_EVENT_NAME": "workflow_dispatch",
+        "RUNNER_ENVIRONMENT": "github-hosted",
+        "GITHUB_REPOSITORY_ID": "1300425127",
+        "GITHUB_REPOSITORY_OWNER_ID": "1483233",
+        "GITHUB_RUN_ID": "123",
+        "GITHUB_RUN_ATTEMPT": "1",
+    }
+    for key, value in context.items():
+        monkeypatch.setenv(key, value)
+    return context
+
+
 @pytest.mark.parametrize(
     ("tag", "expected"),
     [("v1.2.3", "1.2.3"), ("v1.2.3-rc.4", "1.2.3rc4")],
@@ -512,7 +533,8 @@ def test_resume_refuses_mismatched_digest_even_after_qualified_push():
         recover(log=log.replace("d" * 64, "e" * 64))
 
 
-def test_recovery_provenance_names_original_build_and_current_attestor_separately():
+def test_recovery_provenance_names_original_build_and_current_attestor_separately(monkeypatch):
+    monkeypatch.setenv("GITHUB_RUN_ID", "456")
     recovered = recover()
     result = provenance.predicate(
         tag="v1.2.3", source_sha=SHA, workflow_sha=MAIN, invocation="456/1", recovery=recovered
@@ -524,20 +546,23 @@ def test_recovery_provenance_names_original_build_and_current_attestor_separatel
         "repository": provenance.REPOSITORY,
         "path": ".github/workflows/docker-release.yml",
     }
-    assert definition["resolvedDependencies"][1]["digest"]["gitCommit"] == SHA
-    assert result["runDetails"]["metadata"]["invocationId"].endswith("/123/attempts/1")
+    assert definition["resolvedDependencies"][1]["digest"]["gitCommit"] == MAIN
+    assert result["runDetails"]["metadata"]["invocationId"].endswith("/456/attempts/1")
+    assert definition["externalParameters"]["inputs"]["resume_digest"] == recovered["digest"]
+    assert definition["externalParameters"]["inputs"]["original_run_id"] == "123"
     recovery = definition["internalParameters"]["exitlaneRecovery"]
     assert recovery["operation"] == "qualify-and-attest-existing-image"
     assert recovery["attestingWorkflowSha"] == MAIN
     assert definition["resolvedDependencies"][2] == {
-        "uri": "git+" + provenance.REPOSITORY + "@" + MAIN,
-        "digest": {"gitCommit": MAIN},
-        "annotations": {"exitlane:role": "attestation-recovery-workflow"},
+        "uri": "oci://" + provenance.IMAGE + "@" + recovered["digest"],
+        "digest": {"sha256": "d" * 64},
+        "annotations": {"exitlane:role": "existing-qualified-image"},
     }
     assert recovery["attestationInvocation"].endswith("/456/attempts/1")
 
 
-def test_verified_recovery_provenance_cannot_be_reused_for_another_digest():
+def test_verified_recovery_provenance_cannot_be_reused_for_another_digest(monkeypatch):
+    monkeypatch.setenv("GITHUB_RUN_ID", "456")
     expected = provenance.predicate(
         tag="v1.2.3", source_sha=SHA, workflow_sha=MAIN, invocation="456/1", recovery=recover()
     )
@@ -583,3 +608,61 @@ def test_resume_rejects_ambiguous_push_receipt():
     _, _, log = resume_origin()
     with pytest.raises(release.ReleaseValidationError):
         recover(log=log + "\n" + log)
+
+
+@pytest.mark.parametrize("recovery", [False, True])
+def test_full_canonical_core_matches_executed_pinned_official_generator(recovery):
+    canonical = json.loads(
+        (Path(__file__).parent / "fixtures/github_actions_provenance_v1.json").read_text()
+    )
+    actual = provenance.predicate(
+        tag="v1.2.3",
+        source_sha=SHA,
+        workflow_sha=MAIN,
+        invocation="123/1",
+        recovery=recover() if recovery else None,
+    )
+    definition = actual["buildDefinition"]
+    assert definition["buildType"] == canonical["buildDefinition"]["buildType"]
+    assert (
+        definition["externalParameters"]["workflow"]
+        == canonical["buildDefinition"]["externalParameters"]["workflow"]
+    )
+    assert (
+        definition["internalParameters"]["github"]
+        == canonical["buildDefinition"]["internalParameters"]["github"]
+    )
+    assert (
+        definition["resolvedDependencies"][1]
+        == canonical["buildDefinition"]["resolvedDependencies"][0]
+    )
+    assert actual["runDetails"] == canonical["runDetails"]
+    if recovery:
+        assert definition["internalParameters"]["exitlaneRecovery"]["originalBuild"] == recover()
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "GITHUB_SERVER_URL",
+        "GITHUB_REPOSITORY",
+        "GITHUB_REF",
+        "GITHUB_SHA",
+        "GITHUB_WORKFLOW_SHA",
+        "GITHUB_WORKFLOW_REF",
+        "GITHUB_EVENT_NAME",
+        "RUNNER_ENVIRONMENT",
+        "GITHUB_REPOSITORY_ID",
+        "GITHUB_REPOSITORY_OWNER_ID",
+        "GITHUB_RUN_ID",
+        "GITHUB_RUN_ATTEMPT",
+    ],
+)
+@pytest.mark.parametrize("bad", [None, "", "incorrect"])
+def test_missing_or_mismatched_github_metadata_refuses_attestation(monkeypatch, key, bad):
+    if bad is None:
+        monkeypatch.delenv(key)
+    else:
+        monkeypatch.setenv(key, bad)
+    with pytest.raises(release.ReleaseValidationError, match="provenance_github"):
+        provenance.predicate(tag="v1.2.3", source_sha=SHA, workflow_sha=MAIN, invocation="123/1")

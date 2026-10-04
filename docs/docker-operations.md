@@ -127,8 +127,10 @@ failed step was provenance attestation. The original push log must bind the exac
 digest; fresh metadata/content, TLS, state, scanner and SBOM checks still run.
 
 Corrected provenance uses the GitHub Actions workflow build type. It describes the original
-build's source/workflow/invocation separately from the current recovery workflow and signing
-invocation; recovery does not claim a new image build. The protected environment and normal
+build's source/workflow/invocation and log hash in explicit `originalBuild` metadata.
+The canonical GitHub provenance fields describe the current qualification/signing workflow,
+including its source SHA, dispatch inputs, hosted-runner context and invocation; the existing
+image digest is an input dependency. Recovery does not claim a new image build. The protected environment and normal
 review remain required. Complete original logs, digest decision, SPDX, predicates, signed
 bundles and verification JSON are retained as workflow evidence and a uniquely named, checksum-bound
 GitHub release asset. Recovery never replaces an existing release asset. Never move the release tag,
