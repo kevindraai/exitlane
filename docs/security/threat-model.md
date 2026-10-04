@@ -1,9 +1,9 @@
 # Exitlane threat model
 
-Current contract: 0.3.0-rc.4 preparation. The dated 2026-09-30 Daybreak Blue-assisted review remains
+Current contract: v1 native/container release candidate. The dated 2026-09-30 Daybreak Blue-assisted review remains
 historical internal evidence; this update is not a new assessment or release qualification.
 Exact candidate receipts and pending gates are recorded in the
-[rc.4 release notes](../release-notes/0.3.0-rc.4.md). A trusted management network is a deployment
+[v1 RC release notes](../release-notes/1.0.0-rc.1.md). A trusted management network is a deployment
 assumption, not a substitute for application security.
 
 ## System and trust boundaries
@@ -155,13 +155,14 @@ encrypted ingress, namespace recreation and restore have dedicated qualification
 gates. Historical D6 synthetic whole-host packet/restart qualification passed on the retained
 exact surface. D7 supplies manual exact-release scanning, provenance/SBOM and digest verification
 behind Product Owner approval in the protected publication environment. No official production
-image has been published; first publication and Docker support remain separately gated.
+image is claimed by this candidate; authorized stable publication and exact-image qualification
+remain required delivery steps.
 
 The historical refreshed candidate scan retained 44 HIGH package findings across 8 distinct CVEs,
 zero CRITICAL, zero secret findings and zero Python vulnerabilities; reported Debian Trixie
-advisories remained unfixed. This is a baseline receipt, not a fresh rc.4 scan. Current candidate
-rescan remains pending, and the strict HIGH/CRITICAL/secret publication gate includes unfixed
-findings with no waiver. See [the candidate contract](../docker-appliance-candidate.md) and
+advisories remained unfixed. Exact rebuilt-image scans remain required. The [v1 security decision policy](../../SECURITY.md#v1-release-vulnerability-decisions)
+retains all findings: secrets, actionable fixes and concrete security regressions block; exact
+reviewed Debian findings without a supported fix receive residual platform-risk dispositions. See [the candidate contract](../docker-appliance-candidate.md) and
 [rc.4 release record](../release-notes/0.3.0-rc.4.md).
 
 ### System power actions

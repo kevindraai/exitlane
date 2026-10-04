@@ -9,7 +9,7 @@ published; a preparation branch or draft release does not supersede the current 
 | Version | Supported |
 | --- | --- |
 | v1.0.0-rc.1 | Yes, upon publication |
-| v0.3.0-rc.3 and earlier | Superseded upon publication of v1.0.0-rc.1 |
+| v0.3.0-rc.4 and earlier | Superseded upon publication of v1.0.0-rc.1 |
 | v0.2.0 | No |
 | Earlier prereleases and v0.1.x | No |
 

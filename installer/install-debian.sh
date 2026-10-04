@@ -114,6 +114,26 @@ acquire_lifecycle_lock() {
   success "Exclusive lifecycle lock acquired"
 }
 
+# Project app/PEP 440 prereleases sort below stable. Raw dpkg ordering does not.
+# Normalize only the version grammar actually shipped by ExitLane; unknown versions
+# must never silently bypass the downgrade guard. This runs before bootstrap Python.
+normalize_release_version() {
+  local version="$1"
+  local base stage sequence
+  local release_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.([1-9][0-9]*)|(a|b|rc)([1-9][0-9]*))?$'
+  [[ ${#version} -le 64 && "${version}" =~ ${release_pattern} ]] || return 1
+  base="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
+  stage="${BASH_REMATCH[5]:-${BASH_REMATCH[7]}}"
+  sequence="${BASH_REMATCH[6]:-${BASH_REMATCH[8]}}"
+  case "${stage}" in
+    alpha|a) printf '%s~a%s\n' "${base}" "${sequence}" ;;
+    beta|b) printf '%s~b%s\n' "${base}" "${sequence}" ;;
+    rc) printf '%s~rc%s\n' "${base}" "${sequence}" ;;
+    '') printf '%s\n' "${base}" ;;
+    *) return 1 ;;
+  esac
+}
+
 detect_installation_mode() {
   if [[ -f "${TARGET}/backend/pyproject.toml" || -f "${DATA_DIR}/exitlane.db" ]]; then
     UPGRADE_MODE=1
@@ -126,8 +146,16 @@ detect_installation_mode() {
           head -n 1
       )"
     fi
-    if [[ -n "${CURRENT_VERSION}" ]] &&
-      dpkg --compare-versions "${CURRENT_VERSION}" gt "${PACKAGE_VERSION}"; then
+    local current_order target_order installer_order
+    current_order="$(normalize_release_version "${CURRENT_VERSION}")" ||
+      fail "Cannot safely determine the installed ExitLane version."
+    target_order="$(normalize_release_version "${PACKAGE_VERSION}")" ||
+      fail "Invalid target ExitLane package version."
+    installer_order="$(normalize_release_version "${INSTALLER_VERSION}")" ||
+      fail "Invalid target ExitLane installer version."
+    [[ "${target_order}" == "${installer_order}" ]] ||
+      fail "Target ExitLane installer and package versions disagree."
+    if ! dpkg --compare-versions "${current_order}" le "${target_order}"; then
       fail "Downgrade from ${CURRENT_VERSION} to ${INSTALLER_VERSION} is not allowed."
     fi
     log "Existing ExitLane installation detected"
