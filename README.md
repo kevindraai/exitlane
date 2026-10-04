@@ -202,7 +202,7 @@ constrained runtime model, while native NordVPN remains supported.
 
 The v1 release policy blocks actionable vulnerabilities and secrets. Exact reviewed Debian
 findings without a supported fix are retained as residual platform risks; see
-[release security policy](SECURITY.md#release-security-decision-policy). rc.4 publishes application source/packages
+[release security policy](SECURITY.md#v1-release-vulnerability-decisions). rc.4 publishes application source/packages
 only. See the [candidate contract](docs/docker-appliance-candidate.md),
 [runtime architecture](docs/docker-runtime-architecture.md) and [release qualification](docs/qualification/0.3.0-rc.4.md).
 

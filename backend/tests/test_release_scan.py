@@ -82,7 +82,8 @@ def test_all_secrets_block_without_copying_matched_value():
 def test_other_distribution_cannot_use_debian_residuals():
     scan, manifest = candidate()
     scan["Metadata"]["OS"] = {"Family": "ubuntu", "Name": "26.04"}
-    assert not policy.evaluate(scan, manifest)["passed"]
+    with pytest.raises(ValueError):
+        policy.evaluate(scan, manifest)
 
 
 @pytest.mark.parametrize("field", ["applicability", "mitigations", "evidence", "owner"])
@@ -121,3 +122,50 @@ def test_unknown_severity_value_fails_closed():
     scan["Results"][0]["Vulnerabilities"][0]["Severity"] = "high"
     with pytest.raises(ValueError):
         policy.evaluate(scan, manifest)
+
+
+@pytest.mark.parametrize("field", ["Vulnerabilities", "Secrets"])
+@pytest.mark.parametrize("value", [{}, "", False, 0, "bad", 1, [None], ["bad"]])
+def test_malformed_collections_fail_closed(field, value):
+    scan, manifest = candidate()
+    scan["Results"][0][field] = value
+    with pytest.raises(ValueError):
+        policy.evaluate(scan, manifest)
+
+
+@pytest.mark.parametrize("value", [None, [], False, 0, "", {}])
+def test_malformed_os_metadata_fails_closed(value):
+    scan, manifest = candidate()
+    scan["Metadata"]["OS"] = value
+    with pytest.raises(ValueError):
+        policy.evaluate(scan, manifest)
+
+
+def test_single_inconsistent_result_cannot_claim_both_scan_surfaces():
+    scan, manifest = candidate()
+    scan["Results"] = [{"Class": "os-pkgs", "Type": "python-pkg"}]
+    with pytest.raises(ValueError):
+        policy.evaluate(scan, manifest)
+
+
+@pytest.mark.parametrize("value", [None, [], False, 0, ""])
+def test_malformed_result_objects_fail_closed(value):
+    scan, manifest = candidate()
+    scan["Results"].append(value)
+    with pytest.raises(ValueError):
+        policy.evaluate(scan, manifest)
+
+
+@pytest.mark.parametrize("value", [None, [], False, 0, ""])
+def test_malformed_top_level_objects_fail_closed(value):
+    _, manifest = candidate()
+    with pytest.raises(ValueError):
+        policy.evaluate(value, manifest)
+
+
+@pytest.mark.parametrize("value", [None, []])
+def test_valid_empty_collections_are_accepted(value):
+    scan, manifest = candidate()
+    scan["Results"][1]["Vulnerabilities"] = value
+    scan["Results"][1]["Secrets"] = value
+    assert policy.evaluate(scan, manifest)["passed"]
