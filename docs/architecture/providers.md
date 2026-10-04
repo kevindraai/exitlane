@@ -3,8 +3,9 @@
 The native runtime ships NordVPN, Mullvad VPN, PIA and imported Proton VPN profiles. Any combination
 may be configured, but exactly one registered provider can be selected as active egress. Only that
 active provider may receive a connect, reconnect, location-selection, or latency-selection mutation
-from ExitLane. The experimental container registry exposes only the three direct providers;
-NordVPN is unavailable there. Docker remains unsupported and no official production image exists.
+from ExitLane. The Docker v1 container registry exposes only the three direct providers;
+NordVPN is unavailable there. The [operator contract](../docker-deployment.md) fixes the supported
+host/privilege matrix; stable-image publication and final qualification remain pending.
 PIA and Proton have synthetic/native-kernel qualification; live provider proof remains outstanding.
 
 ## Boundaries

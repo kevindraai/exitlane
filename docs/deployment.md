@@ -1,5 +1,8 @@
 # Deployment
 
+For Docker, start with the [Docker deployment Quick Start](docker-deployment.md#quick-start).
+The commands below describe native Debian; the Docker guide covers its separate lifecycle.
+
 For lifecycle operations, use the root-only
 [backup and restore](backup-and-restore.md) and
 [upgrade and recovery](upgrade-and-recovery.md) procedures. A portable backup
@@ -31,7 +34,7 @@ The reset requires explicit confirmation and revokes every browser session. Envi
 overrides retain precedence and must be corrected in the service configuration.
 
 Exitlane is currently designed as a single service on a dedicated Debian 13 `amd64` host or LXC.
-That is the native appliance target for 0.3.0-rc.4; other Debian releases and architectures are not
+That is the native appliance target for 1.0.0-rc.1; other Debian releases and architectures are not
 supported release targets. The installer creates an isolated Python environment, installs the
 systemd unit, and prepares configuration, data, and log locations.
 
@@ -39,13 +42,12 @@ The supported deployment method remains native Debian in the gateway VM or privi
 NordVPN uses `nordvpn`/`nordvpnd`; Mullvad, PIA and imported Proton profiles use ExitLane-owned
 direct WireGuard interfaces. Mullvad must not have an active app daemon or provider firewall table.
 
-The original Docker surface remains for UI/API development. A separate experimental appliance
-candidate now implements the same core's container lifecycle, direct-provider dataplane and
-state/recovery boundary. D1–D7 implementation is delivered and historical D6 synthetic
-disposable-host qualification passed. Docker remains unsupported and no official production image
-has been published. See the [candidate contract](docker-appliance-candidate.md) and
-[rc.4 release notes](release-notes/0.3.0-rc.4.md) for current evidence and pending release gates.
-Do not expose the Docker socket or mount broad host paths to bridge that boundary.
+The appliance Docker v1 contract is rootful Linux Docker Engine >=28, Compose v2 and amd64.
+It supports Mullvad, PIA and imported Proton WireGuard, with permanent provider-or-block
+protection. NordVPN remains native-only. Follow the [operator Quick Start](docker-deployment.md)
+for the versioned image, explicit LAN bindings, minimum privileges and durable state.
+Stable publication and exact final-image qualification are still delivery requirements.
+The original development Compose surface is not this appliance path.
 
 The systemd service gives provider tooling a private writable home under `/var/lib/exitlane` while
 retaining `ProtectHome=true`. ExitLane does not mount host command or Docker control sockets.
@@ -66,11 +68,11 @@ It creates a new privileged Debian 13 LXC with default or advanced settings and 
 confirmation, then reuses the same Debian installer at the resolved published tag.
 See the linked guide for release selection, trust and inspect-first operation.
 
-Use the published release tag. The following command becomes available when `v0.3.0-rc.4` is
+Use the published release tag. The following command becomes available when `v1.0.0-rc.1` is
 published; do not substitute an unreviewed development branch for an appliance deployment:
 
 ```bash
-git clone --branch v0.3.0-rc.4 --depth 1 https://github.com/kevindraai/exitlane.git
+git clone --branch v1.0.0-rc.1 --depth 1 https://github.com/kevindraai/exitlane.git
 cd exitlane
 sudo ./installer/install-debian.sh
 ```
@@ -81,7 +83,7 @@ selects which traffic uses Exitlane. See [Router integrations](router-integratio
 
 Exact rc.4 native installation and upgrade receipts remain release gates; prior appliance
 qualification does not by itself qualify this candidate. Follow the
-[rc.4 release notes](release-notes/0.3.0-rc.4.md) for their recorded status.
+[rc.4 release notes](release-notes/1.0.0-rc.1.md) for their recorded status.
 
 ## First-run checklist
 

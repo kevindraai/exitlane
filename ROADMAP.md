@@ -5,7 +5,11 @@ release candidates are tested in real networks.
 
 The [canonical v1 readiness matrix](docs/release-checklist.md#canonical-v1-readiness-matrix) owns blockers, dependencies, evidence and authorization boundaries.
 
-## Included in 0.3.0-rc.4
+## Historical scope: 0.3.0-rc.4
+
+rc.4 is now published and its actual public Proxmox path qualified; #87 is complete.
+The original scope/status statements below are historical and superseded by the current v1
+readiness matrix and release-policy decision.
 
 - Guided public Proxmox bootstrap resolving one published tag for the helper and guest, with
   inspect-first trust guidance and compatible older-helper negotiation.
@@ -28,7 +32,7 @@ Current checks, refreshed scans and exact-source appliance receipts belong in th
 [rc.4 release notes](docs/release-notes/0.3.0-rc.4.md). PIA and imported Proton implementation is
 inherited; synthetic/native-kernel qualification does not establish live provider proof.
 
-## Included in 0.3.0-rc.3
+## Historical scope: 0.3.0-rc.3
 
 - Clear provider selection and keyboard-accessible configuration tabs in the setup wizard.
 - Reliable NordVPN installation after switching providers.
@@ -41,7 +45,7 @@ inherited; synthetic/native-kernel qualification does not establish live provide
 - Daybreak Blue-assisted internal defensive assessment with remediations #81 through #84 and a
   final fresh-main challenge. This is not an independent penetration test.
 
-## Included in 0.3.0-rc.1
+## Historical scope: 0.3.0-rc.1
 
 - Direct Mullvad WireGuard egress alongside NordVPN, with one active provider at a time.
 - Explicit ownership of the registered Mullvad device, encrypted credentials and provider keys.
@@ -109,60 +113,27 @@ Beta.5 inherits the beta.4 UX, accessibility, design-system and integrated-docum
 - Active administrator session management
 - Trusted reverse-proxy support and HTTPS awareness
 
-## Current engineering and qualification
+## Current v1 delivery
 
-D1–D7 Docker implementation and the Proxmox public launcher are delivered. PIA and imported Proton
-implementation is also delivered. Historical synthetic/native-kernel and D6 receipts retain their
-original source/image scope. Current exact-source qualification and support claims remain separate.
+The 2026-10-04 executive order authorizes the complete rc.4 → v1 RC → stable/image ladder.
+Product scope is fixed: native Debian 13 amd64 supports NordVPN/Mullvad/PIA/imported Proton;
+Docker v1 supports the three direct providers on rootful Linux amd64, Engine >=28 and Compose v2.
+Stock container NordVPN and the separate NordVPN gateway are excluded.
 
-- Complete/reconcile the rc.4 release boundary before preparing v1.0.0-rc.1. Qualify native clean
-  installation, rc.3 upgrade, rollback/recovery and the actual public tagged Proxmox path; preserve
-  existing supported upgrade paths. The v1 RC then upgrades from fully qualified rc.4.
-- Delivered the container operator Help slice [#116](https://github.com/kevindraai/exitlane/pull/116):
-  runtime-appropriate local guidance, packaged recovery instructions and truthful capability limits.
-  Independent exact-head review, full regression and native deployment checks passed.
-- Run fresh whole-product security/readiness checks and reconcile applicable findings against the
-  actual native package inventory. Complete the bounded installation/diagnostics gap review; fix
-  material failure-comprehension, recovery or security gaps rather than broad cosmetic polish.
-- Managed Speedtest installation evidence is reconciled in
-  [#117](https://github.com/kevindraai/exitlane/issues/117): the actual beta.3 appliance receipt
-  proves the unchanged pinned installer, four confirmations, package/status checks and zero
-  measurements. Current integration regressions and native candidate lifecycle gates remain;
-  this historical acceptance requires no new installation or terms approval.
-- Refresh exact-candidate Docker build/content/runtime, security and affected packet/recovery
-  evidence. Review D6 reuse against precise source/image/package deltas or execute required fresh
-  host proof; implementation delivery alone is not completed publication/support acceptance.
-- The [separate-namespace NordVPN gateway decision](docs/nordvpn-gateway-decision.md) is **NO-GO**
-  for the evaluated stock candidates. The reviewed startup protection gap is distinct from the
-  settled same-container #98 result. No gateway implementation or provider parity is claimed;
-  native NordVPN stays unchanged and Docker NordVPN unavailable.
-- Give the complete native v1 blocker matrix and architecture delta to fresh Astra review before
-  preparing the first full v1 RC. Qualify that exact candidate before stable preparation. Actual
-  release publication remains a Product Owner action boundary.
+- Complete the qualified rc.4 public Proxmox path (#87), then qualify the exact v1 RC including
+  upgrade from rc.4 and independent architecture/security challenge.
+- Publish stable v1 after exact-source checks/review and native install/upgrade qualification.
+- Deliver the official versioned image, immutable digest, full scan/SBOM/provenance, exact-image
+  runtime/recovery/dataplane qualification, D6 delta reconciliation and anonymous pull (#90/#97).
+- Maintain one reviewed implementation/release PR at a time and passing final-main checks.
+- Apply [the residual-risk release policy](SECURITY.md) without hiding findings; consume available
+  supported fixes and repair concrete security/isolation defects.
+- Keep #72 claim-specific: live PIA/Proton interoperability is unqualified, not a product blocker.
+  No commercial credentials are requested or awaited.
 
-## External evidence and publication boundaries
-
-- [#72 — PIA and Proton](https://github.com/kevindraai/exitlane/issues/72): live commercial-provider
-  egress/switch/recovery proof requires authorized credentials/profile material. Implementation
-  and synthetic proof do not establish fully supported live interoperability.
-- [#87 — public Proxmox launcher](https://github.com/kevindraai/exitlane/issues/87): actual public
-  one-liner → exact published helper/application → fresh create/boot/install/access/readiness and
-  stop/start proof needs an explicitly designated disposable PVE host/new CTID scope. Existing
-  protected guests are not substitutes. Follow the existing rc.4 two-stage publication sequence.
-- [#90 — Docker support](https://github.com/kevindraai/exitlane/issues/90) and
-  [#97 — publication](https://github.com/kevindraai/exitlane/issues/97): strict HIGH/CRITICAL/secret
-  gating, exact release source/tag, complete qualification and separately authorized first GHCR
-  publication remain open. The start-source refresh measured 44 HIGH records across eight CVEs,
-  zero CRITICAL/secrets/Python advisories; all eight Debian advisories were still open at query.
-  Keep receipts source-bound, consume supported fixes and remeasure at candidate boundaries;
-  never waive findings. The protected environment is configured, but does not authorize dispatch.
-  Digest, SBOM/provenance, pull/health/rollback and anonymous-pull proof remain required.
-- Docker remains experimental/unsupported and unpublished until its own gates pass. An unresolved
-  Docker-only publication dependency does not block the supported native release. Native/shared
-  applicable blocking findings still require resolution under the existing release policy.
-- External independent security review/penetration testing is a transparent readiness decision;
-  no existing mandatory v1 requirement was found. Internal model-assisted reviews are not an
-  independent external assessment.
+Historical delivery sections above describe their original scope; older experimental status and
+strict all-HIGH policy are superseded. Closed issue/release claims require actual receipts.
+See the [Docker operator path](docs/docker-deployment.md) and versioned release qualification.
 
 ## After v1
 

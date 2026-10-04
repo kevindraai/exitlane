@@ -126,7 +126,7 @@ jobs:
           SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
           IMAGE: ${{ needs.validate.outputs.image }}
         run: |
-          docker build --platform linux/amd64 -f release-source/docker/Dockerfile.appliance \
+          docker build --pull --no-cache --platform linux/amd64 -f release-source/docker/Dockerfile.appliance \
             --build-arg EXITLANE_VERSION="$APP_VERSION" \
             --build-arg EXITLANE_REVISION="$SOURCE_SHA" \
             -t "$IMAGE" release-source

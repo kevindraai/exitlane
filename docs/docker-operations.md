@@ -1,8 +1,9 @@
-# Docker operations (experimental)
+# Docker operations
 
-Docker remains experimental and unsupported. No official production image is published.
-Native Debian 13 amd64 remains the reference runtime. This guide describes the existing
-appliance candidate, not the development Compose file or a promise of provider qualification.
+Use the [Docker deployment Quick Start](docker-deployment.md#quick-start) for versioned files,
+verified official-image digest, explicit LAN bindings, setup and lifecycle commands.
+The v1 support matrix is fixed; stable image publication and exact-image qualification are pending.
+Native Debian 13 amd64 remains reference runtime. The development Compose is a separate surface.
 
 ## Capabilities and protected traffic
 
@@ -115,7 +116,8 @@ and the matching Compose/host configuration. Layout 1 currently accepts schema i
 
 Select the reviewed compatible target image in `EXITLANE_IMAGE`, rerun the host preflight
 and recreate with the appliance Compose file. Pull only an explicitly reviewed image digest
-when a published image becomes available. There is no current official image or `latest` alias.
+when a published image becomes available. The official stable target is `ghcr.io/kevindraai/exitlane:v1.0.0`; verify publication and its
+digest receipt first. No `latest` alias is defined.
 Keep the existing volume. Verify login/MFA, saved state and fresh protected client traffic.
 
 Rollback may reuse the volume only if the previous image accepts its state/schema. Otherwise,

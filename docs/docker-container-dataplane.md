@@ -1,5 +1,11 @@
 # Synthetic direct-provider dataplane (D3)
 
+> Historical implementation/qualification record. Older unsupported/publication-hold
+> and all-HIGH scanner policy statements describe the original delivery boundary.
+> The executive order fixes v1 support and authorizes publication under the residual-risk
+> policy. Use [Docker deployment](docker-deployment.md) and [SECURITY](../SECURITY.md)
+> for the current operator/support contract. Exact stable-image delivery remains pending.
+
 Docker remains unsupported. D3 extended the isolated D2 lifecycle; that slice alone did not
 enable full application container selection or publish an image. D4–D7 subsequently delivered
 durable recovery, supervisor leases, experimental appliance composition, historical D6 synthetic

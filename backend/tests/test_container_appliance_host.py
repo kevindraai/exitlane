@@ -247,7 +247,7 @@ def test_host_preflight_only_executes_readonly_commands(monkeypatch, capsys):
                         "Labels": {
                             "org.exitlane.runtime": "container",
                             "org.exitlane.schema": "1:1",
-                            "org.exitlane.support": "experimental",
+                            "org.exitlane.support": "v1",
                             "org.opencontainers.image.revision": "a" * 40,
                         }
                     },

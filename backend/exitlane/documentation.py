@@ -18,6 +18,7 @@ class DocumentDefinition:
 
 
 DOCUMENTS = (
+    DocumentDefinition("docker-deployment", "getting-started", "docker-deployment.md"),
     DocumentDefinition("docker-operations", "appliance-management", "docker-operations.md"),
     DocumentDefinition("deployment", "getting-started", "deployment.md"),
     DocumentDefinition("proxmox-lxc", "getting-started", "proxmox-lxc.md"),
@@ -40,7 +41,7 @@ DOCUMENTS = (
 # The literal catalog is also the wheel/sdist packaging inventory. Runtime filtering
 # changes navigation, never the installed set or authentication requirements.
 NATIVE_ONLY = frozenset({"deployment", "proxmox-lxc", "nordvpn", "hardening-guide"})
-CONTAINER_ONLY = frozenset({"docker-operations"})
+CONTAINER_ONLY = frozenset({"docker-operations", "docker-deployment"})
 
 
 def runtime_documents(runtime_name: str) -> tuple[DocumentDefinition, ...]:

@@ -1,9 +1,9 @@
 # Security assurance matrix
 
-Current contract: 0.3.0-rc.4 preparation. The 2026-09-30 Daybreak Blue internal reassessment and
-its test counts remain dated historical evidence. Exact rc.4 checks, refreshed scans and native
+Current contract: v1 native/container release candidate. The 2026-09-30 Daybreak Blue internal reassessment and
+its test counts remain dated historical evidence. Exact candidate checks, refreshed scans and native
 appliance receipts remain release gates in the
-[rc.4 release notes](../release-notes/0.3.0-rc.4.md). This matrix separates automated,
+[v1 RC release notes](../release-notes/1.0.0-rc.1.md). This matrix separates automated,
 synthetic-provider, native-appliance and internal assisted evidence; it is not an independent
 penetration test.
 
@@ -29,7 +29,7 @@ penetration test.
 | HOST-01 | E/I/T | All appliance secrets; local root/host admin; filesystem/systemd; host compromise | Complete compromise | Root-only files, `UMask=0077`, systemd sandbox, management VLAN | Permission/systemd-hardening tests | `systemd-analyze security` and filesystem audit | Root or hypervisor control defeats application controls | Accepted |
 | PROVIDER-INPUT-01 | T/D/I | NordVPN/Mullvad/PIA/Proton control data; provider or network failure; catalog/API/profile parser | Parser failure, local probe redirection, outage or unsafe generated state | Size/type/value bounds, recursion normalization, public-unicast probe policy and strict imported-profile grammar | Synthetic oversized/deep/malformed provider corpus and hostile Proton profile matrix | No provider infrastructure was security-tested; PIA/Proton live accounts unavailable | Provider availability/schema remain external; live PIA/Proton connectivity is unproven | Resolved within synthetic scope |
 | PVE-01 | T/E/D | Root PVE helper; operator input/discovery; command construction or CT collision | Existing-resource mutation or host command injection | Typed flags/input, preflight discovery, explicit CT ownership, no delete/repair path and zero-mutation dry-run | Mocked `pct`/`pveam`, quoting, collision, malformed-input, timeout/interruption tests | No disposable PVE range was authorised | Real create → boot → installer qualification remains unproven | Automated evidence only |
-| DOCKER-01 | I/T/D | Docker bridge and container namespace; routed client; tunnel loss, restart or recovery | Plaintext client egress or inconsistent state | Separate experimental supervisor/runtime adapters, permanent provider-or-block guard, exact route/peer/DNS/dataplane commit, private DB/key volume and journalled recovery; host Docker policy remains foreign | D2–D5 regression/isolated harnesses, image/proxy/auth/state gates; [D6 synthetic whole-host acceptance](../qualification/docker-host.md) in #96 / PR #110; D7 exact-release/provenance/SBOM workflow infrastructure in PR #111 | Historical disposable-host packet, failure, restore, daemon-mode and reboot receipts retained; exact rc.4 candidate checks/rescan pending | No live commercial-provider container proof or blanket cross-release compatibility; strict publication scan/environment/support gates remain open; no official image | Historical synthetic D6 passed; Docker unsupported, publication gated |
+| DOCKER-01 | I/T/D | Docker bridge and container namespace; routed client; tunnel loss, restart or recovery | Plaintext client egress or inconsistent state | Separate container supervisor/runtime adapters, permanent provider-or-block guard, exact route/peer/DNS/dataplane commit, private DB/key volume and journalled recovery; host Docker policy remains foreign | D2–D5 regression/isolated harnesses, image/proxy/auth/state gates; [D6 synthetic whole-host acceptance](../qualification/docker-host.md) in #96 / PR #110; D7 exact-release/provenance/SBOM workflow infrastructure in PR #111 | Historical disposable-host packet, failure, restore, daemon-mode and reboot receipts retained; exact v1 image checks/rescan required | No live commercial-provider container proof or blanket cross-release compatibility; actionable publication scan/protected environment/exact-image gates remain required; official stable image pending | Historical synthetic D6 passed; v1 source/image delta qualification and publication pending |
 | DAYBREAK-01 | Cross-cutting | ExitLane source and disposable/synthetic runtime; internal defensive adversarial challenge | Gaps between claims, tests and implementation remain unnoticed | Private hypothesis ledger, safe reproduction, sequential fix/review/retest and final fresh-main challenge | [Sanitised 2026-09-30 report](daybreak-blue-assessment-2026-09-30.md); #81–#84; 766 backend tests, 38 frontend suites and namespace dataplane checks | Exact-head native LXC checks for every runtime fix; no destructive shared-guest experiments | Internal model-assisted assurance is not independent external testing | Complete; external review remains later |
 
 OWASP Top 10 is used as a completeness cross-check: access control (setup,
@@ -41,14 +41,14 @@ logging failures, and SSRF-relevant webhook/provider boundaries.
 
 ## Docker publication security gate
 
-The historical refreshed candidate scan retained 44 HIGH package findings across 8 distinct CVEs,
-with zero CRITICAL findings, secret findings and Python vulnerabilities. Reported Debian Trixie
-advisories remained unfixed. This baseline does not qualify a rebuilt rc.4 image; current candidate
-rescan and exact-source checks remain pending in the
-[rc.4 release record](../release-notes/0.3.0-rc.4.md). The manual publication gate rejects all
-HIGH/CRITICAL and secret findings, including unfixed advisories. No waiver is defined and D6
-synthetic packet acceptance does not override that gate. Docker remains unsupported with no
-official production image.
+Historical candidate scans retain 44 HIGH package records/eight CVEs, zero CRITICAL, secrets
+or Python advisories. Fresh exact-source rc.4 CI confirmed those residual identities; that receipt
+does not automatically qualify a rebuilt v1 image. Exact image content/TLS/state/restore and
+source/package/host delta qualification remain required. The [v1 security policy](../../SECURITY.md#v1-release-vulnerability-decisions)
+blocks secrets, available fixes, applicable application findings and concrete security/isolation
+regressions. Reviewed exact supported-unfixed Debian records are retained residual platform risks.
+D6 packet evidence never overrides an actionable blocker. Official stable image publication,
+attestations and anonymous operator acceptance remain mandatory delivery steps.
 
 ## Release interpretation
 

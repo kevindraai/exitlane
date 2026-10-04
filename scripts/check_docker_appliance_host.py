@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only operator preflight for the experimental D5 Compose surface."""
+"""Read-only operator preflight for the v1 D5 Compose surface."""
 from __future__ import annotations
 
 import argparse
@@ -148,7 +148,7 @@ def main(argv=None):
         if (image.get('Architecture') != 'amd64' or image.get('Os') != 'linux'
                 or labels.get('org.exitlane.runtime') != 'container'
                 or labels.get('org.exitlane.schema') != '1:1'
-                or labels.get('org.exitlane.support') != 'experimental'
+                or labels.get('org.exitlane.support') != 'v1'
                 or re.fullmatch(r'[0-9a-f]{40}', labels.get('org.opencontainers.image.revision', '')) is None):
             raise PreflightError('appliance_image_contract_required')
         environment = dict(os.environ, EXITLANE_IMAGE=args.image,
@@ -157,7 +157,7 @@ def main(argv=None):
                          environment=environment)
         validate_compose(config, args.image, management, ingress)
         validate_existing_resources(config)
-        print(json.dumps({'preflight': 'PASS', 'support': 'experimental', 'engine': version,
+        print(json.dumps({'preflight': 'PASS', 'support': 'v1', 'engine': version,
                           'image': image['Id'], 'management_bind': management, 'ingress_bind': ingress}))
         return 0
     except PreflightError as error:

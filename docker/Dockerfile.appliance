@@ -1,4 +1,4 @@
-# Experimental candidate image. Publication and support remain separately gated.
+# V1 appliance image. Stable publication and exact-image qualification remain required.
 FROM python:3.13-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b AS wheel
 WORKDIR /build
 COPY backend/pyproject.toml backend/hatch_build.py ./
@@ -11,13 +11,13 @@ FROM python:3.13-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bc
 ARG EXITLANE_VERSION
 ARG EXITLANE_REVISION
 LABEL org.opencontainers.image.title="ExitLane" \
-      org.opencontainers.image.description="Experimental unsupported container appliance; publication gated" \
+      org.opencontainers.image.description="ExitLane v1 container appliance; Linux amd64 minimum-privilege contract" \
       org.opencontainers.image.source="https://github.com/kevindraai/exitlane" \
       org.opencontainers.image.version="${EXITLANE_VERSION}" \
       org.opencontainers.image.revision="${EXITLANE_REVISION}" \
       org.opencontainers.image.licenses="GPL-3.0-only" \
       org.exitlane.runtime="container" \
-      org.exitlane.support="experimental" \
+      org.exitlane.support="v1" \
       org.exitlane.schema="1:1"
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

@@ -1,5 +1,11 @@
 # Experimental Docker appliance candidate
 
+> Historical implementation/qualification record. Older unsupported/publication-hold
+> and all-HIGH scanner policy statements describe the original delivery boundary.
+> The executive order fixes v1 support and authorizes publication under the residual-risk
+> policy. Use [Docker deployment](docker-deployment.md) and [SECURITY](../SECURITY.md)
+> for the current operator/support contract. Exact stable-image delivery remains pending.
+
 D5 packages the same ExitLane core behind its container supervisor. D6 has now
 qualified the candidate on a disposable whole Docker host, including synthetic
 provider failure cases and packet-level no-fallback checks. This remains an

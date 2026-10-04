@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.0-rc.1] - 2026-10-04
+
+### Changed
+
+- Establish the v1 native/Docker provider and minimum-privilege support matrix.
+- Surface the complete versioned Docker deployment and lifecycle path in README and local Help.
+- Retain complete scanner evidence while applying reviewed residual-risk dispositions only to
+  exact unfixed Debian identities; supported fixes, secrets and security regressions still block.
+- Stable image publication, final image qualification, attestations and anonymous pull remain
+  mandatory delivery requirements, not completed claims. Live PIA/Proton remains unqualified.
+
+The entries below are historical release evidence; superseded policy/status statements describe
+their original release boundary.
+
 ## [0.3.0-rc.4] - 2026-10-02
 
 ### Added

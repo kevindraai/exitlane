@@ -3,6 +3,8 @@ import shlex
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from exitlane.services import network_security
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -163,8 +165,8 @@ def test_installer_has_locked_upgrade_snapshot_and_rollback_contract():
     assert "snapshot_recovery_path" in installer
     assert 'rm -rf -- "${destination}"' in installer
     assert "commit_upgrade" in installer
-    assert 'readonly PACKAGE_VERSION="0.3.0rc4"' in installer
-    assert 'dpkg --compare-versions "${CURRENT_VERSION}" gt "${PACKAGE_VERSION}"' in installer
+    assert 'readonly PACKAGE_VERSION="1.0.0rc1"' in installer
+    assert 'dpkg --compare-versions "${current_order}" le "${target_order}"' in installer
     assert installer.index("prepare_upgrade_recovery") < installer.index("stop_existing_service")
     assert installer.index("stop_existing_service") < installer.index("copy_application")
 
@@ -440,3 +442,117 @@ def test_rollback_restores_exact_prior_paths_and_removes_candidate_only_paths(tm
     assert not (target / "etc/systemd/system/exitlane-speedtest-install.service").exists()
     assert (target / "var/lib/exitlane/exitlane.db").read_text(encoding="utf-8") == "preserve data"
     assert (target / "etc/wireguard/wg0.conf").read_text(encoding="utf-8") == "preserve wireguard"
+
+
+@pytest.mark.parametrize(
+    ("current", "target", "allowed"),
+    [
+        ("1.0.0-rc.1", "1.0.0", True),
+        ("1.0.0rc1", "1.0.0", True),
+        ("1.0.0", "1.0.0-rc.1", False),
+        ("1.0.0", "1.0.0rc1", False),
+        ("1.0.0-alpha.1", "1.0.0-beta.1", True),
+        ("1.0.0a1", "1.0.0b1", True),
+        ("1.0.0-beta.2", "1.0.0-rc.1", True),
+        ("1.0.0b2", "1.0.0rc1", True),
+        ("1.0.0rc1", "1.0.0b2", False),
+        ("1.0.0b1", "1.0.0a1", False),
+        ("1.0.0-rc.9", "1.0.0rc10", True),
+        ("0.3.0-rc.4", "1.0.0-rc.1", True),
+        ("1.0.0", "1.1.0-alpha.1", True),
+        ("1.1.0-alpha.1", "1.0.0", False),
+        ("1.0.0", "2.0.0-alpha.1", True),
+        ("2.0.0a1", "1.9.9", False),
+        ("1.0.0", "1.0.0", True),
+        ("1.0.0-rc.1", "1.0.0rc1", True),
+        ("", "1.0.0", False),
+        ("garbage", "1.0.0", False),
+        ("1.0.0+local", "1.0.0", False),
+        ("1.0.0-rc.0", "1.0.0", False),
+        ("01.0.0", "1.0.0", False),
+        ("1.0.0", "bad-target", False),
+        ("1.0.0", "1.0.0.post1", False),
+        ("1." + "0" * 64 + ".0", "1.0.0", False),
+    ],
+)
+def test_actual_installation_mode_guard_orders_project_releases(tmp_path, current, target, allowed):
+    fixture = tmp_path / "install-debian.sh"
+    fixture.write_text(
+        INSTALLER.read_text()
+        .replace(
+            'readonly INSTALLER_VERSION="1.0.0-rc.1"',
+            f'readonly INSTALLER_VERSION="{target}"',
+        )
+        .replace('readonly PACKAGE_VERSION="1.0.0rc1"', f'readonly PACKAGE_VERSION="{target}"')
+    )
+    appliance = tmp_path / "appliance"
+    data = tmp_path / "data"
+    (appliance / "backend").mkdir(parents=True)
+    data.mkdir()
+    (appliance / "backend/pyproject.toml").write_text('version="0.1.0"\n')
+    (data / "installed-version").write_text(current + "\n")
+    result = subprocess.run(
+        ["bash", "-c", f"source {shlex.quote(str(fixture))}; detect_installation_mode"],
+        env={**os.environ, "TARGET": str(appliance), "EXITLANE_DATA_DIR": str(data)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (result.returncode == 0) is allowed, result.stdout + result.stderr
+    # Reject before state/recovery or application mutation.
+    assert (data / "installed-version").read_text() == current + "\n"
+    assert (appliance / "backend/pyproject.toml").read_text() == 'version="0.1.0"\n'
+
+
+@pytest.mark.parametrize("version", ["0.3.0rc4", "garbage", ""])
+def test_version_guard_uses_valid_package_fallback_only_when_marker_absent(tmp_path, version):
+    appliance = tmp_path / "appliance"
+    data = tmp_path / "data"
+    (appliance / "backend").mkdir(parents=True)
+    data.mkdir()
+    (appliance / "backend/pyproject.toml").write_text(f'version="{version}"\n')
+    result = subprocess.run(
+        ["bash", "-c", f"source {shlex.quote(str(INSTALLER))}; detect_installation_mode"],
+        env={**os.environ, "TARGET": str(appliance), "EXITLANE_DATA_DIR": str(data)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (result.returncode == 0) is (version == "0.3.0rc4"), result.stdout + result.stderr
+
+
+def test_unknown_database_only_installation_fails_before_upgrade_mutation(tmp_path):
+    appliance = tmp_path / "appliance"
+    data = tmp_path / "data"
+    appliance.mkdir()
+    data.mkdir()
+    (data / "exitlane.db").write_bytes(b"retained-state")
+    result = subprocess.run(
+        ["bash", "-c", f"source {shlex.quote(str(INSTALLER))}; detect_installation_mode"],
+        env={**os.environ, "TARGET": str(appliance), "EXITLANE_DATA_DIR": str(data)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 1
+    assert "Cannot safely determine" in result.stderr
+    assert (data / "exitlane.db").read_bytes() == b"retained-state"
+
+
+def test_comparator_error_fails_closed(tmp_path):
+    appliance = tmp_path / "appliance"
+    data = tmp_path / "data"
+    (appliance / "backend").mkdir(parents=True)
+    data.mkdir()
+    (appliance / "backend/pyproject.toml").write_text('version="0.3.0rc4"\n')
+    command = (
+        f"source {shlex.quote(str(INSTALLER))}; dpkg() {{ return 2; }}; detect_installation_mode"
+    )
+    result = subprocess.run(
+        ["bash", "-c", command],
+        env={**os.environ, "TARGET": str(appliance), "EXITLANE_DATA_DIR": str(data)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 1

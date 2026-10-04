@@ -21,7 +21,9 @@ def test_documentation_catalog_uses_only_existing_allowlisted_markdown_sources()
     payload = documentation_index(DOCS_ROOT)
     assert payload["categories"] == list(CATEGORIES)
     assert {item["slug"] for item in payload["documents"]} == {
-        definition.slug for definition in DOCUMENTS if definition.slug != "docker-operations"
+        definition.slug
+        for definition in DOCUMENTS
+        if definition.slug not in {"docker-operations", "docker-deployment"}
     }
     assert all(item["source"].startswith("docs/") for item in payload["documents"])
     assert all((DOCS_ROOT / definition.path).is_file() for definition in DOCUMENTS)
@@ -160,7 +162,8 @@ def test_container_catalog_and_direct_routes_use_runtime_guidance():
             documentation_document(slug, DOCS_ROOT, runtime_name="container")
     guide = documentation_document("docker-operations", DOCS_ROOT, runtime_name="container")
     assert guide["source"] == "docs/docker-operations.md"
-    assert "experimental and unsupported" in repr(guide)
+    assert "Docker deployment Quick Start" in repr(guide)
+    assert "docker-deployment" in slugs
     assert "exitlane.container_cli" in repr(guide)
     with pytest.raises(KeyError):
         documentation_document("docker-operations", DOCS_ROOT)

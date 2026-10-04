@@ -4,10 +4,11 @@
 
 ExitLane is a self-hosted egress appliance for routers, VLANs, and selected devices. Your router maintains one permanent WireGuard tunnel to ExitLane, while ExitLane manages outbound connection through NordVPN, Mullvad, PIA, or imported Proton VPN profiles.
 
-The **0.3.0-rc.4** release candidate consolidates the guided public Proxmox installer,
-PIA and imported Proton providers, post-Daybreak security fixes, and experimental Docker
-implementation. Read the [release notes](docs/release-notes/0.3.0-rc.4.md) for qualification
-and upgrade details.
+The **1.0.0-rc.1** release candidate fixes the v1 support matrix: native Debian 13 amd64
+with NordVPN, Mullvad, PIA and imported Proton, and the constrained Docker appliance with the
+three direct providers. See [v1 RC release notes](docs/release-notes/1.0.0-rc.1.md).
+Stable source and official image publication remain the final delivery steps; this candidate
+does not claim the stable image is already available.
 
 The result is an experience closer to a native VPN app, but for an entire network: switch countries, reconnect, use the fastest available server, and keep provider-specific configuration away from your router.
 
@@ -39,7 +40,7 @@ public-path installation against the published tag.
 For a native Debian host or manually created LXC, install a published release tag rather than the moving development branch. For this release:
 
 ```bash
-git clone --branch v0.3.0-rc.4 --depth 1 https://github.com/kevindraai/exitlane.git
+git clone --branch v1.0.0-rc.1 --depth 1 https://github.com/kevindraai/exitlane.git
 cd exitlane
 sudo ./installer/install-debian.sh
 ```
@@ -190,21 +191,21 @@ backup/recovery. Keep the optional killswitch enabled when protected clients mus
 also after an explicit disconnect. The Daybreak assessment is internal defensive evidence,
 not an independent external penetration test. See the [security documentation](docs/security/security-testing.md).
 
-## Docker experimental status
+## Docker appliance
 
-**Docker remains experimental/unsupported. No official Docker image is published.**
+The v1 Docker support contract is Linux amd64, rootful Docker Engine >=28 and Compose v2,
+with `NET_ADMIN`, TUN, a read-only root filesystem and durable state. Docker supports Mullvad,
+PIA and imported Proton WireGuard; native ExitLane additionally supports NordVPN.
+NordVPN is unavailable inside Docker. Protected Docker clients always use provider-or-block.
+Live commercial PIA/Proton interoperability remains unqualified.
 
-D1–D7 implement the same-core container boundary, supervised WireGuard lifecycle,
-provider-or-block dataplane, durable state/recovery, candidate image/Compose and gated release
-infrastructure. Whole-host D6 synthetic packet/restart qualification passed. Container providers
-are Mullvad, PIA and imported Proton; stock NordVPN 5.4.0 is incompatible with the qualified
-constrained runtime model, while native NordVPN remains supported.
-
-The v1 release policy blocks actionable vulnerabilities and secrets. Exact reviewed Debian
-findings without a supported fix are retained as residual platform risks; see
-[release security policy](SECURITY.md#v1-release-vulnerability-decisions). rc.4 publishes application source/packages
-only. See the [candidate contract](docs/docker-appliance-candidate.md),
-[runtime architecture](docs/docker-runtime-architecture.md) and [release qualification](docs/qualification/0.3.0-rc.4.md).
+Follow the [complete Docker Quick Start](docs/docker-deployment.md#quick-start) for exact
+versioned files, explicit host LAN binds, image digest pinning, preflight and setup. It also
+covers health, persistence, backup/export/verification/restore, upgrades and rollback. The
+official target is `ghcr.io/kevindraai/exitlane:v1.0.0`; stable image publication, attestations,
+exact-image qualification and anonymous pull are mandatory remaining delivery evidence.
+No `latest` alias is defined. Reviewed unfixed Debian findings receive transparent residual-risk
+dispositions under [SECURITY](SECURITY.md); actionable findings still block publication.
 
 ## Development
 
