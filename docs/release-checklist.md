@@ -158,28 +158,28 @@ checks remain required. No Docker latest alias or protected production-data muta
 
 ## Canonical v1 readiness matrix
 
-Stable promotion changes version metadata and documentation only. Preserve qualified RC receipts
-and bind final v1.0.0 source/image results in the [stable release receipts](release-notes/1.0.0.md#release-and-image-receipts).
-Record each result in the published release and linked acceptance issues.
+The [published v1.0.0 release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0)
+records immutable release source `7973d3a6508c08a2949b88dad3750f43544cff48`, artifact checksums,
+image identities and source-bound qualification receipts. Subsequent reviewed workflow/documentation
+fixes advance main without moving the stable tag or replacing its image. The published release
+records the separately identified final-main SHA and hosted checks.
 
-The 2026-10-04 executive order is the current Product Owner authority for all publication stages.
-The support matrix and product exclusions are accepted decisions, not review questions. Every
-completion claim below still requires exact-source/runtime evidence; the historical receipts
-following this matrix remain intact and must not be relabelled as a fresh candidate result.
+The support matrix and exclusions are settled Product Owner decisions. The table below reconciles
+actual delivery results; dated receipts and prior sequencing below retain their historical scope.
 
-| Item | Accepted contract / required outcome | Current decision and remaining evidence |
+| Item | Accepted contract / required outcome | Qualified result / evidence |
 | --- | --- | --- |
-| Native support | Debian 13 amd64; NordVPN, Mullvad, PIA and imported Proton | Accepted product scope; exact installer/package/lifecycle/recovery checks remain mandatory. |
-| Docker support | Linux amd64, rootful Engine >=28, Compose v2, NET_ADMIN/TUN, read-only root, durable state; three direct providers | Accepted product scope; exact stable-image/runtime/packet/state evidence, D6 delta reconciliation and publication required. |
-| NordVPN Docker/gateway | Stock NordVPN unavailable inside Docker; separate gateway NO-GO | Settled exclusions; reviewers assess implementation against them. |
-| PIA/Proton live claims (#72) | Truthful unqualified commercial interoperability limit | Claim-specific, not a release blocker; no credentials requested, extracted or awaited. |
-| Security release decision | Resolve actionable findings; preserve full scans and reviewed exact Debian residual dispositions | Exact native/image scans and current applicability/fix review required. Unfixed upstream Debian risk alone does not block. |
-| rc.4/public Proxmox (#87) | Published exact rc.4, fresh moving-main public path and complete lifecycle | Must be qualified before RC preparation; attach real source/tag/helper/access/health/reboot receipts. |
-| v1 RC | Fresh bounded Astra High challenge, exact candidate checks and upgrade from qualified rc.4 | Engineering gates remain; publication authorized without another approval question. |
-| Stable release | Exact-source checks, independent review, native install/upgrade, verified tag/artifacts/checksums, stable/latest designation | Complete after qualified RC; no unrelated features or arbitrary soak period. |
-| Official Docker (#90/#97) | Versioned v1.0.0 image, immutable digest, verified provenance/SBOM, public anonymous pull, Compose runtime/backup/restore/provider-or-block | Mandatory part of v1 completion; attach exact final image receipts before closing issues. No latest alias. |
-| Operator documentation | Complete versioned [Docker Quick Start](docker-deployment.md#quick-start), lifecycle and accurate native/Docker Help | Stable documentation prepared; [release/image receipts](release-notes/1.0.0.md#release-and-image-receipts) must establish final publication and qualification. |
-| Repository/CI | One PR at a time, exact-head review/checks, fresh-main reconciliation and all applicable CI/security tests | Required after each relevant merge and on final clean main. |
+| Native support | Debian 13 amd64; NordVPN, Mullvad, PIA and imported Proton | Exact stable installer/package, clean installation, rc.4/v1 RC upgrades and lifecycle/recovery qualified; receipts in the published release. |
+| Docker support | Linux amd64, rootful Engine >=28, Compose v2, NET_ADMIN/TUN, read-only root, durable state; three direct providers | Official published-image content/TLS/appliance/state/recovery and exact Compose operator path passed; D6 source/image/package applicability reconciled. |
+| NordVPN Docker/gateway | Stock NordVPN unavailable inside Docker; separate gateway NO-GO | Settled exclusions enforced; native NordVPN remains supported. |
+| PIA/Proton live claims (#72) | Truthful unqualified commercial interoperability limit | Live commercial interoperability remains unqualified and claim-specific; not a release blocker. No credentials requested or awaited. |
+| Security release decision | Resolve actionable findings; preserve full scans and exact reviewed Debian residual dispositions | Final native/image scans and applicability/fix decisions retained. Reviewed unfixed Debian findings remain transparent residual risks; actionable gates passed. |
+| rc.4/public Proxmox (#87) | Published exact rc.4, fresh moving-main public path and lifecycle | Completed and #87 closed: published rc.4 resolution, helper/tag/source integrity, fresh guest install/access/health and lifecycle receipts retained. |
+| v1 RC | Bounded Astra High challenge, exact candidate checks and upgrade from qualified rc.4 | v1.0.0-rc.1 qualified and published; exact source/artifacts and install/upgrade evidence retained. |
+| Stable release | Exact-source checks, independent review, native installation/upgrades, verified tag/artifacts/checksums, stable/latest | v1.0.0 published as stable/latest; source/tag/artifacts/checksums and native paths verified. |
+| Official Docker (#90/#97) | Versioned image, immutable digest, provenance/SBOM, public anonymous pull and Compose qualification | `ghcr.io/kevindraai/exitlane:v1.0.0` published at `sha256:5bb6b96673ef255e070bc2ff47a39642c9db009493a7809569dfe7abd5d57fe5`; fresh anonymous tag/digest pulls, metadata binding, SPDX/SBOM and actual Compose/state/backup/restore/no-provider packet checks passed. Digest-bound signed provenance/SBOM verification is required before #90/#97 close; its source-bound result is recorded in the published release. No Docker latest alias. |
+| Operator documentation | Complete versioned Docker Quick Start, lifecycle and accurate native/Docker Help | [Quick Start](docker-deployment.md#quick-start) qualified through the unchanged published Compose/preflight path, with explicit LAN binds, durable state and backup/export/verify/restore. |
+| Repository/CI | One PR at a time, exact-head review/checks and fresh-main reconciliation | Applicable required CI/security, independent exact-head reviews and fresh-main reconciliation remain mandatory after each merge; the separately identified final-main SHA and hosted results are recorded in the published release. |
 
 The release ladder is rc.4 public qualification → exact v1 RC qualification/publication → stable
 qualification/publication → official stable-image acceptance. Independent reviews discover defects;
