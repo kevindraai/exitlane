@@ -151,11 +151,17 @@ The work order therefore authorizes a two-stage sequence, solely for this public
   is an rc.4 defect: retain evidence, diagnose and use a bounded reviewed follow-up release. Never
   move the rc.4 tag or claim #87 completed without proof.
 
-No Docker publication, support declaration, container aliases or production rollout is authorized.
+The 2026-10-04 Product Owner executive order authorizes the complete rc.4 → v1 RC →
+stable v1 release ladder, protected versioned GHCR publication and public-package acceptance.
+Earlier authorization holds in historical matrix entries below are superseded. Engineering
+checks remain required. No Docker latest alias or protected production-data mutation is implied.
 
 ## Canonical v1 readiness matrix
 
-This section owns the v1 blocker classification. The preceding checklist remains the qualification
+The executive order supersedes historical blocker classifications below: live PIA/Proton
+credentials are claim-specific (#72), reviewed supported-unfixed Debian findings are residual
+platform risks, and Docker publication is part of v1 delivery. This section records the prior
+readiness matrix; current source-bound completion receipts must reconcile every row. The preceding checklist remains the qualification
 contract; the roadmap links here rather than maintaining a second acceptance matrix. Source-bound
 receipts, hashes and hosted run results belong in linked issue/release records. A historical receipt
 is not a fresh candidate result. Reconcile this matrix after each accepted merge and before RC
