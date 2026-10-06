@@ -272,9 +272,12 @@ def _json(raw):
             object_pairs_hook=pairs,
             parse_constant=lambda _: _fail("report_content_invalid"),
         )
-    except (ValueError, UnicodeError, TypeError):
+    except (ValueError, UnicodeError, TypeError, RecursionError):
         _fail("report_json_invalid")
-    _public(value)
+    try:
+        _public(value)
+    except RecursionError:
+        _fail("report_nesting_invalid")
     return value
 
 

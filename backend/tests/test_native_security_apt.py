@@ -80,6 +80,7 @@ class Host:
         assert "#clear DPkg::Pre-Invoke;" in text
         assert 'Dir::Bin::dpkg "/bin/false";' in text
         assert "Dir::Bin::Methods" in text
+        assert (config.parent / "methods/http").read_text().startswith("#!/usr/bin/python3 -S\n")
         status = (config.parent / "status").read_text()
         assert "Depends: libc6 (>= 2.0)" in status
         assert "Description:" not in status

@@ -16,7 +16,7 @@ from pathlib import Path
 from native_security_evidence import EvidenceError, validate_pip_audit, validate_trivy
 
 PYTHON_PROBE = r"""
-import email.parser,hashlib,importlib.metadata,json,os,pathlib,stat,sys,sysconfig,zipfile
+import email.parser,hashlib,importlib.metadata,io,json,os,pathlib,stat,sys,sysconfig,zipfile
 def public_read(path,limit=1048576):
     if any(p.is_symlink() for p in (path,*path.parents)):raise ValueError('public_metadata_symlink')
     info=path.stat()
@@ -39,7 +39,10 @@ else:
 dists=list(importlib.metadata.distributions(path=[str(p) for p in paths if p.is_dir()]))
 packages=[];application=None;bundled=[];gaps=[]
 for d in dists:
-    meta=email.parser.Parser().parsestr(public_read(d._path/'METADATA').decode('utf-8'))
+    metadata_path=d._path
+    if metadata_path.is_dir():
+        metadata_path=metadata_path/('PKG-INFO' if metadata_path.name.endswith('.egg-info') else 'METADATA')
+    meta=email.parser.Parser().parsestr(public_read(metadata_path).decode('utf-8'))
     name=meta.get('Name');version=meta.get('Version')
     packages.append({'name':name,'version':version})
     if name and name.lower()=='exitlane':
@@ -60,7 +63,8 @@ if mode=='os':
             if any(p.is_symlink() for p in (folder,*folder.parents)):raise ValueError('bootstrap_path_invalid')
             for path in sorted(folder.glob('*.whl')):
                 if path.is_symlink() or path.stat().st_size>67108864:raise ValueError('bootstrap_wheel_invalid')
-                with zipfile.ZipFile(path) as z:
+                wheel_raw=public_read(path,67108864)
+                with zipfile.ZipFile(io.BytesIO(wheel_raw)) as z:
                     entries=[x for x in z.infolist() if x.filename.endswith('.dist-info/METADATA')]
                     if len(entries)!=1 or entries[0].file_size>1048576:raise ValueError('bootstrap_metadata_invalid')
                     meta=email.parser.Parser().parsestr(z.read(entries[0]).decode('utf-8'))
@@ -73,7 +77,7 @@ if mode=='os':
                         elif any(n.startswith(item.rsplit('/',1)[0]+'/') for n in z.namelist()):
                             gaps.append({'parent':meta['Name'],'reason':'bundled_dependency_manifest_unavailable'})
                     wheels.append({'filename':path.name,'name':meta['Name'],'version':meta['Version'],
-                        'sha256':hashlib.sha256(public_read(path,67108864)).hexdigest(),'bundled':vendors})
+                        'sha256':hashlib.sha256(wheel_raw).hexdigest(),'bundled':vendors})
 print(json.dumps({'interpreter':{'version':sys.version.split()[0],'implementation':sys.implementation.name,
     'executable':sys.executable,'stdlib':str(stdlib)},'distributions':packages,'application':application,
     'bootstrap':{'ensurepip_present':(stdlib/'ensurepip/__init__.py').is_file(),'wheels':wheels,

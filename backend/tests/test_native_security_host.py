@@ -182,7 +182,9 @@ def test_trivy_retains_valid_scanner_findings_even_on_command_failure(
     assert Path(argv[argv.index("--ignorefile") + 1]).read_text() == ""
 
 
-@pytest.mark.parametrize("raw", [b"", b"not-json", b'{"private_environment":"canary"}'])
+@pytest.mark.parametrize(
+    "raw", [b"", b"not-json", b'{"private_environment":"canary"}', b"[" * 1200 + b"0" + b"]" * 1200]
+)
 def test_trivy_malformed_raw_is_hashed_but_never_retained(host, monkeypatch, raw):
     tool, _ = _scanner(host, monkeypatch, raw=raw, returncode=2)
     cell, retained = host.trivy(
@@ -463,7 +465,10 @@ def test_isolated_python_probe_rejects_metadata_and_vendor_symlink_canaries(
     assert b"private-canary" not in results[0].stdout
 
 
-def test_bootstrap_wheel_with_bundled_payload_without_manifest_records_gap(host, monkeypatch):
+@pytest.mark.parametrize("hardlinked", [False, True])
+def test_bootstrap_wheel_with_bundled_payload_without_manifest_records_gap(
+    host, monkeypatch, hardlinked
+):
     import zipfile
 
     from native_security_host import PYTHON_PROBE
@@ -477,6 +482,8 @@ def test_bootstrap_wheel_with_bundled_payload_without_manifest_records_gap(host,
             "pip-1.0.dist-info/METADATA", "Metadata-Version: 2.1\nName: pip\nVersion: 1.0\n"
         )
         archive.writestr("pip/_vendor/dependency/__init__.py", "# Synthetic bundled dependency\n")
+    if hardlinked:
+        os.link(wheel, host.work / "private-wheel-link")
     empty = host.work / "empty-system-packages"
     empty.mkdir()
     prelude = (
@@ -497,6 +504,10 @@ def test_bootstrap_wheel_with_bundled_payload_without_manifest_records_gap(host,
         return original(argv, **kwargs)
 
     monkeypatch.setattr(host, "run", run)
+    if hardlinked:
+        with pytest.raises(EvidenceError, match="python_inventory_failed"):
+            host.python(sys.executable, "os")
+        return
     result = host.python(sys.executable, "os")
     assert result["bootstrap"]["wheels"][0]["name"] == "pip"
     assert result["bootstrap"]["wheels"][0]["bundled"] == []
@@ -600,3 +611,63 @@ def test_database_streaming_detects_source_change(host, monkeypatch, change):
         monkeypatch.setattr(os, "fstat", fstat)
     with pytest.raises(EvidenceError, match="trivy_database_changed"):
         host.stage_database(source, destination)
+
+
+def test_isolated_python_probe_covers_distinfo_directory_and_single_file_egginfo(host, monkeypatch):
+    prefix = host.work / "synthetic-venv"
+    site = (
+        prefix
+        / "lib"
+        / f"python{sys.version_info.major}.{sys.version_info.minor}"
+        / "site-packages"
+    )
+    site.mkdir(parents=True)
+    distinfo = site / "modern-1.0.dist-info"
+    distinfo.mkdir()
+    (distinfo / "METADATA").write_text("Metadata-Version: 2.1\nName: modern\nVersion: 1.0\n")
+    egginfo = site / "debian_directory-2.0.egg-info"
+    egginfo.mkdir()
+    (egginfo / "PKG-INFO").write_text(
+        "Metadata-Version: 1.2\nName: debian-directory\nVersion: 2.0\n"
+    )
+    (site / "debian_single-3.0.egg-info").write_text(
+        "Metadata-Version: 1.1\nName: debian-single\nVersion: 3.0\n"
+    )
+    original = host.run
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return original(argv, **kwargs)
+
+    monkeypatch.setattr(host, "run", run)
+    result = host.python(sys.executable, "venv", str(prefix))
+    assert calls[0][1:4] == ["-I", "-S", "-B"]
+    assert sorted(result["distributions"], key=lambda package: package["name"]) == [
+        {"name": "debian-directory", "version": "2.0"},
+        {"name": "debian-single", "version": "3.0"},
+        {"name": "modern", "version": "1.0"},
+    ]
+
+
+@pytest.mark.parametrize("kind", ["directory_pkg_info", "single_file"])
+def test_isolated_python_probe_refuses_egginfo_symlink_canary(host, kind):
+    prefix = host.work / "synthetic-venv"
+    site = (
+        prefix
+        / "lib"
+        / f"python{sys.version_info.major}.{sys.version_info.minor}"
+        / "site-packages"
+    )
+    site.mkdir(parents=True)
+    private = host.work / "synthetic-private-PKG-INFO"
+    private.write_text("Metadata-Version: 1.2\nName: private-canary\nVersion: 1.0\n")
+    if kind == "directory_pkg_info":
+        egginfo = site / "synthetic-1.0.egg-info"
+        egginfo.mkdir()
+        (egginfo / "PKG-INFO").symlink_to(private)
+    else:
+        (site / "synthetic-1.0.egg-info").symlink_to(private)
+    with pytest.raises(EvidenceError, match="python_inventory_failed") as error:
+        host.python(sys.executable, "venv", str(prefix))
+    assert "private-canary" not in str(error.value)

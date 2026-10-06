@@ -62,6 +62,10 @@ inputs and reports. SHA-256 uses canonical sorted JSON for structural inputs;
 valid scanner reports retain their original bytes. A malformed or non-allowlisted
 report is **not** written: only its hash, size and failure reason remain. Its
 findings are unavailable, never replaced by a zero count.
+This intentionally also rejects an advisory description containing a literal
+userinfo URL such as `https://user@example.com`, even when it is a public example.
+Scanner execution can therefore succeed while report export fails. No advisory
+is removed or rewritten to obtain a complete receipt.
 
 Statuses mean:
 

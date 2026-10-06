@@ -168,7 +168,7 @@ def _private_config(work, captured, root, inventory):
     # APT asks methods for capabilities even during simulation. This fixed local
     # stub advertises the protocol and refuses every acquisition without networking.
     method_program = (
-        "#!/usr/bin/python3\nimport sys\n"
+        "#!/usr/bin/python3 -S\nimport sys\n"
         "print('100 Capabilities\\nVersion: 1.0\\nSingle-Instance: true\\nLocal-Only: true\\n', flush=True)\n"
         "for line in sys.stdin:\n"
         "    if line.startswith('600 '):\n"

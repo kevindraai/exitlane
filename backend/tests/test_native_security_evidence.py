@@ -257,6 +257,20 @@ def test_secret_metadata_refused_before_artifact(where):
     assert "canary" not in str(exc.value)
 
 
+def test_public_advisory_userinfo_placeholder_is_rejected_without_report_retention():
+    report = trivy()
+    report["Results"][0]["Vulnerabilities"][0]["Description"] = (
+        "A public advisory demonstrates URL parsing with https://user@example.com."
+    )
+    raw = json.dumps(report).encode()
+    with pytest.raises(evidence.EvidenceError) as exc:
+        evidence.validate_trivy(raw, inventory(), os_identity())
+    # Public placeholder provenance cannot relax the credential URL boundary.
+    # Validation returns no report/findings that a caller could retain as raw JSON.
+    assert "user@example.com" not in str(exc.value)
+    assert str(exc.value) in {"credential_url_rejected", "report_content_invalid"}
+
+
 def test_trivy_missing_schema_and_bad_json():
     for raw in (b"", b"[]", b'{"SchemaVersion":2,"SchemaVersion":2}', b'{"x":NaN}'):
         with pytest.raises(evidence.EvidenceError):
@@ -265,6 +279,22 @@ def test_trivy_missing_schema_and_bad_json():
     del report["Results"][0]["Packages"]
     with pytest.raises(evidence.EvidenceError):
         validate(report)
+
+
+@pytest.mark.parametrize("scanner", ["trivy", "pip-audit"])
+def test_deep_malformed_report_is_a_stable_rejection(scanner):
+    raw = b"[" * 1200 + b'"PRIVATE-CANARY"' + b"]" * 1200
+    with pytest.raises(evidence.EvidenceError) as exc:
+        if scanner == "trivy":
+            evidence.validate_trivy(raw, inventory(), os_identity())
+        else:
+            evidence.validate_pip_audit(raw, [{"name": "public", "version": "1"}], {})
+    assert str(exc.value) in {
+        "report_json_invalid",
+        "report_nesting_invalid",
+        "report_schema_invalid",
+    }
+    assert "PRIVATE-CANARY" not in str(exc.value)
 
 
 @pytest.mark.parametrize(
