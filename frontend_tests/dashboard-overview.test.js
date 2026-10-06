@@ -3,6 +3,7 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { dashboardLocation, dashboardPeerSummary, initialiseDashboard, renderDashboard, renderDashboardPeers } from "../backend/exitlane/static/js/dashboard.js";
 import { getSlice, succeedRefresh, updateSlice } from "../backend/exitlane/static/js/state.js";
+import { projectDashboardKillswitch } from "../backend/exitlane/static/js/providers.js";
 
 const markup = await readFile(new URL("../backend/exitlane/static/partials/views/dashboard.html", import.meta.url), "utf8");
 class Element {
@@ -54,6 +55,17 @@ test("killswitch reflects confirmed state and exposes appropriate explanation",(
  assert.equal(el("dashboard-killswitch-description").textContent,"Traffic can continue without an active VPN connection.");
  d.killswitch={available:false};renderDashboard(d);
  assert.equal(el("dashboard-killswitch-state").textContent,"Status unknown");
+});
+
+test("VPN killswitch request failure retains confirmed dashboard protection and freshness",()=>{
+ const d=data();succeedRefresh("dashboard",d,1234);
+ projectDashboardKillswitch(null);
+ assert.deepEqual(getSlice("dashboard").data.killswitch,d.killswitch);
+ assert.equal(getSlice("dashboard").updatedAt,1234);
+ assert.equal(el("dashboard-killswitch-state").textContent,"Active");
+ projectDashboardKillswitch({configured:false,state:"disabled"});
+ assert.equal(el("dashboard-killswitch-state").textContent,"Disabled");
+ assert.equal(getSlice("dashboard").updatedAt,1234);
 });
 
 test("info opens through hover, focus and click, closes with Escape and does not mutate state",()=>{
@@ -123,5 +135,6 @@ test("dashboard is semantic facts and a bounded accessible table with no nested 
  assert.doesNotMatch(markup,/class="metric|dashboard-killswitch-card|dashboard-wg-client|dashboard-wg-endpoint|dashboard-wg-handshake|dashboard-wg-received|dashboard-wg-sent|dashboard-wg-refresh/);
  assert.match(markup,/dashboard-wireguard-card/);assert.match(markup,/scope="col"/);
  assert.match(markup,/aria-describedby="dashboard-killswitch-description"/);assert.match(markup,/popover="auto" role="tooltip"/);
+ assert.match(markup,/data-lucide-icon="info"/);
  for(const language of ["en","nl"]){const locale=JSON.parse(await readFile(new URL(`../backend/exitlane/static/locales/${language}.json`,import.meta.url),"utf8"));for(const key of ["location","killswitch_info","device","traffic","no_devices","more_devices","device_count","wireguard_devices"])assert.ok(locale.dashboard[key]);}
 });

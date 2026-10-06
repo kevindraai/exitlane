@@ -38,10 +38,22 @@ function yesNo(value) {
   return t(value ? "common.yes" : "common.no", {}, value ? "Yes" : "No");
 }
 
+export function projectDashboardKillswitch(status) {
+  const dashboard = getSlice("dashboard");
+  // A failed status request must retain the last backend-confirmed observation.
+  if (!status || !dashboard.data) return;
+  const state = status.state || "unknown";
+  const known = KNOWN_KILLSWITCH_STATES.has(state);
+  updateSlice("dashboard", {
+    data: { ...dashboard.data, killswitch: {
+      available: known, configured: known ? Boolean(status.configured) : null, state,
+    } },
+  });
+}
+
 function renderKillswitchStatus(status) {
   const state = status?.state || "unknown";
   const known = KNOWN_KILLSWITCH_STATES.has(state);
-  const configured = known ? Boolean(status.configured) : null;
   if (status) {
     select("#killswitch-state").textContent = t(`killswitch.states.${state}`, {}, state);
     select("#killswitch-configured").textContent = known ? yesNo(status.configured) : "—";
@@ -62,10 +74,7 @@ function renderKillswitchStatus(status) {
   }
   // Confirmed VPN-page observations update the shared dashboard projection.
   // The dashboard owns its rendering and retains the last successful refresh time.
-  const dashboard = getSlice("dashboard");
-  if (dashboard.data) updateSlice("dashboard", {
-    data: { ...dashboard.data, killswitch: { available: known, configured, state } },
-  });
+  projectDashboardKillswitch(status);
 
 }
 

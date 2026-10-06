@@ -10,7 +10,7 @@ import {
 import { createDashboardRefreshState } from "./dashboard-refresh-state.js";
 import { getSlice, subscribe } from "./state.js";
 import { refreshDashboardState } from "./lifecycle.js";
-import { initialiseDashboardInfo, closeDashboardInfo } from "./dashboard-info.js";
+import { initialiseDashboardInfo, closeDashboardInfo, positionDashboardInfo } from "./dashboard-info.js";
 import { providerStatusId } from "./provider-management.js";
 
 const formatRelativeTime = (value) => formatRelative(value, Date.now(), t);
@@ -155,6 +155,7 @@ export function renderDashboard(data, { successfulRefresh = true } = {}) {
         : t("dashboard.killswitch_unknown", {}, "Status unknown"),
   );
 
+  positionDashboardInfo();
   renderDashboardPeers(data.wireguard);
 
   setTechnicalValue(select("#dashboard-hostname"), data.system.hostname);
@@ -205,6 +206,7 @@ export function initialiseDashboard() {
   initialiseDashboardInfo();
   subscribe("dashboard", (slice) => {
     if (slice.data) renderDashboard(slice.data, { successfulRefresh: !slice.error });
+    else { lastDashboardData = null; closeDashboardInfo(); }
   }, { immediate: true });
   subscribe("provider", (slice) => {
     const observedId = providerStatusId(slice.data || {});

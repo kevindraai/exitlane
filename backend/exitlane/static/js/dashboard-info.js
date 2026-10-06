@@ -5,7 +5,7 @@ let dismissTimer = null;
 const button = () => select("#dashboard-killswitch-info");
 const popover = () => select("#dashboard-killswitch-description");
 
-function positionInfo() {
+export function positionDashboardInfo() {
   if (!popover().matches(":popover-open")) return;
   const anchor = button().getBoundingClientRect();
   const bounds = popover().getBoundingClientRect();
@@ -16,7 +16,7 @@ function positionInfo() {
 function showInfo() {
   window.clearTimeout(dismissTimer);
   popover().showPopover();
-  positionInfo();
+  positionDashboardInfo();
 }
 
 export function closeDashboardInfo() {
@@ -55,8 +55,8 @@ export function initialiseDashboardInfo() {
   button().addEventListener("keydown", (event) => {
     if (event.key === "Escape") { closeDashboardInfo(); event.preventDefault(); }
   });
-  window.addEventListener("resize", positionInfo);
-  window.addEventListener("scroll", positionInfo, true);
+  window.addEventListener("resize", positionDashboardInfo);
+  window.addEventListener("scroll", positionDashboardInfo, true);
   window.addEventListener("pagehide", closeDashboardInfo);
   window.addEventListener("exitlane:authenticationrequired", closeDashboardInfo);
 }

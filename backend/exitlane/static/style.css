@@ -3225,6 +3225,7 @@ pre {
     grid-column: auto;
   }
 
+  .dashboard-card .panel-heading.compact { flex-direction: row; flex-wrap: wrap; gap: 12px; text-align: left; }
   .dashboard-fact { grid-template-columns: minmax(6rem, 32%) minmax(0, 1fr); gap: 0.3rem 0.6rem; }
   .dashboard-peer-table th:first-child { width: 3.4rem; }
   .dashboard-peer-table th:last-child { width: 40%; }
