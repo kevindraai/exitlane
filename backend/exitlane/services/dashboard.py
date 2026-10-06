@@ -40,6 +40,17 @@ class VPNStatus(BaseModel):
     error: str | None = None
 
 
+class WireGuardPeerSummary(BaseModel):
+    """Public dashboard projection of the existing ingress peer observation."""
+
+    peer_id: str
+    name: str
+    status: str
+    runtime_status: str
+    received_bytes: int = 0
+    sent_bytes: int = 0
+
+
 class WireGuardStatus(BaseModel):
     available: bool
     configured: bool = False
@@ -47,6 +58,7 @@ class WireGuardStatus(BaseModel):
     connected: bool = False
     client: str | None = None
     peer_count: int = 0
+    peers: list[WireGuardPeerSummary] = Field(default_factory=list)
     latest_handshake_at: datetime | None = None
     received_bytes: int = 0
     sent_bytes: int = 0
@@ -295,7 +307,7 @@ async def build_dashboard(
         peers = wireguard_result.get("peers") or []
         if not isinstance(peers, list):
             peers = []
-        # This sprint deliberately shows the first configured peer while reporting the total count.
+        # Retain the v1 aggregates for API compatibility; the dashboard uses named peers.
         primary_peer = peers[0] if peers and isinstance(peers[0], dict) else {}
         latest = int(wireguard_result.get("latest_handshake", 0) or 0)
         wireguard = WireGuardStatus(
@@ -305,6 +317,19 @@ async def build_dashboard(
             connected=bool(wireguard_result.get("connected")),
             client=wireguard_result.get("client") or None,
             peer_count=len(peers),
+            peers=[
+                WireGuardPeerSummary(
+                    peer_id=peer["peer_id"],
+                    name=peer["name"],
+                    status=peer["status"],
+                    runtime_status=peer["runtime_status"],
+                    received_bytes=int(peer.get("received_bytes", 0) or 0),
+                    sent_bytes=int(peer.get("sent_bytes", 0) or 0),
+                )
+                for peer in peers
+                if isinstance(peer, dict)
+                and all(key in peer for key in ("peer_id", "name", "status", "runtime_status"))
+            ],
             latest_handshake_at=datetime.fromtimestamp(latest, UTC) if latest else None,
             received_bytes=int(primary_peer.get("received_bytes", 0) or 0),
             sent_bytes=int(primary_peer.get("sent_bytes", 0) or 0),

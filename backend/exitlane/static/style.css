@@ -3132,29 +3132,49 @@ pre {
   gap: 20px;
 }
 
-.dashboard-card,
-.dashboard-card .metric,
-.dashboard-card strong {
-  min-width: 0;
+/* Dashboard facts live within the main panel, without nested metric containers. */
+.dashboard-card-grid { align-items: start; }
+.dashboard-card { min-width: 0; }
+.dashboard-health { padding-block: 20px; }
+.dashboard-health h1 { margin-bottom: 8px; }
+.dashboard-health .lead { margin-bottom: 0; }
+.dashboard-wireguard-card { grid-column: 1 / -1; }
+.dashboard-facts { margin: 0; }
+.dashboard-fact {
+  display: grid; grid-template-columns: minmax(7rem, 34%) minmax(0, 1fr);
+  gap: 0.4rem 1rem; align-items: baseline;
+  padding-block: 0.55rem; border-bottom: 1px solid var(--border);
 }
-
-.dashboard-card .metric strong {
-  overflow-wrap: normal;
-  word-break: normal;
+.dashboard-fact:last-child { border-bottom: 0; }
+.dashboard-fact dt { color: var(--text-muted); font-size: 0.82rem; font-weight: 400; }
+.dashboard-fact dd { min-width: 0; margin: 0; font-size: 0.9rem; font-weight: 600; }
+.dashboard-fact[data-secondary] dd { font-weight: 400; }
+.dashboard-fact dd:not(.technical-value) { overflow-wrap: break-word; }
+.dashboard-killswitch-value, .dashboard-inline-status { display: flex; align-items: center; gap: 0.4rem; }
+.dashboard-inline-status.status-success, .dashboard-peer-state.status-success { color: var(--success); }
+.dashboard-inline-status.status-neutral, .dashboard-peer-state.status-neutral { color: var(--text-muted); }
+.dashboard-peer-state.status-danger { color: var(--danger); }
+.dashboard-inline-status, .dashboard-peer-state { background: none; border: 0; }
+.dashboard-inline-status .lucide-icon, .dashboard-peer-state .lucide-icon { width: 1rem; height: 1rem; }
+.dashboard-info-button { padding: 0.3rem; min-height: 1.75rem; line-height: 1; border: 0; background: transparent; }
+.dashboard-info-button .lucide-icon { width: 1rem; height: 1rem; }
+.dashboard-info-popover {
+  position: fixed; inset: auto; margin: 0; padding: 0.75rem;
+  width: 18rem; max-width: calc(100vw - 1rem); max-height: calc(100vh - 1rem); overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 0.5rem;
+  background: var(--panel); color: var(--text); box-shadow: 0 4px 16px var(--dialog-backdrop);
+  font-size: 0.85rem;
 }
-
-.dashboard-metrics {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
-}
-
-.dashboard-card .metric {
-  min-height: 84px;
-  padding: 13px;
-}
-
-.metric-technical-wide {
-  grid-column: span 2;
-}
+.dashboard-peer-summary { margin: 0.3rem 0 0; color: var(--text-muted); font-size: 0.85rem; }
+.dashboard-peer-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 0.9rem; }
+.dashboard-peer-table th, .dashboard-peer-table td { padding: 0.6rem 0.5rem; text-align: left; border-bottom: 1px solid var(--border); }
+.dashboard-peer-table th { font-size: 0.8rem; color: var(--text-muted); font-weight: 400; }
+.dashboard-peer-table th:first-child { width: 4.5rem; }
+.dashboard-peer-table th:last-child { width: 45%; }
+.dashboard-peer-table td:nth-child(2) span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.dashboard-peer-table td:last-child span { display: inline-block; white-space: nowrap; }
+.dashboard-peer-table td:last-child span + span { margin-left: 0.8rem; }
+.dashboard-peer-state { display: inline-flex; align-items: center; vertical-align: middle; }
 
 .technical-value {
   min-width: 0;
@@ -3205,13 +3225,11 @@ pre {
     grid-column: auto;
   }
 
-  .dashboard-metrics {
-    grid-template-columns: 1fr;
-  }
-
-  .dashboard-metrics .metric-technical-wide {
-    grid-column: 1 / -1;
-  }
+  .dashboard-fact { grid-template-columns: minmax(6rem, 32%) minmax(0, 1fr); gap: 0.3rem 0.6rem; }
+  .dashboard-peer-table th:first-child { width: 3.4rem; }
+  .dashboard-peer-table th:last-child { width: 40%; }
+  .dashboard-peer-table td:last-child span { display: block; }
+  .dashboard-peer-table td:last-child span + span { margin-left: 0; margin-top: 0.2rem; }
 
   .dashboard-statusline .button {
     width: 100%;
@@ -3451,4 +3469,9 @@ pre {
   .wireguard-peer-table td .technical-value { max-width: 100%; }
   .wireguard-peer-table td:last-child { display: block; width: 100%; text-align: left; }
   .wireguard-peer-table td:last-child::before { display: block; margin-bottom: 0.5rem; }
+}
+
+@media (max-width: 380px) {
+  .dashboard-fact { grid-template-columns: 1fr; }
+  .dashboard-peer-table th, .dashboard-peer-table td { padding-inline: 0.25rem; }
 }

@@ -7,7 +7,7 @@ const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 test("System metrics markup includes CPU, load average, memory, and disk placeholders", async () => {
   const markup = await read("../backend/exitlane/static/partials/views/dashboard.html");
   for (const id of ["dashboard-cpu", "dashboard-load", "dashboard-memory", "dashboard-disk"]) {
-    assert.match(markup, new RegExp(`<strong id="${id}">—</strong>`));
+    assert.match(markup, new RegExp(`<dd id="${id}">—</dd>`));
   }
 });
 

@@ -85,3 +85,20 @@ only `exitlane.service`; `reboot` and `shutdown` affect the full instance.
 Shutdown cannot be reversed from ExitLane because the web application is no
 longer running. Starting the instance again requires host, hypervisor, or
 physical access.
+
+## Compact dashboard
+
+The dashboard uses the existing dashboard lifecycle and subscriptions. Its WireGuard peer
+projection comes from the same ingress observation used by device management; it contains only
+peer ID, name, lifecycle/runtime status and RX/TX counters. There is no additional poller or
+kernel parser. Legacy aggregate API fields remain compatible but are absent from the dashboard.
+
+The dashboard shows at most five devices: recently active first, other active identities next,
+and revoked identities last. Case-insensitive name and durable peer ID break ties deterministically.
+The count and “more devices” line include all configured identities; the WireGuard page provides
+complete details and management. Recency comes from the backend's existing rule, never from a
+browser inference that a past handshake represents a continuous session.
+
+Confirmed killswitch observations from the VPN page update the dashboard state projection,
+without changing its last successful refresh time. The dashboard's info button only explains the
+observed protection setting; changes remain on the VPN page.

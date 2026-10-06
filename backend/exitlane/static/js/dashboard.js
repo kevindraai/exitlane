@@ -1,5 +1,5 @@
 import { t } from "./i18n.js";
-import { renderIcon } from "./icons.js";
+import { createIcon, renderIcon } from "./icons.js";
 import { select, setBusy, setStatusPill, setTechnicalValue } from "./ui.js";
 import {
   formatBytes,
@@ -10,6 +10,8 @@ import {
 import { createDashboardRefreshState } from "./dashboard-refresh-state.js";
 import { getSlice, subscribe } from "./state.js";
 import { refreshDashboardState } from "./lifecycle.js";
+import { initialiseDashboardInfo, closeDashboardInfo } from "./dashboard-info.js";
+import { providerStatusId } from "./provider-management.js";
 
 const formatRelativeTime = (value) => formatRelative(value, Date.now(), t);
 let lastDashboardData = null;
@@ -32,6 +34,67 @@ export function renderDashboardProvider(data, renderText = text) {
   renderText("#dashboard-vpn-provider", dashboardProviderName(data));
 }
 
+export function dashboardLocation(vpn) {
+  return [vpn.city, vpn.country].filter((value) => value && value !== "—").join(", ") || "—";
+}
+
+export const DASHBOARD_PEER_LIMIT = 5;
+
+export function dashboardPeerSummary(peers = []) {
+  // Recent first, then active lifecycle, revoked last; name and durable ID break ties.
+  const priority = (peer) => peer.status === "revoked" ? 2 : peer.runtime_status === "active_recently" ? 0 : 1;
+  const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+  return [...peers].sort((a, b) => priority(a) - priority(b)
+    || compare(a.name.toLowerCase(), b.name.toLowerCase())
+    || compare(a.peer_id, b.peer_id)).slice(0, DASHBOARD_PEER_LIMIT);
+}
+
+export function renderDashboardPeers(wireguard) {
+  const peers = wireguard.peers || [];
+  const recent = peers.some((peer) => peer.status !== "revoked" && peer.runtime_status === "active_recently");
+  const label = wireguard.available === false ? "unavailable" : !wireguard.active ? "inactive" : recent ? "recently_active" : "waiting";
+  setStatusPill(select("#dashboard-wg-pill"), t(`dashboard.${label}`, {}, label),
+    recent && wireguard.active ? "success" : wireguard.available === false || wireguard.configured && !wireguard.active ? "danger" : "neutral");
+  text("#dashboard-wg-summary", t(peers.length === 1 ? "dashboard.device_count_one" : "dashboard.device_count", { count: peers.length }, peers.length === 1 ? "1 device" : `${peers.length} devices`));
+  select("#dashboard-wg-empty").hidden = peers.length !== 0 || wireguard.available === false;
+  select("#dashboard-wg-table").hidden = peers.length === 0;
+  select("#dashboard-wg-error").hidden = wireguard.available !== false;
+  text("#dashboard-wg-error", t("dashboard.wireguard_unavailable", {}, "WireGuard status is unavailable."));
+  const shown = dashboardPeerSummary(peers);
+  const rows = shown.map((peer) => {
+    const row = document.createElement("tr");
+    const state = peer.status === "revoked" ? "revoked" : peer.runtime_status === "active_recently" && wireguard.active ? "active_recently" : peer.runtime_status === "never_connected" ? "never_connected" : "inactive";
+    const status = document.createElement("td");
+    const indicator = document.createElement("span");
+    indicator.className = `dashboard-peer-state ${state === "active_recently" ? "status-success" : state === "revoked" ? "status-danger" : "status-neutral"}`;
+    indicator.setAttribute("role", "img");
+    const statusLabel = state === "inactive"
+      ? t("dashboard.not_recently_active", {}, "Not recently active")
+      : t(`wireguard_management.peer_status.${state}`, {}, state);
+    indicator.setAttribute("aria-label", statusLabel);
+    indicator.title = statusLabel;
+    indicator.append(createIcon(state === "active_recently" ? "circle-check" : state === "revoked" ? "circle-x" : "circle"));
+    status.append(indicator);
+    const name = document.createElement("td");
+    const nameText = document.createElement("span");
+    nameText.textContent = peer.name;
+    nameText.title = peer.name;
+    name.append(nameText);
+    const traffic = document.createElement("td");
+    for (const [direction, key, value] of [["↓", "received", peer.received_bytes], ["↑", "sent", peer.sent_bytes]]) {
+      const counter = document.createElement("span");
+      counter.textContent = `${direction} ${formatBytes(value)}`;
+      counter.setAttribute("aria-label", `${t(`dashboard.${key}`, {}, key)}: ${formatBytes(value)}`);
+      traffic.append(counter);
+    }
+    row.append(status, name, traffic);
+    return row;
+  });
+  select("#dashboard-wg-peer-list").replaceChildren(...rows);
+  select("#dashboard-wg-more").hidden = peers.length <= shown.length;
+  text("#dashboard-wg-more", t("dashboard.more_devices", { count: peers.length - shown.length }, `+ ${peers.length - shown.length} more devices`));
+}
+
 function renderLastSuccessfulRefresh(now = Date.now()) {
   const timestamp = getSlice("dashboard").updatedAt;
   text("#dashboard-refreshed", formatRelative(timestamp, now, t));
@@ -52,8 +115,7 @@ export function renderDashboard(data, { successfulRefresh = true } = {}) {
   const vpnState = !data.vpn.available ? "unavailable" : data.vpn.connected ? "connected" : "disconnected";
   setStatusPill(select("#dashboard-vpn-pill"), t(`dashboard.${vpnState}`, {}, vpnState), data.vpn.connected ? "success" : data.vpn.available ? "neutral" : "danger");
   renderDashboardProvider(data);
-  text("#dashboard-vpn-country", data.vpn.country);
-  text("#dashboard-vpn-city", data.vpn.city);
+  text("#dashboard-vpn-location", dashboardLocation(data.vpn));
   setTechnicalValue(select("#dashboard-vpn-server"), data.vpn.server);
   setTechnicalValue(select("#dashboard-external-ip"), data.vpn.external_ip);
   text("#dashboard-vpn-target", data.vpn.target);
@@ -68,11 +130,8 @@ export function renderDashboard(data, { successfulRefresh = true } = {}) {
     : killswitchConfigured === false
       ? t("dashboard.killswitch_disabled", {}, "Disabled")
       : t("dashboard.killswitch_unknown", {}, "Status unknown");
-  setStatusPill(
-    select("#dashboard-killswitch-pill"),
-    killswitchLabel,
-    data.killswitch?.state === "enabled_protected" ? "success" : "neutral",
-  );
+  text("#dashboard-killswitch-state", killswitchLabel);
+  select("#dashboard-killswitch-status").className = `dashboard-inline-status ${data.killswitch?.state === "enabled_protected" ? "status-success" : "status-neutral"}`;
   renderIcon(
     select("#dashboard-killswitch-icon"),
     data.killswitch?.state === "enabled_protected"
@@ -96,21 +155,15 @@ export function renderDashboard(data, { successfulRefresh = true } = {}) {
         : t("dashboard.killswitch_unknown", {}, "Status unknown"),
   );
 
-  setStatusPill(select("#dashboard-wg-pill"), t(`dashboard.${data.wireguard.active ? (data.wireguard.connected ? "connected" : "waiting") : "inactive"}`, {}, data.wireguard.active ? "Waiting" : "Inactive"), data.wireguard.connected ? "success" : data.wireguard.active ? "neutral" : "danger");
-  setTechnicalValue(select("#dashboard-wg-client"), data.wireguard.client);
-  text("#dashboard-wg-peers", data.wireguard.peer_count);
-  text("#dashboard-wg-handshake", formatRelativeTime(data.wireguard.latest_handshake_at));
-  text("#dashboard-wg-received", formatBytes(data.wireguard.received_bytes));
-  text("#dashboard-wg-sent", formatBytes(data.wireguard.sent_bytes));
-  setTechnicalValue(select("#dashboard-wg-endpoint"), data.wireguard.endpoint);
+  renderDashboardPeers(data.wireguard);
 
   setTechnicalValue(select("#dashboard-hostname"), data.system.hostname);
   text("#dashboard-cpu", formatCpuPercent(data.system.cpu_percent));
-  text("#dashboard-memory", data.system.memory_percent == null ? "—" : `${bytesOrUnknown(data.system.memory_used_bytes)} / ${bytesOrUnknown(data.system.memory_total_bytes)} (${data.system.memory_percent}%)`);
-  text("#dashboard-disk", data.system.disk_percent == null ? "—" : `${bytesOrUnknown(data.system.disk_used_bytes)} / ${bytesOrUnknown(data.system.disk_total_bytes)} (${data.system.disk_percent}%)`);
+  text("#dashboard-memory", data.system.memory_percent == null ? "—" : `${bytesOrUnknown(data.system.memory_used_bytes)} / ${bytesOrUnknown(data.system.memory_total_bytes)} · ${data.system.memory_percent}%`);
+  text("#dashboard-disk", data.system.disk_percent == null ? "—" : `${bytesOrUnknown(data.system.disk_used_bytes)} / ${bytesOrUnknown(data.system.disk_total_bytes)} · ${data.system.disk_percent}%`);
   text("#dashboard-uptime", data.system.uptime_seconds == null ? "—" : formatDuration(data.system.uptime_seconds));
   text("#dashboard-load", data.system.load_average?.join(" / ") || "—");
-  const temperature = select("#dashboard-temperature-metric");
+  const temperature = select("#dashboard-temperature-fact");
   temperature.hidden = data.system.temperature_celsius == null;
   text("#dashboard-temperature", data.system.temperature_celsius == null ? "—" : `${data.system.temperature_celsius} °C`);
   const systemError = select("#dashboard-system-error");
@@ -149,14 +202,21 @@ export async function refreshDashboard({ signal } = {}) {
 export function initialiseDashboard() {
   if (initialised) return;
   initialised = true;
+  initialiseDashboardInfo();
   subscribe("dashboard", (slice) => {
     if (slice.data) renderDashboard(slice.data, { successfulRefresh: !slice.error });
   }, { immediate: true });
   subscribe("provider", (slice) => {
+    const observedId = providerStatusId(slice.data || {});
+    const activeId = lastDashboardData?.active_provider?.id;
+    if (observedId && activeId && observedId !== activeId) return;
     if (lastDashboardData && slice.data) renderDashboard({ ...lastDashboardData, vpn: { ...lastDashboardData.vpn, ...slice.data } }, { successfulRefresh: false });
   });
   subscribe("wireguard", (slice) => {
     if (lastDashboardData && slice.data) renderDashboard({ ...lastDashboardData, wireguard: { ...lastDashboardData.wireguard, ...slice.data } }, { successfulRefresh: false });
+  });
+  subscribe("application", (application) => {
+    if (application.mode !== "dashboard" || application.activeView !== "dashboard") closeDashboardInfo();
   });
   window.setInterval(() => {
     const slice = getSlice("dashboard");
@@ -166,7 +226,7 @@ export function initialiseDashboard() {
   }, 1000);
   window.addEventListener("exitlane:languagechange", () => {
     if (lastDashboardData) renderDashboard(lastDashboardData, { successfulRefresh: false });
-    for (const selector of ["#dashboard-refresh", "#dashboard-wg-refresh"]) {
+    for (const selector of ["#dashboard-refresh"]) {
       const button = select(selector);
       button.dataset.originalLabel = button.textContent.trim();
     }

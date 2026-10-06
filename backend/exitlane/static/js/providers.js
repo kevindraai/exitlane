@@ -60,32 +60,13 @@ function renderKillswitchStatus(status) {
     renderIcon(select("#killswitch-badge-icon"), state === "enabled_protected" ? "circle-check" : state === "disabled" ? "circle-minus" : "triangle-alert");
     clearInlineError("#killswitch-error");
   }
-  const dashboardTone = state === "enabled_protected" ? "success" : "neutral";
-  const dashboardState = configured === true
-    ? t("dashboard.killswitch_active", {}, "Active")
-    : configured === false
-      ? t("dashboard.killswitch_disabled", {}, "Disabled")
-      : t("dashboard.killswitch_unknown", {}, "Status unknown");
-  setStatusPill(select("#dashboard-killswitch-pill"), dashboardState, dashboardTone);
-  renderIcon(
-    select("#dashboard-killswitch-icon"),
-    state === "enabled_protected"
-      ? "shield-check"
-      : configured === false ? "shield" : "shield-alert",
-  );
-  select("#dashboard-killswitch-description").textContent = configured === true
-    ? t(
-      "dashboard.killswitch_active_description",
-      {},
-      "Traffic is blocked when the VPN connection is lost.",
-    )
-    : configured === false
-      ? t(
-        "dashboard.killswitch_disabled_description",
-        {},
-        "Traffic can continue without an active VPN connection.",
-      )
-      : t("dashboard.killswitch_unknown", {}, "Status unknown");
+  // Confirmed VPN-page observations update the shared dashboard projection.
+  // The dashboard owns its rendering and retains the last successful refresh time.
+  const dashboard = getSlice("dashboard");
+  if (dashboard.data) updateSlice("dashboard", {
+    data: { ...dashboard.data, killswitch: { available: known, configured, state } },
+  });
+
 }
 
 async function loadKillswitch() {
