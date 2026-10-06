@@ -190,9 +190,28 @@ class IngressConfig:
                 os.close(descriptor)
 
 
+@dataclass(frozen=True)
+class _PolicyIngress:
+    """Non-secret identity for a blocked guard left by interrupted first setup."""
+
+    interface: str
+    address: str
+
+    def validated(self) -> _PolicyIngress:
+        require(isinstance(self.interface, str) and bool(INTERFACE.fullmatch(self.interface)))
+        require(self.interface not in {"eth0", "lo", "wg-mullvad", "wg-pia", "wg-proton"})
+        try:
+            address = ipaddress.IPv4Interface(self.address)
+            require(address.network.prefixlen <= 31)
+        except (ValueError, TypeError):
+            raise ContainerLifecycleError("container_ingress_config_invalid") from None
+        return self
+
+
 class ContainerWireGuardLifecycle:
     def __init__(self, config: IngressConfig, *, runner=core.command, provider_guard=None):
         self.config = config.validated()
+        self.policy_only = isinstance(config, _PolicyIngress)
         self.runner = runner
         self.provider_guard = provider_guard or ProviderWireGuard(runner)
         self.active = False
@@ -663,6 +682,7 @@ class ContainerWireGuardLifecycle:
         await self._activate(observer, observer)
 
     async def _activate(self, arm, observe) -> None:
+        require(not self.policy_only, "container_ingress_config_invalid")
         require(not self.uncertain_creation, "container_interface_creation_uncertain")
         rc, _, _ = await self.runner("ip", "link", "show", "dev", self.config.interface, timeout=5)
         require(rc != 0, "container_interface_collision")

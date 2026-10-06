@@ -4,7 +4,6 @@ import asyncio
 import base64
 import hashlib
 import ipaddress
-import json
 import logging
 import os
 import re
@@ -89,6 +88,7 @@ from exitlane.services import (
     provider_secrets,
     speedtest_installation,
     vpn_operations,
+    wireguard_initial,
     wireguard_peers,
 )
 from exitlane.services import wireguard as wireguard_service
@@ -688,6 +688,24 @@ def observe_wireguard_state(
 async def require_authentication(request: Request, call_next):
     path = request.url.path
     route = (request.method, path)
+
+    async def continue_request():
+        # A failed first-ingress rollback can leave a durable pending intent.
+        # Only a serialized retry may resolve it; other writers must not add
+        # peers/providers/settings that the pending rollback would erase.
+        if (
+            path.startswith("/api/")
+            and request.method not in SAFE_METHODS
+            and not path.startswith("/api/auth/")
+            and route != ("POST", "/api/ingress/wireguard")
+        ):
+            intent = _initial_wireguard_journal()
+            if intent.exists() or intent.is_symlink():
+                return JSONResponse(
+                    status_code=503, content={"detail": "wireguard_recovery_required"}
+                )
+        return await call_next(request)
+
     # SameSite=Lax is the first CSRF boundary. Origin/Referer validation also
     # protects deployments where an attacker controls another same-site origin.
     if (
@@ -701,10 +719,10 @@ async def require_authentication(request: Request, call_next):
         user = session_user(request.cookies.get(SESSION_COOKIE))
         if user:
             request.state.user = user
-            return await call_next(request)
+            return await continue_request()
         return JSONResponse(status_code=401, content={"detail": "Authentication required"})
     if not path.startswith("/api/") or route in PUBLIC_API_ROUTES:
-        return await call_next(request)
+        return await continue_request()
 
     user = session_user(request.cookies.get(SESSION_COOKIE))
     request.state.user = user
@@ -720,7 +738,7 @@ async def require_authentication(request: Request, call_next):
             and request.method in SAFE_METHODS
         )
     ):
-        return await call_next(request)
+        return await continue_request()
     return JSONResponse(status_code=401, content={"detail": "Authentication required"})
 
 
@@ -3938,38 +3956,19 @@ async def wireguard_egress_interface() -> None:
     """Use the kernel-selected default route for direct or active-provider egress."""
 
 
-_INITIAL_WG_SETTINGS = (
-    "wireguard_configured",
-    "wireguard_client_name",
-    "wireguard_interface",
-    "wireguard_endpoint",
-    "wireguard_subnet",
-    "wireguard_dns",
-    "wireguard_port",
-    "setup_current_step",
-)
+_INITIAL_WG_SETTINGS = wireguard_initial.SETTINGS
 
 
 def _initial_wireguard_journal() -> Path:
-    return DB.parent / ".wireguard-initial-setup.json"
+    return wireguard_initial.path(DB)
 
 
 def _write_initial_wireguard_journal(value: dict) -> None:
-    wireguard_service._atomic_write(_initial_wireguard_journal(), json.dumps(value))
-    descriptor = os.open(DB.parent, os.O_RDONLY | os.O_DIRECTORY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
+    wireguard_initial.write(DB, value)
 
 
 def _clear_initial_wireguard_journal() -> None:
-    _initial_wireguard_journal().unlink()
-    descriptor = os.open(DB.parent, os.O_RDONLY | os.O_DIRECTORY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
+    wireguard_initial.clear(DB)
 
 
 async def _deactivate_initial_wireguard_runtime(journal: dict) -> None:
@@ -4005,68 +4004,60 @@ async def _deactivate_initial_wireguard_runtime(journal: dict) -> None:
 
 
 async def _rollback_initial_wireguard_setup(journal: dict) -> None:
-    """Undo a first ingress that never reached its durable settings boundary."""
-    interface, client = journal["interface"], journal["client"]
+    """Undo a first ingress that never reached its durable commit marker."""
     await _deactivate_initial_wireguard_runtime(journal)
-    for name in (interface, client):
-        (WG_DIR / f"{name}.conf").unlink(missing_ok=True)
-    descriptor = os.open(WG_DIR, os.O_RDONLY | os.O_DIRECTORY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-    with sqlite3.connect(DB, timeout=5) as connection:
-        connection.execute("BEGIN IMMEDIATE")
-        connection.execute("DELETE FROM wireguard_peers")
-        connection.execute("DELETE FROM wireguard_ingress_profile")
-        connection.executemany(
-            "DELETE FROM settings WHERE key=?", ((key,) for key in _INITIAL_WG_SETTINGS)
-        )
-        connection.executemany(
-            "INSERT INTO settings(key,value) VALUES(?,?)",
-            ((key, json.dumps(value)) for key, value in journal["settings"].items()),
-        )
+    wireguard_initial.rollback_persistent(DB, WG_DIR, journal)
     _clear_initial_wireguard_journal()
 
 
 async def _recover_initial_wireguard_setup() -> None:
     path = _initial_wireguard_journal()
-    if not path.exists():
+    if not path.exists() and not path.is_symlink():
         return
     with wireguard_peers.state_lock():
         try:
-            journal = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(journal, dict) or set(journal) != {
-                "interface",
-                "client",
-                "activation_attempted",
-                "settings",
-            }:
-                raise ValueError
-            wireguard_service._validate_ingress_interface(journal["interface"])
-            wireguard_peers._path(journal["client"])
-            if (
-                not isinstance(journal["activation_attempted"], bool)
-                or not isinstance(journal["settings"], dict)
-                or not journal["settings"].keys() <= set(_INITIAL_WG_SETTINGS)
-            ):
-                raise TypeError
-        except (OSError, ValueError, TypeError, wireguard_peers.PeerError) as error:
+            journal = wireguard_initial.read(DB)
+        except wireguard_initial.InitialSetupError as error:
             raise wireguard_service.WireGuardConfigurationError(
                 "wireguard_recovery_failed"
             ) from error
-        if setting("wireguard_configured", False):
+        if journal["phase"] == "committed":
             try:
-                await wireguard_peers.migrate_legacy(journal["interface"], journal["client"])
+                if (
+                    setting("wireguard_configured", False) is not True
+                    or setting("wireguard_interface") != journal["interface"]
+                    or setting("wireguard_client_name") != journal["client"]
+                    or setting("wireguard_subnet") != journal["subnet"]
+                ):
+                    raise wireguard_initial.InitialSetupError("wireguard_recovery_failed")
+                wireguard_peers.validate_staged_state(DB, WG_DIR)
+                with sqlite3.connect(DB) as connection:
+                    if connection.execute(
+                        "SELECT COUNT(*) FROM wireguard_peers WHERE is_default=1"
+                    ).fetchone()[0] != 1:
+                        raise wireguard_initial.InitialSetupError("wireguard_recovery_failed")
                 await management_routing.reconcile()
-            except wireguard_peers.PeerError:
-                pass
-            except management_routing.ManagementRoutingError:
-                pass
-            else:
-                _clear_initial_wireguard_journal()
-                return
-        await _rollback_initial_wireguard_setup(journal)
+            except (
+                wireguard_initial.InitialSetupError,
+                wireguard_peers.PeerError,
+                sqlite3.DatabaseError,
+                management_routing.ManagementRoutingError,
+            ) as error:
+                raise wireguard_service.WireGuardConfigurationError(
+                    "wireguard_recovery_failed"
+                ) from error
+            _clear_initial_wireguard_journal()
+            return
+        try:
+            await _rollback_initial_wireguard_setup(journal)
+        except (
+            wireguard_initial.InitialSetupError,
+            OSError,
+            sqlite3.DatabaseError,
+        ) as error:
+            raise wireguard_service.WireGuardConfigurationError(
+                "wireguard_recovery_failed"
+            ) from error
 
 
 @app.post("/api/ingress/wireguard")
@@ -4165,8 +4156,10 @@ async def _create_initial_wireguard_setup(req: WireGuard, request: Request) -> d
     journal = {
         "interface": req.interface,
         "client": req.client,
+        "subnet": req.subnet,
         "activation_attempted": False,
         "settings": stored_settings(_INITIAL_WG_SETTINGS),
+        "phase": "pending",
     }
     _write_initial_wireguard_journal(journal)
 
@@ -4221,6 +4214,25 @@ async def _create_initial_wireguard_setup(req: WireGuard, request: Request) -> d
                 "wireguard_rollback_failed"
             ) from error
         raise
+    # All product stages succeeded. A failed commit-marker fsync is ambiguous:
+    # resolve whichever marker reached disk while still holding this owner.
+    try:
+        _write_initial_wireguard_journal({**journal, "phase": "committed"})
+    except (OSError, wireguard_initial.InitialSetupError) as error:
+        # A failed fsync does not reveal whether the committed rename reached
+        # disk. Resolve the actual marker under the same generation/peer owner
+        # before another request can observe or mutate this identity.
+        try:
+            await _recover_initial_wireguard_setup()
+        except (wireguard_service.WireGuardConfigurationError, OSError):
+            raise wireguard_service.WireGuardConfigurationError(
+                "wireguard_recovery_failed"
+            ) from error
+        if setting("wireguard_configured", False) is True:
+            return result
+        raise wireguard_service.WireGuardConfigurationError(
+            "wireguard_recovery_failed"
+        ) from error
     _clear_initial_wireguard_journal()
     return result
 

@@ -1,6 +1,7 @@
 """The first ingress must have a retriable pre-migration state after failure."""
 
 import asyncio
+import os
 import sqlite3
 from dataclasses import replace
 
@@ -122,8 +123,10 @@ def test_startup_recovers_interrupted_initial_setup(isolated_setup, committed):
     journal = {
         "interface": "wg0",
         "client": "router",
+        "subnet": "10.90.0.0/24",
         "activation_attempted": False,
         "settings": {},
+        "phase": "committed" if committed else "pending",
     }
     main._write_initial_wireguard_journal(journal)
     asyncio.run(
@@ -137,7 +140,14 @@ def test_startup_recovers_interrupted_initial_setup(isolated_setup, committed):
     )
     asyncio.run(wireguard_peers.migrate_legacy("wg0", "router"))
     if committed:
-        core.set_setting("wireguard_configured", True)
+        core.set_settings(
+            {
+                "wireguard_configured": True,
+                "wireguard_interface": "wg0",
+                "wireguard_client_name": "router",
+                "wireguard_subnet": "10.90.0.0/24",
+            }
+        )
         server = (wg_dir / "wg0.conf").read_bytes()
         client = (wg_dir / "router.conf").read_bytes()
     asyncio.run(main._recover_initial_wireguard_setup())
@@ -150,16 +160,16 @@ def test_startup_recovers_interrupted_initial_setup(isolated_setup, committed):
         _assert_original(database, wg_dir)
 
 
-def test_startup_rolls_back_committed_state_when_routing_cannot_reconcile(
-    isolated_setup, monkeypatch
-):
+def test_pending_marker_rolls_back_even_after_settings_commit(isolated_setup):
     database, wg_dir = isolated_setup
     main._write_initial_wireguard_journal(
         {
             "interface": "wg0",
             "client": "router",
+            "subnet": "10.90.0.0/24",
             "activation_attempted": False,
             "settings": {},
+            "phase": "pending",
         }
     )
     asyncio.run(
@@ -172,7 +182,212 @@ def test_startup_rolls_back_committed_state_when_routing_cannot_reconcile(
         )
     )
     asyncio.run(wireguard_peers.migrate_legacy("wg0", "router"))
-    core.set_setting("wireguard_configured", True)
+    core.set_settings(
+        {
+            "wireguard_configured": True,
+            "wireguard_interface": "wg0",
+            "wireguard_client_name": "router",
+            "wireguard_subnet": "10.90.0.0/24",
+        }
+    )
+    asyncio.run(main._recover_initial_wireguard_setup())
+    _assert_original(database, wg_dir)
+
+
+@pytest.mark.parametrize("published", [False, True])
+def test_commit_marker_write_failure_reenters_correct_side(isolated_setup, monkeypatch, published):
+    database, wg_dir = isolated_setup
+    original = main._write_initial_wireguard_journal
+
+    def fail_marker(record):
+        if record["phase"] == "committed":
+            if published:
+                original(record)
+            raise OSError("synthetic fsync failure")
+        original(record)
+
+    monkeypatch.setattr(main, "_write_initial_wireguard_journal", fail_marker)
+    if published:
+        result = asyncio.run(main.create_wireguard_ingress(_request(), _http_request()))
+        assert result["interface"] == "wg0"
+    else:
+        with pytest.raises(main.HTTPException, match="wireguard_recovery_failed"):
+            asyncio.run(main.create_wireguard_ingress(_request(), _http_request()))
+    monkeypatch.setattr(main, "_write_initial_wireguard_journal", original)
+    if published:
+        assert core.setting("wireguard_configured") is True
+        assert len(wireguard_peers.list_peers()) == 1
+        assert (wg_dir / "wg0.conf").exists()
+        assert (wg_dir / "router.conf").exists()
+        assert not main._initial_wireguard_journal().exists()
+    else:
+        _assert_original(database, wg_dir)
+
+
+@pytest.mark.parametrize("path", ["/api/ingress/wireguard/peers", "/api/vpn/connect"])
+def test_unresolved_initial_intent_blocks_later_peer_and_provider_writers(
+    isolated_setup, monkeypatch, path
+):
+    main._write_initial_wireguard_journal(
+        {
+            "interface": "wg0",
+            "client": "router",
+            "subnet": "10.90.0.0/24",
+            "activation_attempted": False,
+            "settings": {},
+            "phase": "pending",
+        }
+    )
+    monkeypatch.setattr(main, "request_origin_rejection", lambda _request: None)
+    monkeypatch.setattr(main, "session_user", lambda _token: {"id": 1, "username": "synthetic"})
+    called = False
+
+    async def next_request(_request):
+        nonlocal called
+        called = True
+        return main.JSONResponse({"ok": True})
+
+    request = main.Request({"type": "http", "method": "POST", "path": path, "headers": []})
+    result = asyncio.run(main.require_authentication(request, next_request))
+    assert result.status_code == 503
+    assert result.body == b'{"detail":"wireguard_recovery_required"}'
+    assert not called
+
+
+def test_ambiguous_marker_and_failed_rollback_cannot_admit_later_peer_writer(
+    isolated_setup, monkeypatch
+):
+    original = main._write_initial_wireguard_journal
+
+    def fail_marker(record):
+        if record["phase"] == "committed":
+            raise OSError("synthetic fsync failure")
+        original(record)
+
+    async def fail_rollback(_journal):
+        raise OSError("synthetic rollback failure")
+
+    monkeypatch.setattr(main, "_write_initial_wireguard_journal", fail_marker)
+    monkeypatch.setattr(main, "_rollback_initial_wireguard_setup", fail_rollback)
+    with pytest.raises(main.HTTPException, match="wireguard_recovery_failed"):
+        asyncio.run(main.create_wireguard_ingress(_request(), _http_request()))
+    assert main._initial_wireguard_journal().exists()
+    monkeypatch.setattr(main, "request_origin_rejection", lambda _request: None)
+    monkeypatch.setattr(main, "session_user", lambda _token: {"id": 1, "username": "synthetic"})
+
+    async def forbidden(_request):
+        pytest.fail("peer mutation reached handler while initial intent was unresolved")
+
+    request = main.Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/ingress/wireguard/peers",
+            "headers": [],
+        }
+    )
+    assert asyncio.run(main.require_authentication(request, forbidden)).status_code == 503
+
+
+@pytest.mark.parametrize("unsafe", ["symlink", "hardlink", "world_readable"])
+def test_unsafe_journal_is_refused_without_recovery_mutation(isolated_setup, unsafe):
+    _, wg_dir = isolated_setup
+    main._write_initial_wireguard_journal(
+        {
+            "interface": "wg0",
+            "client": "router",
+            "subnet": "10.90.0.0/24",
+            "activation_attempted": False,
+            "settings": {},
+            "phase": "pending",
+        }
+    )
+    journal_path = main._initial_wireguard_journal()
+    if unsafe == "symlink":
+        target = wg_dir.parent / "private-journal-target"
+        target.write_bytes(journal_path.read_bytes())
+        target.chmod(0o600)
+        journal_path.unlink()
+        journal_path.symlink_to(target)
+    elif unsafe == "hardlink":
+        os.link(journal_path, wg_dir.parent / "other-journal-link")
+    else:
+        journal_path.chmod(0o644)
+    with pytest.raises(wireguard.WireGuardConfigurationError, match="wireguard_recovery_failed"):
+        asyncio.run(main._recover_initial_wireguard_setup())
+    assert journal_path.exists()
+    assert core.setting("wireguard_configured", False) is False
+    assert not (wg_dir / "wg0.conf").exists()
+
+
+@pytest.mark.parametrize("unsafe", ["symlink", "hardlink", "world_readable"])
+def test_unsafe_initial_config_is_not_deleted_during_recovery(isolated_setup, unsafe):
+    database, wg_dir = isolated_setup
+    main._write_initial_wireguard_journal(
+        {
+            "interface": "wg0",
+            "client": "router",
+            "subnet": "10.90.0.0/24",
+            "activation_attempted": False,
+            "settings": {},
+            "phase": "pending",
+        }
+    )
+    server = wg_dir / "wg0.conf"
+    server.write_text("synthetic private file", encoding="ascii")
+    server.chmod(0o600)
+    if unsafe == "symlink":
+        target = wg_dir.parent / "private-config-target"
+        target.write_bytes(server.read_bytes())
+        target.chmod(0o600)
+        server.unlink()
+        server.symlink_to(target)
+    elif unsafe == "hardlink":
+        os.link(server, wg_dir.parent / "other-config-link")
+    else:
+        server.chmod(0o644)
+    with pytest.raises(wireguard.WireGuardConfigurationError, match="wireguard_recovery_failed"):
+        asyncio.run(main._recover_initial_wireguard_setup())
+    assert main._initial_wireguard_journal().exists()
+    assert server.exists()
+    assert core.setting("wireguard_configured", False) is False
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM wireguard_peers").fetchone()[0] == 0
+
+
+def test_startup_keeps_committed_identity_when_routing_cannot_reconcile(
+    isolated_setup, monkeypatch
+):
+    _, wg_dir = isolated_setup
+    main._write_initial_wireguard_journal(
+        {
+            "interface": "wg0",
+            "client": "router",
+            "subnet": "10.90.0.0/24",
+            "activation_attempted": False,
+            "settings": {},
+            "phase": "committed",
+        }
+    )
+    asyncio.run(
+        wireguard.create(
+            endpoint="192.0.2.10",
+            subnet="10.90.0.0/24",
+            dns="1.1.1.1",
+            interface="wg0",
+            client="router",
+        )
+    )
+    asyncio.run(wireguard_peers.migrate_legacy("wg0", "router"))
+    core.set_settings(
+        {
+            "wireguard_configured": True,
+            "wireguard_interface": "wg0",
+            "wireguard_client_name": "router",
+            "wireguard_subnet": "10.90.0.0/24",
+        }
+    )
+    before = ((wg_dir / "wg0.conf").read_bytes(), (wg_dir / "router.conf").read_bytes())
 
     async def fail(_actor=None):
         raise main.management_routing.ManagementRoutingError(
@@ -180,8 +395,12 @@ def test_startup_rolls_back_committed_state_when_routing_cannot_reconcile(
         )
 
     monkeypatch.setattr(main.management_routing, "reconcile", fail)
-    asyncio.run(main._recover_initial_wireguard_setup())
-    _assert_original(database, wg_dir)
+    with pytest.raises(wireguard.WireGuardConfigurationError, match="wireguard_recovery_failed"):
+        asyncio.run(main._recover_initial_wireguard_setup())
+    assert main._initial_wireguard_journal().exists()
+    assert core.setting("wireguard_configured") is True
+    assert len(wireguard_peers.list_peers()) == 1
+    assert ((wg_dir / "wg0.conf").read_bytes(), (wg_dir / "router.conf").read_bytes()) == before
 
 
 def test_first_setup_refuses_an_existing_native_interface(isolated_setup, monkeypatch, tmp_path):
