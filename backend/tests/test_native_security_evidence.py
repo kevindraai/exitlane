@@ -776,3 +776,21 @@ def test_worksheet_actual_bundled_maintenance_and_consistency_shapes():
     ):
         assert expected in text
     assert "PRIVATE-CANARY" not in text
+
+
+def test_worksheet_lists_bounded_fix_identities_without_replacing_full_findings():
+    findings = [
+        {
+            "category": "supported_fix_in_captured_cache",
+            "finding": {"VulnerabilityID": f"CVE-2026-{index:04d}", "PkgName": "sample"},
+            "candidate": {"source_version": "1.1"},
+            "tracker_fixed_version": "1.1",
+        }
+        for index in range(12)
+    ]
+    receipt = {"collection_status": "complete", "cells": {}, "applicability": findings}
+    text = evidence.worksheet(receipt)
+    assert text.count("captured candidate source:") == 10
+    assert "Additional identities: 2" in text
+    assert "primary fixed source: 1\\.1" in text
+    assert len(receipt["applicability"]) == 12

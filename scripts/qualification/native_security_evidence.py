@@ -1332,6 +1332,39 @@ def worksheet(receipt):
             categories[category] = categories.get(category, 0) + 1
     for category, count in sorted(categories.items()):
         lines.append("Applicability " + escape(category) + ": " + str(count))
+        examples = sorted(
+            {
+                (
+                    str(item.get("finding", {}).get("VulnerabilityID", "unresolved")),
+                    str(item.get("finding", {}).get("PkgName", "unresolved")),
+                    str(
+                        (item.get("candidate") or {}).get(
+                            "source_version", "unavailable"
+                        )
+                    ),
+                    str(item.get("tracker_fixed_version") or "unavailable"),
+                )
+                for item in receipt.get("applicability", [])
+                if item.get("category") == category
+            }
+        )
+        for advisory, package, candidate, fixed in examples[:10]:
+            lines.append(
+                "  "
+                + escape(advisory)
+                + " / "
+                + escape(package)
+                + " | captured candidate source: "
+                + escape(candidate)
+                + " | primary fixed source: "
+                + escape(fixed)
+            )
+        if len(examples) > 10:
+            lines.append(
+                "  Additional identities: "
+                + str(len(examples) - 10)
+                + "; see full applicability in receipt.json."
+            )
     for filename, artifact in sorted(receipt.get("artifacts", {}).items()):
         lines.append(
             "Artifact "
