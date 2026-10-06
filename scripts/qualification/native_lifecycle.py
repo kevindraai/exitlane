@@ -24,6 +24,8 @@ import sys
 import time
 from pathlib import Path
 
+import tomllib
+
 # Keep exact-source checkouts clean when invoked directly with python3.
 sys.dont_write_bytecode = True
 
@@ -64,6 +66,7 @@ def fail(code):
 
 MAX_PRIVATE = 32 * 1024 * 1024
 ROOT_UID = 0
+V1_TAG_SHA = "7973d3a6508c08a2949b88dad3750f43544cff48"
 
 
 def safe_ancestors(path):
@@ -254,6 +257,20 @@ def verify_entrypoint(source, entrypoint):
         fail("qualification_harness_source_mismatch")
 
 
+def release_upgrade_gate(config):
+    if config["role"] != "upgrade":
+        return
+    if config["baseline_sha"] != V1_TAG_SHA:
+        fail("qualification_baseline_identity_mismatch")
+    for name, expected in (("baseline", "1.0.0"), ("source", "1.0.1")):
+        source = Path(config[name])
+        version = tomllib.loads(
+            checked_read(source / "backend/pyproject.toml").decode()
+        )["project"]["version"]
+        if version != expected:
+            fail("qualification_release_version_mismatch")
+
+
 def preflight(config):
     verify_entrypoint(config["source"], Path(__file__))
     verify_entrypoint(config["source"], Path(state.__file__))
@@ -276,6 +293,7 @@ def preflight(config):
         (ROOT / "dev/net/tun").stat().st_mode
     ):
         fail("qualification_host_unsupported")
+    release_upgrade_gate(config)
     return {
         name: verify_source(config[name], config[name + "_sha"])
         for name in ("source", "baseline")
@@ -671,6 +689,7 @@ class Run:
             "upgrade": {
                 "upgrade-before.snapshot",
                 "upgrade-after.snapshot",
+                "upgrade-legacy-certificate.json",
                 "upgrade.log",
                 "upgrade-verify.log",
                 "fixture.json",
@@ -893,6 +912,12 @@ class Run:
                 before,
                 "preserved",
             )
+            certificate = None
+            if stage == "upgrade":
+                certificate = state.legacy_certificate(ROOT, before)
+                private_write(
+                    self.directory / "upgrade-legacy-certificate.json", certificate
+                )
             if stage == "rollback":
                 marker = self.directory / "fault-marker"
                 artifacts.append(
@@ -912,17 +937,28 @@ class Run:
                 if private_read(marker) != b"qualification_precommit_fault\n":
                     fail("qualification_fault_not_observed")
             else:
+                started = time.time() if stage == "upgrade" else None
                 artifacts.append(
                     self.command(
                         ["bash", source + "/installer/install-debian.sh"], stage
                     )
                 )
+            # The first successful upgrade snapshot must precede every peer/config API
+            # probe, since those endpoints may perform a lazy legacy migration.
+            after = self.snapshot(stage + "-after") if stage == "upgrade" else None
+            finished = time.time() if stage == "upgrade" else None
             healthy()
-            self.compare(
-                before,
-                self.snapshot(stage + "-after"),
-                "rollback" if stage == "rollback" else "preserved",
-            )
+            if stage == "upgrade":
+                if state.compare_v1_upgrade(
+                    before, after, certificate, started, finished
+                ):
+                    fail("qualification_state_not_preserved")
+            else:
+                self.compare(
+                    before,
+                    self.snapshot(stage + "-after"),
+                    "rollback" if stage == "rollback" else "preserved",
+                )
             installed(baseline if stage == "rollback" else source)
             # Separate labels prevent reusing/overwriting API receipts across stages.
             artifacts.append(

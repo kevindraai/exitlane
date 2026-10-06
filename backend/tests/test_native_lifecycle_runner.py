@@ -81,6 +81,33 @@ def seeded_receipts(run, runner):
     receipt(run, runner, "seed", {"fixture.json", "seed.snapshot", "api-seed.log"})
 
 
+def test_v1_upgrade_gate_pins_tag_and_both_versions(runner, monkeypatch):
+    details = config()
+    details["role"] = "upgrade"
+    details["baseline_sha"] = runner.V1_TAG_SHA
+    versions = {
+        "baseline": b'[project]\nversion = "1.0.0"\n',
+        "candidate": b'[project]\nversion = "1.0.1"\n',
+    }
+    monkeypatch.setattr(
+        runner,
+        "checked_read",
+        lambda path: versions["baseline" if "baseline" in str(path) else "candidate"],
+    )
+    runner.release_upgrade_gate(details)
+    details["baseline_sha"] = "d" * 40
+    with pytest.raises(runner.QualificationError, match="baseline_identity_mismatch"):
+        runner.release_upgrade_gate(details)
+    details["baseline_sha"] = runner.V1_TAG_SHA
+    versions["baseline"] = b'[project]\nversion = "0.3.0rc4"\n'
+    with pytest.raises(runner.QualificationError, match="release_version_mismatch"):
+        runner.release_upgrade_gate(details)
+    versions["baseline"] = b'[project]\nversion = "1.0.0"\n'
+    versions["candidate"] = b'[project]\nversion = "1.0.2"\n'
+    with pytest.raises(runner.QualificationError, match="release_version_mismatch"):
+        runner.release_upgrade_gate(details)
+
+
 @pytest.mark.parametrize("kind", ["symlink", "hardlink", "fifo", "wide", "oversize"])
 def test_private_read_rejects_unsafe_files(runner, tmp_path, kind):
     path = tmp_path / "secret"
