@@ -39,6 +39,16 @@ python3 -I -S -B /root/exitlane-candidate/scripts/qualification/native_security.
 The output must be a **new absolute directory**, outside the source and installed
 venv. Directory mode is `0700`; receipt/report files are `0600`. Only that output
 is written. The collector never installs tools or updates vulnerability databases.
+Every output ancestor must be owned by root when run as root and must not be
+group- or world-writable; symlink ancestors and existing output objects are
+refused. Use a fresh directory below a trusted private parent such as `/root`.
+The collector pins the output and work directories while collecting. If their
+named path is replaced during collection, it reports an error and does not
+publish a successful receipt at the replacement path; inspect the original
+private directory before retrying with a fresh output name.
+Supplied scanner/auditor binaries and local package tools run with the
+collector's identity and must be trusted; output confinement does not isolate
+code already running with that same identity.
 `--allow-network` permits pip-audit to request PyPI advisories for observed
 versions, with dependency resolution and pip execution disabled. It permits no
 package downloads, APT network operations or maintenance. Without it, Python

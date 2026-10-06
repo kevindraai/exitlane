@@ -3,7 +3,9 @@
 import copy
 import hashlib
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -123,26 +125,29 @@ class Host:
 
 @pytest.fixture
 def setup(tmp_path, monkeypatch):
-    output = tmp_path / "output"
-    output.mkdir()
-    host = Host(tmp_path)
-    options = collector.arguments(
-        ["--output", str(output), "--application-source", str(tmp_path / "source")]
-    )
-    identity = {"version": "1.0.0", "content_sha256": "2" * 64, "source": {"commit": "3" * 40}}
-    monkeypatch.setattr(collector, "application_identity", lambda *args: copy.deepcopy(identity))
-    monkeypatch.setattr(
-        collector, "collector_identity", lambda *args: {"version": "1", "commit": "4" * 40}
-    )
-    monkeypatch.setattr(
-        collector,
-        "collect_apt",
-        lambda *args, **kwargs: {
-            "status": "complete",
-            "data": {"candidates": {}, "policy_scope": "controlled_cache_projection"},
-        },
-    )
-    return options, host
+    with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[2]) as safe_root:
+        output = Path(safe_root) / "output"
+        output.mkdir(mode=0o700)
+        host = Host(tmp_path)
+        options = collector.arguments(
+            ["--output", str(output), "--application-source", str(tmp_path / "source")]
+        )
+        identity = {"version": "1.0.0", "content_sha256": "2" * 64, "source": {"commit": "3" * 40}}
+        monkeypatch.setattr(
+            collector, "application_identity", lambda *args: copy.deepcopy(identity)
+        )
+        monkeypatch.setattr(
+            collector, "collector_identity", lambda *args: {"version": "1", "commit": "4" * 40}
+        )
+        monkeypatch.setattr(
+            collector,
+            "collect_apt",
+            lambda *args, **kwargs: {
+                "status": "complete",
+                "data": {"candidates": {}, "policy_scope": "controlled_cache_projection"},
+            },
+        )
+        yield options, host
 
 
 def test_complete_means_collection_not_secure_and_hashes_retained_inputs(setup):
@@ -271,7 +276,7 @@ def test_post_maintenance_binds_same_target_and_fresh_process_observation(
     previous = collector.collect(options, host)
     # Use a separate output for the fresh observation.
     options.output = options.output.parent / "after"
-    options.output.mkdir()
+    options.output.mkdir(mode=0o700)
     previous["observed_until"] = "2020-01-01T00:00:00+00:00"
     previous["cells"]["libraries"] = copy.deepcopy(host.lib)
     previous["cells"]["libraries"]["data"]["start_ticks"] = 100 if restarted else 200
@@ -379,7 +384,7 @@ def test_previous_receipt_cannot_inject_private_metadata(setup, field):
     else:
         previous["cells"]["libraries"]["data"][field] = CANARY
     options.output = options.output.parent / "after-private"
-    options.output.mkdir()
+    options.output.mkdir(mode=0o700)
     prior = options.output.parent / "untrusted-prior.json"
     prior.write_text(json.dumps(previous))
     options.library = "libssl.so.3"
@@ -402,3 +407,281 @@ def test_output_symlink_ancestor_cannot_modify_target(tmp_path, capsys):
     )
     assert not list(target.iterdir())
     assert "output_ancestor_invalid" in capsys.readouterr().out
+
+
+@pytest.fixture
+def safe_output_parent():
+    with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[2]) as root:
+        yield Path(root)
+
+
+def synthetic_cli(output):
+    return [
+        "--execute",
+        "--output",
+        str(output),
+        "--application-source",
+        "/source",
+        "--collector-source",
+        "/source",
+    ]
+
+
+def test_cli_writes_private_pinned_artifacts_and_work(safe_output_parent, monkeypatch, capsys):
+    output = safe_output_parent / "evidence"
+
+    def synthetic_collect(options, host):
+        assert host.work.is_dir()
+        assert str(host.work).startswith("/proc/")
+        assert host.run(["/usr/bin/true"]).returncode == 0
+        options._output_dir.write("raw.json", b"synthetic-public-data")
+        (host.work / "scratch").write_bytes(b"private-work")
+        return {
+            "collection_status": "complete",
+            "artifacts": {
+                "raw.json": {
+                    "sha256": hashlib.sha256(b"synthetic-public-data").hexdigest(),
+                    "size": 21,
+                }
+            },
+        }
+
+    monkeypatch.setattr(collector, "collect", synthetic_collect)
+    monkeypatch.setattr(collector, "worksheet", lambda _: "synthetic worksheet\n")
+    assert collector.main(synthetic_cli(output)) == 0
+    assert json.loads(capsys.readouterr().out.splitlines()[-1])["collection_status"] == "complete"
+    assert output.stat().st_mode & 0o777 == 0o700
+    for name in ("raw.json", "receipt.json", "worksheet.txt"):
+        assert (output / name).stat().st_mode & 0o777 == 0o600
+    assert (output / "work/scratch").read_bytes() == b"private-work"
+    assert not list(output.glob(".*.tmp"))
+
+
+def test_cli_swap_refuses_publication_without_touching_target(
+    safe_output_parent, monkeypatch, capsys
+):
+    output = safe_output_parent / "evidence"
+    target = safe_output_parent / "target"
+    target.mkdir(mode=0o700)
+    for name in ("receipt.json", "worksheet.txt", "raw.json"):
+        (target / name).write_bytes(b"sentinel")
+
+    def swap(options, host):
+        options._output_dir.write("raw.json", b"safe-original")
+        output.rename(safe_output_parent / "captured")
+        output.symlink_to(target, target_is_directory=True)
+        (host.work / "scratch").write_bytes(b"pinned-work")
+        return {"collection_status": "complete"}
+
+    monkeypatch.setattr(collector, "collect", swap)
+    assert collector.main(synthetic_cli(output)) == 2
+    assert json.loads(capsys.readouterr().out.splitlines()[-1])["collection_status"] == "error"
+    assert all(
+        (target / name).read_bytes() == b"sentinel"
+        for name in ("receipt.json", "worksheet.txt", "raw.json")
+    )
+    assert (safe_output_parent / "captured/work/scratch").read_bytes() == b"pinned-work"
+
+
+@pytest.mark.parametrize("kind", ["symlink", "hardlink", "directory"])
+def test_cli_refuses_existing_artifact_object(safe_output_parent, monkeypatch, capsys, kind):
+    output = safe_output_parent / "evidence"
+    target = safe_output_parent / "sentinel"
+    target.write_bytes(b"unchanged")
+
+    def plant(_options, _host):
+        artifact = output / "receipt.json"
+        if kind == "symlink":
+            artifact.symlink_to(target)
+        elif kind == "hardlink":
+            artifact.hardlink_to(target)
+        else:
+            artifact.mkdir()
+        return {"collection_status": "complete"}
+
+    monkeypatch.setattr(collector, "collect", plant)
+    assert collector.main(synthetic_cli(output)) == 2
+    assert json.loads(capsys.readouterr().out.splitlines()[-1])["collection_status"] == "error"
+    assert target.read_bytes() == b"unchanged"
+    assert not list(output.glob(".*.tmp"))
+
+
+def test_artifact_publish_failure_cleans_temp_and_fresh_retry_succeeds(
+    safe_output_parent, monkeypatch
+):
+    output = safe_output_parent / "evidence"
+    original_link = collector.os.link
+
+    def deny_link(*args, **kwargs):
+        raise OSError("synthetic publish failure")
+
+    monkeypatch.setattr(collector.os, "link", deny_link)
+    with collector.OutputDirectory(output, create=True) as directory:
+        with pytest.raises(OSError):
+            directory.write("receipt.json", b"public")
+    assert not list(output.iterdir())
+    monkeypatch.setattr(collector.os, "link", original_link)
+    with collector.OutputDirectory(safe_output_parent / "retry", create=True) as directory:
+        directory.write("receipt.json", b"public")
+    assert (safe_output_parent / "retry/receipt.json").read_bytes() == b"public"
+
+
+def test_cli_rejects_replaceable_output_ancestor(tmp_path, capsys):
+    output = tmp_path / "operator-controlled/evidence"
+    output.parent.mkdir()
+    assert (
+        collector.main(["--execute", "--output", str(output), "--application-source", "/source"])
+        == 2
+    )
+    assert not output.exists()
+    assert "output_ancestor_invalid" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("swap", ["output", "ancestor"])
+def test_child_writes_through_pinned_work_after_path_swap(safe_output_parent, swap):
+    ancestor = safe_output_parent / "ancestor"
+    ancestor.mkdir(mode=0o700)
+    output = ancestor / "evidence"
+    target = safe_output_parent / "target"
+    (target / "evidence/work").mkdir(parents=True, mode=0o700)
+    (target / "evidence/work/child").write_bytes(b"sentinel")
+    with collector.OutputDirectory(output, create=True) as directory:
+        work = directory.create_work()
+        if swap == "output":
+            output.rename(ancestor / "captured")
+            output.symlink_to(target / "evidence", target_is_directory=True)
+            captured = ancestor / "captured"
+        else:
+            ancestor.rename(safe_output_parent / "captured-ancestor")
+            ancestor.symlink_to(target, target_is_directory=True)
+            captured = safe_output_parent / "captured-ancestor/evidence"
+        host = collector.ReadOnlyHost(work)
+        code = "from pathlib import Path; import sys; p=Path(sys.argv[1]); p.write_bytes(b'pinned-child'); print(p.read_bytes().decode())"
+        result = host.run([sys.executable, "-I", "-S", "-B", "-c", code, str(work / "child")])
+        assert result.returncode == 0 and result.stdout.strip() == b"pinned-child"
+        with pytest.raises((collector.EvidenceError, OSError)):
+            directory.assert_current()
+    assert (captured / "work/child").read_bytes() == b"pinned-child"
+    assert (target / "evidence/work/child").read_bytes() == b"sentinel"
+
+
+@pytest.mark.parametrize("raise_inside", [False, True])
+def test_apt_private_temp_and_child_cleanup_stay_pinned_after_swap(
+    safe_output_parent, raise_inside
+):
+    output = safe_output_parent / "evidence"
+    target = safe_output_parent / "target"
+    target.mkdir(mode=0o700)
+    (target / "work").mkdir(mode=0o700)
+    (target / "work/sentinel").write_bytes(b"unchanged")
+    with collector.OutputDirectory(output, create=True) as directory:
+        host = collector.ReadOnlyHost(directory.create_work())
+
+        def exercise():
+            with tempfile.TemporaryDirectory(prefix="apt-", dir=host.work) as temporary:
+                config = Path(temporary) / "apt.conf"
+                config.write_text('Dir "/private";\n')
+                output.rename(safe_output_parent / "captured")
+                output.symlink_to(target, target_is_directory=True)
+                code = "from pathlib import Path; import os; p=Path(os.environ['APT_CONFIG']); print(p.read_text().strip()); (p.parent/'child').write_bytes(b'private')"
+                result = host.run(
+                    [sys.executable, "-I", "-S", "-B", "-c", code],
+                    env={"APT_CONFIG": str(config)},
+                )
+                assert result.returncode == 0 and result.stdout.strip() == b'Dir "/private";'
+                if raise_inside:
+                    raise RuntimeError("synthetic APT failure")
+
+        if raise_inside:
+            with pytest.raises(RuntimeError, match="synthetic APT failure"):
+                exercise()
+        else:
+            exercise()
+    assert not list((safe_output_parent / "captured/work").glob("apt-*"))
+    assert (target / "work/sentinel").read_bytes() == b"unchanged"
+    assert list((target / "work").iterdir()) == [target / "work/sentinel"]
+
+
+def test_trivy_stage_and_python_requirements_remain_in_pinned_work(safe_output_parent):
+    output = safe_output_parent / "evidence"
+    source = safe_output_parent / "public-db"
+    source.write_bytes(b"synthetic-db")
+    with collector.OutputDirectory(output, create=True) as directory:
+        work = directory.create_work()
+        host = collector.ReadOnlyHost(work)
+        output.rename(safe_output_parent / "captured")
+        output.symlink_to(safe_output_parent, target_is_directory=True)
+        private_cache = work / "trivy-cache/db"
+        private_cache.mkdir(parents=True, mode=0o700)
+        digest = host.stage_database(source, private_cache / "trivy.db")
+        requirements = work / "venv-requirements.txt"
+        requirements.write_text("sample==1.0\n")
+        code = "from pathlib import Path; import sys; print(Path(sys.argv[1]).read_bytes().hex()); print(Path(sys.argv[2]).read_text().strip())"
+        result = host.run(
+            [
+                sys.executable,
+                "-I",
+                "-S",
+                "-B",
+                "-c",
+                code,
+                str(private_cache / "trivy.db"),
+                str(requirements),
+            ]
+        )
+        assert result.returncode == 0
+        assert result.stdout.splitlines() == [b"synthetic-db".hex().encode(), b"sample==1.0"]
+        assert digest == hashlib.sha256(b"synthetic-db").hexdigest()
+    assert (
+        safe_output_parent / "captured/work/trivy-cache/db/trivy.db"
+    ).read_bytes() == b"synthetic-db"
+    assert not (safe_output_parent / "trivy-cache").exists()
+    assert not (safe_output_parent / "venv-requirements.txt").exists()
+
+
+@pytest.mark.parametrize("mode", [0o777, 0o770])
+def test_writable_ancestor_is_refused(safe_output_parent, mode):
+    ancestor = safe_output_parent / "writable"
+    ancestor.mkdir(mode=0o700)
+    ancestor.chmod(mode)
+    with pytest.raises(collector.EvidenceError, match="output_ancestor_invalid"):
+        collector.OutputDirectory(ancestor / "evidence", create=True)
+    assert not (ancestor / "evidence").exists()
+
+
+def test_foreign_owned_ancestor_is_refused(safe_output_parent, monkeypatch):
+    ancestor = safe_output_parent / "foreign"
+    ancestor.mkdir(mode=0o700)
+    real_fstat = os.fstat
+
+    def foreign_owner(fd):
+        info = real_fstat(fd)
+        if os.readlink(f"/proc/self/fd/{fd}") == str(ancestor):
+            fields = list(info)
+            fields[4] = 65534 if os.geteuid() != 65534 else 65533
+            return os.stat_result(fields)
+        return info
+
+    with monkeypatch.context() as patch:
+        patch.setattr(collector.os, "fstat", foreign_owner)
+        with pytest.raises(collector.EvidenceError, match="output_ancestor_invalid"):
+            collector.OutputDirectory(ancestor / "evidence", create=True)
+
+
+def test_fsync_failure_cleans_private_temp_without_publication(safe_output_parent, monkeypatch):
+    output = safe_output_parent / "evidence"
+    with collector.OutputDirectory(output, create=True) as directory:
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                collector.os,
+                "fsync",
+                lambda _fd: (_ for _ in ()).throw(OSError("synthetic fsync failure")),
+            )
+            with pytest.raises(OSError, match="synthetic fsync failure"):
+                directory.write("receipt.json", b"public")
+        assert not list(output.iterdir())
+        directory.write("raw.json", b"already-published")
+        with pytest.raises(FileExistsError):
+            directory.write("raw.json", b"replacement")
+        assert (output / "raw.json").read_bytes() == b"already-published"
+        assert not list(output.glob(".*.tmp"))

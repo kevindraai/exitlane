@@ -10,6 +10,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts/qualification"))
 from native_security_evidence import EvidenceError
+import native_security_host as host_module
 from native_security_host import CommandResult, ReadOnlyHost
 from test_native_security_evidence import inventory, os_identity, trivy
 
@@ -66,6 +67,27 @@ def test_command_nonzero_unavailable_timeout_and_output_bound(host):
     assert len(result.stdout) <= 32
     with pytest.raises(EvidenceError, match="command_input_limit"):
         host.run([sys.executable, "-c", "pass"], input=b"x" * 4097)
+
+
+def test_child_is_reaped_before_observation_exception_unwinds(host, monkeypatch):
+    spawned = []
+    original_popen = host_module.subprocess.Popen
+
+    def record_child(*args, **kwargs):
+        process = original_popen(*args, **kwargs)
+        spawned.append(process)
+        return process
+
+    def fail_select(_selector, _timeout=None):
+        raise OSError("synthetic selector failure")
+
+    monkeypatch.setattr(host_module.subprocess, "Popen", record_child)
+    monkeypatch.setattr(host_module.selectors.DefaultSelector, "select", fail_select)
+    with pytest.raises(OSError, match="synthetic selector failure"):
+        host.run([sys.executable, "-I", "-S", "-c", "import time;time.sleep(30)"])
+    assert len(spawned) == 1
+    assert spawned[0].poll() is not None
+    assert spawned[0].stdout.closed and spawned[0].stderr.closed
 
 
 def test_public_reader_refuses_symlinks_hardlinks_nonregular_and_oversize(host):

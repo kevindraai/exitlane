@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -57,6 +58,136 @@ REQUIRED = {
 }
 PACKAGE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 PACKAGE_VERSION = re.compile(r"[A-Za-z0-9][A-Za-z0-9.!+~:_-]{0,127}")
+
+
+class OutputDirectory:
+    """Own a private output inode, independent of later pathname replacement."""
+
+    def __init__(self, path, *, create=False):
+        self.path = Path(path)
+        if not self.path.is_absolute() or ".." in self.path.parts:
+            raise EvidenceError("output_must_be_new_absolute_directory")
+        self._fds = []
+        try:
+            current = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            self._fds.append(current)
+            self._verify(current, ancestor=True)
+            for component in self.path.parts[1:-1]:
+                try:
+                    current = os.open(
+                        component,
+                        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                        dir_fd=current,
+                    )
+                except OSError:
+                    raise EvidenceError("output_ancestor_invalid") from None
+                self._fds.append(current)
+                self._verify(current, ancestor=True)
+            self.parent_fd = current
+            if create:
+                try:
+                    os.mkdir(self.path.name, 0o700, dir_fd=current)
+                except FileExistsError:
+                    raise EvidenceError(
+                        "output_must_be_new_absolute_directory"
+                    ) from None
+            try:
+                self.fd = os.open(
+                    self.path.name,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=current,
+                )
+            except OSError:
+                raise EvidenceError("output_directory_invalid") from None
+            self._fds.append(self.fd)
+            self._verify(self.fd)
+            self.identity = os.fstat(self.fd)
+        except BaseException:
+            self.close()
+            raise
+
+    @staticmethod
+    def _verify(fd, *, ancestor=False):
+        info = os.fstat(fd)
+        mode = stat.S_IMODE(info.st_mode)
+        uid = os.geteuid()
+        if (
+            not stat.S_ISDIR(info.st_mode)
+            or info.st_uid not in {0, uid}
+            or mode & 0o022
+            or (not ancestor and mode != 0o700)
+        ):
+            raise EvidenceError(
+                "output_ancestor_invalid" if ancestor else "output_directory_invalid"
+            )
+
+    def create_work(self):
+        os.mkdir("work", 0o700, dir_fd=self.fd)
+        fd = os.open(
+            "work", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=self.fd
+        )
+        self._fds.append(fd)
+        self._verify(fd)
+        return Path(f"/proc/{os.getpid()}/fd/{fd}")
+
+    def write(self, name, raw):
+        if Path(name).name != name or not isinstance(raw, bytes):
+            raise EvidenceError("output_artifact_invalid")
+        self.assert_current()
+        temporary = f".{name}.{os.urandom(12).hex()}.tmp"
+        fd = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=self.fd,
+        )
+        try:
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(raw)
+                stream.flush()
+                os.fsync(stream.fileno())
+            info = os.stat(temporary, dir_fd=self.fd, follow_symlinks=False)
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_uid != os.geteuid()
+                or stat.S_IMODE(info.st_mode) != 0o600
+                or info.st_nlink != 1
+            ):
+                raise EvidenceError("output_artifact_invalid")
+            os.link(
+                temporary,
+                name,
+                src_dir_fd=self.fd,
+                dst_dir_fd=self.fd,
+                follow_symlinks=False,
+            )
+            os.unlink(temporary, dir_fd=self.fd)
+            self.assert_current()
+        finally:
+            try:
+                os.unlink(temporary, dir_fd=self.fd)
+            except FileNotFoundError:
+                pass
+
+    def assert_current(self):
+        with OutputDirectory(self.path) as current:
+            info = current.identity
+            if (info.st_dev, info.st_ino) != (
+                self.identity.st_dev,
+                self.identity.st_ino,
+            ):
+                raise EvidenceError("output_path_changed")
+
+    def close(self):
+        for fd in reversed(self._fds):
+            os.close(fd)
+        self._fds.clear()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.close()
 
 
 def cell_error(reason, status="incomplete"):
@@ -327,6 +458,14 @@ def plan(options):
 
 
 def collect(options, host):
+    output_dir = getattr(options, "_output_dir", None)
+    if output_dir is None:
+        with OutputDirectory(options.output) as output_dir:
+            return _collect(options, host, output_dir)
+    return _collect(options, host, output_dir)
+
+
+def _collect(options, host, output_dir):
     cells, artifacts = {}, {}
     receipt = {
         "kind": "native-security-qualification",
@@ -342,10 +481,7 @@ def collect(options, host):
     }
 
     def retain(name, raw):
-        path = options.output / name
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-        with os.fdopen(fd, "wb") as stream:
-            stream.write(raw)
+        output_dir.write(name, raw)
         artifacts[name] = {"sha256": hashlib.sha256(raw).hexdigest(), "size": len(raw)}
 
     def capture(name, function):
@@ -869,17 +1005,8 @@ def main(argv=None):
         return 0
     os.umask(0o077)
     try:
-        if (
-            not options.output.is_absolute()
-            or options.output.exists()
-            or options.output.is_symlink()
-        ):
+        if not options.output.is_absolute() or ".." in options.output.parts:
             raise EvidenceError("output_must_be_new_absolute_directory")
-        if (
-            any(parent.is_symlink() for parent in options.output.parents)
-            or ".." in options.output.parts
-        ):
-            raise EvidenceError("output_ancestor_invalid")
         for source in (
             options.application_source,
             options.collector_source,
@@ -887,25 +1014,24 @@ def main(argv=None):
         ):
             if options.output.is_relative_to(source.resolve()):
                 raise EvidenceError("output_must_not_modify_target")
-        options.output.mkdir(mode=0o700)
-        work = options.output / "work"
-        work.mkdir(mode=0o700)
-        receipt = collect(options, ReadOnlyHost(work))
-        raw = canonical_bytes(receipt)
-        (options.output / "receipt.json").write_bytes(raw)
-        (options.output / "worksheet.txt").write_text(
-            worksheet(receipt), encoding="utf-8"
-        )
-        print(
-            canonical_bytes(
-                {
-                    "collection_status": receipt["collection_status"],
-                    "receipt_sha256": hashlib.sha256(raw).hexdigest(),
-                    "output": str(options.output),
-                }
-            ).decode()
-        )
-        return 0 if receipt["collection_status"] == "complete" else 2
+        with OutputDirectory(options.output, create=True) as output_dir:
+            options._output_dir = output_dir
+            work = output_dir.create_work()
+            receipt = collect(options, ReadOnlyHost(work))
+            raw = canonical_bytes(receipt)
+            output_dir.write("receipt.json", raw)
+            output_dir.write("worksheet.txt", worksheet(receipt).encode("utf-8"))
+            output_dir.assert_current()
+            print(
+                canonical_bytes(
+                    {
+                        "collection_status": receipt["collection_status"],
+                        "receipt_sha256": hashlib.sha256(raw).hexdigest(),
+                        "output": str(options.output),
+                    }
+                ).decode()
+            )
+            return 0 if receipt["collection_status"] == "complete" else 2
     except (OSError, EvidenceError) as error:
         print(
             canonical_bytes(
