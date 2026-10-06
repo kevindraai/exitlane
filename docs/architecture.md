@@ -87,9 +87,14 @@ the provider contract. The existing [ExitLane killswitch](killswitch.md) is a se
 protection boundary. Containers additionally enforce permanent provider-or-block behavior,
 independent of that optional native setting.
 
-WireGuard setup and management share one configuration service. It generates both key pairs,
-transactionally replaces mode-0600 server and client files, activates the interface, and restores the
-last working pair when activation fails. See [WireGuard client configuration](wireguard-configuration.md).
+WireGuard setup and management share one configuration service and one ingress interface. The
+server keypair and subnet are shared; each named consumer has a durable peer ID, independent
+client keypair and unique tunnel `/32`. SQLite stores public peer metadata in the additive
+`wireguard_peers` table; private keys remain in root-only mode-0600 configuration files. A shared
+mutation lock serializes peer changes, with atomic publication, runtime application and rollback.
+Valid legacy single-client state migrates without changing either identity or the existing client
+configuration. Normal lifecycle mutations affect only the selected peer and all peers retain one
+shared egress policy. See [WireGuard device management](wireguard-configuration.md).
 
 VPN mutations and active-provider switches are globally serialized in the FastAPI process. A
 switch cannot persist until a connected old provider is disconnected and re-observed. A bounded

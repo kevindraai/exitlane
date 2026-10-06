@@ -26,10 +26,10 @@ export async function loadDetectedEndpoint() {
 
     endpointInput.value = network.endpoint;
     helpText.textContent =
-      `Automatisch gedetecteerd via ${network.interface}.`;
+      t("wireguard.endpoint_detected", { interface: network.interface }, `Detected automatically via ${network.interface}.`);
   } catch (error) {
     helpText.textContent =
-      "Automatische detectie is mislukt. Vul het lokale IP-adres handmatig in.";
+      t("wireguard.endpoint_detection_failed", {}, "Automatic detection failed. Enter the local IP address manually.");
 
     showMessage(error.message, "error");
   }
@@ -86,7 +86,7 @@ async function generateWireGuard(event) {
     select("#wireguard-next").disabled = false;
 
     showMessage(
-      "WireGuard-configuraties gegenereerd.",
+      t("wireguard.generated", {}, "WireGuard configurations generated."),
     );
 
     await refreshSetup();
@@ -118,7 +118,7 @@ async function copyWireGuardConfig() {
 );
   } catch {
     showMessage(
-      "Kopiëren via de browser is niet gelukt. Selecteer de configuratie handmatig.",
+      t("wireguard_management.errors.copy_failed", {}, "Copying failed. Show and select the configuration manually."),
       "error",
     );
   }

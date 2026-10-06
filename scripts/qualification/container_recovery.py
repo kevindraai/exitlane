@@ -342,6 +342,7 @@ class RecoveryHarness(DataplaneHarness):
         self.client_private = private
         server_private, _server_public = self.keypair(client)
         self.boot = {
+            "client_private_key": private,
             "ingress": {
                 "interface": "wg-office",
                 "address": "10.77.0.1/24",

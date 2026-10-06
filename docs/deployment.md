@@ -96,13 +96,16 @@ remain historical evidence rather than being relabelled as final-source results.
    PIA and Proton are implemented with synthetic/native-kernel qualification; live provider proof
    remains outstanding for both.
 3. Choose the WireGuard ingress name before provisioning. A configured interface cannot be renamed
-   through the API; regeneration retains its name and replaces the client identity.
-4. Import the generated profile on the router, then apply the router's routing policy to a test
-   client first. Configure client DNS through the intended tunnel path.
+   through the API. The wizard creates the first named peer; later devices share that interface.
+   A device can be renamed independently, and regeneration replaces only its client identity.
+4. Import the first peer's profile on the router, then apply the router's routing policy to a test
+   client first. Configure client DNS through the intended tunnel path. Add a separate named peer
+   for every other consumer that connects directly; never share one profile across devices.
 5. Enable the ExitLane killswitch if clients must stay offline after an explicit VPN disconnect,
    then connect the selected provider. Direct-egress setups can continue without a VPN connection.
-6. From that client, check internet access, DNS and the public exit address. Check that management
-   access remains available from its trusted network, then create an encrypted backup.
+6. From each intended consumer, check internet access, DNS and the public exit address. Confirm
+   separate handshake/endpoint/traffic attribution in WireGuard management. Check that management
+   access remains available from its trusted network, then create and verify an encrypted backup.
 
 Verify the application first:
 

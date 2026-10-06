@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 from test_provider_abstraction import client as provider_client
@@ -86,6 +87,27 @@ def test_denied_ingress_cannot_touch_files_or_launch(tmp_path):
                 "wg0", source_directory=tmp_path, system_directory=tmp_path / "system", runner=fail
             )
         )
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_native_ingress_sync_uses_private_temporary_file_and_cleans_up(tmp_path):
+    calls = []
+
+    async def launch(*args, **kwargs):
+        calls.append(args)
+        if args[:2] == ("wg-quick", "strip"):
+            return 0, "[Interface]\nPrivateKey = sensitive", ""
+        staged = args[3]
+        assert os.stat(staged).st_mode & 0o777 == 0o600
+        assert (await asyncio.to_thread(Path(staged).read_text)).endswith(
+            "PrivateKey = sensitive\n"
+        )
+        return 0, "", ""
+
+    asyncio.run(NativeSystemdRuntime().sync_ingress(
+        "wg0", source_directory=tmp_path, runner=launch,
+    ))
+    assert calls[1][:3] == ("wg", "syncconf", "wg0")
     assert list(tmp_path.iterdir()) == []
 
 

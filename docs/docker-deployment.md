@@ -96,8 +96,9 @@ docker compose -f docker/compose.appliance.yml exec -T exitlane \
 ```
 
 Open **http://192.168.10.20:8787** and complete first-run administrator setup and MFA. Configure
-WireGuard ingress, import its client profile on the router, then configure and connect one supported
-provider. Verify DNS and the expected VPN public exit from an actual routed client. HTTP health
+WireGuard ingress and its first named peer, import that peer's profile on the router, then configure
+and connect one supported provider. Add a separate peer for each other consumer that connects
+directly; do not copy one profile across devices. All peers share the same provider-or-block policy. Verify DNS and the expected VPN public exit from an actual routed client. HTTP health
 proves management availability; it does not prove protected VPN delivery. Without a proven provider,
 including after an explicit disconnect, protected Docker clients remain blocked with no plaintext
 fallback. Management remains separate. An unhealthy status alone does not trigger Docker restart.
@@ -121,7 +122,12 @@ prove provider state again; ambiguous or interrupted provider state stays blocke
 The named volume `exitlane_exitlane-state` mounts at `/data` with this project name. It contains
 `config/secret.key`, `state/exitlane.db`, ingress/provider state, recovery metadata and encrypted
 backups. Directories are root-owned mode 0700, files mode 0600. Database and key are one recovery
-unit. Locate the actual Docker-managed host mountpoint with:
+unit. Peer metadata is in SQLite and root-only ingress configurations are in
+`state/wireguard/`; both survive container recreation. Startup reconstructs the one ingress
+interface from active peers, preserving keys and IPs and excluding revoked peers. Valid v1
+single-client state migrates automatically without changing the router identity. Normal peer
+changes use the container lifecycle adapter and do not require systemd or a writable root.
+Locate the actual Docker-managed host mountpoint with:
 
 ```bash
 docker volume inspect exitlane_exitlane-state --format '{{.Mountpoint}}'
@@ -158,7 +164,8 @@ chmod 0600 "backups/$backup_name"
 Copy the encrypted export to a protected off-host location; retain the passphrase separately.
 Never put it in argv, environment variables, shell history or logs. Backups contain sensitive
 appliance data. Keep `.env`, matching Compose and exact previous image identity separately: those
-host settings are not in the portable backup. See [backup format and limits](backup-and-restore.md).
+host settings are not in the portable backup. The backup includes every ingress peer's metadata
+and configuration state, including revocation; restore preserves identities and IPs. See [backup format and limits](backup-and-restore.md).
 
 For restore, schedule a traffic interruption and retain host console access. On a compatible
 running appliance, put the verified encrypted backup in its private backup directory, enforce

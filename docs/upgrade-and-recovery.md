@@ -80,6 +80,13 @@ On startup, an older ingress profile with fixed NordVPN forwarding rules is migr
 provider-neutral forwarding. Its existing keys, peer configuration and client profile remain
 unchanged. Changing VPN providers does not require replacing the router's ingress profile.
 
+A valid v1 single-client ingress also migrates automatically to the named-peer model. The server
+and original router keys, tunnel IP, endpoint, subnet, DNS, port, AllowedIPs and keepalive remain
+unchanged. Subsequent starts do not repeat migration or generate a new identity. Inconsistent
+legacy state fails safely. Verify the original peer appears in the WireGuard page and test its
+existing profile before adding another consumer. New devices get independent keys and addresses;
+regenerating or revoking one must leave the original router usable.
+
 Choose a new ingress name only during initial provisioning. Renaming an already configured
 interface is rejected; profile regeneration keeps its name. With a stored active or pending direct-provider
 generation, reboot and restore establish the mandatory routing guard before ingress starts.

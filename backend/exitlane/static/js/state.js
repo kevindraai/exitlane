@@ -23,6 +23,7 @@ const state = {
   providers: statusSlice(),
   provider: statusSlice(),
   wireguard: statusSlice(),
+  wireguardPeers: statusSlice(),
   dashboard: statusSlice(),
   system: statusSlice(),
   activity: {
@@ -73,7 +74,7 @@ export function subscribe(name, callback, { immediate = false } = {}) {
 }
 
 export function resetAuthenticatedState() {
-  for (const name of ["providers", "provider", "wireguard", "dashboard", "system", "activity", "diagnostics"]) {
+  for (const name of ["providers", "provider", "wireguard", "wireguardPeers", "dashboard", "system", "activity", "diagnostics"]) {
     if (name === "activity") {
       state[name] = { ...statusSlice(), data: [], nextCursor: null, hasMore: false, filters: { category: "", level: "" } };
       notify(name);

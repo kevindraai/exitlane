@@ -94,7 +94,7 @@ def stage(name):
     Path("/run/d4-stage").write_text(name)
 
 
-def seed(state, ingress, marker):
+def seed(state, ingress, marker, client_private_key):
     """Only used under authority on a new volume or isolated source staging."""
     old_db, old_path = core.DB, auth_security.master_key_path
     core.DB = state.layout.database
@@ -105,6 +105,7 @@ def seed(state, ingress, marker):
                 "synthetic.marker": marker,
                 "wireguard_configured": True,
                 "wireguard_interface": "wg-office",
+                "wireguard_client_name": "router",
                 "wireguard_subnet": "10.77.0.0/24",
                 "vpn.provider_id": "mullvad",
             }
@@ -183,6 +184,15 @@ def seed(state, ingress, marker):
         path = state.layout.wireguard / "wg-office.conf"
         path.write_text(text)
         path.chmod(0o600)
+        client = state.layout.wireguard / "router.conf"
+        client.write_text(
+            f"[Interface]\nPrivateKey = {client_private_key}\n"
+            "Address = 10.77.0.2/32\nDNS = 1.1.1.1\n\n"
+            f"[Peer]\nPublicKey = {_public_key_for_private(ingress.private_key)}\n"
+            "Endpoint = 192.0.2.5:51820\nAllowedIPs = 0.0.0.0/0\n"
+            "PersistentKeepalive = 25\n"
+        )
+        client.chmod(0o600)
         with sqlite3.connect(core.DB) as c:
             c.execute("INSERT INTO users(id,username) VALUES(1,'synthetic')")
             c.execute(
@@ -462,7 +472,7 @@ class Fixture:
                 await self.guard((IngressIdentity("wg-office", "10.77.0.0/24"),))
                 await self.quiesce()
                 stage("seed")
-                seed(self.state, self.network.config, "old")
+                seed(self.state, self.network.config, "old", self.boot["client_private_key"])
                 await self.reconcile(self.state.validate())
                 await self.reopen()
         await self.server.start()
@@ -501,7 +511,7 @@ if __name__ == "__main__":
                 ContainerState(ContainerLayout(ROOT)).stage_empty(staging)
             )
             ingress = IngressConfig(**boot["ingress"])
-            seed(state, ingress, "new")
+            seed(state, ingress, "new", boot["client_private_key"])
 
             async def build():
                 async def noop(*args):

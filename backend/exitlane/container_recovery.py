@@ -493,23 +493,29 @@ class ContainerRecoveryCoordinator:
         staging = self.layout.recovery / str(uuid.uuid4())
         staging.mkdir(mode=0o700)
         try:
-            database = staging / "database.sqlite3"
-            lifecycle._database_snapshot(self.layout.database, database)
-            key = staging / "master-key"
-            _copy_file(self.layout.master_key, key)
-            files = [
-                lifecycle._inventory_entry("database", database.name, database, 0o600),
-                lifecycle._inventory_entry("master_key", key.name, key, 0o600),
-            ]
-            sources = sorted(self.layout.wireguard.iterdir())
-            if len(sources) > lifecycle.MAX_FILES - 2:
-                raise ContainerRecoveryError("recovery_inventory_too_large")
-            for index, source in enumerate(sources):
-                copy = staging / f"wireguard-{index:03d}.conf"
-                _copy_file(source, copy)
-                entry = lifecycle._inventory_entry("wireguard_config", copy.name, copy, 0o600)
-                entry["original_name"] = source.name
-                files.append(entry)
+            from exitlane.services.wireguard_peers import PeerError, state_lock
+
+            try:
+                with state_lock(self.layout.state):
+                    database = staging / "database.sqlite3"
+                    lifecycle._database_snapshot(self.layout.database, database)
+                    key = staging / "master-key"
+                    _copy_file(self.layout.master_key, key)
+                    files = [
+                        lifecycle._inventory_entry("database", database.name, database, 0o600),
+                        lifecycle._inventory_entry("master_key", key.name, key, 0o600),
+                    ]
+                    sources = sorted(self.layout.wireguard.iterdir())
+                    if len(sources) > lifecycle.MAX_FILES - 2:
+                        raise ContainerRecoveryError("recovery_inventory_too_large")
+                    for index, source in enumerate(sources):
+                        copy = staging / f"wireguard-{index:03d}.conf"
+                        _copy_file(source, copy)
+                        entry = lifecycle._inventory_entry("wireguard_config", copy.name, copy, 0o600)
+                        entry["original_name"] = source.name
+                        files.append(entry)
+            except PeerError as error:
+                raise ContainerRecoveryError(error.code) from error
             manifest = {
                 "format": "exitlane-appliance-backup",
                 "format_version": 1,
