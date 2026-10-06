@@ -1,4 +1,5 @@
 import { formatBytes } from "./dashboard-format.js";
+import { createIcon } from "./icons.js";
 import { api, postJson } from "./api.js";
 import { select, setBusy, setStatusPill, setTechnicalValue, showMessage } from "./ui.js";
 import { getCurrentLanguage, t } from "./i18n.js";
@@ -16,6 +17,58 @@ let pendingMutation = null;
 let mutating = false;
 let currentConfiguration = "";
 let configurationVisible = false;
+let actionsPeer = null;
+let actionsTrigger = null;
+
+export function closePeerActions() {
+  select("#wireguard-peer-actions-popover").hidePopover();
+  if (actionsTrigger) actionsTrigger.setAttribute("aria-expanded", "false");
+  actionsPeer = null;
+  actionsTrigger = null;
+}
+
+function positionPeerActions() {
+  if (!actionsTrigger) return;
+  const menu = select("#wireguard-peer-actions-popover");
+  const anchor = actionsTrigger.getBoundingClientRect();
+  const bounds = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(anchor.right - bounds.width, window.innerWidth - bounds.width - 8))}px`;
+  menu.style.top = `${Math.max(8, anchor.bottom + bounds.height + 8 <= window.innerHeight ? anchor.bottom + 4 : anchor.top - bounds.height - 4)}px`;
+}
+
+export function openPeerActions(peer, trigger) {
+  if (mutating) return;
+  if (actionsPeer?.peer_id === peer.peer_id) { closePeerActions(); return; }
+  closePeerActions();
+  actionsPeer = peer;
+  actionsTrigger = trigger;
+  trigger.setAttribute("aria-expanded", "true");
+  const menu = select("#wireguard-peer-actions-popover");
+  menu.setAttribute("aria-label", t("wireguard_management.actions_for", { name: peer.name }, `Actions for ${peer.name}`));
+  const details = textElement("div", "", "wireguard-peer-menu-details");
+  details.append(textElement("strong", peer.name));
+  if (peer.description) details.append(textElement("small", peer.description));
+  details.append(textElement("small", `${t("wireguard_management.created", {}, "Created")}: ${formatTimestamp(peer.created_at)}`));
+  if (peer.revoked_at) details.append(textElement("small", `${t("wireguard_management.revoked", {}, "Revoked")}: ${formatTimestamp(peer.revoked_at)}`));
+  const buttons = peerActions(peer).map((action) => {
+    const button = textElement("button", t(`wireguard_management.${action}`, {}, action), `button button-${["revoke", "delete"].includes(action) ? "danger" : "secondary"}`);
+    button.type = "button";
+    button.dataset.peerAction = action;
+    button.dataset.peerId = peer.peer_id;
+    button.addEventListener("click", () => {
+      closePeerActions();
+      if (mutating) return;
+      if (action === "config") openPeerConfiguration(peer);
+      else if (action === "edit") openPeerEditor(peer);
+      else openPeerMutation(peer, action);
+    });
+    return button;
+  });
+  menu.replaceChildren(details, ...buttons);
+  menu.showPopover();
+  positionPeerActions();
+  buttons[0]?.focus();
+}
 
 export function peerPath(peerId, suffix = "") {
   return `${PEERS_PATH}/${encodeURIComponent(peerId)}${suffix}`;
@@ -110,10 +163,7 @@ export function renderPeerList(payload) {
     row.dataset.peerId = peer.peer_id;
     const identity = document.createElement("div");
     identity.append(textElement("strong", peer.name));
-    if (peer.description) identity.append(textElement("small", peer.description, "wireguard-peer-description"));
-    const audit = textElement("small", t("wireguard_management.created", {}, "Created") + ": " + formatTimestamp(peer.created_at), "wireguard-peer-audit");
-    if (peer.revoked_at) audit.textContent += " · " + t("wireguard_management.revoked", {}, "Revoked") + ": " + formatTimestamp(peer.revoked_at);
-    identity.append(audit);
+    identity.title = [peer.name, peer.description].filter(Boolean).join(" — ");
     const address = document.createElement("span");
     setTechnicalValue(address, peer.tunnel_ip);
     const state = peerStatusView(peer);
@@ -125,27 +175,28 @@ export function renderPeerList(payload) {
     setTechnicalValue(endpoint, peer.endpoint);
     const traffic = document.createElement("div");
     traffic.append(textElement("span", `RX ${formatBytes(peer.received_bytes)}`), textElement("span", `TX ${formatBytes(peer.sent_bytes)}`));
-    const actions = document.createElement("div");
-    actions.className = "wireguard-peer-actions";
-    for (const action of peerActions(peer)) {
-      const button = textElement("button", t(`wireguard_management.${action}`, {}, action), `button button-${["revoke", "delete"].includes(action) ? "danger" : "secondary"}`);
-      button.type = "button";
-      button.dataset.peerAction = action;
-      button.dataset.peerId = peer.peer_id;
-      button.disabled = mutating;
-      button.setAttribute("aria-label", `${button.textContent}: ${peer.name}`);
-      button.addEventListener("click", () => {
-        if (mutating) return;
-        if (action === "config") openPeerConfiguration(peer);
-        else if (action === "edit") openPeerEditor(peer);
-        else openPeerMutation(peer, action);
-      });
-      actions.append(button);
-    }
+    const actions = document.createElement("button");
+    actions.className = "button button-secondary wireguard-peer-menu-trigger";
+    actions.type = "button";
+    actions.disabled = mutating;
+    actions.setAttribute("aria-label", t("wireguard_management.actions_for", { name: peer.name }, `Actions for ${peer.name}`));
+    actions.setAttribute("aria-controls", "wireguard-peer-actions-popover");
+    actions.setAttribute("aria-expanded", "false");
+    actions.append(createIcon("menu"));
+    actions.addEventListener("click", () => openPeerActions(peer, actions));
     row.append(cell("device", identity), cell("tunnel_ip", address), cell("status", pill), cell("last_handshake", handshake), cell("remote_endpoint", endpoint), cell("traffic", traffic), cell("actions", actions));
     return row;
   });
   list.replaceChildren(...rows);
+  if (actionsPeer) {
+    const current = peers.find((peer) => peer.peer_id === actionsPeer.peer_id);
+    if (!current || current.status !== actionsPeer.status || current.public_key !== actionsPeer.public_key || current.name !== actionsPeer.name || current.description !== actionsPeer.description) closePeerActions();
+    else {
+      actionsTrigger = rows.find((row) => row.dataset.peerId === current.peer_id).querySelector("button");
+      actionsTrigger.setAttribute("aria-expanded", "true");
+      positionPeerActions();
+    }
+  }
   // Another administrator/tab can revoke or regenerate while this modal is open.
   if (selectedPeer) {
     const current = peers.find((peer) => peer.peer_id === selectedPeer.peer_id);
@@ -401,6 +452,7 @@ export async function refreshManagedWireGuard() {
 function clearManagementSession() {
   ++sessionGeneration;
   ++listRequest;
+  closePeerActions();
   closeConfiguration();
   select("#wireguard-peer-editor-dialog").close();
   select("#wireguard-peer-mutation-dialog").close();
@@ -413,6 +465,24 @@ function clearManagementSession() {
 export function initialiseWireGuardManagement() {
   if (initialised || !select("#management-wireguard-refresh")) return;
   initialised = true;
+  const actionsMenu = select("#wireguard-peer-actions-popover");
+  actionsMenu.addEventListener("beforetoggle", (event) => {
+    if (event.newState === "closed") {
+      if (actionsTrigger) actionsTrigger.setAttribute("aria-expanded", "false");
+      actionsPeer = null;
+      actionsTrigger = null;
+    }
+  });
+  actionsMenu.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      const trigger = actionsTrigger;
+      closePeerActions();
+      trigger?.focus();
+      event.preventDefault();
+    }
+  });
+  window.addEventListener("resize", positionPeerActions);
+  window.addEventListener("scroll", positionPeerActions, true);
   select("#management-wireguard-refresh").addEventListener("click", refreshManagedWireGuard);
   select("#wireguard-peer-add").addEventListener("click", () => openPeerEditor());
   select("#wireguard-peer-editor-form").addEventListener("submit", savePeerEditor);
@@ -465,6 +535,7 @@ export function initialiseWireGuardManagement() {
   });
   window.addEventListener("pagehide", clearManagementSession);
   window.addEventListener("exitlane:languagechange", () => {
+    closePeerActions();
     if (managementActive && getSlice("wireguardPeers").data) renderPeerList(getSlice("wireguardPeers").data);
     renderMutationConfirmation();
     if (selectedPeer) select("#wireguard-config-title").textContent = t("wireguard_management.config_for", { name: selectedPeer.name }, `Configuration: ${selectedPeer.name}`);

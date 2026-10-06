@@ -23,11 +23,12 @@
   <div class="empty-state" data-i18n="wireguard_management.peers_empty" hidden="" id="wireguard-peers-empty">No devices yet. Add a device to create its own WireGuard configuration.</div>
   <div class="wireguard-peer-table-wrap" hidden="" id="wireguard-peers-content"><table class="wireguard-peer-table"><caption class="sr-only" data-i18n="wireguard_management.devices_title">Devices / Used by</caption><thead><tr><th scope="col" data-i18n="wireguard_management.device">Device / Used by</th><th scope="col" data-i18n="wireguard_management.tunnel_ip">Tunnel IP</th><th scope="col" data-i18n="wireguard_management.status">Status</th><th scope="col" data-i18n="wireguard_management.last_handshake">Last handshake</th><th scope="col" data-i18n="wireguard_management.remote_endpoint">Remote endpoint</th><th scope="col" data-i18n="wireguard_management.traffic">Traffic</th><th scope="col" data-i18n="wireguard_management.actions">Actions</th></tr></thead><tbody id="wireguard-peer-list"></tbody></table></div>
  </section>
+ <div class="wireguard-peer-menu" id="wireguard-peer-actions-popover" popover="auto" role="group"></div>
  <dialog aria-labelledby="wireguard-peer-editor-title" id="wireguard-peer-editor-dialog">
   <form id="wireguard-peer-editor-form" method="post">
    <h2 id="wireguard-peer-editor-title">Add device</h2>
    <div class="inline-error" hidden="" id="wireguard-peer-editor-error" role="alert"></div>
-   <label><span data-i18n="wireguard_management.device">Device / Used by</span><input autocomplete="off" id="wireguard-peer-name" maxlength="80" required="" data-i18n-placeholder="wireguard_management.name_placeholder" placeholder="Deluge - Synology"/></label>
+   <label><span data-i18n="wireguard_management.device">Device / Used by</span><input autocomplete="off" id="wireguard-peer-name" maxlength="80" required="" data-i18n-placeholder="wireguard_management.name_placeholder" placeholder="Name"/></label>
    <label><span data-i18n="wireguard_management.description_label">Description (optional)</span><textarea id="wireguard-peer-description" maxlength="240" rows="3"></textarea></label>
    <div class="view-actions"><button class="button button-secondary" data-i18n="wireguard_management.cancel" id="wireguard-peer-editor-cancel" type="button">Cancel</button><button class="button button-primary" data-i18n="wireguard_management.save" id="wireguard-peer-editor-save" type="submit">Save</button></div>
   </form>
