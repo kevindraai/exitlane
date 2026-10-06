@@ -20,6 +20,8 @@
 - Recover safely from failed initial WireGuard device adoption, preserving a retryable
   appliance state across native and Docker runtimes.
 - Confine root-run native qualification evidence writes to pinned private directories.
+- Handle full Debian advisory feeds, current Python vendor metadata and signed security
+  archive evidence without losing coverage or hiding scanner findings.
 
 ### Security
 

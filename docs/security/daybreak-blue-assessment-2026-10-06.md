@@ -14,6 +14,8 @@ outcome was **Changes requested** because the Medium finding blocked the patch r
 The two findings were subsequently fixed in separate, reviewed PRs #143 and #144.
 The original severities and assessment outcome remain unchanged; release qualification of
 the final v1.0.1 source, packages and appliances is a separate gate.
+Both findings are closed after deterministic retests, including checks after the later
+collector repair. There is no open release blocker from these Daybreak findings.
 
 ## Scope and method
 
@@ -61,6 +63,12 @@ PR #143 and **2,846** for PR #144), focused security tests and exact-head requir
 checks. PR #143 also passed real disposable native fault, rollback, retry, service
 health and authenticated peer-list checks. These are fix receipts, not a claim that
 the original assessment had no findings or that all v1.0.1 release gates have passed.
+
+Later real-appliance qualification exposed native collector input and coverage gaps,
+repaired separately in PR [#146](https://github.com/kevindraai/exitlane/pull/146). Its
+reviewed source produced a complete, hash-verified collection without hiding native
+or Python advisory records. This was post-assessment qualification work, not a new
+Daybreak assessment; collection completeness does not settle vulnerability applicability.
 
 The assessment host's Docker Engine 26.1.5 was below the supported Engine 28 minimum,
 so no supported Docker appliance run is claimed for that assessment. Live commercial
