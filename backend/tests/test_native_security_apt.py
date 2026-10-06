@@ -474,3 +474,29 @@ def test_empty_nonresolver_dpkg_field_is_omitted_not_invalid(tmp_path):
     assert b"Conffiles" not in selected
     assert b"Description" not in selected
     assert b"Package: sample" in selected
+
+
+def test_archive_fixture_contains_public_packets_only():
+    import base64
+
+    raw = base64.b64decode(_TEST_ARCHIVE_KEY_B64)
+    offset, tags = 0, []
+    while offset < len(raw):
+        header = raw[offset]
+        assert header & 0xC0 == 0xC0
+        tags.append(header & 0x3F)
+        offset += 1
+        first = raw[offset]
+        offset += 1
+        if first < 192:
+            length = first
+        elif first < 224:
+            length = ((first - 192) << 8) + raw[offset] + 192
+            offset += 1
+        else:
+            assert first == 255
+            length = int.from_bytes(raw[offset : offset + 4], "big")
+            offset += 4
+        offset += length
+    assert offset == len(raw)
+    assert tags == [6, 13, 2]  # Public key, synthetic user ID, public certification signature.

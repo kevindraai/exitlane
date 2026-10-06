@@ -10,3 +10,7 @@ backend/tests/test_mullvad_installer.py:generic-api-key:38
 # Exact historical false positive: prose "master key," followed by "ingress/default".
 # It contains no key value; the current receipt separates those preservation statements.
 1f60d3ccbf7d7a1e9d6a0b101791d85e88f995ac:docs/qualification/remaining-release-evidence-2026-10-03.md:generic-api-key:51
+
+# Exact historical false positive: synthetic public OpenPGP archive-verification fixture.
+# Public-key/user-ID/signature packets only; no private key or API credential.
+77e90ca8bc98b7d5203306296b9334d16ffa3a81:backend/tests/test_native_security_apt.py:generic-api-key:314
