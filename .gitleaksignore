@@ -14,3 +14,5 @@ backend/tests/test_mullvad_installer.py:generic-api-key:38
 # Exact historical false positive: synthetic public OpenPGP archive-verification fixture.
 # Public-key/user-ID/signature packets only; no private key or API credential.
 77e90ca8bc98b7d5203306296b9334d16ffa3a81:backend/tests/test_native_security_apt.py:generic-api-key:314
+# The same public fixture when introduced into main by the reviewed PR #140 squash.
+1081ae7d32ff5ed11a33ef4678cfe326b882dc1e:backend/tests/test_native_security_apt.py:generic-api-key:315
