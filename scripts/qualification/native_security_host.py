@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import signal
 import re
 import selectors
 import stat
@@ -133,57 +134,66 @@ class ReadOnlyHost:
             return CommandResult(
                 None, b"", stderr_hash.hexdigest(), "command_unavailable"
             )
-        if input is not None:
+
+        def stop_child():
             try:
-                process.stdin.write(input)
-                process.stdin.close()
-            except BrokenPipeError:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
                 pass
-        reason = None
-        deadline = time.monotonic() + timeout
-        with selectors.DefaultSelector() as selector:
-            selector.register(process.stdout, selectors.EVENT_READ, "stdout")
-            selector.register(process.stderr, selectors.EVENT_READ, "stderr")
-            while selector.get_map():
-                if time.monotonic() > deadline:
-                    reason = "command_timeout"
-                    break
-                for key, _ in selector.select(
-                    min(0.1, max(0, deadline - time.monotonic()))
-                ):
-                    chunk = os.read(key.fileobj.fileno(), 65536)
-                    if not chunk:
-                        selector.unregister(key.fileobj)
-                        continue
-                    if key.data == "stderr":
-                        stderr_hash.update(chunk)
-                    elif len(output) + len(chunk) > limit:
-                        reason = "command_output_limit"
-                        break
-                    else:
-                        output.extend(chunk)
-                if reason:
-                    break
-        if reason:
-            import signal
-
-            os.killpg(process.pid, signal.SIGKILL)
-        try:
-            process.wait(timeout=max(0.001, deadline - time.monotonic()))
-        except subprocess.TimeoutExpired:
-            import signal
-
-            os.killpg(process.pid, signal.SIGKILL)
             process.wait()
-            reason = "command_timeout"
-        process.stdout.close()
-        process.stderr.close()
-        return CommandResult(
-            None if reason else process.returncode,
-            bytes(output),
-            stderr_hash.hexdigest(),
-            reason,
-        )
+
+        try:
+            if input is not None:
+                try:
+                    process.stdin.write(input)
+                    process.stdin.close()
+                except BrokenPipeError:
+                    pass
+            reason = None
+            deadline = time.monotonic() + timeout
+            with selectors.DefaultSelector() as selector:
+                selector.register(process.stdout, selectors.EVENT_READ, "stdout")
+                selector.register(process.stderr, selectors.EVENT_READ, "stderr")
+                while selector.get_map():
+                    if time.monotonic() > deadline:
+                        reason = "command_timeout"
+                        break
+                    for key, _ in selector.select(
+                        min(0.1, max(0, deadline - time.monotonic()))
+                    ):
+                        chunk = os.read(key.fileobj.fileno(), 65536)
+                        if not chunk:
+                            selector.unregister(key.fileobj)
+                            continue
+                        if key.data == "stderr":
+                            stderr_hash.update(chunk)
+                        elif len(output) + len(chunk) > limit:
+                            reason = "command_output_limit"
+                            break
+                        else:
+                            output.extend(chunk)
+                    if reason:
+                        break
+            if reason:
+                stop_child()
+            try:
+                process.wait(timeout=max(0.001, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                stop_child()
+                reason = "command_timeout"
+            return CommandResult(
+                None if reason else process.returncode,
+                bytes(output),
+                stderr_hash.hexdigest(),
+                reason,
+            )
+        except BaseException:
+            stop_child()
+            raise
+        finally:
+            for stream in (process.stdin, process.stdout, process.stderr):
+                if stream is not None:
+                    stream.close()
 
     def read_public(self, path: Path, limit=64 * 1024 * 1024):
         if any(parent.is_symlink() for parent in path.parents):
