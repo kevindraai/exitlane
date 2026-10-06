@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Manage multiple named WireGuard peers on one ingress interface, with individual keys, tunnel
+  addresses, connection activity, configuration access, regeneration, revocation and deletion.
+- Collect read-only native Debian package and advisory evidence for post-release maintenance
+  decisions; collection does not apply updates or change release qualification.
+
+### Changed
+
+- Give the dashboard a compact operational overview and move each peer's actions into its own
+  menu.
+- Record management-routing lock failures in Activity.
+
 ## [1.0.0] - 2026-10-04
 
 ### Changed

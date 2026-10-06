@@ -71,10 +71,10 @@ validation controls; capabilities deny unavailable actions in API/UI/CLI. The co
 excludes NordVPN, uses a permanent provider-or-block ingress policy, supervises mutation leases and
 journalled recovery, reports cgroup-aware resource facts and treats timezone as an application IANA
 setting. Native host timezone, service and power behavior remains unchanged. D1–D7 implementation
-is delivered and historical D6 synthetic disposable-host qualification passed. The v1 Docker
-support matrix is fixed; exact stable-image qualification, public registry/digest and attestations
-remain delivery requirements. See the [Docker operator path](docker-deployment.md),
-[runtime architecture](docker-runtime-architecture.md) and version-bound release receipts.
+is delivered, and historical D6 synthetic disposable-host qualification passed. The v1 Docker
+image and exact-image qualification are published. See the [Docker operator path](docker-deployment.md),
+[runtime architecture](docker-runtime-architecture.md) and
+[v1 release receipts](release-notes/1.0.0.md#release-and-image-receipts).
 
 Provider status keeps installation, authentication, and tunnel connection as separate states and
 includes backend-determined capabilities. The capability model currently exposes sign-in,
@@ -131,4 +131,5 @@ repository nor signing key, and installation never starts a measurement. See
   management network.
 
 These boundaries retain one appliance core with encrypted backup/restore and four native provider
-integrations. Further providers and a supported public API remain future work; container support requires the documented host contract and exact published-image qualification.
+integrations. Further providers and a supported public API remain future work. Docker operators
+must use the documented host contract and published image.

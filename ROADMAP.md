@@ -1,9 +1,11 @@
 # Roadmap
 
-The roadmap describes direction rather than a release commitment. Priorities may change as the
-release candidates are tested in real networks.
+The roadmap describes direction rather than a release commitment. Priorities may change as
+operators use the stable release in different networks.
 
-The [canonical v1 readiness matrix](docs/release-checklist.md#canonical-v1-readiness-matrix) owns blockers, dependencies, evidence and authorization boundaries.
+The [v1 release record](docs/release-notes/1.0.0.md) holds the completed release evidence;
+the [readiness matrix](docs/release-checklist.md#canonical-v1-readiness-matrix) retains its
+historical planning and qualification trail.
 
 ## Historical scope: 0.3.0-rc.4
 
@@ -132,7 +134,16 @@ immutable identities, qualification results and issue acceptance. Historical imp
 sections retain their original scope. Live PIA/Proton interoperability remains unqualified (#72);
 it is claim-specific and does not change the accepted product scope. No Docker latest alias exists.
 
-## After v1
+## Delivered after v1 on main
+
+- Multiple named WireGuard devices with separate identities, traffic status and lifecycle actions.
+- A compact dashboard and a menu for each WireGuard device's actions.
+- Management-routing lock failures in Activity.
+- Read-only native package and advisory collection with source-bound receipts.
+
+These changes await the next release. See [Unreleased changes](CHANGELOG.md#unreleased).
+
+## Next opportunities
 
 - Evidence-backed additional providers and broader relay-availability research.
 - General direct-provider IPv6 egress, including Mullvad.
@@ -140,8 +151,3 @@ it is claim-specific and does not change the accepted product scope. No Docker l
 - WebAuthn/passkeys, high availability and metrics integrations.
 - Public API tokens, a supported public REST API and plugin architecture.
 - Additional CPU architectures and wider Docker host/configuration matrices.
-
-Investigate credible discoveries enough to establish a plausible integration or operator outcome,
-deduplicate against open and closed issues, and retain decision-ready backlog issues. A newly
-discovered opportunity is not a v1 blocker unless a concrete correctness/security dependency is
-established. Optional Nord gateway work and future providers must not inflate the native v1 scope.

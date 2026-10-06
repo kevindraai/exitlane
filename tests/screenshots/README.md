@@ -1,38 +1,75 @@
 # Screenshot automation
 
-This Playwright workflow captures the README and promotional screenshots from a
-real ExitLane appliance. It does not intercept or replace network responses.
+The six public images show the current ExitLane interface in a healthy,
+connected state. They are product illustrations, not evidence of provider,
+security, or release qualification. The default synthetic mode loads the
+repository's actual HTML, CSS, and JavaScript in Chromium. A small local
+fixture supplies only the API observations needed to present those screens;
+unknown requests fail closed. Help comes from the canonical documentation
+catalog and parser.
 
-Run it only against a dedicated reference appliance whose VPN and WireGuard
-connections are healthy. Supply a temporary administrator credential without
-writing it to disk:
+Capture after the source change is committed, from a clean working tree:
 
 ```bash
 cd tests/screenshots
 npm ci
+EXITLANE_SCREENSHOT_MODE=synthetic npm run capture
+```
+
+The manifest records the Git commit and tree of the clean input source,
+version, fixture source hash, each image's SHA-256, capture mode, intercepted
+API status, viewport, language, appearance, and privacy treatment. Generated PNGs
+make the working tree dirty after capture; the clean flag describes the input
+source at capture start. The synthetic presentation clock is fixed so relative
+times stay reproducible. All synthetic addresses use documentation ranges or
+reserved example hostnames. The fixture contains no provider credentials,
+private keys, or real appliance data. Capture checks visible content and
+closed configuration, QR, credential, and MFA controls before writing each
+image.
+
+Run the browser visual check against the same source and fixture:
+
+```bash
+npm run visual:qa
+```
+
+It covers desktop, tablet, mobile, and narrow layouts in light and dark mode,
+English and Dutch, across Dashboard, VPN, Diagnostics, WireGuard, Settings,
+Activity, and Help, plus the initial login and wizard screens. It checks page
+overflow, browser errors, popover boundaries and dismissal, the killswitch
+information control, and mobile WireGuard card layout. For a manual responsive
+review, set `EXITLANE_SCREENSHOT_QA_OUTPUT=/tmp/exitlane-visual-qa` before this
+command. This is a prefix: each run creates a new private directory and prints
+its path. Selected full-page Dashboard, VPN, WireGuard, login, and wizard images
+and `run-result.json` are created exclusively with `0600` permissions inside
+the `0700` directory. The result records source commit/tree, input worktree
+state, matrix coverage, and findings. QA output is local and is never a public
+capture or runtime qualification result.
+
+For a separately designated reference appliance, use live mode with a
+temporary administrator credential and an explicit private output directory
+outside the repository. It reads real API responses and replaces only an
+observed public IP before capture:
+
+```bash
+EXITLANE_SCREENSHOT_MODE=live \
+EXITLANE_SCREENSHOT_BASE_URL='http://reference-appliance:8787' \
+EXITLANE_SCREENSHOT_DEPLOYED_COMMIT='<commit deployed to that appliance>' \
+EXITLANE_SCREENSHOT_OUTPUT='/tmp/exitlane-live-candidate' \
 EXITLANE_SCREENSHOT_PASSWORD='temporary-password' npm run capture
 ```
 
-The default source is `http://172.16.130.81:8787`. Override it with
-`EXITLANE_SCREENSHOT_BASE_URL`. The generated
-`docs/images/screenshot-manifest.json` records the runtime-state category and
-privacy treatment for every output, together with the exact clean Git commit
-and tree used for the deployed product capture.
-
-The workflow runs the normal connection diagnostics but never starts a
-Speedtest. It also keeps the WireGuard configuration and QR-code controls
-closed and rejects visible secret markers before every capture.
-
-Dashboard and VPN captures first verify the real external IP delivered by the
-appliance and then replace only that visible value with an explicit
-`Redacted` label. The manifest categorizes these images as
-`live-runtime-controlled-redaction`. The workflow fails if any public IP
-remains visible; it does not alter health, connectivity, diagnostics, latency,
-server, peer, or endpoint state.
+Live capture checks the operator's deployed commit assertion, the rendered
+version, and served JavaScript and CSS against the local source. The manifest
+labels those observations separately. Live images and manifest stay private,
+with directory permissions `0700` and file permissions `0600`, for operator
+privacy review. They are product image candidates, not runtime qualification
+evidence. The publication path `docs/images` accepts only synthetic capture.
 
 The same temporary credential can exercise the normal Settings timezone flow:
 
 ```bash
+EXITLANE_SCREENSHOT_BASE_URL='http://reference-appliance:8787' \
 EXITLANE_SCREENSHOT_PASSWORD='temporary-password' \
   EXITLANE_QA_TIMEZONE='Europe/London' npm run qualify:timezone
 ```

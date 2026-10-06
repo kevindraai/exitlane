@@ -310,7 +310,7 @@
   "step2": {
     "kicker": "Step 2",
     "title": "Local administrator",
-    "description": "Create the first local administrator account. Authentication will be enforced across all pages in a future alpha release.",
+    "description": "Create the first local administrator account. After setup, sign in to manage ExitLane.",
     "username": "Username",
     "password": "Password",
     "password_confirm": "Repeat password",

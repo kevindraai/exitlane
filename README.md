@@ -2,65 +2,11 @@
 
 **Smart egress for every network.**
 
-ExitLane is a self-hosted egress appliance for routers, VLANs, and selected devices. Each router, device or container uses its own named WireGuard peer on one shared ingress interface, while ExitLane manages outbound connection through NordVPN, Mullvad, PIA, or imported Proton VPN profiles.
+ExitLane is a self-hosted VPN gateway for selected routers, devices and containers. Give each
+consumer its own named WireGuard peer. ExitLane manages one shared outbound connection, so you can
+change the active VPN provider or location without replacing every consumer's configuration.
 
-ExitLane **1.0.0** provides the v1 appliance contract: native Debian 13 amd64 supports
-NordVPN, Mullvad, PIA and imported Proton WireGuard; the Docker appliance supports the three
-direct providers. See [v1.0.0 release notes](docs/release-notes/1.0.0.md) for scope and the
-[published release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0) for source, artifact
-and image qualification receipts.
-
-The result is an experience closer to a native VPN app, but for an entire network: switch countries, reconnect, use the fastest available server, and keep provider-specific configuration away from your router.
-
-![ExitLane appliance dashboard](docs/images/promo/exitlane-dashboard-hero.png)
-
-> [!WARNING]
-> The management interface is intended for a trusted network and must not be exposed directly to the internet.
-
-The trusted management network is a deployment assumption, not a substitute for application security. See the [hardening guide](docs/security/hardening-guide.md), [threat model](docs/security/threat-model.md), [2026-09-30 Daybreak Blue-assisted internal defensive assessment](docs/security/daybreak-blue-assessment-2026-09-30.md), and [security policy](SECURITY.md). This internal assessment is not an independent penetration test.
-
-## Installation
-
-The supported appliance baseline is Debian 13 on `amd64`. The qualified Proxmox configuration is a
-**privileged LXC** with `/dev/net/tun` and permission to manage WireGuard, routing and nftables.
-Other Debian releases, architectures and unprivileged LXC configurations are not supported release
-targets. Keep the management interface on a trusted network.
-On a Proxmox VE host, run the interactive launcher as root:
-
-```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/kevindraai/exitlane/main/installer/proxmox.sh)"
-```
-
-Choose Recommended or Advanced settings, then confirm the new-container plan. The launcher resolves
-an exact published release and uses the same tag for the helper and guest installation.
-See [Proxmox LXC](docs/proxmox-lxc.md) for defaults, trust, inspect-first and automation options.
-The rc.4 qualification record distinguishes candidate testing from the required fresh
-public-path installation against the published tag.
-
-For a native Debian host or manually created LXC, install a published release tag rather than the moving development branch. For this release:
-
-```bash
-git clone --branch v1.0.0 --depth 1 https://github.com/kevindraai/exitlane.git
-cd exitlane
-sudo ./installer/install-debian.sh
-```
-
-Open `http://<host>:8787` and complete the first-run wizard.
-
-The tagged installation command uses the published [stable v1.0.0 release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0). For an existing appliance,
-[create and verify a backup before upgrading](docs/upgrade-and-recovery.md).
-
-Read the [deployment guide](docs/deployment.md), [NordVPN provider guide](docs/nordvpn.md), [Mullvad provider guide](docs/mullvad.md), [PIA provider guide](docs/pia.md), [Proton provider guide](docs/proton.md), [backup and restore guide](docs/backup-and-restore.md), [upgrade and recovery guide](docs/upgrade-and-recovery.md), and [Proxmox LXC notes](docs/proxmox-lxc.md) before using ExitLane outside a development environment.
-
-Direct HTTP remains available on a trusted local network. For HTTPS termination, follow the [reverse-proxy guide](docs/deployment/reverse-proxy.md); ExitLane does not terminate TLS itself.
-
-## Providers
-
-Native ExitLane supports NordVPN, direct Mullvad and PIA WireGuard, and imported Proton
-WireGuard profiles. PIA needs no provider app or OpenVPN; Proton needs no CLI, NetworkManager
-or desktop keyring. PIA and Proton are implemented and synthetically / native-kernel qualified;
-live commercial-provider connectivity remains unproven. Direct providers currently offer IPv4
-egress, with IPv6 protected and blocked. See the [provider guides](docs/architecture/providers.md).
+![ExitLane dashboard showing appliance health, VPN exit and WireGuard ingress](docs/images/promo/exitlane-dashboard-hero.png)
 
 ## Why ExitLane?
 
@@ -69,161 +15,155 @@ Most routers can connect to commercial VPN providers by importing WireGuard or O
 ExitLane separates the two responsibilities:
 
 ```text
-Selected clients or VLANs
-          |
-        Router
-          |
-   permanent WireGuard tunnel
-          |
-       ExitLane
-          |
- active commercial VPN provider
-          |
-       Internet
+Router ────────────┐
+Host or container ─┼── WireGuard ingress ── ExitLane ── shared egress ── Internet
+Other device ──────┘
 ```
 
-Your router remains provider-agnostic. It only knows about the WireGuard peer. ExitLane handles provider authentication, server selection, reconnects, tunnel monitoring, and killswitch protection.
+Your router remains provider-agnostic. It uses one peer for all clients it forwards through the
+tunnel. A host or container that connects directly gets another peer. ExitLane handles the VPN
+provider and protects traffic according to one shared policy.
 
-ExitLane does not replace UniFi, OPNsense, pfSense, or OpenWrt. It complements them by moving VPN-provider management into a dedicated appliance.
+ExitLane works alongside UniFi, OPNsense, pfSense and OpenWrt, with the router still selecting
+which traffic uses the gateway.
+
+## Installation
+
+This README follows the current `main` branch. **v1.0.0** is the latest published release;
+features added since that tag are on `main` and will ship in a later release. Install the tag
+for a released appliance. Native support is Debian 13 `amd64`; the Docker appliance runs on
+rootful Linux `amd64`. The [release page](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0)
+has the published files and image details.
+
+Keep the management interface on a trusted network; see the
+[hardening guide](docs/security/hardening-guide.md) for firewall and reverse-proxy settings.
+
+For Proxmox VE, run the interactive launcher as root on the host. It creates a new privileged
+Debian 13 `amd64` LXC with the network permissions ExitLane needs:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kevindraai/exitlane/main/installer/proxmox.sh)"
+```
+
+Choose Recommended or Advanced settings and confirm the container plan. The launcher selects a
+published release and uses its tag for both the helper and guest installation. The
+[Proxmox guide](docs/proxmox-lxc.md) covers defaults, trust and manual creation.
+
+For a native Debian host or manually created LXC, install the published release tag:
+
+```bash
+git clone --branch v1.0.0 --depth 1 https://github.com/kevindraai/exitlane.git
+cd exitlane
+sudo ./installer/install-debian.sh
+```
+
+For an existing appliance, [back up and verify its state before upgrading](docs/upgrade-and-recovery.md).
+For Docker, follow the [Docker Quick Start](docs/docker-deployment.md#quick-start), which covers
+the published image, host requirements and persistent state. Native installs open the first-run
+wizard at `http://<host>:8787`. Docker binds management to loopback by default; follow its guide
+to select an explicit LAN bind or trusted HTTPS proxy before opening the wizard from another
+machine. ExitLane does not terminate TLS; use the
+[reverse-proxy guide](docs/deployment/reverse-proxy.md) for HTTPS.
+
+## Providers
+
+Native installations support NordVPN, Mullvad, PIA and imported Proton WireGuard profiles. Docker
+supports Mullvad, PIA and imported Proton profiles. Connect one active provider at a time; a native
+appliance can also use direct internet egress. Direct WireGuard providers currently carry IPv4
+traffic and block protected IPv6. PIA and Proton are implemented, but live commercial-provider
+interoperability remains unqualified. Start with the
+[provider guides](docs/architecture/providers.md) for setup.
 
 ## Interface
 
+The WebUI puts provider control, device management, diagnostics and version-matched Help in one
+place.
+
+<details>
+<summary>Explore the application screens</summary>
+
 ### Appliance dashboard
 
-Monitor appliance health, the active VPN exit, WireGuard ingress, killswitch protection, and system
-resources from one overview.
+The compact dashboard brings the active VPN exit, WireGuard ingress, protection and system health
+into one overview.
 
-![ExitLane dashboard](docs/images/exitlane-dashboard.png)
+![ExitLane dashboard with the active VPN, ingress and system status](docs/images/exitlane-dashboard.png)
 
 ### VPN provider control
 
-Configure NordVPN, Mullvad VPN, PIA, or imported Proton WireGuard profiles. Choose one active provider and reconnect without importing new provider configuration into the router. PIA and Proton use ExitLane-owned direct WireGuard; live provider qualification remains outstanding for both.
+Configure a provider, choose a location and reconnect without replacing consumer profiles.
 
-![ExitLane NordVPN country selection](docs/images/exitlane-vpn-selection.png)
+![ExitLane VPN page with provider status and location selection](docs/images/exitlane-vpn-selection.png)
 
 ### Connection diagnostics
 
 Trace the live path from the client through ExitLane and the VPN to the internet. Individual ping,
 DNS, external-IP, and bandwidth-aware Speedtest actions remain explicit administrator choices.
 
-![ExitLane connection diagnostics](docs/images/exitlane-diagnostics.png)
+![ExitLane connection diagnostics showing the client-to-internet path](docs/images/exitlane-diagnostics.png)
 
 ### WireGuard ingress devices
 
-Manage multiple named devices on one WireGuard ingress interface. Give each consumer its own keypair and tunnel IP; view its last handshake, endpoint and traffic, then rename, regenerate or revoke it independently. Reveal, copy, download or show each active device configuration as a QR code.
+Manage multiple named devices on one WireGuard ingress interface. Each has its own keypair and
+tunnel IP. The device list shows its last handshake, endpoint and traffic; each device's menu
+offers its configuration and individual rename, regeneration and revocation actions.
 
-Use a separate peer for each consumer, for example `UniFi Gateway` and `Deluge - Synology`. Do not copy one profile to multiple devices: separate identities provide correct traffic attribution, independent revocation and avoid WireGuard endpoint flapping. See [WireGuard configuration management](docs/wireguard-configuration.md).
+Use a separate peer for each consumer. Sharing a profile can cause endpoint flapping and prevents
+accurate traffic attribution or independent revocation. See
+[WireGuard device management](docs/wireguard-configuration.md) for host and container setup.
 
-![ExitLane WireGuard configuration management](docs/images/exitlane-wireguard.png)
+![ExitLane WireGuard page listing named peers and their connection status](docs/images/exitlane-wireguard.png)
 
 ### Integrated documentation
 
 Open version-matched administrator guides in the WebUI and follow contextual links directly from
 the relevant operational screen.
 
-![ExitLane integrated documentation](docs/images/exitlane-documentation.png)
+![ExitLane Help page with local administrator guides](docs/images/exitlane-documentation.png)
 
-## Features
+</details>
 
-### VPN management
+## More capabilities
 
-- Manage the NordVPN Linux client and ExitLane-owned direct Mullvad, PIA and Proton WireGuard egress.
-- Keep multiple providers installed and signed in while enforcing exactly one active egress provider.
-- Switch VPN countries from the WebUI and compare measured latency for quick choices.
-- Discover registered VPN providers and view provider authentication and tunnel status separately.
-- Protect routed client traffic with a configurable killswitch when no usable VPN tunnel is active.
-- Keep active or interrupted direct-provider transactions protected independently of that optional
-  killswitch. Enable the killswitch when clients must also remain blocked after an explicit disconnect.
-
-### WireGuard ingress
-
-- Manage multiple named devices with independent keys and unique tunnel IPs on one ingress interface.
-- Attribute last handshake, remote endpoint and RX/TX to each device.
-- Add, rename, reveal, copy, download, display as QR code, regenerate, revoke and delete devices independently.
-- Preserve the existing v1 router identity automatically during migration.
-- Send all ingress peers through the same active egress provider and shared protection rules.
-
-### Authentication and security
-
-- Create the first local administrator account during setup.
-- Protect the application and API with expiring server-side sessions.
-- Change the administrator password in Settings and revoke existing sessions.
-- Recover a forgotten password locally with `sudo exitlane-cli reset-password`.
-- Under **Settings > System**, an authenticated administrator can restart only
-  `exitlane.service`, reboot the instance, or shut it down. Shutdown cannot be
-  reversed from ExitLane; host, hypervisor, or physical access is required.
-- Enable TOTP multifactor authentication, use one-time recovery codes, and manage active sessions.
-- Run behind an explicitly trusted HTTPS reverse proxy.
-
-### Appliance lifecycle
-
-- Create passphrase-encrypted, authenticated appliance backups from the root-only CLI.
-- Inspect and verify backups before a strictly staged local restore.
-- Upgrade with an exclusive lifecycle lock, recovery snapshot, schema compatibility checks, and automatic rollback after installer failure.
-
-### Operations
-
-- Configure the Debian appliance timezone, dashboard refresh interval, language, and light, dark,
-  or system appearance.
-- Configure generic webhook notifications.
-- Keep structured activity events for up to 90 days and 5,000 records by default.
-- Use the interface in English or Dutch.
-- Integrate through the REST API.
-- Trace Device -> ExitLane -> VPN -> Internet with structured connection diagnostics and explicit
-  ping, DNS, external-IP, and speed-test actions.
-- Open version-matched administrator documentation inside the WebUI and follow contextual guide
-  links from the relevant operational screens.
+- Local administrator sessions, password recovery, TOTP MFA and one-time recovery codes.
+- Passphrase-encrypted appliance backups, staged restore and rollback on failed native upgrades.
+- English and Dutch interface, appearance and refresh settings, webhook notifications and an
+  Activity log.
+- Existing single-client installations migrate to a named peer while preserving their keys and
+  router configuration.
 
 ## Architecture
 
-ExitLane uses a FastAPI backend that serves both its API and a single-page frontend. The frontend coordinates shared data through central application state, while SQLite stores durable settings, users, sessions, and generated configuration metadata.
+ExitLane serves its WebUI and API from one FastAPI application and stores durable appliance state
+in SQLite. WireGuard ingress gives each consumer an independent identity; one active provider and
+shared protection policy control egress. Native installations can also use direct internet egress.
 
-The VPN core is provider-neutral. NordVPN and Mullvad VPN are release-qualified commercial-provider implementations. PIA and imported Proton profiles use synthetic qualification; live provider qualification remains outstanding. WireGuard provides independent ingress from routers and other clients. A provider is optional; direct internet egress remains a supported setup choice.
-
-See [Architecture](docs/architecture.md), [Authentication](docs/authentication.md), [WireGuard configuration management](docs/wireguard-configuration.md), [Connection diagnostics](docs/diagnostics.md), [Application state](docs/application-state.md), and [Startup lifecycle](docs/startup-lifecycle.md) for the design rationale.
-
-The WebUI's semantic theme adoption is recorded in the
-[ExitLane design-system mapping](docs/design-system.md).
-
+See [Architecture](docs/architecture.md), [WireGuard device management](docs/wireguard-configuration.md)
+and [Diagnostics](docs/diagnostics.md) for the design details.
 
 ## Security posture
 
-The supported appliance uses fail-closed provider transactions, validated WireGuard configuration
-and restore boundaries, bounded requests/provider input, encrypted provider keys, and root-only
-backup/recovery. Keep the optional killswitch enabled when protected clients must remain blocked
-also after an explicit disconnect. The Daybreak assessment is internal defensive evidence,
-not an independent external penetration test. See the [security documentation](docs/security/security-testing.md).
+Keep the optional native killswitch enabled if routed clients must remain blocked after an
+explicit VPN disconnect. Docker always blocks protected clients without an active provider.
+See the [security policy](SECURITY.md) and [hardening guide](docs/security/hardening-guide.md).
 
 ## Docker appliance
 
-The v1 Docker support contract is Linux amd64, rootful Docker Engine >=28 and Compose v2,
-with `NET_ADMIN`, TUN, a read-only root filesystem and durable state. Docker supports Mullvad,
-PIA and imported Proton WireGuard; native ExitLane additionally supports NordVPN.
-NordVPN is unavailable inside Docker. Protected Docker clients always use provider-or-block.
-Live commercial PIA/Proton interoperability remains unqualified.
-
-Follow the [complete Docker Quick Start](docs/docker-deployment.md#quick-start) for exact
-versioned files, explicit host LAN binds, image digest pinning, preflight and setup. It also
-covers health, persistence, backup/export/verification/restore, upgrades and rollback. The
-official versioned image is `ghcr.io/kevindraai/exitlane:v1.0.0`; use the
-[v1 release receipts](docs/release-notes/1.0.0.md#release-and-image-receipts) to verify its published
-digest, attestations, exact-image qualification and anonymous-pull acceptance before deploying.
-No `latest` alias is defined. Reviewed unfixed Debian findings receive transparent residual-risk
-dispositions under [SECURITY](SECURITY.md); actionable findings still block publication.
+The Docker appliance runs on Linux `amd64` with rootful Docker Engine 28 or newer and Compose v2.
+It supports Mullvad, PIA and imported Proton WireGuard profiles. It requires TUN, `NET_ADMIN`, a
+read-only root filesystem and durable state, and keeps protected clients blocked until a provider
+is connected. Follow the [Docker Quick Start](docs/docker-deployment.md#quick-start) for the
+versioned image, host networking, backups and upgrades. There is no `latest` image alias.
 
 ## Development
 
-Work takes place on feature branches and reaches `main` through a pull request after CI passes. CI checks shell scripts, Python linting and tests, frontend syntax and tests, translations, JSON, security scanning, and package builds. Before merge, deploy the candidate to the test LXC and run its smoke test.
-
-See [Development](docs/development.md) and [Contributing](CONTRIBUTING.md) for commands and the full workflow.
+See [Development](docs/development.md) and [Contributing](CONTRIBUTING.md) for the project workflow.
+AI assists with implementation, tests and documentation; people own product decisions, review and
+release approval.
 
 ## Roadmap
 
-Remaining qualification, publication and development work is tracked in the [roadmap](ROADMAP.md).
-
-## AI involvement
-
-ExitLane has been developed with extensive AI assistance. The project architecture, feature decisions, review, testing, and final technical decisions remain human-controlled. AI is used to accelerate implementation, tests, documentation, and iteration.
+Planned work is tracked in the [roadmap](ROADMAP.md).
 
 ## License
 

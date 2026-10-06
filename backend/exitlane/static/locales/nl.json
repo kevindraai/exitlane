@@ -310,7 +310,7 @@
   "step2": {
     "kicker": "Stap 2",
     "title": "Lokale beheerder",
-    "description": "Maak het eerste lokale beheeraccount aan. Authenticatie wordt in een volgende alpha ook daadwerkelijk voor alle pagina’s afgedwongen.",
+    "description": "Maak het eerste lokale beheeraccount aan. Meld je na de installatie aan om ExitLane te beheren.",
     "username": "Gebruikersnaam",
     "password": "Wachtwoord",
     "password_confirm": "Wachtwoord herhalen",

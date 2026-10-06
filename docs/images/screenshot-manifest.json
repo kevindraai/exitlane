@@ -1,205 +1,191 @@
 {
-  "generated_at": "2026-08-25T19:36:59.806Z",
-  "source_appliance": "172.16.130.81",
-  "source_version": "0.2.0-rc.1",
-  "source_commit": "5148c75c2b3d9ec8c1ae326e0f7e99447295a7f1",
-  "source_tree": "4917aac08df364d14cb151ce622701f44fcabd26",
-  "source_worktree_clean": true,
+  "generated_at": "2026-10-06T13:46:22.861Z",
+  "source_version": "1.0.0",
+  "source_commit": "67852f6e0b0a258bd24c2eb4f0f2eb3f262c7f08",
+  "source_tree": "6a3dcf1a326d51bd1e916b67a5533a0541bfd333",
+  "source_worktree_clean_at_start": true,
+  "source_appliance": null,
   "language": "en",
   "appearance": "dark",
-  "network_mocking": false,
+  "mode": "synthetic",
+  "api_interception": true,
   "speedtest_started": false,
+  "publication_status": "public-product-illustration",
+  "runtime_qualification_evidence": false,
   "screenshots": [
     {
       "id": "dashboard",
       "profile": "readme",
       "file": "docs/images/exitlane-dashboard.png",
-      "dimensions": "1440x1200",
-      "state": "live-runtime-controlled-redaction",
-      "redactions": [
-        {
-          "selector": "#dashboard-external-ip",
-          "field": "external IP",
-          "strategy": "visible value replaced after live runtime verification"
-        }
-      ],
-      "sensitive_ui": "not present"
+      "viewport": {
+        "width": 1440,
+        "height": 1200
+      },
+      "png_sha256": "ad85a40296e87e2e9edda58dc1034143eccdae260d80e917ed148d1287c286e7",
+      "source_commit": "67852f6e0b0a258bd24c2eb4f0f2eb3f262c7f08",
+      "source_tree": "6a3dcf1a326d51bd1e916b67a5533a0541bfd333",
+      "source_worktree_clean_at_start": true,
+      "language": "en",
+      "appearance": "dark",
+      "mode": "synthetic",
+      "api_interception": true,
+      "presentation_provenance": "current source UI with deterministic local fixture",
+      "source_verification": {
+        "basis": "local source files loaded through the synthetic browser"
+      },
+      "state": "synthetic-presentation",
+      "fixture_id": "source-ui-authenticated-v1",
+      "fixture_sha256": "f28de8c4a052189dc50d88c10e6749b7b819f9e93fbd28b3e30688606cdd0888",
+      "fixture_hash_scope": "fixture source file",
+      "fixture_time": "2026-10-06T12:00:00Z",
+      "redactions": [],
+      "sensitive_ui": "configuration, QR, credentials and MFA controls closed",
+      "publication_status": "public-product-illustration"
     },
     {
       "id": "vpn",
       "profile": "readme",
       "file": "docs/images/exitlane-vpn-selection.png",
-      "dimensions": "1440x1200",
-      "state": "live-runtime-controlled-redaction",
-      "redactions": [
-        {
-          "selector": "#metric-ip",
-          "field": "external IP",
-          "strategy": "visible value replaced after live runtime verification"
-        }
-      ],
-      "sensitive_ui": "not present"
+      "viewport": {
+        "width": 1440,
+        "height": 1200
+      },
+      "png_sha256": "126a35f396121739b6d04a9e97822a21ee99f47d009ad1ecf336f0b1509f8d5d",
+      "source_commit": "67852f6e0b0a258bd24c2eb4f0f2eb3f262c7f08",
+      "source_tree": "6a3dcf1a326d51bd1e916b67a5533a0541bfd333",
+      "source_worktree_clean_at_start": true,
+      "language": "en",
+      "appearance": "dark",
+      "mode": "synthetic",
+      "api_interception": true,
+      "presentation_provenance": "current source UI with deterministic local fixture",
+      "source_verification": {
+        "basis": "local source files loaded through the synthetic browser"
+      },
+      "state": "synthetic-presentation",
+      "fixture_id": "source-ui-authenticated-v1",
+      "fixture_sha256": "f28de8c4a052189dc50d88c10e6749b7b819f9e93fbd28b3e30688606cdd0888",
+      "fixture_hash_scope": "fixture source file",
+      "fixture_time": "2026-10-06T12:00:00Z",
+      "redactions": [],
+      "sensitive_ui": "configuration, QR, credentials and MFA controls closed",
+      "publication_status": "public-product-illustration"
     },
     {
       "id": "diagnostics",
       "profile": "readme",
       "file": "docs/images/exitlane-diagnostics.png",
-      "dimensions": "1440x1200",
-      "state": "live-runtime",
+      "viewport": {
+        "width": 1440,
+        "height": 720
+      },
+      "png_sha256": "5fdc9612827a7d4d5350ea34f11703ee52ffa334aa236ce40f74b310b65f1c54",
+      "source_commit": "67852f6e0b0a258bd24c2eb4f0f2eb3f262c7f08",
+      "source_tree": "6a3dcf1a326d51bd1e916b67a5533a0541bfd333",
+      "source_worktree_clean_at_start": true,
+      "language": "en",
+      "appearance": "dark",
+      "mode": "synthetic",
+      "api_interception": true,
+      "presentation_provenance": "current source UI with deterministic local fixture",
+      "source_verification": {
+        "basis": "local source files loaded through the synthetic browser"
+      },
+      "state": "synthetic-presentation",
+      "fixture_id": "source-ui-authenticated-v1",
+      "fixture_sha256": "f28de8c4a052189dc50d88c10e6749b7b819f9e93fbd28b3e30688606cdd0888",
+      "fixture_hash_scope": "fixture source file",
+      "fixture_time": "2026-10-06T12:00:00Z",
       "redactions": [],
-      "sensitive_ui": "not present"
+      "sensitive_ui": "configuration, QR, credentials and MFA controls closed",
+      "publication_status": "public-product-illustration"
     },
     {
       "id": "wireguard",
       "profile": "readme",
       "file": "docs/images/exitlane-wireguard.png",
-      "dimensions": "1440x1200",
-      "state": "live-runtime-sensitive-ui-hidden",
+      "viewport": {
+        "width": 1440,
+        "height": 1120
+      },
+      "png_sha256": "d88bade03bab44952133dcbe4884207f08656f9eb3d374aeeda3e6231e8b5675",
+      "source_commit": "67852f6e0b0a258bd24c2eb4f0f2eb3f262c7f08",
+      "source_tree": "6a3dcf1a326d51bd1e916b67a5533a0541bfd333",
+      "source_worktree_clean_at_start": true,
+      "language": "en",
+      "appearance": "dark",
+      "mode": "synthetic",
+      "api_interception": true,
+      "presentation_provenance": "current source UI with deterministic local fixture",
+      "source_verification": {
+        "basis": "local source files loaded through the synthetic browser"
+      },
+      "state": "synthetic-presentation",
+      "fixture_id": "source-ui-authenticated-v1",
+      "fixture_sha256": "f28de8c4a052189dc50d88c10e6749b7b819f9e93fbd28b3e30688606cdd0888",
+      "fixture_hash_scope": "fixture source file",
+      "fixture_time": "2026-10-06T12:00:00Z",
       "redactions": [],
-      "sensitive_ui": "configuration and QR kept closed"
+      "sensitive_ui": "configuration, QR, credentials and MFA controls closed",
+      "publication_status": "public-product-illustration"
     },
     {
       "id": "documentation",
       "profile": "readme",
       "file": "docs/images/exitlane-documentation.png",
-      "dimensions": "1440x1200",
-      "state": "live-application-content",
+      "viewport": {
+        "width": 1440,
+        "height": 1080
+      },
+      "png_sha256": "26bf623398b6c549eab48dbc9f0d3ad41247589ccb5092949da510c568e73658",
+      "source_commit": "67852f6e0b0a258bd24c2eb4f0f2eb3f262c7f08",
+      "source_tree": "6a3dcf1a326d51bd1e916b67a5533a0541bfd333",
+      "source_worktree_clean_at_start": true,
+      "language": "en",
+      "appearance": "dark",
+      "mode": "synthetic",
+      "api_interception": true,
+      "presentation_provenance": "current source UI with deterministic local fixture",
+      "source_verification": {
+        "basis": "local source files loaded through the synthetic browser"
+      },
+      "state": "synthetic-presentation",
+      "fixture_id": "source-ui-authenticated-v1",
+      "fixture_sha256": "f28de8c4a052189dc50d88c10e6749b7b819f9e93fbd28b3e30688606cdd0888",
+      "fixture_hash_scope": "fixture source file",
+      "fixture_time": "2026-10-06T12:00:00Z",
       "redactions": [],
-      "sensitive_ui": "not present"
+      "sensitive_ui": "configuration, QR, credentials and MFA controls closed",
+      "publication_status": "public-product-illustration"
     },
     {
       "id": "dashboard",
       "profile": "promo",
       "file": "docs/images/promo/exitlane-dashboard-hero.png",
-      "dimensions": "1600x1000",
-      "state": "live-runtime-controlled-redaction",
-      "redactions": [
-        {
-          "selector": "#dashboard-external-ip",
-          "field": "external IP",
-          "strategy": "visible value replaced after live runtime verification"
-        }
-      ],
-      "sensitive_ui": "not present"
-    },
-    {
-      "id": "vpn",
-      "profile": "promo",
-      "file": "docs/images/promo/exitlane-vpn-selection.png",
-      "dimensions": "1600x1000",
-      "state": "live-runtime-controlled-redaction",
-      "redactions": [
-        {
-          "selector": "#metric-ip",
-          "field": "external IP",
-          "strategy": "visible value replaced after live runtime verification"
-        }
-      ],
-      "sensitive_ui": "not present"
-    },
-    {
-      "id": "diagnostics",
-      "profile": "promo",
-      "file": "docs/images/promo/exitlane-diagnostics.png",
-      "dimensions": "1600x1000",
-      "state": "live-runtime",
+      "viewport": {
+        "width": 1600,
+        "height": 1080
+      },
+      "png_sha256": "cf4aa947632862defb76f39a7f4962203d76a0b3cfb8f5f4272bb7a9aa11f4ac",
+      "source_commit": "67852f6e0b0a258bd24c2eb4f0f2eb3f262c7f08",
+      "source_tree": "6a3dcf1a326d51bd1e916b67a5533a0541bfd333",
+      "source_worktree_clean_at_start": true,
+      "language": "en",
+      "appearance": "dark",
+      "mode": "synthetic",
+      "api_interception": true,
+      "presentation_provenance": "current source UI with deterministic local fixture",
+      "source_verification": {
+        "basis": "local source files loaded through the synthetic browser"
+      },
+      "state": "synthetic-presentation",
+      "fixture_id": "source-ui-authenticated-v1",
+      "fixture_sha256": "f28de8c4a052189dc50d88c10e6749b7b819f9e93fbd28b3e30688606cdd0888",
+      "fixture_hash_scope": "fixture source file",
+      "fixture_time": "2026-10-06T12:00:00Z",
       "redactions": [],
-      "sensitive_ui": "not present"
-    },
-    {
-      "id": "documentation",
-      "profile": "promo",
-      "file": "docs/images/promo/exitlane-documentation.png",
-      "dimensions": "1600x1000",
-      "state": "live-application-content",
-      "redactions": [],
-      "sensitive_ui": "not present"
-    }
-  ],
-  "responsive_qa": [
-    {
-      "viewport": {
-        "name": "desktop",
-        "width": 1440,
-        "height": 1000
-      },
-      "values": {
-        "#dashboard-vpn-server": {
-          "text": "nl817.nordvpn.com",
-          "lines": 1,
-          "lineLengths": [
-            17
-          ],
-          "withinCard": true,
-          "titleMatches": true
-        },
-        "#dashboard-wg-endpoint": {
-          "text": "172.16.130.1:37227",
-          "lines": 1,
-          "lineLengths": [
-            18
-          ],
-          "withinCard": true,
-          "titleMatches": true
-        }
-      },
-      "card_overlap": false
-    },
-    {
-      "viewport": {
-        "name": "small-desktop",
-        "width": 900,
-        "height": 1000
-      },
-      "values": {
-        "#dashboard-vpn-server": {
-          "text": "nl817.nordvpn.com",
-          "lines": 1,
-          "lineLengths": [
-            17
-          ],
-          "withinCard": true,
-          "titleMatches": true
-        },
-        "#dashboard-wg-endpoint": {
-          "text": "172.16.130.1:37227",
-          "lines": 1,
-          "lineLengths": [
-            18
-          ],
-          "withinCard": true,
-          "titleMatches": true
-        }
-      },
-      "card_overlap": false
-    },
-    {
-      "viewport": {
-        "name": "mobile",
-        "width": 390,
-        "height": 844
-      },
-      "values": {
-        "#dashboard-vpn-server": {
-          "text": "nl817.nordvpn.com",
-          "lines": 1,
-          "lineLengths": [
-            17
-          ],
-          "withinCard": true,
-          "titleMatches": true
-        },
-        "#dashboard-wg-endpoint": {
-          "text": "172.16.130.1:37227",
-          "lines": 1,
-          "lineLengths": [
-            18
-          ],
-          "withinCard": true,
-          "titleMatches": true
-        }
-      },
-      "card_overlap": false
+      "sensitive_ui": "configuration, QR, credentials and MFA controls closed",
+      "publication_status": "public-product-illustration"
     }
   ]
 }

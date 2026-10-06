@@ -3411,12 +3411,13 @@ pre {
 }
 
 /* WireGuard device management shares one ingress; each row owns one identity. */
+#view-wireguard > .panel { min-width: 0; }
 .wireguard-devices-heading { margin-top: 1.5rem; }
 .wireguard-devices-heading .view-actions { margin-top: 0; flex-wrap: wrap; }
 .wireguard-peer-table-wrap { overflow-x: auto; }
 .wireguard-peer-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
 .wireguard-peer-table th, .wireguard-peer-table td {
-  padding: 0.85rem 0.6rem;
+  padding: 0.85rem 0.35rem;
   border-bottom: 1px solid var(--border);
   text-align: left;
   vertical-align: top;
@@ -3464,12 +3465,17 @@ pre {
   .wireguard-peer-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .wireguard-peer-table, .wireguard-peer-table tbody, .wireguard-peer-table tr, .wireguard-peer-table td { display: block; width: 100%; }
   .wireguard-peer-table tr { border: 1px solid var(--border); margin-bottom: 1rem; padding: 0.5rem; }
-  .wireguard-peer-table td { border-bottom: 0; display: grid; grid-template-columns: minmax(7rem, 0.4fr) minmax(0, 1fr); gap: 0.6rem; }
+  .wireguard-peer-table td { border-bottom: 0; display: grid; grid-template-columns: minmax(7rem, 0.4fr) minmax(0, 1fr); gap: 0.6rem; min-width: 0; white-space: normal; }
   .wireguard-peer-table td::before { content: attr(data-label); color: var(--text-muted); font-weight: 600; }
   .wireguard-peer-table td:first-child { max-width: none; }
   .wireguard-peer-table td .technical-value { max-width: 100%; }
+  .wireguard-peer-table td:nth-child(6) div { flex-wrap: wrap; }
   .wireguard-peer-table td:last-child { display: block; width: 100%; text-align: left; }
   .wireguard-peer-table td:last-child::before { display: block; margin-bottom: 0.5rem; }
+}
+
+@media (max-width: 480px) {
+  .wireguard-peer-table td { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 380px) {

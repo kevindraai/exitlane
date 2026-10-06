@@ -1,20 +1,19 @@
 # Read-only native package and advisory qualification
 
-`scripts/qualification/native_security.py` collects evidence for a maintainer's
-security decision on a **native Debian 13 amd64 ExitLane appliance**. It is a
-post-v1 collector, separate from the mutating disposable lifecycle runners and
-from Docker image qualification. It does not waive findings, approve a release,
-apply maintenance or describe the appliance as secure.
+Use `scripts/qualification/native_security.py` to inspect installed packages and
+security advisories on a **native Debian 13 amd64 ExitLane appliance**. It records
+the evidence a maintainer needs for post-release decisions. It reads the target
+and writes a private local receipt; it does not install updates. Docker image
+qualification has its own path.
 
 ## Plan and execution
 
-Run from an exact committed checkout. The supplied application checkout must
-match the installed public package content; the collector independently binds
-its own four modules to its committed source. Content equivalence does **not**
-recover the historical build commit when the installer did not retain it.
+Run from a committed checkout whose public package content matches the installed
+application. The collector also checks its own four modules against that checkout.
+Matching content cannot recover a build commit that the installer did not retain.
 
-The default command prints the intended observations without reading target
-metadata, invoking tools or creating an output directory:
+The default command prints its plan without reading the target or creating an
+output directory:
 
 ```bash
 python3 -I -S -B /root/exitlane-candidate/scripts/qualification/native_security.py \
@@ -22,8 +21,8 @@ python3 -I -S -B /root/exitlane-candidate/scripts/qualification/native_security.
   --output /root/native-security-2026-10-06
 ```
 
-Add `--execute` to perform that read-only plan. Select pre-existing tools and a
-pre-populated Trivy database when they are outside the defaults:
+Add `--execute` to collect the evidence. Supply existing tools and a populated
+Trivy database when they are outside the defaults:
 
 ```bash
 python3 -I -S -B /root/exitlane-candidate/scripts/qualification/native_security.py \
@@ -40,14 +39,14 @@ python3 -I -S -B /root/exitlane-candidate/scripts/qualification/native_security.
 The output must be a **new absolute directory**, outside the source and installed
 venv. Directory mode is `0700`; receipt/report files are `0600`. Only that output
 is written. The collector never installs tools or updates vulnerability databases.
-`--allow-network` permits PyPI advisory requests for exact observed versions using
-pip-audit with dependency resolution and pip execution disabled. It does not
-permit package downloads, APT network operations or maintenance. Without it,
-nonempty Python audit layers explicitly remain incomplete.
+`--allow-network` permits pip-audit to request PyPI advisories for observed
+versions, with dependency resolution and pip execution disabled. It permits no
+package downloads, APT network operations or maintenance. Without it, Python
+audit layers with installed packages remain incomplete.
 
-Supply an operator-obtained primary Debian security tracker JSON snapshot with
-`--debian-tracker` when classifying Debian fixes. Its hash is retained; its origin
-is an **operator assertion**, not authenticated by the collector. Obtain it from
+Supply a Debian security tracker JSON snapshot with `--debian-tracker` to classify
+Debian fixes. The collector records its hash; the operator is responsible for
+authenticating its source. Obtain it from
 [Debian's security tracker](https://security-tracker.debian.org/tracker/data/json)
 through a separately trusted workflow. No live mirror/API access is required by
 the fixture tests. A scanner's `FixedVersion` alone is never proof of an eligible
@@ -166,7 +165,6 @@ source URLs are rejected. Do not publish receipts automatically: package invento
 public advisory descriptions and stable machine hashes can still be operationally
 sensitive. Review artifacts before sharing.
 
-Docker's qualified image/release path is unchanged. Native package receipts do not
-substitute for Docker scans, dataplane tests, lifecycle evidence or maintainer
-applicability review. v1.0.0 and its completed #87/#90/#97 gates and historical
-receipts remain immutable; this collector delivers post-v1 issue #125.
+This post-v1 collector was delivered in #125. Its receipts support native
+maintenance review; Docker scans and runtime checks have separate evidence.
+The published v1.0.0 release and its qualification records remain unchanged.

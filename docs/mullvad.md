@@ -5,16 +5,13 @@ control the Mullvad desktop app, CLI or `mullvad-daemon`. ExitLane owns the egre
 policy-routing table and forwarded-traffic killswitch; WireGuard ingress remains a separate
 interface and responsibility.
 
-This guide describes the native direct integration in **0.3.0-rc.4**. Use the supported
-[Debian 13 `amd64` appliance target](deployment.md), including privileged Proxmox LXC.
-The integration currently provides IPv4 egress. Historical native live qualification is retained;
-exact rc.4 receipts remain release gates in the [rc.4 release notes](release-notes/0.3.0-rc.4.md).
-
-The separate [experimental Docker candidate](docker-appliance-candidate.md) also implements the
-direct provider, but remains unsupported with no official production image. Its synthetic
-qualification does not establish live-provider interoperability. Container protected ingress stays
-provider-or-block even after an explicit disconnect, regardless of the optional killswitch setting;
-the native host/systemd commands and direct-egress choices below apply to native Debian.
+Mullvad is available on the native [Debian 13 `amd64` appliance](deployment.md), including a
+privileged Proxmox LXC, and on the [v1 Docker appliance](docker-deployment.md). The integration
+provides IPv4 egress; protected IPv6 is blocked. Native live qualification and Docker image
+qualification are recorded in the [v1 release receipts](release-notes/1.0.0.md#release-and-image-receipts).
+The Docker appliance keeps protected clients
+blocked after an explicit disconnect, regardless of the optional native killswitch. The host and
+systemd commands below apply to native Debian.
 
 ## Set up and connect
 

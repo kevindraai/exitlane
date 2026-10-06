@@ -24,6 +24,8 @@ Future event producers must add a stable definition and explicit safe metadata k
 `exitlane.events`, add translations in both locales, and test that sensitive source data cannot
 reach storage or the API.
 
-Self-service administration records successful password changes, local password resets,
-NordVPN session starts and endings, and WireGuard regeneration. These events contain no password,
-token, CLI output, hash, private key, configuration, or submitted value.
+Self-service administration records successful password changes, local password resets and
+NordVPN session starts and endings. WireGuard peer creation, edits, regeneration, revocation and
+deletion record the selected peer ID and name. Management-routing failures, including a lock that
+cannot be acquired or times out, use safe reason codes in Activity. These events contain no
+password, token, CLI output, hash, private key or configuration.
