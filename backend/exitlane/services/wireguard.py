@@ -362,6 +362,7 @@ PersistentKeepalive = {keepalive}
 async def provision(
     *,
     activate: Callable[[str], Awaitable[None]],
+    rollback_runtime: Callable[[], Awaitable[None]] | None = None,
     endpoint: str,
     subnet: str = DEFAULT_WIREGUARD_SUBNET,
     dns: str = DEFAULT_WIREGUARD_DNS,
@@ -400,10 +401,17 @@ async def provision(
         await activate(interface)
         return result
     except (ValueError, WireGuardConfigurationError):
+        if rollback_runtime is not None:
+            await rollback_runtime()
         for path, content in previous.items():
             _restore(path, content)
         raise
     except Exception as error:
+        if rollback_runtime is not None:
+            try:
+                await rollback_runtime()
+            except Exception as rollback_error:
+                raise WireGuardConfigurationError("wireguard_rollback_failed") from rollback_error
         for path, content in previous.items():
             with suppress(OSError):
                 _restore(path, content)

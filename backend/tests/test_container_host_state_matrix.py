@@ -530,14 +530,11 @@ def test_oom_secondary_receipt_uses_actual_unique_pressure_phase(qualification):
     assert receipts[-1]["facts"]["oom"]["claim"] == "owned_cgroup_oom_only"
 
 
-def test_deleted_cached_owned_ingress_refuses_adoption_and_maps_real_api_reload_failure(
+def test_deleted_cached_owned_ingress_refuses_adoption_and_rolls_back_provision(
     monkeypatch, tmp_path
 ):
     from types import SimpleNamespace
 
-    from fastapi import HTTPException
-
-    from exitlane import main
     from exitlane.container_entrypoint import ContainerController
     from exitlane.container_runtime import ContainerWireGuardLifecycle, IngressConfig
     from exitlane.services import wireguard
@@ -579,29 +576,19 @@ def test_deleted_cached_owned_ingress_refuses_adoption_and_maps_real_api_reload_
         await controller.ingress({"action": "activate", "interface": interface})
 
     monkeypatch.setattr(wireguard, "create", create)
-    monkeypatch.setattr(main, "activate_wireguard_interface", activate)
-    monkeypatch.setattr(main, "wireguard_generation_lock", asyncio.Lock)
-    monkeypatch.setattr(main.provider_registry, "direct_egress_providers", list)
-    monkeypatch.setattr(
-        main,
-        "setting",
-        lambda key, default=None: "wg-office" if key == "wireguard_interface" else default,
-    )
-    with pytest.raises(HTTPException) as failure:
+    with pytest.raises(wireguard.WireGuardConfigurationError) as failure:
         asyncio.run(
-            main.create_wireguard_ingress(
-                main.WireGuard(
-                    endpoint="192.168.99.10",
-                    interface="wg-office",
-                    subnet="10.77.0.0/24",
-                    client="synthetic_router",
-                    dns="10.64.0.1",
-                    port=51820,
-                ),
-                None,
+            wireguard.provision(
+                activate=activate,
+                endpoint="192.168.99.10",
+                interface="wg-office",
+                subnet="10.77.0.0/24",
+                client="synthetic_router",
+                dns="10.64.0.1",
+                port=51820,
             )
         )
-    assert failure.value.status_code == 500 and failure.value.detail == "wireguard_reload_failed"
+    assert failure.value.code == "wireguard_reload_failed"
     assert len(guards) == 2  # Primary attempt and bounded rollback activation.
     assert commands == [("ip", "-j", "link", "show", "dev", "wg-office")] * 2
     assert network.active is True and network.owned_ifindex == 42

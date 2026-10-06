@@ -14,6 +14,7 @@ import os
 import shutil
 import signal
 import socket
+import sqlite3
 import stat
 import sys
 import urllib.request
@@ -112,6 +113,10 @@ class ContainerController:
         self.runner = runner or core.command
         self.network = None
         self.operation_valid = operation_valid
+        self.initial_rollback_ready = False
+        self.initial_guard_config = None
+        self.recovered_initial_policy = None
+        self.recovered_retired_interface = None
 
     def identity(self, config):
         from exitlane.container_recovery import IngressIdentity
@@ -169,6 +174,105 @@ class ContainerController:
         if self.network:
             await self.network.deactivate()
 
+    async def preserve_initial_policy(self, identities):
+        """Recognize only a journal or parent-cached first-setup guard."""
+        from exitlane.container_runtime import (
+            TABLE,
+            ContainerLifecycleError,
+            ContainerWireGuardLifecycle,
+            _PolicyIngress,
+        )
+
+        identities = tuple(dict.fromkeys(identities))
+        if not identities:
+            raise EntrypointError("container_guard_unproven")
+
+        tables = json.loads(await self.checked("nft", "-j", "list", "tables"))["nftables"]
+        if not isinstance(tables, list) or any(not isinstance(item, dict) for item in tables):
+            raise EntrypointError("container_guard_unproven")
+        exists = any(
+            item.get("table", {}).get("family") == "inet"
+            and item.get("table", {}).get("name") == TABLE
+            for item in tables
+        )
+        if not exists:
+            if self.recovered_initial_policy is not None:
+                raise EntrypointError("container_guard_unproven")
+            from exitlane.services.provider_wireguard import ProviderWireGuard
+
+            # ProviderWireGuard.arm can publish its exact RPDB selector before
+            # nft -c rejects first-table publication. No ingress link or D3
+            # table exists yet; retire only selectors tied to the journal or
+            # already-cached first-setup identities. Foreign rules fail closed.
+            guard = ProviderWireGuard(self.runner)
+            for identity in identities:
+                rc, _, _ = await self.runner(
+                    "ip", "link", "show", "dev", identity.interface, timeout=5
+                )
+                if rc != 1:
+                    raise EntrypointError("container_interface_ownership_unproven")
+                await self.retire_recovered_selector(guard, identity.interface)
+            return
+        data = json.loads(await self.checked("nft", "-j", "list", "table", "inet", TABLE))
+        matches = []
+        for identity in identities:
+            network = ipaddress.IPv4Network(identity.subnet, strict=True)
+            address = str(next(network.hosts())) + f"/{network.prefixlen}"
+            observer = ContainerWireGuardLifecycle(
+                _PolicyIngress(identity.interface, address), runner=self.runner
+            )
+            try:
+                observer.validate_previous_policy(data)
+                await self.observe_policy(config=observer.config)
+            except (ContainerLifecycleError, EntrypointError):
+                continue
+            matches.append(observer)
+        if len(matches) != 1:
+            raise EntrypointError("container_guard_unproven")
+        self.recovered_initial_policy = matches[0]
+
+    async def retire_recovered_selector(self, observer, interface):
+        """Remove only the old owned route selector and prove it is gone."""
+        from exitlane.services.provider_wireguard import (
+            RULE_PRIORITY,
+            TABLE_ID,
+            ProviderWireGuard,
+        )
+
+        guard = getattr(observer, "provider_guard", observer)
+        # Validate both families before any deletion so a foreign variant in
+        # one cannot leave the other family half-retired.
+        for family in (4, 6):
+            rules = json.loads(await self.checked("ip", f"-{family}", "-j", "rule", "show"))
+            if not isinstance(rules, list) or any(not isinstance(item, dict) for item in rules):
+                raise EntrypointError("container_guard_unproven")
+            for rule in rules:
+                if (
+                    rule.get("iif") != interface
+                    or str(rule.get("priority")) != str(RULE_PRIORITY)
+                    or str(rule.get("table")) != str(TABLE_ID)
+                ):
+                    continue
+                candidate = dict(rule)
+                if candidate.get("iif_detached") is True:
+                    candidate.pop("iif_detached")
+                if not ProviderWireGuard._owned_rule(candidate, (RULE_PRIORITY, "iif", interface)):
+                    raise EntrypointError("container_guard_unproven")
+        await guard.disarm((interface,))
+        for family in (4, 6):
+            rules = json.loads(await self.checked("ip", f"-{family}", "-j", "rule", "show"))
+            if (
+                not isinstance(rules, list)
+                or any(not isinstance(item, dict) for item in rules)
+                or any(
+                    item.get("iif") == interface
+                    and str(item.get("priority")) == str(RULE_PRIORITY)
+                    and str(item.get("table")) == str(TABLE_ID)
+                    for item in rules
+                )
+            ):
+                raise EntrypointError("container_guard_unproven")
+
     async def reset_policy(self):
         # Every application process has been reaped before this method.
         if self.network:
@@ -184,6 +288,17 @@ class ContainerController:
         self.state.rebuild_projections(inventory, guard_observed=lambda: self.maintenance.active)
         identities = ingress_identities(self.state.layout.database)
         if not identities:
+            if self.recovered_initial_policy is not None:
+                # The coordinator revoked the proven provider generation before
+                # this stage. Re-arm the old identity as blocked, retaining
+                # delayed provider-source guards for the first new worker.
+                if self.recovered_retired_interface is not None:
+                    await self.retire_recovered_selector(
+                        self.recovered_initial_policy,
+                        self.recovered_retired_interface[0],
+                    )
+                    self.recovered_retired_interface = None
+                await self.recovered_initial_policy.arm_guard()
             self.network = None
             return
         if len(identities) != 1:
@@ -206,21 +321,81 @@ class ContainerController:
         await self.observe_policy()
 
     async def ingress(self, payload):
-        from exitlane.container_runtime import INTERFACE, ContainerWireGuardLifecycle, IngressConfig
+        from exitlane.container_runtime import (
+            INTERFACE,
+            TABLE,
+            ContainerLifecycleError,
+            ContainerWireGuardLifecycle,
+            IngressConfig,
+        )
 
         if not self.operation_valid():
             raise EntrypointError("container_ingress_lease_revoked")
         if (
             set(payload) != {"action", "interface"}
-            or payload["action"] not in {"activate", "observe", "sync"}
+            or payload["action"] not in {"activate", "deactivate", "observe", "sync"}
             or not isinstance(payload["interface"], str)
             or INTERFACE.fullmatch(payload["interface"]) is None
         ):
             raise EntrypointError("container_ingress_config_invalid")
+        if payload["action"] == "deactivate":
+            if self.network is None:
+                return {"active": False}
+            if self.network.config.interface != payload["interface"]:
+                raise EntrypointError("container_ingress_config_invalid")
+            identities = (self.identity(self.network.config),)
+            if self.initial_guard_config is not None:
+                identities += (self.identity(self.initial_guard_config),)
+            await self.arm_maintenance(identities)
+            await self.deactivate()
+            for guard_config in (self.network.config, self.initial_guard_config):
+                if guard_config is None:
+                    continue
+                try:
+                    await self.observe_policy(config=guard_config)
+                except (EntrypointError, ContainerLifecycleError):
+                    continue
+                self.initial_guard_config = guard_config
+                break
+            else:
+                if self.network.active or self.network.uncertain_creation:
+                    raise EntrypointError("container_guard_unproven")
+                try:
+                    tables = json.loads(await self.checked("nft", "-j", "list", "tables"))
+                    entries = tables["nftables"]
+                    if not isinstance(entries, list) or any(
+                        not isinstance(item, dict) for item in entries
+                    ):
+                        raise ValueError
+                    existing = any(
+                        item.get("table", {}).get("family") == "inet"
+                        and item.get("table", {}).get("name") == TABLE
+                        for item in entries
+                    )
+                except (ValueError, TypeError, KeyError, AttributeError):
+                    raise EntrypointError("container_guard_unproven") from None
+                if existing:
+                    raise EntrypointError("container_guard_unproven")
+                rc, _, _ = await self.runner(
+                    "ip", "link", "show", "dev", self.network.config.interface, timeout=5
+                )
+                if rc != 1:
+                    raise EntrypointError("container_interface_ownership_unproven")
+                await self.retire_recovered_selector(self.network, self.network.config.interface)
+                self.network = None
+                self.initial_guard_config = None
+            self.initial_rollback_ready = True
+            if not self.operation_valid():
+                raise EntrypointError("container_ingress_lease_revoked")
+            return {"active": False}
         config = IngressConfig.from_file(
             self.state.layout.wireguard / f"{payload['interface']}.conf"
         )
-        if self.network and self.network.config.interface != config.interface:
+        if (
+            self.network
+            and self.network.config.interface != config.interface
+            and (not self.initial_rollback_ready or self.network.active)
+        ):
             raise EntrypointError("container_ingress_config_invalid")
         if payload["action"] == "sync":
             if not self.network:
@@ -230,17 +405,64 @@ class ContainerController:
             return {"active": True}
         if payload["action"] == "activate":
             previous = self.network
-            await self.arm_maintenance((self.identity(config),))
+            identities = (self.identity(config),)
+            if self.initial_guard_config is not None:
+                identities += (self.identity(self.initial_guard_config),)
+            recovered = (
+                self.recovered_initial_policy
+                if previous is None or self.initial_rollback_ready
+                else None
+            )
+            if recovered is not None:
+                identities += (self.identity(recovered.config),)
+                if self.recovered_retired_interface is not None:
+                    from exitlane.container_recovery import IngressIdentity
+
+                    retired = self.recovered_retired_interface
+                    identities += (IngressIdentity(retired[0], retired[1]),)
+            await self.arm_maintenance(identities)
             await self.deactivate()
             if not self.operation_valid():
                 raise EntrypointError("container_ingress_lease_revoked")
+            if recovered is not None:
+                from exitlane.container_runtime import _PolicyIngress
+
+                if self.recovered_retired_interface is not None:
+                    await self.retire_recovered_selector(
+                        recovered, self.recovered_retired_interface[0]
+                    )
+                    self.recovered_retired_interface = None
+                old_interface = recovered.config.interface
+                old_subnet = str(ipaddress.IPv4Interface(recovered.config.address).network)
+                if old_interface != config.interface:
+                    # Provider arm may publish the new selector before an nft
+                    # apply is cancelled. A failed rebind restores the old
+                    # blocked policy but leaves this exact selector to retire.
+                    self.recovered_retired_interface = (
+                        config.interface,
+                        str(ipaddress.IPv4Interface(config.address).network),
+                    )
+                await recovered.rebind_initial_ingress(
+                    _PolicyIngress(config.interface, config.address)
+                )
+                if old_interface != config.interface:
+                    self.recovered_retired_interface = (old_interface, old_subnet)
+                    await self.retire_recovered_selector(recovered, old_interface)
+                    self.recovered_retired_interface = None
+                await recovered.observe_guard()
             self.network = ContainerWireGuardLifecycle(config, runner=self.runner)
-            if previous is None:
+            if previous is None and recovered is None:
                 await self.network.activate()  # First ingress initializes blocked policy.
             else:
                 # Existing exact guard covers iif across a possible subnet change.
                 await self.network.activate_already_guarded(
-                    lambda: self.observe_policy(config=previous.config)
+                    lambda: self.observe_policy(
+                        config=(
+                            recovered.config
+                            if recovered is not None
+                            else self.initial_guard_config or previous.config
+                        )
+                    )
                 )
             if not self.operation_valid():
                 raise EntrypointError("container_ingress_lease_revoked")
@@ -252,6 +474,10 @@ class ContainerController:
             raise EntrypointError("container_ingress_lease_revoked")
         if self.maintenance.active:
             await self.maintenance.release()
+        self.initial_rollback_ready = False
+        self.initial_guard_config = None
+        self.recovered_initial_policy = None
+        self.recovered_retired_interface = None
         return {"active": True}
 
 
@@ -284,7 +510,14 @@ class ContainerEntrypoint:
         self.coordinator = ContainerRecoveryCoordinator(
             self.state,
             RecoveryHooks(
-                self.guard, self.quiesce, self.reset, self.reconcile, self.health, self.reopen
+                self.guard,
+                self.quiesce,
+                self.reset,
+                self.reconcile,
+                self.health,
+                self.reopen,
+                self.recover_initial_setup,
+                self.finish_initial_setup,
             ),
             require_exclusive=lambda: self.authority.owner is not None,
         )
@@ -323,6 +556,100 @@ class ContainerEntrypoint:
         self.supervisor.maintenance = True
         await self.supervisor.stop_worker()
         await self.controller.deactivate()
+
+    async def recover_initial_setup(self):
+        """Resolve only a pending first ingress before strict parent validation."""
+        from exitlane.container_recovery import (
+            ContainerRecoveryError,
+            IngressIdentity,
+            ingress_identities,
+        )
+        from exitlane.container_state import ContainerStateError, _facts
+        from exitlane.services import wireguard_initial, wireguard_peers
+
+        self.coordinator._leased()
+        journal_path = wireguard_initial.path(self.state.layout.database)
+        if not journal_path.exists() and not journal_path.is_symlink():
+            return False
+        try:
+            journal = wireguard_initial.read(self.state.layout.database)
+            if journal["phase"] == "committed":
+                # Strict parent validation and then worker routing reconciliation
+                # will prove and clear a committed intent without rotating keys.
+                return False
+            target = IngressIdentity(journal["interface"], journal["subnet"])
+            identities = (*ingress_identities(self.state.layout.database), target)
+            probe_names = {target.interface}
+            if self.controller.network is not None:
+                identities += (self.controller.identity(self.controller.network.config),)
+                probe_names.add(self.controller.network.config.interface)
+            prior_guard = getattr(self.controller, "initial_guard_config", None)
+            if prior_guard is not None:
+                identities += (self.controller.identity(prior_guard),)
+                probe_names.add(prior_guard.interface)
+            recovered = self.controller.recovered_initial_policy
+            if recovered is not None:
+                identities += (self.controller.identity(recovered.config),)
+                probe_names.add(recovered.config.interface)
+            retired = self.controller.recovered_retired_interface
+            if retired is not None:
+                identities += (IngressIdentity(retired[0], retired[1]),)
+                probe_names.add(retired[0])
+            await self.guard(tuple(dict.fromkeys(identities)))
+            await self.quiesce()
+            for name in sorted(probe_names):
+                rc, _, _ = await self.controller.runner(
+                    "ip", "link", "show", "dev", name, timeout=5
+                )
+                if rc != 1:
+                    # A live name without our cached ifindex is never adopted or
+                    # removed. This namespace remains guarded and refuses startup.
+                    raise ContainerRecoveryError("container_interface_ownership_unproven")
+            await self.controller.preserve_initial_policy(identities)
+            layout = self.state.layout
+            _facts(layout.state, directory=True)
+            _facts(layout.database)
+            _facts(layout.wireguard, directory=True)
+            with wireguard_peers.state_lock(layout.state):
+                wireguard_initial.rollback_persistent(layout.database, layout.wireguard, journal)
+                self.state.validate()
+            return True
+        except (
+            ContainerRecoveryError,
+            ContainerStateError,
+            wireguard_initial.InitialSetupError,
+            wireguard_peers.PeerError,
+            OSError,
+            ValueError,
+            sqlite3.DatabaseError,
+        ):
+            raise ContainerRecoveryError("recovery_required") from None
+
+    async def finish_initial_setup(self):
+        """Clear intent only after provider reset and blocked policy are proved."""
+        from exitlane.container_recovery import ContainerRecoveryError, IngressIdentity
+        from exitlane.services import wireguard_initial, wireguard_peers
+
+        self.coordinator._leased()
+        layout = self.state.layout
+        try:
+            with wireguard_peers.state_lock(layout.state):
+                journal = wireguard_initial.read(layout.database)
+                if journal["phase"] != "pending":
+                    raise wireguard_initial.InitialSetupError("wireguard_recovery_failed")
+                self.state.validate()
+                target = IngressIdentity(journal["interface"], journal["subnet"])
+                identities = (target,)
+                if self.controller.recovered_initial_policy is not None:
+                    identities += (
+                        self.controller.identity(self.controller.recovered_initial_policy.config),
+                    )
+                await self.controller.preserve_initial_policy(identities)
+                if self.controller.recovered_initial_policy is not None:
+                    await self.controller.recovered_initial_policy.observe_guard()
+                wireguard_initial.clear(layout.database)
+        except Exception:  # noqa: BLE001 - no raw exception or config crosses this boundary
+            raise ContainerRecoveryError("recovery_required") from None
 
     async def reset(self):
         await self.controller.maintenance.observed(self.controller.maintenance.identities)

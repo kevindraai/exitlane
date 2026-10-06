@@ -3,10 +3,11 @@
 import asyncio
 import base64
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
-from test_container_runtime import Namespace
+from test_container_runtime import Namespace, config
 
 from exitlane.container_entrypoint import ContainerController, ContainerEntrypoint, EntrypointError
 from exitlane.container_runtime import ContainerLifecycleError
@@ -109,6 +110,236 @@ def test_ingress_revoked_lease_refuses_before_file_or_network_access():
     )
     with pytest.raises(EntrypointError, match="lease_revoked"):
         asyncio.run(controller.ingress({"action": "activate", "interface": "wg-office"}))
+
+
+def test_ingress_deactivate_uses_owned_interface_and_keeps_guard(monkeypatch):
+    config = SimpleNamespace(interface="wg-office", address="10.77.0.1/24")
+    calls = []
+
+    class OwnedNetwork:
+        def __init__(self):
+            self.config = config
+
+        async def deactivate(self):
+            calls.append("deactivate")
+
+    maintenance = Maintenance()
+    controller = ContainerController(SimpleNamespace(), maintenance)
+    controller.network = OwnedNetwork()
+
+    async def observe_policy(**_kwargs):
+        calls.append("guard-observed")
+
+    monkeypatch.setattr(controller, "observe_policy", observe_policy)
+    with pytest.raises(EntrypointError, match="config_invalid"):
+        asyncio.run(controller.ingress({"action": "deactivate", "interface": "wg-other"}))
+    assert calls == []
+    assert asyncio.run(controller.ingress({"action": "deactivate", "interface": "wg-office"})) == {
+        "active": False
+    }
+    assert calls == ["deactivate", "guard-observed"]
+    assert maintenance.calls[0][0] == "arm"
+    assert not any(call[0] == "release" for call in maintenance.calls)
+
+
+def test_rolled_back_first_ingress_accepts_changed_identity_under_guard(monkeypatch, tmp_path):
+    from exitlane import container_runtime
+
+    old = SimpleNamespace(interface="wg-office", address="10.77.0.1/24")
+    changed = SimpleNamespace(interface="wg-retry", address="10.88.0.1/24")
+    calls = []
+
+    class Network:
+        def __init__(self, config, *, runner=None):
+            self.config = config
+            self.active = config is old
+
+        async def deactivate(self):
+            calls.append(("deactivate", self.config.interface))
+            self.active = False
+
+        async def activate_already_guarded(self, observer):
+            await observer()
+            self.active = True
+
+        async def observe_owned_ingress(self):
+            return self.active
+
+    maintenance = Maintenance()
+    controller = ContainerController(
+        SimpleNamespace(layout=SimpleNamespace(wireguard=tmp_path)), maintenance
+    )
+    controller.network = Network(old)
+
+    async def observe_policy(*, config=None):
+        calls.append(("observe", config.interface))
+
+    monkeypatch.setattr(controller, "observe_policy", observe_policy)
+    monkeypatch.setattr(container_runtime, "ContainerWireGuardLifecycle", Network)
+    monkeypatch.setattr(
+        container_runtime.IngressConfig, "from_file", classmethod(lambda cls, _path: changed)
+    )
+    with pytest.raises(EntrypointError, match="config_invalid"):
+        asyncio.run(controller.ingress({"action": "activate", "interface": "wg-retry"}))
+    assert asyncio.run(controller.ingress({"action": "deactivate", "interface": "wg-office"})) == {
+        "active": False
+    }
+    assert asyncio.run(controller.ingress({"action": "activate", "interface": "wg-retry"})) == {
+        "active": True
+    }
+    assert ("observe", "wg-office") in calls
+    assert {item.interface for item in maintenance.identities} == {"wg-office", "wg-retry"}
+    assert asyncio.run(controller.ingress({"action": "observe", "interface": "wg-retry"})) == {
+        "active": True
+    }
+    assert controller.initial_rollback_ready is False
+    assert ("release",) in maintenance.calls
+
+
+def test_failed_initial_guard_before_publication_retries_with_no_cached_network(monkeypatch):
+    from exitlane.container_runtime import ContainerLifecycleError
+
+    config = SimpleNamespace(interface="wg-office", address="10.77.0.1/24")
+    network = SimpleNamespace(config=config, active=False, uncertain_creation=False)
+
+    async def deactivate():
+        return None
+
+    network.deactivate = deactivate
+
+    async def absent(*_args, **_kwargs):
+        return 1, "", ""
+
+    controller = ContainerController(SimpleNamespace(), Maintenance(), runner=absent)
+    controller.network = network
+
+    async def missing_guard(*, config=None):
+        raise ContainerLifecycleError("container_guard_unproven")
+
+    async def no_table(*_args):
+        return '{"nftables":[]}'
+
+    monkeypatch.setattr(controller, "observe_policy", missing_guard)
+    monkeypatch.setattr(controller, "checked", no_table)
+
+    async def retired(_observer, _interface):
+        return None
+
+    monkeypatch.setattr(controller, "retire_recovered_selector", retired)
+    assert asyncio.run(controller.ingress({"action": "deactivate", "interface": "wg-office"})) == {
+        "active": False
+    }
+    assert controller.network is None
+    assert controller.initial_rollback_ready is True
+
+
+def test_first_nft_preflight_failure_retires_owned_selector_before_changed_retry(
+    monkeypatch, tmp_path
+):
+    """An RPDB write before first nft publication cannot poison the next setup."""
+    from exitlane import container_runtime
+    from exitlane.services.provider_wireguard import RULE_PRIORITY, TABLE_ID
+
+    old_config = config()
+    new_config = replace(
+        old_config,
+        interface="wg-retry",
+        address="10.89.0.1/24",
+        allowed_ips="10.89.0.2/32",
+    )
+    ns = ActiveResetNamespace(detached=False)
+    ns.guard_exists = False
+    ns.network.source_addresses = ()
+    ns.routes[4] = [row for row in ns.routes[4] if row.get("dev") is None]
+    ns.rules = {
+        family: [
+            row
+            for row in rows
+            if row.get("iif") is None
+            and row.get("oif") is None
+            and row.get("src") not in ("10.64.0.2", "10.65.0.2")
+        ]
+        for family, rows in ns.rules.items()
+    }
+    ns.live = False
+    fail_nft_check = True
+    link = None
+    selected = old_config
+    lifecycle = container_runtime.ContainerWireGuardLifecycle
+
+    async def runner(*args, **kwargs):
+        nonlocal fail_nft_check, link
+        if (
+            args[:3] == ("nft", "-j", "list")
+            and args[-2:] == ("inet", "exitlane_container_guard")
+            and not ns.guard_exists
+        ):
+            return 1, "", ""
+        if args[:3] == ("nft", "-c", "-f") and fail_nft_check:
+            fail_nft_check = False
+            return 1, "", ""
+        if args[:3] == ("nft", "-f", "/dev/stdin"):
+            ns.network = lifecycle(new_config, runner=runner)
+            ns.guard_exists = True
+        if args[:3] == ("ip", "link", "show") and args[-2] == "dev":
+            return (0 if link == args[-1] else 1), "", ""
+        if args[:4] == ("ip", "-j", "link", "show"):
+            return (
+                (0, json.dumps([{"ifname": link, "ifindex": 101}]), "")
+                if link == args[-1]
+                else (1, "", "")
+            )
+        if args[:4] == ("ip", "link", "add", "dev"):
+            link = args[-3]
+        if args[:4] == ("ip", "link", "delete", "dev"):
+            link = None
+        return await ns.run(*args, **kwargs)
+
+    monkeypatch.setattr(
+        container_runtime,
+        "ContainerWireGuardLifecycle",
+        lambda value, **_kwargs: lifecycle(value, runner=runner),
+    )
+    monkeypatch.setattr(
+        container_runtime.IngressConfig,
+        "from_file",
+        classmethod(lambda _cls, _path: selected),
+    )
+    maintenance = Maintenance()
+    controller = ContainerController(
+        SimpleNamespace(layout=SimpleNamespace(wireguard=tmp_path)),
+        maintenance,
+        runner=runner,
+    )
+    with pytest.raises(ContainerLifecycleError, match="container_network_command_failed"):
+        asyncio.run(controller.ingress({"action": "activate", "interface": old_config.interface}))
+    assert not ns.guard_exists
+    assert all(
+        any(
+            row.get("iif") == old_config.interface
+            and row.get("priority") == RULE_PRIORITY
+            and row.get("table") == TABLE_ID
+            for row in ns.rules[family]
+        )
+        for family in (4, 6)
+    )
+    assert asyncio.run(
+        controller.ingress({"action": "deactivate", "interface": old_config.interface})
+    ) == {"active": False}
+    assert controller.network is None
+    assert all(
+        not any(row.get("iif") == old_config.interface for row in ns.rules[family])
+        for family in (4, 6)
+    )
+    selected = new_config
+    assert asyncio.run(
+        controller.ingress({"action": "activate", "interface": new_config.interface})
+    ) == {"active": True}
+    assert asyncio.run(
+        controller.ingress({"action": "observe", "interface": new_config.interface})
+    ) == {"active": True}
+    assert controller.network.active
+    assert ("release",) in maintenance.calls
 
 
 def test_new_namespace_reset_observes_persisted_ingress_maintenance_selectors():

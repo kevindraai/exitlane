@@ -115,7 +115,7 @@ class IngressIdentity:
             ):
                 raise ValueError
             network = ipaddress.ip_network(self.subnet, strict=True)
-            if network.version != 4 or network.prefixlen > 30 or str(network) != self.subnet:
+            if network.version != 4 or network.prefixlen > 31 or str(network) != self.subnet:
                 raise ValueError
         except (TypeError, ValueError):
             raise ContainerRecoveryError("recovery_ingress_invalid") from None
@@ -129,6 +129,8 @@ class RecoveryHooks:
     reconcile: Callable[[StateInventory], Awaitable[None]]
     health: Callable[[], Awaitable[bool]]
     reopen: Callable[[], Awaitable[None]]
+    initial_setup: Callable[[], Awaitable[bool]] | None = None
+    initial_setup_complete: Callable[[], Awaitable[None]] | None = None
 
 
 PHASES = {
@@ -386,11 +388,15 @@ class ContainerRecoveryCoordinator:
                     else "published_provider_egress"
                 )
 
-    async def _resume(self) -> StateInventory:
+    async def _resume(self, *, finalize_initial_setup: bool = False) -> StateInventory:
         inventory = self.state.validate()
         if inventory.recovery_required:
             raise ContainerRecoveryError("container_state_recovery_required")
         await self.hooks.reconcile(inventory)
+        if finalize_initial_setup:
+            if self.hooks.initial_setup_complete is None:
+                raise ContainerRecoveryError("recovery_required")
+            await self.hooks.initial_setup_complete()
         if await self.hooks.health() is not True:
             raise ContainerRecoveryError("recovery_health_failed")
         await self.hooks.reopen()
@@ -464,6 +470,12 @@ class ContainerRecoveryCoordinator:
             inventory = await self._resume()
             self._cleanup(transaction)
             return inventory
+        initial_recovery = False
+        if self.hooks.initial_setup is not None:
+            # The application worker cannot run until strict state validation
+            # succeeds. Recover a first-ingress intent under this startup lease
+            # before validating a potentially interrupted DB/file pair.
+            initial_recovery = bool(await self.hooks.initial_setup())
         try:
             self.state.validate()  # Key/manifest and private paths precede networking.
         except ContainerStateError as error:
@@ -479,7 +491,7 @@ class ContainerRecoveryCoordinator:
         await self.hooks.guard(ingress_identities(self.layout.database))
         await self.hooks.quiesce()
         await self.hooks.reset_egress()
-        return await self._resume()
+        return await self._resume(finalize_initial_setup=initial_recovery)
 
     async def backup(self, destination: Path, passphrase: str) -> lifecycle.BackupInfo:
         self._leased()

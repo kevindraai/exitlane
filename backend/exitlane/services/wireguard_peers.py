@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextvars
 import fcntl
 import ipaddress
 import json
@@ -27,6 +28,9 @@ from exitlane.services import wireguard
 Sync = Callable[[str], Awaitable[None]]
 PEER_SECTION = re.compile(r"(?m)^\[Peer\]\s*$")
 IDENTIFIER = re.compile(r"[0-9a-f]{32}\Z")
+_lock_owner: contextvars.ContextVar[asyncio.Task | None] = contextvars.ContextVar(
+    "wireguard_peer_lock_owner", default=None
+)
 
 
 class PeerError(RuntimeError):
@@ -38,6 +42,13 @@ class PeerError(RuntimeError):
 @contextmanager
 def state_lock(directory: Path | None = None):
     """Serialize cross-process peer writes and a backup's DB+file snapshot."""
+    try:
+        task = asyncio.current_task()
+    except RuntimeError:
+        task = None
+    if task is not None and _lock_owner.get() is task:
+        yield
+        return
     path = (directory or core.DB.parent) / ".wireguard-peers.lock"
     descriptor = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     try:
@@ -48,7 +59,11 @@ def state_lock(directory: Path | None = None):
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as error:
             raise PeerError("wireguard_generation_in_progress") from error
-        yield
+        token = _lock_owner.set(task)
+        try:
+            yield
+        finally:
+            _lock_owner.reset(token)
     finally:
         os.close(descriptor)
 

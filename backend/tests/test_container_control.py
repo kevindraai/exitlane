@@ -689,6 +689,36 @@ def test_ingress_rejects_raw_configuration_and_invalid_action(tmp_path, payload)
     asyncio.run(scenario())
 
 
+def test_startup_owner_cannot_borrow_ingress_deactivate_ipc(tmp_path):
+    async def scenario():
+        async def safe(_owner, _reason):
+            return True
+
+        async def forbidden(_payload):
+            pytest.fail("startup borrower reached ingress mutation callback")
+
+        path = tmp_path / "run" / "control.sock"
+        authority = MutationAuthority(safe)
+        server = UnixControlServer(
+            authority,
+            callbacks={},
+            path=path,
+            allowed_uid=os.getuid(),
+            ingress_callback=forbidden,
+            worker_authorized=lambda _pid: True,
+        )
+        await server.start()
+        client = UnixControlClient(path, _test_uid=os.getuid())
+        try:
+            async with authority.exclusive(MutationOwner(os.getpid(), "startup")):
+                with pytest.raises(ControlError, match="control_unauthorized"):
+                    await client.request("ingress", {"action": "deactivate", "interface": "wg0"})
+        finally:
+            await server.stop()
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("loss", ["disconnect", "expire"])
 def test_lost_lease_joins_paused_ingress_before_final_guard(tmp_path, loss):
     async def scenario():

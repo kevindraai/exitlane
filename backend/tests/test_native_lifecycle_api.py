@@ -60,6 +60,7 @@ def appliance(tmp_path, monkeypatch, synthetic_wireguard_keys):
     async def provision(**kwargs):
         # Only this kernel-facing part is mocked, not wizard/MFA/provider persistence.
         kwargs.pop("activate")
+        kwargs.pop("rollback_runtime")
         return await main.wireguard_service.create(**kwargs)
 
     monkeypatch.setattr(main.runtime, "diagnostics", diagnostics)
