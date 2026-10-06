@@ -130,6 +130,8 @@ SAFE_REASONS = frozenset(
         "firewall_rules_missing",
         "management_route_discovery_failed",
         "management_route_apply_failed",
+        "management_lock_unavailable",
+        "management_lock_timeout",
         "management_rule_inspection_failed",
         "management_rule_apply_failed",
         "management_rule_postcondition_failed",

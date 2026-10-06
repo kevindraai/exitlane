@@ -4,8 +4,10 @@ import json
 
 import pytest
 
-from exitlane import cli, core, main
+from exitlane import cli, core, events, main
 from exitlane.services import management_routing, network_security
+
+_REAL_RECONCILE = management_routing.reconcile
 
 
 class StatefulNetworkRunner:
@@ -1550,6 +1552,11 @@ def test_management_process_lock_timeout_is_bounded_and_does_not_mutate(tmp_path
     monkeypatch.setattr(management_routing, "LOCK_TIMEOUT_SECONDS", 0.03)
     descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
     fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    _prepare_lock_activity_database(tmp_path, monkeypatch)
+    runner = StatefulNetworkRunner()
+    monkeypatch.setattr(
+        management_routing, "_backend", management_routing.ManagementRoutingBackend(runner=runner)
+    )
 
     async def run():
         with pytest.raises(
@@ -1560,6 +1567,9 @@ def test_management_process_lock_timeout_is_bounded_and_does_not_mutate(tmp_path
 
     try:
         asyncio.run(run())
+        assert asyncio.run(main._management_monitor_iteration(None)) == "management_lock_timeout"
+        assert runner.calls == []
+        assert events.list_events().items[0].metadata == {"reason": "management_lock_timeout"}
         assert path.read_bytes() == b""
     finally:
         os.close(descriptor)
@@ -1625,6 +1635,11 @@ def test_management_process_lock_rejects_symlink_without_touching_target(tmp_pat
     path = tmp_path / "management.lock"
     path.symlink_to(target)
     monkeypatch.setattr(management_routing, "LOCK_PATH", path)
+    _prepare_lock_activity_database(tmp_path, monkeypatch)
+    runner = StatefulNetworkRunner()
+    monkeypatch.setattr(
+        management_routing, "_backend", management_routing.ManagementRoutingBackend(runner=runner)
+    )
 
     async def run():
         with pytest.raises(
@@ -1634,4 +1649,17 @@ def test_management_process_lock_rejects_symlink_without_touching_target(tmp_pat
                 pytest.fail("followed an unsafe lock path")
 
     asyncio.run(run())
+    assert asyncio.run(main._management_monitor_iteration(None)) == "management_lock_unavailable"
+    assert runner.calls == []
+    assert events.list_events().items[0].metadata == {"reason": "management_lock_unavailable"}
     assert target.read_text() == "preserve"
+
+
+def _prepare_lock_activity_database(tmp_path, monkeypatch):
+    # Restore the entrypoint masked by the host-isolation fixture. Each caller
+    # installs a synthetic backend, so no host routing command can be executed.
+    monkeypatch.setattr(management_routing, "reconcile", _REAL_RECONCILE)
+    monkeypatch.setattr(core, "DATA", tmp_path / "data")
+    monkeypatch.setattr(core, "DB", tmp_path / "data/exitlane.db")
+    monkeypatch.setattr(core, "WG_DIR", tmp_path / "data/wireguard")
+    core.init()
