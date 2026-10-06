@@ -280,6 +280,13 @@ def v1_baseline(appliance, monkeypatch):
     (appliance / "etc/exitlane/installed-version").write_text("1.0.0\n")
     (appliance / "etc/exitlane/wireguard/wg-qa.conf").write_text(
         "[Interface]\nPrivateKey = server-private\nAddress = 10.98.240.1/24\n"
+        "PostUp = sysctl -w net.ipv4.ip_forward=1\n"
+        "PostUp = iptables -A FORWARD -i wg-qa ! -o wg-qa -j ACCEPT\n"
+        "PostUp = iptables -A FORWARD ! -i wg-qa -o wg-qa -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT\n"
+        "PostUp = iptables -t nat -A POSTROUTING -s 10.98.240.0/24 ! -o wg-qa -j MASQUERADE\n"
+        "PostDown = iptables -D FORWARD -i wg-qa ! -o wg-qa -j ACCEPT\n"
+        "PostDown = iptables -D FORWARD ! -i wg-qa -o wg-qa -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT\n"
+        "PostDown = iptables -t nat -D POSTROUTING -s 10.98.240.0/24 ! -o wg-qa -j MASQUERADE\n"
         "[Peer]\nPublicKey = client-public\nAllowedIPs = 10.98.240.2/32\n"
     )
     (appliance / "etc/exitlane/wireguard/qualification-router.conf").write_text(
@@ -340,6 +347,32 @@ def test_fresh_v1_without_installed_version_marker_can_be_certified(v1_baseline)
     certificate = state.legacy_certificate(v1_baseline, before)
     assert before["version"] is None
     assert certificate["before"] == state._digest(before)
+
+
+def test_genuine_v1_repeated_interface_hooks_are_pinned(v1_baseline):
+    server = v1_baseline / "etc/exitlane/wireguard/wg-qa.conf"
+    interface, _ = state._config(server.read_bytes())
+    assert len(interface["PostUp"]) == 4
+    assert len(interface["PostDown"]) == 3
+    before = state.capture(v1_baseline)
+    assert state.legacy_certificate(v1_baseline, before)["before"] == state._digest(before)
+    server.write_text(server.read_text().replace("-i wg-qa", "-i changed"))
+    with pytest.raises(state.SnapshotError, match="snapshot_legacy_certificate_invalid"):
+        state.legacy_certificate(v1_baseline, before)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "[Interface]\nPrivateKey = first\nPrivateKey = second\n[Peer]\nPublicKey = peer\n",
+        "[Interface]\nPrivateKey = first\n[Peer]\nPostUp = first\nPostUp = second\n",
+        "[Interface]\nPostDown = \n[Peer]\nPublicKey = peer\n",
+        "[Interface]\nPrivateKey = first\n[Peer]\nPublicKey = first\nPublicKey = second\n",
+    ],
+)
+def test_legacy_config_rejects_other_duplicates_and_empty_hooks(content):
+    with pytest.raises(state.SnapshotError, match="snapshot_legacy_certificate_invalid"):
+        state._config(content.encode())
 
 
 def test_wrong_or_unsafe_present_v1_version_marker_rejected(v1_baseline):

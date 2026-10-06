@@ -459,9 +459,20 @@ def _config(content):
             raise SnapshotError("snapshot_legacy_certificate_invalid")
         key, value = (part.strip() for part in line.split("=", 1))
         target = result[section][-1]
-        if not key or not value or key in target:
+        if not key or not value:
             raise SnapshotError("snapshot_legacy_certificate_invalid")
-        target[key] = value
+        if key in target:
+            # Genuine v1 server configs repeat these WireGuard interface hooks.
+            # Their complete bytes are already pinned by the pre-upgrade snapshot;
+            # no other duplicate key or repeated Peer field is accepted.
+            if section != "Interface" or key not in {"PostUp", "PostDown"}:
+                raise SnapshotError("snapshot_legacy_certificate_invalid")
+            previous = target[key]
+            target[key] = (
+                [*previous, value] if isinstance(previous, list) else [previous, value]
+            )
+        else:
+            target[key] = value
     if len(result["Interface"]) != 1 or len(result["Peer"]) != 1:
         raise SnapshotError("snapshot_legacy_certificate_invalid")
     return result["Interface"][0], result["Peer"][0]
