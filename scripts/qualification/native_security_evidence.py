@@ -131,7 +131,13 @@ def parse_dpkg_inventory(text):
             "hi ",
         }:
             state = "installed"
-        elif status == "deinstall ok config-files" and abbrev == "rc ":
+        elif status.endswith(" ok config-files") and abbrev == {
+            "unknown": "uc ",
+            "install": "ic ",
+            "hold": "hc ",
+            "deinstall": "rc ",
+            "purge": "pc ",
+        }.get(status.split()[0]):
             state = "residual"
         for value in (arch, version, source, source_version):
             if value or state != "other":

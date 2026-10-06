@@ -136,6 +136,43 @@ def test_normal_inactive_dpkg_selection_is_not_unstable(desired, abbrev):
 
 
 @pytest.mark.parametrize(
+    "desired,abbrev",
+    [
+        ("unknown", "uc "),
+        ("install", "ic "),
+        ("hold", "hc "),
+        ("deinstall", "rc "),
+        ("purge", "pc "),
+    ],
+)
+def test_all_consistent_config_only_dpkg_records_are_residual(desired, abbrev):
+    inv = inventory(
+        f"ifupdown\tamd64\t0.8.44\t{desired} ok config-files\t{abbrev}\tifupdown\t0.8.44\n"
+    )
+    assert inv["installed_count"] == 1 and inv["residual_count"] == 1
+    assert inv["other_count"] == inv["unstable_count"] == 0
+    assert inv["packages"][1]["status"] == f"{desired} ok config-files"
+    assert inv["packages"][1]["status_abbrev"] == abbrev
+    assert validate(trivy(), inv)["status"] == "complete"
+    finding = {
+        "PkgName": "ifupdown",
+        "InstalledVersion": "0.8.44",
+        "VulnerabilityID": "CVE-2026-0001",
+        "Severity": "HIGH",
+    }
+    assert (
+        evidence.classify_findings([finding], inv, {}, None, lambda *_: False)[0]["category"]
+        == "residual_not_installed"
+    )
+
+
+def test_inconsistent_config_only_dpkg_record_stays_unstable():
+    inv = inventory("ifupdown\tamd64\t0.8.44\tinstall ok config-files\trc \tifupdown\t0.8.44\n")
+    assert inv["residual_count"] == 0 and inv["unstable_count"] == 1
+    assert validate(trivy(), inv)["status"] == "incomplete"
+
+
+@pytest.mark.parametrize(
     "status,abbrev",
     [
         ("install ok not-installed", "in "),

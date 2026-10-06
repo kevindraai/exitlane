@@ -65,7 +65,7 @@ if mode=='os':
                 if path.is_symlink() or path.stat().st_size>67108864:raise ValueError('bootstrap_wheel_invalid')
                 wheel_raw=public_read(path,67108864)
                 with zipfile.ZipFile(io.BytesIO(wheel_raw)) as z:
-                    entries=[x for x in z.infolist() if x.filename.endswith('.dist-info/METADATA')]
+                    entries=[x for x in z.infolist() if x.filename.endswith('.dist-info/METADATA') and x.filename.count('/')==1]
                     if len(entries)!=1 or entries[0].file_size>1048576:raise ValueError('bootstrap_metadata_invalid')
                     meta=email.parser.Parser().parsestr(z.read(entries[0]).decode('utf-8'))
                     vendors=[]
@@ -217,7 +217,7 @@ class ReadOnlyHost:
                 self.read_public(binary)
             ).hexdigest()
             return data
-        except (ValueError, UnicodeError):
+        except (ValueError, UnicodeError, RecursionError):
             raise EvidenceError("python_inventory_invalid") from None
 
     def stage_database(self, source: Path, destination: Path):

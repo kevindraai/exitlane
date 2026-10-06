@@ -366,6 +366,7 @@ def collect(options, host):
             UnicodeError,
             StopIteration,
             SyntaxError,
+            RecursionError,
         ):
             cells[name] = cell_error("observation_unavailable")
         return cells[name]
@@ -746,7 +747,14 @@ def collect(options, host):
                     ]["data"]["content_sha256"],
                     "previous_dpkg_sha256": previous["cells"]["dpkg"]["data"]["sha256"],
                 }
-            except (OSError, EvidenceError, ValueError, KeyError, TypeError):
+            except (
+                OSError,
+                EvidenceError,
+                ValueError,
+                KeyError,
+                TypeError,
+                RecursionError,
+            ):
                 cells["libraries"] = cell_error("maintenance_evidence_unavailable")
     else:
         cells["libraries"] = {

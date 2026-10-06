@@ -482,6 +482,9 @@ def test_bootstrap_wheel_with_bundled_payload_without_manifest_records_gap(
             "pip-1.0.dist-info/METADATA", "Metadata-Version: 2.1\nName: pip\nVersion: 1.0\n"
         )
         archive.writestr("pip/_vendor/dependency/__init__.py", "# Synthetic bundled dependency\n")
+        archive.writestr(
+            "pip/_vendor/dependency-1.0.dist-info/METADATA", "Name: dependency\nVersion: 1.0\n"
+        )
     if hardlinked:
         os.link(wheel, host.work / "private-wheel-link")
     empty = host.work / "empty-system-packages"

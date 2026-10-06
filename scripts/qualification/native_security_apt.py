@@ -90,9 +90,17 @@ def _snapshot(root, reader=None):
     files = _inputs(root)
     captured = {}
     for path in files:
-        if path.is_symlink() or any(p.is_symlink() for p in path.parents):
+        actual = path
+        if (
+            path == root / "usr/share/keyrings/debian-archive-keyring.gpg"
+            and path.is_symlink()
+        ):
+            actual = path.resolve(strict=True)
+            if actual != root / "usr/share/keyrings/debian-archive-keyring.pgp":
+                _fail("apt_snapshot_input_invalid")
+        if actual.is_symlink() or any(p.is_symlink() for p in actual.parents):
             _fail("apt_snapshot_input_invalid")
-        captured[path] = reader(path, _MAX_BYTES) if reader else _read(path)
+        captured[path] = reader(actual, _MAX_BYTES) if reader else _read(actual)
     if sum(len(v) for v in captured.values()) > _MAX_BYTES:
         _fail("apt_snapshot_too_large")
     identities = {

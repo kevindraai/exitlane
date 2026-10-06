@@ -442,3 +442,25 @@ def test_every_simulated_dependency_requires_own_authenticated_source_identity(
     assert simulation["eligible"] is dependency_bound
     assert simulation["status"] == ("complete" if dependency_bound else "incomplete")
     assert result["status"] == ("complete" if dependency_bound else "incomplete")
+
+
+def test_standard_debian_keyring_alias_only(tmp_path):
+    from native_security_apt import _snapshot
+
+    host = Host(tmp_path)
+    folder = host.root / "usr/share/keyrings"
+    folder.mkdir(parents=True)
+    canonical = folder / "debian-archive-keyring.pgp"
+    canonical.write_bytes(b"synthetic public archive key")
+    alias = folder / "debian-archive-keyring.gpg"
+    alias.symlink_to(canonical.name)
+    captured, _ = _snapshot(host.root)
+    assert captured[alias] == canonical.read_bytes()
+    alias.unlink()
+    private = host.root / "private-canary"
+    private.write_text("PRIVATE_KEY_CANARY")
+    alias.symlink_to(private)
+    from native_security_evidence import EvidenceError
+
+    with pytest.raises(EvidenceError, match="apt_snapshot_input_invalid"):
+        _snapshot(host.root)
