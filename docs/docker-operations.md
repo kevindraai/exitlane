@@ -2,8 +2,9 @@
 
 Use the [Docker deployment Quick Start](docker-deployment.md#quick-start) for versioned files,
 verified official-image digest, explicit LAN bindings, setup and lifecycle commands.
-The v1 support matrix is fixed; verify stable image publication and exact-image qualification
-in the [v1 release receipts](release-notes/1.0.0.md#release-and-image-receipts) before deploying.
+The v1 support matrix is fixed; verify image publication and exact-image qualification
+in the [v1.0.1 release evidence](release-notes/1.0.1.md#release-evidence) before deploying
+that version. Until then, use the [published v1.0.0 release](release-notes/1.0.0.md).
 Native Debian 13 amd64 remains reference runtime. The development Compose is a separate surface.
 
 ## Capabilities and protected traffic
@@ -27,7 +28,7 @@ lifecycle; the application has no Docker socket or authority over the host.
 ## Start and access the appliance
 
 Use the [Docker deployment Quick Start](docker-deployment.md#quick-start). It provides the
-exact v1.0.0 source checkout, official versioned image and digest verification, saved `.env`,
+exact v1.0.1 source checkout, official versioned image and digest verification, saved `.env`,
 explicit host LAN bindings, immutable-image preflight and Compose startup commands.
 Use Linux amd64, rootful Engine >=28 and Compose v2 with kernel WireGuard/nftables and TUN.
 The development Compose and historical candidate build instructions are separate surfaces.
@@ -107,7 +108,7 @@ Select the reviewed compatible target image in `EXITLANE_IMAGE`, rerun the host 
 and recreate with the appliance Compose file. Follow the
 [upgrade/rollback commands](docker-deployment.md#upgrade-and-rollback) and verify the published
 image digest against its release receipt. The official versioned image is
-`ghcr.io/kevindraai/exitlane:v1.0.0`; no `latest` alias is defined.
+`ghcr.io/kevindraai/exitlane:v1.0.1` once published; no `latest` alias is defined.
 Keep the existing volume. Verify login/MFA, saved state and fresh protected client traffic.
 
 Rollback may reuse the volume only if the previous image accepts its state/schema. Otherwise,
