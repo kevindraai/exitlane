@@ -122,9 +122,10 @@ def _status(raw, inventory):
             if line.startswith((" ", "\t")):
                 # dpkg relationship fields are single lines; descriptive prose is omitted.
                 continue
-            if ": " not in line:
+            if ":" not in line:
                 _fail("apt_dpkg_status_invalid")
-            key, value = line.split(": ", 1)
+            key, value = line.split(":", 1)
+            value = value.lstrip(" ")
             if key in fields:
                 _fail("apt_dpkg_status_invalid")
             fields[key] = value

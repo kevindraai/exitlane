@@ -157,7 +157,9 @@ restarts a service or reboots the appliance.
 Evidence is allowlisted before retention. No environment, process arguments,
 process memory, `/proc/*/environ`, application configuration, SQLite contents,
 backups, sessions, private keys, provider responses or credentials are collected.
-Public metadata reads reject symlinks/unsafe ancestors and are bounded; child tools
+Public metadata reads reject unsafe symlinks/ancestors and are bounded; the
+standard Debian os-release/keyring aliases resolve only to their explicit public
+canonical paths; child tools
 receive a minimal environment, not the operator's credentials. Arbitrary stderr is
 hashed rather than exported. Unknown/private scanner fields and credential-bearing
 source URLs are rejected. Do not publish receipts automatically: package inventory,

@@ -1000,6 +1000,7 @@ def worksheet(receipt):
                     "version_codename",
                     "debian_version",
                     "architecture",
+                    "machine_id_sha256",
                 ),
                 "dpkg": (
                     "installed_count",
@@ -1065,6 +1066,11 @@ def worksheet(receipt):
                     "previous_receipt_sha256",
                 ),
                 "primary_advisories": ("sha256", "observed_at", "source", "available"),
+                "target_consistency": (
+                    "before_sha256",
+                    "after_sha256",
+                    "interpretation",
+                ),
             }.get(name, ())
             for key in fields:
                 if key in data and not isinstance(data[key], (dict, list)):
@@ -1099,6 +1105,7 @@ def worksheet(receipt):
                         "executable",
                         "stdlib",
                         "sha256",
+                        "binary_sha256",
                         "owner_package",
                     ):
                         if key in interpreter and not isinstance(
@@ -1127,6 +1134,62 @@ def worksheet(receipt):
                         lines.append(
                             "  bootstrap wheel count: " + str(len(bootstrap["wheels"]))
                         )
+            if name in {"python_bundled", "audit_bundled"}:
+                for index, group in enumerate(data.get("groups", [])):
+                    if not isinstance(group, dict):
+                        continue
+                    prefix = "  bundled group " + str(index) + " "
+                    for key in ("layer", "parent", "manifest_sha256"):
+                        if key in group and not isinstance(group[key], (dict, list)):
+                            lines.append(prefix + key + ": " + escape(group[key]))
+                    if isinstance(group.get("packages"), list):
+                        lines.append(
+                            prefix + "package count: " + str(len(group["packages"]))
+                        )
+                    audit = group.get("audit")
+                    if isinstance(audit, dict):
+                        for key in ("status", "reason"):
+                            if key in audit and audit[key] is not None:
+                                lines.append(
+                                    prefix + "audit " + key + ": " + escape(audit[key])
+                                )
+                        audit_data = audit.get("data")
+                        if isinstance(audit_data, dict):
+                            for key in (
+                                "tool_version",
+                                "tool_sha256",
+                                "raw_sha256",
+                                "requirements_sha256",
+                            ):
+                                if key in audit_data:
+                                    lines.append(
+                                        prefix
+                                        + "audit "
+                                        + key
+                                        + ": "
+                                        + escape(audit_data[key])
+                                    )
+                            findings = audit_data.get("findings")
+                            lines.append(
+                                prefix
+                                + "audit finding count: "
+                                + (
+                                    str(len(findings))
+                                    if isinstance(findings, list)
+                                    else "unavailable"
+                                )
+                            )
+                            coverage = audit_data.get("coverage")
+                            if isinstance(coverage, dict):
+                                for key in ("expected_count", "observed_count"):
+                                    if key in coverage:
+                                        lines.append(
+                                            prefix
+                                            + "audit "
+                                            + key
+                                            + ": "
+                                            + escape(coverage[key])
+                                        )
             if name == "trivy" or name.startswith("audit_"):
                 for key in (
                     "tool_version",
@@ -1244,7 +1307,17 @@ def worksheet(receipt):
                     )
                 maintenance = data.get("maintenance_evidence")
                 if isinstance(maintenance, dict):
-                    for key in ("sha256", "trust"):
+                    for key in (
+                        "sha256",
+                        "trust",
+                        "previous_receipt_sha256",
+                        "same_machine",
+                        "process_restart_observed",
+                        "boot_change_observed",
+                        "stale_mappings_cleared",
+                        "previous_application_content_sha256",
+                        "previous_dpkg_sha256",
+                    ):
                         if key in maintenance:
                             lines.append(
                                 "  maintenance evidence "

@@ -464,3 +464,13 @@ def test_standard_debian_keyring_alias_only(tmp_path):
 
     with pytest.raises(EvidenceError, match="apt_snapshot_input_invalid"):
         _snapshot(host.root)
+
+
+def test_empty_nonresolver_dpkg_field_is_omitted_not_invalid(tmp_path):
+    from native_security_apt import _status
+
+    raw = (STATUS.rstrip() + "\nConffiles:\n /etc/public-fixture checksum\n\n").encode()
+    selected = _status(raw, INVENTORY)
+    assert b"Conffiles" not in selected
+    assert b"Description" not in selected
+    assert b"Package: sample" in selected

@@ -702,3 +702,77 @@ def test_worksheet_public_identities_and_collection_decision_separation():
         assert expected in text
     assert "CANARY" not in text
     assert "captured-cache projection" in text
+
+
+def test_worksheet_actual_bundled_maintenance_and_consistency_shapes():
+    group = {
+        "layer": "os",
+        "parent": "pip",
+        "manifest_sha256": "a" * 64,
+        "packages": [{"name": "public", "version": "1"}],
+        "manifest": "PRIVATE-CANARY",
+    }
+    audited = {
+        **group,
+        "audit": {
+            "status": "incomplete",
+            "reason": "advisory_lookup_unavailable",
+            "data": {
+                "findings": None,
+                "coverage": {"expected_count": 1, "observed_count": 0},
+                "raw_private": "PRIVATE-CANARY",
+            },
+        },
+    }
+    receipt = {
+        "collection_status": "incomplete",
+        "cells": {
+            "os": {"status": "complete", "data": {"machine_id_sha256": "b" * 64}},
+            "python_os": {
+                "status": "complete",
+                "data": {"interpreter": {"binary_sha256": "c" * 64}},
+            },
+            "python_bundled": {"status": "complete", "data": {"groups": [group]}},
+            "audit_bundled": {"status": "incomplete", "data": {"groups": [audited]}},
+            "target_consistency": {
+                "status": "complete",
+                "data": {"before_sha256": "d" * 64, "after_sha256": "d" * 64},
+            },
+            "libraries": {
+                "status": "complete",
+                "data": {
+                    "mappings": [],
+                    "maintenance_evidence": {
+                        "previous_receipt_sha256": "e" * 64,
+                        "process_restart_observed": True,
+                        "boot_change_observed": False,
+                        "stale_mappings_cleared": True,
+                        "previous_application_content_sha256": "f" * 64,
+                        "previous_dpkg_sha256": "1" * 64,
+                        "trust": "operator_supplied_previous_observation_not_authenticated",
+                        "private_config": "PRIVATE-CANARY",
+                    },
+                },
+            },
+        },
+    }
+    text = evidence.worksheet(receipt)
+    for expected in (
+        "machine_id_sha256: " + "b" * 64,
+        "interpreter binary_sha256: " + "c" * 64,
+        "bundled group 0 layer: os",
+        "bundled group 0 parent: pip",
+        "bundled group 0 package count: 1",
+        "bundled group 0 audit status: incomplete",
+        "bundled group 0 audit finding count: unavailable",
+        "before_sha256: " + "d" * 64,
+        "after_sha256: " + "d" * 64,
+        "maintenance evidence process_restart_observed: True",
+        "maintenance evidence boot_change_observed: False",
+        "maintenance evidence stale_mappings_cleared: True",
+        "e" * 64,
+        "f" * 64,
+        "1" * 64,
+    ):
+        assert expected in text
+    assert "PRIVATE-CANARY" not in text
