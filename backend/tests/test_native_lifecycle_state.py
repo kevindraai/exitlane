@@ -265,7 +265,7 @@ def test_invalid_snapshot_table_structure_is_rejected(appliance):
 
 
 @pytest.fixture
-def v1_upgrade(appliance, monkeypatch):
+def v1_baseline(appliance, monkeypatch):
     database = appliance / state.DATABASE
     with sqlite3.connect(database) as connection:
         connection.execute("UPDATE settings SET value=? WHERE key='language'", (json.dumps("nl"),))
@@ -295,6 +295,15 @@ def v1_upgrade(appliance, monkeypatch):
             "client-private": "client-public",
         }[value],
     )
+    return appliance
+
+
+@pytest.fixture
+def v1_upgrade(v1_baseline, request):
+    appliance = v1_baseline
+    database = appliance / state.DATABASE
+    if getattr(request, "param", "present") == "missing":
+        (appliance / state.VERSION_FILE).unlink()
     before = state.capture(appliance)
     certificate = state.legacy_certificate(appliance, before)
     started = time.time()
@@ -325,6 +334,42 @@ def v1_upgrade(appliance, monkeypatch):
     return appliance, before, state.capture(appliance), certificate, started, time.time() + 1
 
 
+def test_fresh_v1_without_installed_version_marker_can_be_certified(v1_baseline):
+    (v1_baseline / state.VERSION_FILE).unlink()
+    before = state.capture(v1_baseline)
+    certificate = state.legacy_certificate(v1_baseline, before)
+    assert before["version"] is None
+    assert certificate["before"] == state._digest(before)
+
+
+def test_wrong_or_unsafe_present_v1_version_marker_rejected(v1_baseline):
+    marker = v1_baseline / state.VERSION_FILE
+    marker.write_text("1.0.2\n")
+    with pytest.raises(state.SnapshotError, match="snapshot_legacy_certificate_invalid"):
+        state.legacy_certificate(v1_baseline, state.capture(v1_baseline))
+    marker.write_text("1.0.0\n")
+    marker.chmod(0o644)
+    with pytest.raises(state.SnapshotError, match="snapshot_legacy_certificate_invalid"):
+        state.legacy_certificate(v1_baseline, state.capture(v1_baseline))
+
+
+@pytest.mark.parametrize("change", ["added", "removed", "changed"])
+def test_v1_version_marker_race_rejected(v1_baseline, change):
+    marker = v1_baseline / state.VERSION_FILE
+    if change == "added":
+        marker.unlink()
+    before = state.capture(v1_baseline)
+    if change == "added":
+        marker.write_text("1.0.0\n")
+    elif change == "removed":
+        marker.unlink()
+    else:
+        marker.write_text("1.0.1\n")
+    with pytest.raises(state.SnapshotError, match="snapshot_legacy_certificate_invalid"):
+        state.legacy_certificate(v1_baseline, before)
+
+
+@pytest.mark.parametrize("v1_upgrade", ["present", "missing"], indirect=True)
 def test_pinned_v1_upgrade_accepts_only_expected_adoption(v1_upgrade):
     _, before, after, certificate, started, finished = v1_upgrade
     assert state.compare_v1_upgrade(before, after, certificate, started, finished) == []

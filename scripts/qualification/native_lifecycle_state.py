@@ -489,11 +489,22 @@ def legacy_certificate(root: Path, before: dict) -> dict:
     """Bind pre-upgrade v1 settings and actual config bytes to one expected migration."""
     try:
         root = Path(root)
+        marker = before["version"]
         if (
             set(before["database"]["tables"]) != V1_TABLES
             or set(before["database"]["objects"]) != V1_OBJECTS
             or _digest(before["database"]["objects"]) != V1_OBJECTS_DIGEST
-            or before["version"]["sha256"] != hashlib.sha256(b"1.0.0\n").hexdigest()
+            or (
+                marker is not None
+                and (
+                    not isinstance(marker, dict)
+                    or marker.get("sha256") != hashlib.sha256(b"1.0.0\n").hexdigest()
+                    or marker.get("size") != len(b"1.0.0\n")
+                    or marker.get("mode") != 0o600
+                    or marker.get("uid") != os.geteuid()
+                    or marker.get("gid") != os.getegid()
+                )
+            )
         ):
             raise SnapshotError("snapshot_legacy_certificate_invalid")
         with sqlite3.connect((root / DATABASE).as_uri() + "?mode=ro", uri=True) as db:
@@ -506,7 +517,7 @@ def legacy_certificate(root: Path, before: dict) -> dict:
             rows = db.execute("SELECT key,value FROM settings").fetchall()
         if (
             live_objects != before["database"]["objects"]
-            or _read_file(root, VERSION_FILE) != before["version"]
+            or _read_file(root, VERSION_FILE, optional=True) != marker
         ):
             raise SnapshotError("snapshot_legacy_certificate_invalid")
         fingerprint = sorted(

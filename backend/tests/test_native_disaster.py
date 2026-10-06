@@ -4,7 +4,9 @@ import copy
 import importlib
 import json
 import os
+import shutil
 import sqlite3
+import subprocess
 import sys
 from pathlib import Path
 
@@ -336,3 +338,49 @@ def test_default_plan_has_no_preflight_or_bundle_or_host_mutation(
     assert json.loads(capsys.readouterr().out)["executed"] is False
     assert not bundle.exists()
     assert not disaster.native.RUNS.exists()
+
+
+@pytest.mark.parametrize("mode", ["help", "plan", "execute-rejection"])
+def test_direct_invocation_never_creates_bytecode_before_preflight(tmp_path, mode):
+    source = Path(__file__).resolve().parents[2] / "scripts/qualification"
+    copied = tmp_path / "harness"
+    copied.mkdir(mode=0o700)
+    for name in ("native_disaster.py", "native_lifecycle.py", "native_lifecycle_state.py"):
+        shutil.copyfile(source / name, copied / name)
+    # Model fixture ownership in the synthetic copy for non-root CI workers.
+    # Actual execution preflight still rejects the non-Git/unsupported target.
+    lifecycle = copied / "native_lifecycle.py"
+    lifecycle.write_text(lifecycle.read_text().replace("ROOT_UID = 0", "ROOT_UID = os.getuid()"))
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(config(2)))
+    config_path.chmod(0o600)
+    before = {path.name: path.read_bytes() for path in copied.iterdir()}
+    arguments = [sys.executable, "-E", "-S", str(copied / "native_disaster.py")]
+    if mode == "help":
+        arguments.append("--help")
+    else:
+        arguments.extend(
+            [
+                "--config",
+                str(config_path),
+                "--action",
+                "export",
+                "--bundle",
+                str(tmp_path / "bundle"),
+            ]
+        )
+        if mode == "execute-rejection":
+            arguments.append("--execute")
+    result = subprocess.run(
+        arguments,
+        env={"PATH": os.defpath, "LANG": "C.UTF-8"},
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
+    assert result.returncode == (1 if mode == "execute-rejection" else 0)
+    if mode == "plan":
+        assert json.loads(result.stdout)["executed"] is False
+    assert {path.name: path.read_bytes() for path in copied.iterdir()} == before
+    assert not (tmp_path / "bundle").exists()

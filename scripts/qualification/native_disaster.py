@@ -22,6 +22,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Import compilation must not dirty the exact-source checkout before preflight.
+sys.dont_write_bytecode = True
+
 import native_lifecycle as native
 
 FILES = ("backup.elb", "passphrase", "fixture.json", "backup.snapshot")
