@@ -1,7 +1,11 @@
 """Offline evidence contracts, including privacy and honest missing coverage."""
 
+import base64
+import hashlib
 import importlib.util
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -71,6 +75,174 @@ def test_canonical_hash_and_nan_refusal():
     assert evidence.digest_value({"a": 1, "b": 2}) == evidence.digest_value({"b": 2, "a": 1})
     with pytest.raises(evidence.EvidenceError):
         evidence.canonical_bytes(float("nan"))
+
+
+def tracker_fixture():
+    return {
+        "sample-source": {
+            "CVE-2026-0001": {
+                "description": "Public synthetic advisory",
+                "releases": {
+                    "trixie": {
+                        "status": "resolved",
+                        "urgency": "not yet assigned",
+                        "fixed_version": "1.0-2",
+                        "repositories": {"trixie": "1.0-2"},
+                    }
+                },
+            },
+            "TEMP-0001": {
+                "releases": {
+                    "trixie": {
+                        "status": "open",
+                        "urgency": "unimportant",
+                        "repositories": {"trixie": "1.0-1"},
+                    }
+                }
+            },
+        },
+        "unrelated": {
+            "CVE-2026-0002": {
+                "releases": {
+                    "sid": {
+                        "status": "open",
+                        "urgency": "low",
+                        "repositories": {"sid": "1"},
+                    }
+                }
+            }
+        },
+    }
+
+
+def test_full_tracker_schema_validated_before_relevant_projection():
+    snapshot = tracker_fixture()
+    projected = evidence.extract_debian_tracker(
+        json.dumps(snapshot).encode(), {"sample-source": ["CVE-2026-0001", "absent"]}
+    )
+    assert projected == {
+        "sample-source": {
+            "CVE-2026-0001": {
+                "releases": {"trixie": {"status": "resolved", "fixed_version": "1.0-2"}},
+            }
+        }
+    }
+    assert evidence.extract_debian_tracker(json.dumps(snapshot).encode(), {}) == {}
+    assert (
+        evidence.extract_debian_tracker(
+            json.dumps(snapshot).encode(), {"absent": ["CVE-2026-0001"]}
+        )
+        == {}
+    )
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "empty",
+        "scalar",
+        "source_scalar",
+        "unrelated_release",
+        "missing_releases",
+        "nonfinite",
+        "duplicate",
+        "deep",
+    ],
+)
+def test_tracker_false_clean_shapes_rejected_even_without_requested_findings(fault):
+    snapshot = tracker_fixture()
+    if fault == "empty":
+        raw = b"{}"
+    elif fault == "scalar":
+        raw = b'{"garbage":42}'
+    elif fault == "source_scalar":
+        snapshot["unrelated"] = 42
+        raw = json.dumps(snapshot).encode()
+    elif fault == "unrelated_release":
+        snapshot["unrelated"]["CVE-2026-0002"]["releases"]["sid"] = "bad"
+        raw = json.dumps(snapshot).encode()
+    elif fault == "missing_releases":
+        del snapshot["unrelated"]["CVE-2026-0002"]["releases"]
+        raw = json.dumps(snapshot).encode()
+    elif fault == "nonfinite":
+        raw = json.dumps(snapshot).replace('"urgency": "low"', '"urgency": NaN').encode()
+    elif fault == "duplicate":
+        raw = b'{"sample":{},"sample":{}}'
+    else:
+        raw = b"[" * 1500 + b"0" + b"]" * 1500
+    with pytest.raises(evidence.EvidenceError):
+        evidence.extract_debian_tracker(raw, {})
+
+
+def test_tracker_worker_accepts_120mib_full_input_and_rejects_over_128mib(tmp_path):
+    raw = json.dumps(tracker_fixture()).encode()
+    path = tmp_path / "tracker.json"
+    with path.open("wb") as stream:
+        stream.write(raw)
+        for _ in range(120):
+            stream.write(b" " * (1024 * 1024))
+    path.chmod(0o600)
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    size = path.stat().st_size
+    command = [
+        sys.executable,
+        "-I",
+        "-S",
+        "-B",
+        str(MODULE),
+        "--tracker-worker",
+        str(path),
+        digest,
+        str(size),
+        json.dumps({"sample-source": ["CVE-2026-0001"]}),
+    ]
+    result = subprocess.run(command, capture_output=True, timeout=30, check=False)
+    assert result.returncode == 0
+    assert (
+        json.loads(result.stdout)["sample-source"]["CVE-2026-0001"]["releases"]["trixie"][
+            "fixed_version"
+        ]
+        == "1.0-2"
+    )
+    with path.open("r+b") as stream:
+        stream.truncate(128 * 1024 * 1024 + 1)
+    result = subprocess.run(command, capture_output=True, timeout=30, check=False)
+    assert result.returncode != 0
+    assert result.stdout == b""
+
+
+@pytest.mark.parametrize("fault", ["hash", "size", "symlink", "mode"])
+def test_tracker_worker_staged_input_is_exact_private_regular_file(tmp_path, fault):
+    path = tmp_path / "tracker.json"
+    raw = json.dumps(tracker_fixture()).encode()
+    path.write_bytes(raw)
+    path.chmod(0o600)
+    digest, size = hashlib.sha256(raw).hexdigest(), len(raw)
+    if fault == "hash":
+        digest = "0" * 64
+    elif fault == "size":
+        size += 1
+    elif fault == "symlink":
+        alias = tmp_path / "alias.json"
+        alias.symlink_to(path)
+        path = alias
+    else:
+        path.chmod(0o644)
+    command = [
+        sys.executable,
+        "-I",
+        "-S",
+        "-B",
+        str(MODULE),
+        "--tracker-worker",
+        str(path),
+        digest,
+        str(size),
+        "{}",
+    ]
+    result = subprocess.run(command, capture_output=True, timeout=30, check=False)
+    assert result.returncode != 0
+    assert result.stdout == b""
 
 
 @pytest.mark.parametrize(
@@ -306,6 +478,59 @@ def test_public_advisory_userinfo_placeholder_is_rejected_without_report_retenti
     # Validation returns no report/findings that a caller could retain as raw JSON.
     assert "user@example.com" not in str(exc.value)
     assert str(exc.value) in {"credential_url_rejected", "report_content_invalid"}
+
+
+REVIEWED_CURL_DESCRIPTION = base64.b64decode(
+    "V2hlbiBhc2tpbmcgY3VybCB0byB1c2UgYSBgLm5ldHJjYCBmaWxlIHRvIGZpbmQgY3JlZGVudGlhbHMgYW5kIGF0IHRoZSBzYW1lCnRpbWUgc3BlY2lmeWluZyBhIFVSTCB3aXRoIGEgdXNlcm5hbWUgKHdpdGhvdXQgYSBwYXNzd29yZCksIGxpa2UKYGh0dHBzOi8vdXNlckBleGFtcGxlLmNvbS9gLCBjdXJsIGNvdWxkIHdyb25nbHkgZ2V0IGFuZCB1c2UgdGhlIHBhc3N3b3JkIGZvcgoqYW5vdGhlciogdXNlciBzZXQgaW4gdGhlIGAubmV0cmNgIGZpbGUgZm9yIHRoYXQgaG9zdCBpZiBzdWNoIGEgb25lIGV4aXN0cyBhbmQKdGhlcmUgaXMgbm8gbWF0Y2ggZm9yIHRoZSBzcGVjaWZpZWQgdXNlci4="
+).decode("utf-8")
+
+
+def test_exact_reviewed_public_curl_description_only_in_matching_vulnerability():
+    assert len(REVIEWED_CURL_DESCRIPTION) == 338
+    assert hashlib.sha256(REVIEWED_CURL_DESCRIPTION.encode()).hexdigest() == (
+        "c6c771d361cd188bdb0421f35a1f906505f04c49012c861b6197aa5bc3848a19"
+    )
+    report = trivy()
+    vuln = report["Results"][0]["Vulnerabilities"][0]
+    vuln["VulnerabilityID"] = "CVE-2026-8926"
+    vuln["Description"] = REVIEWED_CURL_DESCRIPTION
+    assert validate(report)["status"] == "complete"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "id",
+        "description",
+        "username",
+        "host",
+        "password",
+        "append",
+        "field",
+    ],
+)
+def test_reviewed_description_exception_is_exact_and_context_bound(mutation):
+    report = trivy()
+    vuln = report["Results"][0]["Vulnerabilities"][0]
+    vuln["VulnerabilityID"] = "CVE-2026-8926"
+    vuln["Description"] = REVIEWED_CURL_DESCRIPTION
+    if mutation == "id":
+        vuln["VulnerabilityID"] = "CVE-2026-8927"
+    elif mutation == "description":
+        vuln["Description"] = REVIEWED_CURL_DESCRIPTION.replace("curl", "Curl", 1)
+    elif mutation == "username":
+        vuln["Description"] = REVIEWED_CURL_DESCRIPTION.replace("user@", "other@")
+    elif mutation == "host":
+        vuln["Description"] = REVIEWED_CURL_DESCRIPTION.replace("example.com", "example.org")
+    elif mutation == "password":
+        vuln["Description"] = REVIEWED_CURL_DESCRIPTION.replace("user@", "user:secret@")
+    elif mutation == "append":
+        vuln["Description"] += " confidential: https://user:secret@example.org/"
+    else:
+        vuln["Description"] = "No userinfo here"
+        vuln["Title"] = REVIEWED_CURL_DESCRIPTION
+    with pytest.raises(evidence.EvidenceError):
+        validate(report)
 
 
 def test_trivy_missing_schema_and_bad_json():

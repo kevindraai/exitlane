@@ -60,7 +60,13 @@ authenticating its source. Obtain it from
 [Debian's security tracker](https://security-tracker.debian.org/tracker/data/json)
 through a separately trusted workflow. No live mirror/API access is required by
 the fixture tests. A scanner's `FixedVersion` alone is never proof of an eligible
-native fix.
+native fix. The full original snapshot is bounded to 128 MiB, hashed and
+schema-validated in a separate parser process capped at 768 MiB address space,
+20 CPU seconds and 30 wall-clock seconds. Only release facts for observed native
+source/CVE pairs leave that process; the full tracker and arbitrary descriptions
+are not retained. Resource exhaustion or malformed unrelated records cannot turn
+an empty projection into complete evidence. This validates structure, not the
+operator-supplied snapshot's provenance or advisory freshness.
 
 ## Receipt and worksheet
 
@@ -71,10 +77,14 @@ inputs and reports. SHA-256 uses canonical sorted JSON for structural inputs;
 valid scanner reports retain their original bytes. A malformed or non-allowlisted
 report is **not** written: only its hash, size and failure reason remain. Its
 findings are unavailable, never replaced by a zero count.
-This intentionally also rejects an advisory description containing a literal
-userinfo URL such as `https://user@example.com`, even when it is a public example.
-Scanner execution can therefore succeed while report export fails. No advisory
-is removed or rewritten to obtain a complete receipt.
+The generic privacy boundary rejects URL userinfo, including public examples.
+One independently reviewed exception preserves the exact public description of
+[Debian CVE-2026-8926](https://security-tracker.debian.org/tracker/CVE-2026-8926)
+only in that CVE's Trivy vulnerability `Description`: the collector pins its
+complete UTF-8 SHA-256 and length in source. A changed byte, identifier, field,
+username or host voids that exception; any remaining userinfo, including an
+added password, is still rejected. No advisory is removed,
+redacted or rewritten to obtain a complete receipt.
 
 Statuses mean:
 
@@ -110,10 +120,27 @@ Python evidence separates OS interpreter/stdlib identity and distributions,
 current ensurepip/bootstrap wheels, bundled dependencies by parent and layer,
 and actual final ExitLane venv third-party distributions. Interpreter binary hashes
 are retained. Probes use `-I -S -B`: no application import, `.pth`, sitecustomize or
-bootstrap execution. Different embedded versions are audited separately. Missing
-vendor manifests and unauditable packages are explicit gaps/skips. Current wheels
-cannot establish what executed historically during installation; a clean final
-venv cannot qualify that bootstrap history.
+bootstrap execution. Different embedded versions are audited separately. Where
+setuptools has no `vendor.txt`, the collector can derive current vendored versions
+only from each embedded distribution's `METADATA` and an exact parent `RECORD`
+file/member listing with verified SHA-256 and size for source and metadata files.
+Installed, source-associated `__pycache__` files that lack RECORD hashes are
+counted separately as **unverified bytecode caches**, not authenticated code.
+Foreign, missing, unlisted or changed vendor files leave a gap or error. Current
+wheels cannot establish what executed historically during installation; a clean
+final venv cannot qualify that bootstrap history. Other missing manifests and
+unauditable packages remain explicit gaps/skips.
+
+The OS pip-audit invocation remains incomplete when PyPI does not index a Debian
+distribution. A separate, narrowly scoped Debian backend can establish current
+coverage only for the reviewed `apt-listchanges`, `python-apt` and `reportbug`
+metadata names: exact public metadata hash and unique dpkg owner/binary/source/
+version must bind to a fully covered native Trivy tuple. The original PyPI skip
+reason and backend identity stay visible. Native findings for those tuples are
+referenced separately; zero PyPI findings is not a combined zero-vulnerability
+claim. Unknown skips, invocation failures, missing ownership or incomplete native
+coverage keep the composite OS audit incomplete. This path never applies to the
+venv or bootstrap wheels.
 
 ## APT candidates and simulation
 
@@ -128,7 +155,14 @@ transaction or authorization to apply an update.
 Candidate authentication checks Debian archive signatures with `gpgv`, signed
 Release-to-Packages hashes and exact package/source identity. Missing, expired or
 unverified archive evidence remains incomplete/unresolved; Origin labels alone
-are not authentication. Classification compares the actual source version and
+are insufficient. The captured security cache may use the documented
+`http://security.debian.org` endpoint without `/debian-security`, but only for
+`trixie-security`; it still requires the signed `InRelease`, matching decompressed
+Packages hash/size, exact candidate identity and the same endpoint/suite in the
+candidate policy row. An `Architecture: all` package
+may be listed in the signed binary-amd64 index without changing the package's
+own architecture identity. Foreign endpoints and unsigned status-only candidates
+remain incomplete. Classification compares the actual source version and
 primary trixie advisory fixed version, including epochs and binary rebuilds.
 Categories distinguish a supported fix in the captured cache, a primary fix absent
 from that cache, distribution unfixed/not-affected, residual not-installed and

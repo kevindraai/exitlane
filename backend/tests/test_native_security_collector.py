@@ -218,6 +218,156 @@ def test_nonallowlisted_python_environment_never_retained(setup, monkeypatch):
     )
 
 
+@pytest.mark.parametrize("fault", ["partial", "wrong_type", "unknown_key"])
+def test_python_distribution_metadata_wire_schema_is_exact(setup, fault):
+    options, host = setup
+    original = host.python
+
+    def python(executable, mode, prefix):
+        data = original(executable, mode, prefix)
+        if mode == "os":
+            row = data["distributions"][0]
+            row["metadata_path"] = "/usr/lib/python3/dist-packages/sample.dist-info/METADATA"
+            if fault != "partial":
+                row["metadata_sha256"] = 7 if fault == "wrong_type" else "a" * 64
+            if fault == "unknown_key":
+                row["private_canary"] = CANARY
+        return data
+
+    host.python = python
+    receipt = collector.collect(options, host)
+    assert receipt["cells"]["python_os"]["status"] == "error"
+    assert receipt["collection_status"] != "complete"
+    assert CANARY not in json.dumps(receipt)
+
+
+@pytest.mark.parametrize(
+    "fault", [None, "skip_reason", "unknown_skip", "owner", "metadata", "trivy"]
+)
+def test_os_debian_distribution_coverage_is_separate_from_pypi_skip(setup, fault):
+    options, host = setup
+    names = [
+        ("apt-listchanges", "apt-listchanges", "apt-listchanges", "4.8", "all"),
+        ("python-apt", "python3-apt", "python-apt", "3.0.0", "amd64"),
+        ("reportbug", "python3-reportbug", "reportbug", "13.2.0", "all"),
+    ]
+    host.dpkg = DPKG + b"".join(
+        f"{binary}\t{arch}\t{version}\tinstall ok installed\tii \t{source}\t{version}\n".encode()
+        for _, binary, source, version, arch in names
+    )
+    paths = {}
+    original_python = host.python
+
+    def python(executable, mode, prefix):
+        data = original_python(executable, mode, prefix)
+        if mode == "os":
+            data["distributions"] = []
+            for name, binary, _, version, _ in names:
+                path = host.root / "usr/lib/python3/dist-packages" / f"{binary}.dist-info/METADATA"
+                raw = f"Name: {name}\nVersion: {version}\n".encode()
+                host.files[path.relative_to(host.root).as_posix()] = raw
+                paths[binary] = path
+                data["distributions"].append(
+                    {
+                        "name": name,
+                        "version": version,
+                        "metadata_path": str(path),
+                        "metadata_sha256": hashlib.sha256(raw).hexdigest(),
+                    }
+                )
+            if fault == "metadata":
+                data["distributions"][0]["metadata_sha256"] = "0" * 64
+        return data
+
+    host.python = python
+    original_run = host.run
+
+    def run(argv, **kwargs):
+        if argv[:2] == ["/usr/bin/dpkg-query", "--search"]:
+            binary = next((name for name, path in paths.items() if str(path) == argv[2]), None)
+            if binary is None or (fault == "owner" and binary == "python3-apt"):
+                return CommandResult(1, b"", "0" * 64)
+            return CommandResult(0, f"{binary}: {argv[2]}\n".encode(), "0" * 64)
+        return original_run(argv, **kwargs)
+
+    host.run = run
+    original_audit = host.audit
+
+    def audit(executable, packages, **kwargs):
+        if kwargs["layer"] != "os":
+            return original_audit(executable, packages, **kwargs)
+        skips = [
+            {
+                "name": "untracked" if fault == "unknown_skip" and name == "python-apt" else name,
+                "version": version,
+                "reason": (
+                    "network denied"
+                    if fault == "skip_reason" and name == "python-apt"
+                    else f"Dependency not found on PyPI and could not be audited: {name} ({version})"
+                ),
+                "intentional": False,
+            }
+            for name, _, _, version, _ in names
+        ]
+        return {
+            "status": "incomplete",
+            "data": {
+                "returncode": 0,
+                "findings": [],
+                "coverage": {
+                    "expected_count": 3,
+                    "observed_count": 3,
+                    "missing": [],
+                    "unknown": [],
+                    "duplicates": [],
+                    "skips": skips,
+                },
+            },
+        }, b'{"dependencies":[],"fixes":[]}'
+
+    host.audit = audit
+    native = [
+        {
+            "VulnerabilityID": "CVE-2026-0001",
+            "PkgName": "python3-apt",
+            "InstalledVersion": "3.0.0",
+            "Severity": "LOW",
+        }
+    ]
+
+    def trivy(*_):
+        return {
+            "status": "incomplete" if fault == "trivy" else "complete",
+            "data": {
+                "findings": native,
+                "raw_sha256": "a" * 64,
+                "database": {"sha256": "b" * 64},
+                "coverage": {
+                    "missing": [],
+                    "unknown": [],
+                    "duplicates": [],
+                    "unbound_findings": [],
+                },
+            },
+        }, b'{"SchemaVersion":2}'
+
+    host.trivy = trivy
+    receipt = collector.collect(options, host)
+    assert receipt["cells"]["audit_os"]["status"] == "incomplete"
+    assert receipt["findings"]["native"] == native
+    if fault is None:
+        assert receipt["collection_status"] == "complete"
+        fallback = receipt["cells"]["audit_os_distro"]
+        assert fallback["status"] == "complete"
+        assert fallback["data"]["native_backend_finding_count"] == 1
+        assert fallback["data"]["records"][1]["native_finding_indices"] == [0]
+        assert receipt["summary"]["os_pypi_findings_observed"] == 0
+        assert receipt["summary"]["os_distro_native_findings"] == 1
+    else:
+        assert receipt["collection_status"] != "complete"
+        assert receipt["cells"]["audit_os_distro"]["status"] != "complete"
+
+
 def test_different_bundled_versions_preserve_parent_and_layer_and_are_audited_separately(setup):
     options, host = setup
     host.bundles = True

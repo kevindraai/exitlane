@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import shlex
+import sys
 from pathlib import PurePosixPath
 from urllib.parse import urlsplit
 
@@ -50,9 +51,7 @@ def _debian_version(value):
     return (
         isinstance(value, str)
         and len(value) <= 256
-        and re.fullmatch(
-            r"(?:[0-9]+:)?[0-9][A-Za-z0-9.+~\-]*(?:-[A-Za-z0-9+.~]+)?", value
-        )
+        and re.fullmatch(r"(?:[0-9]+:)?[0-9][A-Za-z0-9.+~\-]*(?:-[A-Za-z0-9+.~]+)?", value)
         is not None
         and not re.search(
             r"secret|password|credential|token|bearer|private[_-]?key|canary",
@@ -109,11 +108,7 @@ def parse_dpkg_inventory(text):
             _fail("dpkg_inventory_invalid")
         name, arch, version, status, abbrev, source, source_version = parts
         _token(name)
-        if (
-            ":" in name
-            or ":" in source
-            or not re.fullmatch(r"[uihrp][ncHUFWti][ R]", abbrev)
-        ):
+        if ":" in name or ":" in source or not re.fullmatch(r"[uihrp][ncHUFWti][ R]", abbrev):
             _fail("dpkg_inventory_invalid")
         if not re.fullmatch(
             r"(?:unknown|install|hold|deinstall|purge) (?:ok|reinstreq) "
@@ -219,11 +214,7 @@ def dpkg_projection(inventory):
 
 
 def _keys(value, allowed, required=()):
-    if (
-        not isinstance(value, dict)
-        or set(value) - set(allowed)
-        or set(required) - set(value)
-    ):
+    if not isinstance(value, dict) or set(value) - set(allowed) or set(required) - set(value):
         _fail("report_schema_invalid")
 
 
@@ -263,7 +254,7 @@ def _public(value):
         _fail("report_content_invalid")
 
 
-def _json(raw):
+def _json(raw, *, trivy_privacy=False):
     def pairs(items):
         value = {}
         for key, child in items:
@@ -281,10 +272,58 @@ def _json(raw):
     except (ValueError, UnicodeError, TypeError, RecursionError):
         _fail("report_json_invalid")
     try:
-        _public(value)
+        if trivy_privacy:
+            _public_trivy(value)
+        else:
+            _public(value)
     except RecursionError:
         _fail("report_nesting_invalid")
     return value
+
+
+_REVIEWED_CURL_DESCRIPTION = (
+    "CVE-2026-8926",
+    338,
+    "c6c771d361cd188bdb0421f35a1f906505f04c49012c861b6197aa5bc3848a19",
+)
+
+
+def _public_trivy(report):
+    """Only the independently reviewed Debian curl example may carry URL userinfo.
+
+    The exact exception is confined to a vulnerability Description. Other report
+    strings, including a different advisory or a modified description, retain
+    the generic credential-URL rejection.
+    """
+
+    def walk(value, path=()):
+        if isinstance(value, dict):
+            for key, child in value.items():
+                position = (*path, key)
+                if (
+                    isinstance(child, str)
+                    and len(position) == 5
+                    and position[0] == "Results"
+                    and type(position[1]) is int
+                    and position[2] == "Vulnerabilities"
+                    and type(position[3]) is int
+                    and position[4] == "Description"
+                    and value.get("VulnerabilityID") == _REVIEWED_CURL_DESCRIPTION[0]
+                    and len(child) == _REVIEWED_CURL_DESCRIPTION[1]
+                    and hashlib.sha256(child.encode("utf-8")).hexdigest()
+                    == _REVIEWED_CURL_DESCRIPTION[2]
+                ):
+                    if any(ord(char) < 32 and char not in "\n\r\t" for char in child):
+                        _fail("report_content_invalid")
+                else:
+                    walk(child, position)
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                walk(child, (*path, index))
+        else:
+            _public(value)
+
+    walk(report)
 
 
 PACKAGE_KEYS = {
@@ -375,16 +414,14 @@ def _trivy_package(p):
     version = p["Version"] + ("-" + p["Release"] if p.get("Release") else "")
     if p.get("Epoch"):
         version = str(p["Epoch"]) + ":" + version
-    source_version = p["SrcVersion"] + (
-        "-" + p["SrcRelease"] if p.get("SrcRelease") else ""
-    )
+    source_version = p["SrcVersion"] + ("-" + p["SrcRelease"] if p.get("SrcRelease") else "")
     if p.get("SrcEpoch"):
         source_version = str(p["SrcEpoch"]) + ":" + source_version
     return (p["Name"], p["Arch"], version, p["SrcName"], source_version)
 
 
 def validate_trivy(raw, inventory, os_identity):
-    report = _json(raw)
+    report = _json(raw, trivy_privacy=True)
     _keys(
         report,
         {
@@ -402,9 +439,7 @@ def validate_trivy(raw, inventory, os_identity):
     )
     if report["SchemaVersion"] != 2 or report["ArtifactType"] != "filesystem":
         _fail("trivy_report_type_invalid")
-    _strings(
-        report, {"CreatedAt", "ArtifactName", "ArtifactType", "ReportID", "ArtifactID"}
-    )
+    _strings(report, {"CreatedAt", "ArtifactName", "ArtifactType", "ReportID", "ArtifactID"})
     if "Trivy" in report:
         _keys(report["Trivy"], {"Version"}, ("Version",))
         _strings(report["Trivy"], {"Version"})
@@ -422,8 +457,7 @@ def validate_trivy(raw, inventory, os_identity):
     matched_os = (
         os_data["Family"] == os_identity.get("id") == "debian"
         and os_identity.get("version_id") == "13"
-        and os_data["Name"]
-        in {os_identity.get("version_id"), os_identity.get("debian_version")}
+        and os_data["Name"] in {os_identity.get("version_id"), os_identity.get("debian_version")}
     )
     if not isinstance(report["Results"], list):
         _fail("trivy_results_invalid")
@@ -526,8 +560,7 @@ def validate_trivy(raw, inventory, os_identity):
                     _strings(cvss, {"V2Vector", "V3Vector", "V40Vector"})
                     for key in ("V2Score", "V3Score", "V40Score"):
                         if key in cvss and (
-                            type(cvss[key]) not in {int, float}
-                            or not 0 <= cvss[key] <= 10
+                            type(cvss[key]) not in {int, float} or not 0 <= cvss[key] <= 10
                         ):
                             _fail("report_schema_invalid")
             if "VendorSeverity" in v:
@@ -541,9 +574,7 @@ def validate_trivy(raw, inventory, os_identity):
     unbound = [
         i
         for i, v in enumerate(findings)
-        if not any(
-            p[0] == v["PkgName"] and p[2] == v["InstalledVersion"] for p in observed
-        )
+        if not any(p[0] == v["PkgName"] and p[2] == v["InstalledVersion"] for p in observed)
     ]
     coverage = {
         "expected_count": len(expected),
@@ -582,16 +613,12 @@ def _normalized(name):
 def validate_pip_audit(raw, expected, allowed_skips):
     report = _json(raw)
     _keys(report, {"dependencies", "fixes"}, ("dependencies", "fixes"))
-    if not isinstance(report["dependencies"], list) or not isinstance(
-        report["fixes"], list
-    ):
+    if not isinstance(report["dependencies"], list) or not isinstance(report["fixes"], list):
         _fail("pip_audit_report_invalid")
     wanted = {(_normalized(p["name"]), _token(p["version"])) for p in expected}
     if len(wanted) != len(expected):
         _fail("python_inventory_duplicate")
-    skips_allowed = {
-        _normalized(name): reason for name, reason in allowed_skips.items()
-    }
+    skips_allowed = {_normalized(name): reason for name, reason in allowed_skips.items()}
     observed, duplicates, skips, findings = set(), [], [], []
     for dep in report["dependencies"]:
         _keys(dep, {"name", "version", "vulns", "skip_reason"}, ("name",))
@@ -630,9 +657,7 @@ def validate_pip_audit(raw, expected, allowed_skips):
                     _fail("pip_audit_vulnerability_invalid")
                 _strings(v, {"id", "description"})
                 _string_lists(v, {"fix_versions", "aliases"})
-                findings.append(
-                    {"name": dep["name"], "version": version, "vulnerability": v}
-                )
+                findings.append({"name": dep["name"], "version": version, "vulnerability": v})
     for fix in report["fixes"]:
         _keys(fix, {"name", "old_version", "new_version", "success"}, ("name",))
         _strings(fix, {"name", "old_version", "new_version"})
@@ -670,9 +695,7 @@ def parse_apt_show(text):
                 _fail("apt_show_ambiguous")
             fields[key] = value
     try:
-        name, arch, version = (
-            _token(fields[k]) for k in ("Package", "Architecture", "Version")
-        )
+        name, arch, version = (_token(fields[k]) for k in ("Package", "Architecture", "Version"))
     except KeyError:
         _fail("apt_show_missing")
     source = fields.get("Source", name)
@@ -714,9 +737,7 @@ def parse_apt_policy(text):
             }
             versions.append(current)
             source = None
-        elif match := re.fullmatch(
-            r"(-?\d+)\s+(\S+)\s+(\S+)\s+(\S+) Packages", stripped
-        ):
+        elif match := re.fullmatch(r"(-?\d+)\s+(\S+)\s+(\S+)\s+(\S+) Packages", stripped):
             if current is None:
                 _fail("apt_policy_invalid")
             uri = match[2]
@@ -734,17 +755,15 @@ def parse_apt_policy(text):
             }
             current["sources"].append(source)
         elif stripped.startswith("release ") and source is not None:
-            release = dict(
-                item.split("=", 1) for item in stripped[8:].split(",") if "=" in item
-            )
+            release = dict(item.split("=", 1) for item in stripped[8:].split(",") if "=" in item)
             source.update(
                 origin=release.get("o"),
                 label=release.get("l"),
                 codename=release.get("n"),
             )
-    if not any(
-        line.strip().startswith("Installed:") for line in text.splitlines()
-    ) or not any(line.strip().startswith("Candidate:") for line in text.splitlines()):
+    if not any(line.strip().startswith("Installed:") for line in text.splitlines()) or not any(
+        line.strip().startswith("Candidate:") for line in text.splitlines()
+    ):
         _fail("apt_policy_missing")
     if candidate is not None and candidate not in {v["version"] for v in versions}:
         _fail("apt_policy_candidate_missing")
@@ -786,12 +805,8 @@ def parse_apt_simulation(text, installed, excluded):
                     if len(selectors) == 2:
                         relationships.append(
                             {
-                                "dependent": _token(
-                                    selectors[0], r"[a-z0-9+.-]+(?::[a-z0-9-]+)?"
-                                ),
-                                "dependency": _token(
-                                    selectors[1], r"[a-z0-9+.-]+(?::[a-z0-9-]+)?"
-                                ),
+                                "dependent": _token(selectors[0], r"[a-z0-9+.-]+(?::[a-z0-9-]+)?"),
+                                "dependency": _token(selectors[1], r"[a-z0-9+.-]+(?::[a-z0-9-]+)?"),
                             }
                         )
                     else:
@@ -811,9 +826,7 @@ def parse_apt_simulation(text, installed, excluded):
                 _fail("apt_simulation_invalid")
             name, arch, version = m.groups()
             matches = [
-                p
-                for (n, a), p in known.items()
-                if n == name and (arch is None or arch == a)
+                p for (n, a), p in known.items() if n == name and (arch is None or arch == a)
             ]
             if len(matches) != 1 or (version and version != matches[0]["version"]):
                 _fail("apt_simulation_inventory_mismatch")
@@ -830,9 +843,7 @@ def parse_apt_simulation(text, installed, excluded):
             held.extend(_token(name) for name in line.split())
         else:
             holding = False
-    touched = sorted(
-        {p["name"] for p in upgrades + additions + removals} & set(excluded)
-    )
+    touched = sorted({p["name"] for p in upgrades + additions + removals} & set(excluded))
     return {
         "upgrades": upgrades,
         "additions": additions,
@@ -878,23 +889,17 @@ def classify_findings(findings, inventory, candidates, tracker, compare):
     for finding in findings:
         name, version = finding.get("PkgName"), finding.get("InstalledVersion")
         matches = [
-            p
-            for p in inventory["packages"]
-            if p["name"] == name and p["version"] == version
+            p for p in inventory["packages"] if p["name"] == name and p["version"] == version
         ]
         category, fixed, candidate, reason = "unresolved", None, None, None
         if matches and all(p["state"] == "residual" for p in matches):
             category = "residual_not_installed"
-        elif (
-            len(matches) == 1
-            and matches[0]["state"] == "installed"
-            and tracker is not None
-        ):
+        elif len(matches) == 1 and matches[0]["state"] == "installed" and tracker is not None:
             package = matches[0]
             try:
-                release = tracker[package["source_name"]][finding["VulnerabilityID"]][
-                    "releases"
-                ]["trixie"]
+                release = tracker[package["source_name"]][finding["VulnerabilityID"]]["releases"][
+                    "trixie"
+                ]
             except (KeyError, TypeError):
                 release = None
             if isinstance(release, dict):
@@ -904,10 +909,7 @@ def classify_findings(findings, inventory, candidates, tracker, compare):
                 if candidate is not None and (
                     not isinstance(candidate, dict)
                     or not _debian_version(candidate.get("source_version"))
-                    or (
-                        "version" in candidate
-                        and not _debian_version(candidate["version"])
-                    )
+                    or ("version" in candidate and not _debian_version(candidate["version"]))
                 ):
                     candidate = None
                     reason = "candidate_source_version_invalid"
@@ -919,8 +921,7 @@ def classify_findings(findings, inventory, candidates, tracker, compare):
                     fixed = None
                     reason = "primary_status_invalid"
                 elif fixed is not None and (
-                    fixed not in ("undetermined", "unfixed")
-                    and not _debian_version(fixed)
+                    fixed not in ("undetermined", "unfixed") and not _debian_version(fixed)
                 ):
                     fixed = None
                     reason = "primary_fixed_version_invalid"
@@ -936,9 +937,7 @@ def classify_findings(findings, inventory, candidates, tracker, compare):
                         else "unresolved"
                     )
                 elif status == "resolved" and isinstance(fixed, str) and fixed:
-                    category = (
-                        "unresolved" if reason else "primary_fix_not_in_captured_cache"
-                    )
+                    category = "unresolved" if reason else "primary_fix_not_in_captured_cache"
                     if candidate:
                         category = "unresolved"
                     if (
@@ -949,10 +948,7 @@ def classify_findings(findings, inventory, candidates, tracker, compare):
                         and candidate.get("eligible") is True
                     ):
                         try:
-                            if (
-                                compare(candidate["source_version"], "ge", fixed)
-                                is True
-                            ):
+                            if compare(candidate["source_version"], "ge", fixed) is True:
                                 category = "supported_fix_in_captured_cache"
                             else:
                                 category = "primary_fix_not_in_captured_cache"
@@ -977,6 +973,187 @@ def classify_findings(findings, inventory, candidates, tracker, compare):
             }
         )
     return classified
+
+
+def extract_debian_tracker(raw, wanted):
+    """Validate a full snapshot, exporting only requested source/CVE release facts."""
+
+    def pairs(items):
+        value = {}
+        for key, child in items:
+            if key in value:
+                _fail("primary_advisory_duplicate_key")
+            value[key] = child
+        return value
+
+    try:
+        snapshot = json.loads(
+            raw,
+            object_pairs_hook=pairs,
+            parse_constant=lambda _: _fail("primary_advisory_nonfinite_number"),
+        )
+    except (ValueError, UnicodeError, TypeError, RecursionError):
+        _fail("primary_advisory_snapshot_invalid")
+    if not isinstance(snapshot, dict) or not snapshot or not isinstance(wanted, dict):
+        _fail("primary_advisory_snapshot_invalid")
+    item_fields = {"description", "scope", "debianbug", "releases"}
+    release_fields = {
+        "status",
+        "urgency",
+        "fixed_version",
+        "repositories",
+        "nodsa",
+        "nodsa_reason",
+        "next_point_update",
+    }
+    total = 0
+    for source, entries in snapshot.items():
+        if (
+            not isinstance(source, str)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9+._-]{0,127}", source)
+            or not isinstance(entries, dict)
+            or not entries
+        ):
+            _fail("primary_advisory_snapshot_invalid")
+        for identifier, item in entries.items():
+            total += 1
+            if (
+                not isinstance(identifier, str)
+                or not re.fullmatch(r"(?:CVE|TEMP)-[A-Za-z0-9-]{1,100}", identifier)
+                or not isinstance(item, dict)
+                or set(item) - item_fields
+                or not isinstance(item.get("releases"), dict)
+                or not item["releases"]
+            ):
+                _fail("primary_advisory_snapshot_invalid")
+            for field, limit in (("description", 65536), ("scope", 64)):
+                if field in item and (not isinstance(item[field], str) or len(item[field]) > limit):
+                    _fail("primary_advisory_snapshot_invalid")
+            if "debianbug" in item and (
+                type(item["debianbug"]) is not int or item["debianbug"] < 0
+            ):
+                _fail("primary_advisory_snapshot_invalid")
+            for suite, release in item["releases"].items():
+                if (
+                    not isinstance(suite, str)
+                    or not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", suite)
+                    or not isinstance(release, dict)
+                    or set(release) - release_fields
+                    or not {"status", "urgency", "repositories"} <= set(release)
+                    or release["status"] not in {"open", "resolved", "undetermined"}
+                    or not isinstance(release["urgency"], str)
+                    or len(release["urgency"]) > 64
+                    or not isinstance(release["repositories"], dict)
+                    or not release["repositories"]
+                ):
+                    _fail("primary_advisory_snapshot_invalid")
+                if any(
+                    not isinstance(key, str)
+                    or not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", key)
+                    or not isinstance(value, str)
+                    or len(value) > 256
+                    for key, value in release["repositories"].items()
+                ):
+                    _fail("primary_advisory_snapshot_invalid")
+                for field, limit in (
+                    ("fixed_version", 256),
+                    ("nodsa", 1024),
+                    ("nodsa_reason", 128),
+                ):
+                    if field in release and (
+                        not isinstance(release[field], str) or len(release[field]) > limit
+                    ):
+                        _fail("primary_advisory_snapshot_invalid")
+                if (
+                    "next_point_update" in release
+                    and type(release["next_point_update"]) is not bool
+                ):
+                    _fail("primary_advisory_snapshot_invalid")
+    if total == 0:
+        _fail("primary_advisory_snapshot_invalid")
+    projected = {}
+    for source, identifiers in wanted.items():
+        if not isinstance(source, str) or not isinstance(identifiers, list):
+            _fail("primary_advisory_request_invalid")
+        entries = snapshot.get(source)
+        if entries is None:
+            continue
+        if not isinstance(entries, dict):
+            _fail("primary_advisory_relevant_schema_invalid")
+        selected = {}
+        for identifier in identifiers:
+            if not isinstance(identifier, str):
+                _fail("primary_advisory_request_invalid")
+            item = entries.get(identifier)
+            if item is None:
+                continue
+            if not isinstance(item, dict) or not isinstance(item.get("releases"), dict):
+                _fail("primary_advisory_relevant_schema_invalid")
+            release = item["releases"].get("trixie")
+            if release is None:
+                continue
+            if (
+                not isinstance(release, dict)
+                or release.get("status") not in {"open", "resolved", "undetermined"}
+                or "fixed_version" in release
+                and (
+                    not isinstance(release["fixed_version"], str)
+                    or len(release["fixed_version"]) > 256
+                )
+            ):
+                _fail("primary_advisory_relevant_schema_invalid")
+            selected[identifier] = {
+                "releases": {
+                    "trixie": {
+                        "status": release["status"],
+                        **(
+                            {"fixed_version": release["fixed_version"]}
+                            if "fixed_version" in release
+                            else {}
+                        ),
+                    }
+                }
+            }
+        if selected:
+            projected[source] = selected
+    return projected
+
+
+def _tracker_worker():
+    """Independent capped parser: a large trusted snapshot never expands in parent."""
+    import os
+    import resource
+    import stat
+
+    resource.setrlimit(resource.RLIMIT_AS, (768 * 1024 * 1024,) * 2)
+    resource.setrlimit(resource.RLIMIT_CPU, (20, 20))
+    try:
+        path, expected_hash, expected_size, requests = sys.argv[2:]
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        info = os.fstat(fd)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_nlink != 1
+            or info.st_uid != os.geteuid()
+            or stat.S_IMODE(info.st_mode) != 0o600
+        ):
+            _fail("primary_advisory_staged_input_invalid")
+        with os.fdopen(fd, "rb") as stream:
+            raw = stream.read(128 * 1024 * 1024 + 1)
+        if len(raw) > 128 * 1024 * 1024:
+            _fail("primary_advisory_snapshot_too_large")
+        if len(raw) != int(expected_size) or hashlib.sha256(raw).hexdigest() != expected_hash:
+            _fail("primary_advisory_staged_input_changed")
+        value = extract_debian_tracker(raw, json.loads(requests))
+        sys.stdout.buffer.write(canonical_bytes(value))
+    except (EvidenceError, MemoryError, OSError, ValueError, RecursionError) as exc:
+        code = exc.code if isinstance(exc, EvidenceError) else "primary_advisory_worker_failed"
+        sys.stderr.write(code + "\n")
+        raise SystemExit(2) from None
+
+
+if __name__ == "__main__" and len(sys.argv) >= 2 and sys.argv[1] == "--tracker-worker":
+    _tracker_worker()
 
 
 def worksheet(receipt):
@@ -1065,6 +1242,12 @@ def worksheet(receipt):
                     "distribution_count",
                 ),
                 "python_bundled": ("distribution_count", "parent_count"),
+                "audit_os_distro": (
+                    "pypi_invocation_status",
+                    "pypi_skip_count",
+                    "native_backend_finding_count",
+                    "interpretation",
+                ),
                 "apt": (
                     "mode",
                     "projection",
@@ -1102,22 +1285,14 @@ def worksheet(receipt):
                 for key in ("commit", "tree"):
                     if key in data["source"]:
                         lines.append(
-                            "  application source "
-                            + key
-                            + ": "
-                            + escape(data["source"][key])
+                            "  application source " + key + ": " + escape(data["source"][key])
                         )
             if name in {"collector", "python_bootstrap"}:
                 for key in ("module_sha256", "wheel_sha256"):
                     if isinstance(data.get(key), dict):
                         for artifact, sha256 in sorted(data[key].items()):
                             lines.append(
-                                "  "
-                                + key
-                                + " "
-                                + escape(artifact)
-                                + ": "
-                                + escape(sha256)
+                                "  " + key + " " + escape(artifact) + ": " + escape(sha256)
                             )
             if name.startswith("python_"):
                 interpreter = data.get("interpreter")
@@ -1131,12 +1306,8 @@ def worksheet(receipt):
                         "binary_sha256",
                         "owner_package",
                     ):
-                        if key in interpreter and not isinstance(
-                            interpreter[key], (dict, list)
-                        ):
-                            lines.append(
-                                "  interpreter " + key + ": " + escape(interpreter[key])
-                            )
+                        if key in interpreter and not isinstance(interpreter[key], (dict, list)):
+                            lines.append("  interpreter " + key + ": " + escape(interpreter[key]))
                 for key in (
                     "distributions",
                     "packages",
@@ -1150,13 +1321,9 @@ def worksheet(receipt):
                 if isinstance(bootstrap, dict):
                     for key in ("ensurepip_present", "historical_execution"):
                         if key in bootstrap:
-                            lines.append(
-                                "  bootstrap " + key + ": " + escape(bootstrap[key])
-                            )
+                            lines.append("  bootstrap " + key + ": " + escape(bootstrap[key]))
                     if isinstance(bootstrap.get("wheels"), list):
-                        lines.append(
-                            "  bootstrap wheel count: " + str(len(bootstrap["wheels"]))
-                        )
+                        lines.append("  bootstrap wheel count: " + str(len(bootstrap["wheels"])))
             if name in {"python_bundled", "audit_bundled"}:
                 for index, group in enumerate(data.get("groups", [])):
                     if not isinstance(group, dict):
@@ -1166,16 +1333,12 @@ def worksheet(receipt):
                         if key in group and not isinstance(group[key], (dict, list)):
                             lines.append(prefix + key + ": " + escape(group[key]))
                     if isinstance(group.get("packages"), list):
-                        lines.append(
-                            prefix + "package count: " + str(len(group["packages"]))
-                        )
+                        lines.append(prefix + "package count: " + str(len(group["packages"])))
                     audit = group.get("audit")
                     if isinstance(audit, dict):
                         for key in ("status", "reason"):
                             if key in audit and audit[key] is not None:
-                                lines.append(
-                                    prefix + "audit " + key + ": " + escape(audit[key])
-                                )
+                                lines.append(prefix + "audit " + key + ": " + escape(audit[key]))
                         audit_data = audit.get("data")
                         if isinstance(audit_data, dict):
                             for key in (
@@ -1186,11 +1349,7 @@ def worksheet(receipt):
                             ):
                                 if key in audit_data:
                                     lines.append(
-                                        prefix
-                                        + "audit "
-                                        + key
-                                        + ": "
-                                        + escape(audit_data[key])
+                                        prefix + "audit " + key + ": " + escape(audit_data[key])
                                     )
                             findings = audit_data.get("findings")
                             lines.append(
@@ -1207,11 +1366,7 @@ def worksheet(receipt):
                                 for key in ("expected_count", "observed_count"):
                                     if key in coverage:
                                         lines.append(
-                                            prefix
-                                            + "audit "
-                                            + key
-                                            + ": "
-                                            + escape(coverage[key])
+                                            prefix + "audit " + key + ": " + escape(coverage[key])
                                         )
             if name == "trivy" or name.startswith("audit_"):
                 for key in (
@@ -1235,9 +1390,7 @@ def worksheet(receipt):
                         "metadata_sha256",
                     ):
                         if key in database:
-                            lines.append(
-                                "  database " + key + ": " + escape(database[key])
-                            )
+                            lines.append("  database " + key + ": " + escape(database[key]))
                 coverage = data.get("coverage")
                 if isinstance(coverage, dict):
                     for key in (
@@ -1248,9 +1401,7 @@ def worksheet(receipt):
                         "unstable_count",
                     ):
                         if key in coverage:
-                            lines.append(
-                                "  coverage " + key + ": " + escape(coverage[key])
-                            )
+                            lines.append("  coverage " + key + ": " + escape(coverage[key]))
                     for key in (
                         "missing",
                         "unknown",
@@ -1259,12 +1410,7 @@ def worksheet(receipt):
                         "skips",
                     ):
                         if isinstance(coverage.get(key), list):
-                            lines.append(
-                                "  coverage "
-                                + key
-                                + " count: "
-                                + str(len(coverage[key]))
-                            )
+                            lines.append("  coverage " + key + " count: " + str(len(coverage[key])))
                 if "findings" in data:
                     lines.append(
                         "  finding count: "
@@ -1292,15 +1438,10 @@ def worksheet(receipt):
                     ):
                         if isinstance(simulation.get(key), list):
                             lines.append(
-                                "  simulation "
-                                + key
-                                + " count: "
-                                + str(len(simulation[key]))
+                                "  simulation " + key + " count: " + str(len(simulation[key]))
                             )
                     if "eligible" in simulation:
-                        lines.append(
-                            "  simulation eligible: " + escape(simulation["eligible"])
-                        )
+                        lines.append("  simulation eligible: " + escape(simulation["eligible"]))
             if name == "libraries":
                 for key in ("observations", "services", "mappings"):
                     if isinstance(data.get(key), list):
@@ -1317,13 +1458,9 @@ def worksheet(receipt):
                             "current_exists",
                         ):
                             if key in mapping:
-                                lines.append(
-                                    "  mapping " + key + ": " + escape(mapping[key])
-                                )
+                                lines.append("  mapping " + key + ": " + escape(mapping[key]))
                 if not data.get("mappings"):
-                    lines.append(
-                        "  Missing selected mappings do not prove cleared libraries."
-                    )
+                    lines.append("  Missing selected mappings do not prove cleared libraries.")
                 if data.get("restart_required"):
                     lines.append(
                         "  Stale library mappings require separately observed restart qualification."
@@ -1343,10 +1480,7 @@ def worksheet(receipt):
                     ):
                         if key in maintenance:
                             lines.append(
-                                "  maintenance evidence "
-                                + key
-                                + ": "
-                                + escape(maintenance[key])
+                                "  maintenance evidence " + key + ": " + escape(maintenance[key])
                             )
     categories = {}
     for item in receipt.get("applicability", []):
@@ -1360,11 +1494,7 @@ def worksheet(receipt):
                 (
                     str(item.get("finding", {}).get("VulnerabilityID", "unresolved")),
                     str(item.get("finding", {}).get("PkgName", "unresolved")),
-                    str(
-                        (item.get("candidate") or {}).get(
-                            "source_version", "unavailable"
-                        )
-                    ),
+                    str((item.get("candidate") or {}).get("source_version", "unavailable")),
                     str(item.get("tracker_fixed_version") or "unavailable"),
                 )
                 for item in receipt.get("applicability", [])
@@ -1390,10 +1520,7 @@ def worksheet(receipt):
             )
     for filename, artifact in sorted(receipt.get("artifacts", {}).items()):
         lines.append(
-            "Artifact "
-            + escape(filename)
-            + ": "
-            + escape(artifact.get("sha256", "unavailable"))
+            "Artifact " + escape(filename) + ": " + escape(artifact.get("sha256", "unavailable"))
         )
     for layer, findings in sorted(receipt.get("findings", {}).items()):
         if isinstance(findings, list):
