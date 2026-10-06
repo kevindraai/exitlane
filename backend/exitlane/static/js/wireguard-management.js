@@ -181,9 +181,13 @@ export function renderPeerList(payload) {
     actions.disabled = mutating;
     actions.setAttribute("aria-label", t("wireguard_management.actions_for", { name: peer.name }, `Actions for ${peer.name}`));
     actions.setAttribute("aria-controls", "wireguard-peer-actions-popover");
+    actions.setAttribute("popovertarget", "wireguard-peer-actions-popover");
     actions.setAttribute("aria-expanded", "false");
     actions.append(createIcon("menu"));
-    actions.addEventListener("click", () => openPeerActions(peer, actions));
+    actions.addEventListener("click", (event) => {
+      event.preventDefault();
+      openPeerActions(peer, actions);
+    });
     row.append(cell("device", identity), cell("tunnel_ip", address), cell("status", pill), cell("last_handshake", handshake), cell("remote_endpoint", endpoint), cell("traffic", traffic), cell("actions", actions));
     return row;
   });

@@ -3406,6 +3406,7 @@ pre {
 .wireguard-peer-table td { vertical-align: middle; white-space: nowrap; }
 .wireguard-peer-table td:first-child strong { display: block; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; }
 .wireguard-peer-table td .technical-value { max-width: none; white-space: nowrap; }
+.wireguard-peer-table td .technical-value wbr { display: none; }
 .wireguard-peer-table td:nth-child(6) div { display: flex; gap: 0.6rem; }
 .wireguard-peer-table td:last-child { width: 1%; text-align: right; }
 .wireguard-peer-menu-trigger { width: 2.25rem; height: 2.25rem; padding: 0.45rem; }
@@ -3414,7 +3415,7 @@ pre {
   min-width: 12rem; max-width: min(20rem, calc(100vw - 1rem));
   max-height: calc(100vh - 1rem); overflow-y: auto;
   border: 1px solid var(--border); border-radius: 0.5rem;
-  background: var(--surface-elevated); color: var(--text);
+  background: var(--panel); color: var(--text);
   box-shadow: 0 4px 16px var(--dialog-backdrop);
 }
 .wireguard-peer-menu .button { display: block; width: 100%; text-align: left; margin-top: 0.3rem; font-size: 0.85rem; }

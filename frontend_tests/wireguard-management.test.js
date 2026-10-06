@@ -35,7 +35,7 @@ class Element {
   getAttribute(name) { return this.attributes[name] ?? null; }
   removeAttribute(name) { delete this.attributes[name]; }
   addEventListener(name, callback) { if (!this.listeners.has(name)) this.listeners.set(name, []); this.listeners.get(name).push(callback); }
-  dispatch(name) { for (const callback of this.listeners.get(name) || []) callback({ currentTarget: this, preventDefault() {} }); }
+  dispatch(name, values = {}) { for (const callback of this.listeners.get(name) || []) callback({ currentTarget: this, preventDefault() {}, ...values }); }
   showModal() { this.open = true; }
   showPopover() { this.open = true; }
   hidePopover() { this.open = false; }
@@ -348,4 +348,19 @@ test("new device uses a neutral translated name placeholder", async () => {
     assert.equal(locale.wireguard_management.name_placeholder, value);
     assert.match(locale.wireguard_management.actions_for, /\{name\}/);
   }
+});
+
+test("Escape returns focus to the trigger and light dismissal clears expanded state", () => {
+  reset(); renderPeerList(list());
+  const trigger = element("wireguard-peer-list").children[1].querySelector("button");
+  const menu = element("wireguard-peer-actions-popover");
+  assert.equal(trigger.getAttribute("popovertarget"), "wireguard-peer-actions-popover");
+  trigger.dispatch("click");
+  menu.dispatch("keydown", { key: "Escape" });
+  assert.equal(menu.open, false);
+  assert.equal(document.activeElement, trigger);
+  assert.equal(trigger.getAttribute("aria-expanded"), "false");
+  trigger.dispatch("click");
+  menu.dispatch("beforetoggle", { newState: "closed" });
+  assert.equal(trigger.getAttribute("aria-expanded"), "false");
 });
