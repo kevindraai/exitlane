@@ -437,6 +437,7 @@
     "wireguard-download",
     "wireguard-form",
     "wireguard-next",
+    "wireguard-peer-actions-popover",
     "wireguard-peer-add",
     "wireguard-peer-description",
     "wireguard-peer-editor-cancel",
