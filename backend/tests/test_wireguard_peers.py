@@ -200,7 +200,10 @@ def test_encrypted_backup_restore_preserves_two_peers_and_revocation(
     assert wireguard_peers.get_peer(active["peer"]["peer_id"])["status"] == "active"
 
 
-def test_restore_rejects_backup_with_revoked_peer_still_on_server(migrated, tmp_path, monkeypatch):
+@pytest.mark.parametrize("uppercase_tables", [False, True])
+def test_restore_rejects_backup_with_revoked_peer_still_on_server(
+    migrated, tmp_path, monkeypatch, uppercase_tables
+):
     config_dir = tmp_path / "config"
     config_dir.mkdir(mode=0o700)
     secret = config_dir / "secret.key"
@@ -224,6 +227,16 @@ def test_restore_rejects_backup_with_revoked_peer_still_on_server(migrated, tmp_
         f"AllowedIPs = {revoked['tunnel_ip']}/32\nPersistentKeepalive = 25\n"
     ).encode())
     server_path.chmod(0o600)
+    if uppercase_tables:
+        with sqlite3.connect(core.DB) as connection:
+            connection.execute('ALTER TABLE wireguard_peers RENAME TO intermediate_peers')
+            connection.execute('ALTER TABLE intermediate_peers RENAME TO "WIREGUARD_PEERS"')
+            connection.execute(
+                'ALTER TABLE wireguard_ingress_profile RENAME TO intermediate_profile'
+            )
+            connection.execute(
+                'ALTER TABLE intermediate_profile RENAME TO "WIREGUARD_INGRESS_PROFILE"'
+            )
     backup = tmp_path / "invalid-multipeer.elb"
     lifecycle.create_backup(
         backup, "correct horse battery staple", effective_user_id=0,
@@ -231,6 +244,16 @@ def test_restore_rejects_backup_with_revoked_peer_still_on_server(migrated, tmp_
     )
     server_path.write_bytes(valid_server)
     server_path.chmod(0o600)
+    if uppercase_tables:
+        with sqlite3.connect(core.DB) as connection:
+            connection.execute('ALTER TABLE "WIREGUARD_PEERS" RENAME TO intermediate_peers')
+            connection.execute('ALTER TABLE intermediate_peers RENAME TO wireguard_peers')
+            connection.execute(
+                'ALTER TABLE "WIREGUARD_INGRESS_PROFILE" RENAME TO intermediate_profile'
+            )
+            connection.execute(
+                'ALTER TABLE intermediate_profile RENAME TO wireguard_ingress_profile'
+            )
     rows = wireguard_peers.list_peers()
     with pytest.raises(lifecycle.LifecycleError, match="wireguard_configuration_invalid"):
         lifecycle.restore_backup(

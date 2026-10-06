@@ -164,6 +164,17 @@ def _public_key_local(private: str) -> str:
         raise PeerError("wireguard_configuration_invalid") from error
 
 
+def _ordinary_table_present(connection: sqlite3.Connection, name: str) -> bool:
+    # SQLite table names are case-insensitive; pragma_table_list also lets us
+    # reject views, virtual tables and shadow tables in authenticated backups.
+    kinds = connection.execute(
+        "SELECT type FROM pragma_table_list(?) WHERE schema='main'", (name,)
+    ).fetchall()
+    if kinds and kinds != [("table",)]:
+        raise PeerError("wireguard_configuration_invalid")
+    return bool(kinds)
+
+
 def validate_staged_state(database: Path, directory: Path) -> None:
     """Reject backup state whose claimed peer lifecycle differs from server keys."""
     try:
@@ -172,13 +183,14 @@ def validate_staged_state(database: Path, directory: Path) -> None:
                 "SELECT key,value FROM settings WHERE key IN "
                 "('wireguard_configured','wireguard_interface','wireguard_client_name')"
             )}
-            tables = {row[0] for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            )}
+            peer_table = _ordinary_table_present(connection, "wireguard_peers")
+            profile_table = _ordinary_table_present(connection, "wireguard_ingress_profile")
             if not settings.get("wireguard_configured", False):
-                if "wireguard_peers" in tables and connection.execute(
+                if peer_table and connection.execute(
                     "SELECT COUNT(*) FROM wireguard_peers"
                 ).fetchone()[0]:
+                    raise PeerError("wireguard_configuration_invalid")
+                if profile_table and _profile(connection) is not None:
                     raise PeerError("wireguard_configuration_invalid")
                 return
             interface = settings.get("wireguard_interface", "wg0")
@@ -190,9 +202,9 @@ def validate_staged_state(database: Path, directory: Path) -> None:
             server = _read(directory / f"{interface}.conf")
             _, server_peers, server_address, server_private = _server(server)
             server_public = _public_key_local(server_private)
-            has_profile = "wireguard_ingress_profile" in tables and _profile(connection) is not None
-            rows = _rows(connection) if "wireguard_peers" in tables else []
-            if has_profile and "wireguard_peers" not in tables:
+            has_profile = profile_table and _profile(connection) is not None
+            rows = _rows(connection) if peer_table else []
+            if has_profile and not peer_table:
                 raise PeerError("wireguard_configuration_invalid")
             if has_profile:
                 profile = _validate_profile(_profile(connection))
