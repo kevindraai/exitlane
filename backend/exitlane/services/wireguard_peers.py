@@ -80,10 +80,12 @@ def _read(path: Path) -> str:
     try:
         descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         facts = os.fstat(descriptor)
-        if not stat.S_ISREG(facts.st_mode) or facts.st_mode & 0o077:
+        if (not stat.S_ISREG(facts.st_mode) or facts.st_nlink != 1
+            or facts.st_uid != os.geteuid() or facts.st_mode & 0o077
+            or facts.st_size > 65536):
             raise PeerError("wireguard_configuration_invalid")
         with os.fdopen(descriptor, "r", encoding="utf-8", closefd=False) as source:
-            return source.read()
+            return source.read(65537)
     except (OSError, UnicodeError) as error:
         raise PeerError("wireguard_configuration_invalid") from error
     finally:
@@ -172,6 +174,29 @@ def _profile(connection: sqlite3.Connection) -> dict | None:
     return dict(row) if row else None
 
 
+def _validate_profile(profile: dict | None) -> dict:
+    if profile is None:
+        raise PeerError("wireguard_configuration_invalid")
+    try:
+        endpoint = profile["endpoint"]
+        host, separator, port = endpoint.rpartition(":")
+        if not separator or not 1 <= int(port) <= 65535:
+            raise ValueError
+        wireguard._validated_endpoint(host)
+        wireguard._validated_dns_address(profile["dns"])
+        parts = [part.strip() for part in profile["allowed_ips"].split(",")]
+        if not parts or any(not part for part in parts):
+            raise ValueError
+        for part in parts:
+            ipaddress.ip_network(part, strict=True)
+        for key in ("client_keepalive", "server_keepalive"):
+            if type(profile[key]) is not int or not 0 <= profile[key] <= 65535:
+                raise ValueError
+    except (KeyError, TypeError, ValueError) as error:
+        raise PeerError("wireguard_configuration_invalid") from error
+    return profile
+
+
 def list_peers() -> list[dict]:
     with sqlite3.connect(core.DB) as connection:
         return _rows(connection)
@@ -202,15 +227,14 @@ async def _validate_state(connection: sqlite3.Connection, interface: str) -> tup
     server_content = _read(_path(interface))
     prefix, server_peers, address, server_private = _server(server_content)
     rows = _rows(connection)
-    if _profile(connection) is None:
-        raise PeerError("wireguard_configuration_invalid")
+    profile = _validate_profile(_profile(connection))
     active = [row for row in rows if row["status"] == "active"]
     if {p["PublicKey"]: p["AllowedIPs"] for p in server_peers} != {
         row["public_key"]: f"{row['tunnel_ip']}/32" for row in active
     }:
         raise PeerError("wireguard_configuration_invalid")
     server_public = await wireguard._public_key(server_private)
-    if _profile(connection)["server_public_key"] != server_public:
+    if profile["server_public_key"] != server_public:
         raise PeerError("wireguard_configuration_invalid")
     for row in rows:
         if row["status"] not in {"active", "revoked"} or row["is_default"] not in {0, 1}:
@@ -275,11 +299,17 @@ async def migrate_legacy(interface: str, client: str) -> bool:
         except ValueError as error:
             raise PeerError("wireguard_configuration_invalid") from error
         timestamp = _now()
+        profile = _validate_profile({
+            "endpoint": endpoint, "dns": dns, "allowed_ips": allowed,
+            "client_keepalive": keepalive, "server_keepalive": server_keepalive,
+            "server_public_key": await wireguard._public_key(server_private),
+        })
         connection.execute(
             """INSERT INTO wireguard_ingress_profile(singleton,endpoint,dns,allowed_ips,
                client_keepalive,server_keepalive,server_public_key) VALUES(1,?,?,?,?,?,?)""",
-            (endpoint, dns, allowed, keepalive, server_keepalive,
-             await wireguard._public_key(server_private)),
+            (profile["endpoint"], profile["dns"], profile["allowed_ips"],
+             profile["client_keepalive"], profile["server_keepalive"],
+             profile["server_public_key"]),
         )
         connection.execute(
             """INSERT INTO wireguard_peers(peer_id,name,description,public_key,tunnel_ip,
