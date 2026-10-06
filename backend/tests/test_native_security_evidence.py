@@ -815,3 +815,26 @@ def test_apt_simulation_preserves_ordinary_intermediate_dependency_annotations()
             installed,
             [],
         )
+
+
+def test_apt_simulation_preserves_multiple_dependency_relationship_annotations():
+    text = (
+        "Inst libc6 [2.41-1+b1] (2.41-2 Debian:13.7/stable [amd64]) "
+        "[util-linux:amd64 on libc6:amd64] [mount:amd64 on libc6:amd64] [mount:amd64 util-linux:amd64 ]"
+    )
+    result = evidence.parse_apt_simulation(text, inventory()["packages"], [])
+    item = result["upgrades"][0]
+    assert item["intermediate_dependency_checks"] == ["mount:amd64", "util-linux:amd64"]
+    assert item["intermediate_dependency_relationships"] == [
+        {"dependent": "util-linux:amd64", "dependency": "libc6:amd64"},
+        {"dependent": "mount:amd64", "dependency": "libc6:amd64"},
+    ]
+    with pytest.raises(evidence.EvidenceError):
+        evidence.parse_apt_simulation(
+            text.replace(
+                "util-linux:amd64 on libc6:amd64",
+                "util-linux:amd64 on https://user:pass@example.com",
+            ),
+            inventory()["packages"],
+            [],
+        )
