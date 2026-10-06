@@ -5,9 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import signal
 import re
 import selectors
+import signal
 import stat
 import subprocess
 import time
@@ -17,7 +17,7 @@ from pathlib import Path
 from native_security_evidence import EvidenceError, validate_pip_audit, validate_trivy
 
 PYTHON_PROBE = r"""
-import email.parser,hashlib,importlib.metadata,io,json,os,pathlib,stat,sys,sysconfig,zipfile
+import base64,csv,email.parser,hashlib,importlib.metadata,io,json,os,pathlib,re,stat,sys,sysconfig,zipfile
 def public_read(path,limit=1048576):
     if any(p.is_symlink() for p in (path,*path.parents)):raise ValueError('public_metadata_symlink')
     info=path.stat()
@@ -30,6 +30,73 @@ def public_read(path,limit=1048576):
         if len(raw)>limit:raise ValueError('public_metadata_oversized')
         return raw
     finally:os.close(fd)
+def vendor_pins(files,read,parent_record,allow_cache=False):
+    if len(files)>4096 or not files:return None
+    rows=list(csv.reader(io.StringIO(parent_record.decode('utf-8'))))
+    recorded={};all_names=set()
+    for row in rows:
+        if len(row)!=3:raise ValueError('vendor_record_invalid')
+        name,digest,size=row
+        if not name or name in all_names or name.startswith('/') or '..' in pathlib.PurePosixPath(name).parts or '\\' in name:raise ValueError('vendor_record_invalid')
+        all_names.add(name)
+        if not name.startswith('setuptools/_vendor/'):continue
+        recorded[name]=(digest,size)
+    if set(recorded)!=set(files):raise ValueError('vendor_record_coverage_invalid')
+    metas=[];unverified_caches=0
+    for name in sorted(files):
+        raw=read(name)
+        digest,size=recorded[name]
+        if not digest and not size:
+            # Current metadata evidence only: bytecode and execution are unverified.
+            tag=re.escape(sys.implementation.cache_tag)
+            match=re.fullmatch(r'(.+)/__pycache__/([^/]+)\.'+tag+r'(?:\.opt-[12])?\.pyc',name)
+            source=match[1]+'/'+match[2]+'.py' if match else None
+            if not allow_cache or source not in files or not recorded[source][0]:raise ValueError('vendor_record_unhashed_file')
+            unverified_caches+=1
+        else:
+            if not digest.startswith('sha256=') or size!=str(len(raw)):raise ValueError('vendor_record_hash_invalid')
+            actual=base64.urlsafe_b64encode(hashlib.sha256(raw).digest()).rstrip(b'=').decode('ascii')
+            if actual!=digest[7:]:raise ValueError('vendor_record_hash_invalid')
+        if name.endswith('.dist-info/METADATA') and name.count('/')==3:
+            meta=email.parser.Parser().parsestr(raw.decode('utf-8'))
+            title,version=meta.get('Name'),meta.get('Version')
+            if not title or not version or len(meta.get_all('Name',[]))!=1 or len(meta.get_all('Version',[]))!=1 or not re.fullmatch(r'[A-Za-z0-9._-]+',title) or not re.fullmatch(r'[A-Za-z0-9.!+~:_-]+',version):raise ValueError('vendor_metadata_invalid')
+            folder=name.split('/')[2]
+            normal=lambda value:re.sub(r'[-_.]+','-',value).lower()
+            if normal(folder)!=normal(title+'-'+version+'.dist-info'):raise ValueError('vendor_metadata_identity_invalid')
+            metas.append((normal(title),version))
+    if not metas or len(metas)!=len(set(name for name,_ in metas)):raise ValueError('vendor_metadata_coverage_invalid')
+    manifest=''.join(name+'=='+version+'\n' for name,version in sorted(metas)).encode()
+    return {'parent':'setuptools','sha256':hashlib.sha256(manifest).hexdigest(),
+        'manifest':manifest.decode(),'kind':'verified_dist_info_record',
+        'parent_record_sha256':hashlib.sha256(parent_record).hexdigest(),
+        'unverified_cache_count':unverified_caches}
+def installed_vendor(d,vendor):
+    record=d._path/'RECORD'
+    if not record.is_file():return None
+    if any(p.is_symlink() for p in (vendor,*vendor.parents)):raise ValueError('vendor_symlink_invalid')
+    base=vendor.parent.parent
+    files=set()
+    for path in vendor.rglob('*'):
+        if path.is_symlink():raise ValueError('vendor_symlink_invalid')
+        info=path.stat()
+        if stat.S_ISDIR(info.st_mode):continue
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink!=1:raise ValueError('vendor_object_invalid')
+        files.add(str(path.relative_to(base)))
+    return vendor_pins(files,lambda name:public_read(base/name),public_read(record,1048576),True)
+def wheel_vendor(z,names,record_name):
+    files={name for name in names if name.startswith('setuptools/_vendor/') and not name.endswith('/')}
+    if not files or record_name not in names:return None
+    if len(names)!=len(set(names)) or any(n.startswith('/') or '..' in pathlib.PurePosixPath(n).parts or '\\' in n for n in names):raise ValueError('bootstrap_member_invalid')
+    total=[0]
+    def read(name):
+        info=z.getinfo(name)
+        if info.file_size>1048576 or stat.S_IFMT(info.external_attr>>16)==stat.S_IFLNK:raise ValueError('vendor_wheel_member_invalid')
+        raw=z.read(info)
+        total[0]+=len(raw)
+        if total[0]>33554432:raise ValueError('vendor_wheel_total_invalid')
+        return raw
+    return vendor_pins(files,read,read(record_name))
 mode=sys.argv[1]
 stdlib=pathlib.Path(sysconfig.get_path('stdlib'))
 if mode=='venv':
@@ -43,9 +110,12 @@ for d in dists:
     metadata_path=d._path
     if metadata_path.is_dir():
         metadata_path=metadata_path/('PKG-INFO' if metadata_path.name.endswith('.egg-info') else 'METADATA')
-    meta=email.parser.Parser().parsestr(public_read(metadata_path).decode('utf-8'))
+    metadata_raw=public_read(metadata_path)
+    meta=email.parser.Parser().parsestr(metadata_raw.decode('utf-8'))
     name=meta.get('Name');version=meta.get('Version')
-    packages.append({'name':name,'version':version})
+    if len(meta.get_all('Name',[]))!=1 or len(meta.get_all('Version',[]))!=1:raise ValueError('distribution_metadata_ambiguous')
+    packages.append({'name':name,'version':version,'metadata_path':str(metadata_path),
+        'metadata_sha256':hashlib.sha256(metadata_raw).hexdigest()})
     if name and name.lower()=='exitlane':
         application={'version':version,'location':str(d.locate_file('exitlane')),
             'metadata_path':str(d._path/'METADATA'),'record_path':str(d._path/'RECORD')}
@@ -56,7 +126,9 @@ for d in dists:
             if len(raw)>1048576:raise ValueError('vendor_manifest_oversized')
             bundled.append({'parent':name,'sha256':hashlib.sha256(raw).hexdigest(),'manifest':raw.decode('utf-8')})
         elif d.locate_file(name.lower()+'/_vendor').is_dir():
-            gaps.append({'parent':name,'reason':'bundled_dependency_manifest_unavailable'})
+            derived=installed_vendor(d,d.locate_file(name.lower()+'/_vendor')) if name.lower()=='setuptools' else None
+            if derived:bundled.append(derived)
+            else:gaps.append({'parent':name,'reason':'bundled_dependency_manifest_unavailable'})
 wheels=[]
 if mode=='os':
     for folder in (stdlib/'ensurepip/_bundled',pathlib.Path('/usr/share/python-wheels')):
@@ -69,6 +141,7 @@ if mode=='os':
                     entries=[x for x in z.infolist() if x.filename.endswith('.dist-info/METADATA') and x.filename.count('/')==1]
                     if len(entries)!=1 or entries[0].file_size>1048576:raise ValueError('bootstrap_metadata_invalid')
                     meta=email.parser.Parser().parsestr(z.read(entries[0]).decode('utf-8'))
+                    if len(meta.get_all('Name',[]))!=1 or len(meta.get_all('Version',[]))!=1:raise ValueError('bootstrap_metadata_ambiguous')
                     vendors=[]
                     for item in ('pip/_vendor/vendor.txt','setuptools/_vendor/vendor.txt'):
                         if item in z.namelist():
@@ -76,7 +149,9 @@ if mode=='os':
                             raw=z.read(item)
                             vendors.append({'parent':meta['Name'],'sha256':hashlib.sha256(raw).hexdigest(),'manifest':raw.decode('utf-8')})
                         elif any(n.startswith(item.rsplit('/',1)[0]+'/') for n in z.namelist()):
-                            gaps.append({'parent':meta['Name'],'reason':'bundled_dependency_manifest_unavailable'})
+                            derived=wheel_vendor(z,z.namelist(),entries[0].filename.rsplit('/',1)[0]+'/RECORD') if meta['Name'].lower()=='setuptools' else None
+                            if derived:vendors.append(derived)
+                            else:gaps.append({'parent':meta['Name'],'reason':'bundled_dependency_manifest_unavailable'})
                     wheels.append({'filename':path.name,'name':meta['Name'],'version':meta['Version'],
                         'sha256':hashlib.sha256(wheel_raw).hexdigest(),'bundled':vendors})
 print(json.dumps({'interpreter':{'version':sys.version.split()[0],'implementation':sys.implementation.name,
@@ -131,9 +206,7 @@ class ReadOnlyHost:
                 start_new_session=True,
             )
         except OSError:
-            return CommandResult(
-                None, b"", stderr_hash.hexdigest(), "command_unavailable"
-            )
+            return CommandResult(None, b"", stderr_hash.hexdigest(), "command_unavailable")
 
         def stop_child():
             try:
@@ -158,9 +231,7 @@ class ReadOnlyHost:
                     if time.monotonic() > deadline:
                         reason = "command_timeout"
                         break
-                    for key, _ in selector.select(
-                        min(0.1, max(0, deadline - time.monotonic()))
-                    ):
+                    for key, _ in selector.select(min(0.1, max(0, deadline - time.monotonic()))):
                         chunk = os.read(key.fileobj.fileno(), 65536)
                         if not chunk:
                             selector.unregister(key.fileobj)
@@ -215,9 +286,7 @@ class ReadOnlyHost:
             os.close(fd)
 
     def python(self, executable: str, mode: str, prefix: str = ""):
-        result = self.run(
-            [executable, "-I", "-S", "-B", "-c", PYTHON_PROBE, mode, prefix]
-        )
+        result = self.run([executable, "-I", "-S", "-B", "-c", PYTHON_PROBE, mode, prefix])
         if result.returncode != 0:
             raise EvidenceError("python_inventory_failed")
         try:
@@ -270,13 +339,9 @@ class ReadOnlyHost:
         finally:
             os.close(fd)
 
-    def trivy(
-        self, executable: str, cache: Path, projection: Path, inventory, os_identity
-    ):
+    def trivy(self, executable: str, cache: Path, projection: Path, inventory, os_identity):
         result = self.run([executable, "--version"])
-        version = re.search(
-            rb"^Version: ([0-9][0-9A-Za-z.+-]*)$", result.stdout, re.MULTILINE
-        )
+        version = re.search(rb"^Version: ([0-9][0-9A-Za-z.+-]*)$", result.stdout, re.MULTILINE)
         if result.returncode != 0 or not version:
             raise EvidenceError("trivy_identity_unavailable")
         try:
@@ -299,9 +364,7 @@ class ReadOnlyHost:
             raise EvidenceError("trivy_database_unavailable") from None
         private_cache = self.work / "trivy-cache/db"
         private_cache.mkdir(parents=True, mode=0o700)
-        database_sha256 = self.stage_database(
-            cache / "db/trivy.db", private_cache / "trivy.db"
-        )
+        database_sha256 = self.stage_database(cache / "db/trivy.db", private_cache / "trivy.db")
         (private_cache / "metadata.json").write_bytes(raw_metadata)
         config = self.work / "trivy-config.yaml"
         config.write_text("{}\n")
@@ -356,9 +419,7 @@ class ReadOnlyHost:
             parsed = validate_trivy(result.stdout, inventory, os_identity)
         except EvidenceError as error:
             return {"status": "error", "reason": error.code, "data": observation}, None
-        observation.update(
-            {"findings": parsed["findings"], "coverage": parsed["coverage"]}
-        )
+        observation.update({"findings": parsed["findings"], "coverage": parsed["coverage"]})
         status = parsed["status"] if result.returncode == 0 else "error"
         return {
             "status": status,
@@ -394,9 +455,7 @@ class ReadOnlyHost:
         if identity.returncode != 0 or not version:
             raise EvidenceError("python_auditor_identity_unavailable")
         requirements = self.work / (layer + "-requirements.txt")
-        requirements.write_text(
-            "".join(f"{p['name']}=={p['version']}\n" for p in audited)
-        )
+        requirements.write_text("".join(f"{p['name']}=={p['version']}\n" for p in audited))
         result = self.run(
             [
                 executable,
@@ -418,9 +477,7 @@ class ReadOnlyHost:
         data = {
             "tool_version": version.group(1).decode(),
             "tool_sha256": hashlib.sha256(Path(executable).read_bytes()).hexdigest(),
-            "requirements_sha256": hashlib.sha256(
-                requirements.read_bytes()
-            ).hexdigest(),
+            "requirements_sha256": hashlib.sha256(requirements.read_bytes()).hexdigest(),
             "returncode": result.returncode,
             "stderr_sha256": result.stderr_sha256,
             "raw_sha256": hashlib.sha256(result.stdout).hexdigest(),
@@ -460,9 +517,7 @@ class ReadOnlyHost:
             "scope": "selected_service_main_process_only",
         }
         try:
-            boot = self.read_public(
-                self.root / "proc/sys/kernel/random/boot_id", 128
-            ).strip()
+            boot = self.read_public(self.root / "proc/sys/kernel/random/boot_id", 128).strip()
             if not re.fullmatch(rb"[0-9a-f-]{36}", boot):
                 raise EvidenceError("boot_identity_invalid")
 
@@ -476,14 +531,10 @@ class ReadOnlyHost:
                         "--value",
                     ]
                 )
-                if command.returncode != 0 or not re.fullmatch(
-                    rb"[1-9][0-9]*\s*", command.stdout
-                ):
+                if command.returncode != 0 or not re.fullmatch(rb"[1-9][0-9]*\s*", command.stdout):
                     raise EvidenceError("service_process_unavailable")
                 pid = int(command.stdout)
-                raw_stat = self.read_public(
-                    self.root / f"proc/{pid}/stat", 65536
-                ).decode()
+                raw_stat = self.read_public(self.root / f"proc/{pid}/stat", 65536).decode()
                 fields = raw_stat[raw_stat.rfind(")") + 2 :].split()
                 return pid, int(fields[19])
 
@@ -495,9 +546,7 @@ class ReadOnlyHost:
                     "start_ticks": before[1],
                 }
             )
-            raw = self.read_public(
-                self.root / f"proc/{before[0]}/maps", 8 * 1024 * 1024
-            ).decode()
+            raw = self.read_public(self.root / f"proc/{before[0]}/maps", 8 * 1024 * 1024).decode()
             mappings = parse_library_maps(raw, library)
             for mapping in mappings:
                 current = self.root / mapping["path"].lstrip("/")
@@ -528,9 +577,7 @@ class ReadOnlyHost:
             data["observed_until"] = datetime.now(timezone.utc).isoformat()
             if (
                 before != after
-                or self.read_public(
-                    self.root / "proc/sys/kernel/random/boot_id", 128
-                ).strip()
+                or self.read_public(self.root / "proc/sys/kernel/random/boot_id", 128).strip()
                 != boot
             ):
                 return {
@@ -548,8 +595,7 @@ class ReadOnlyHost:
             data["restart_required"] = any(
                 m["deleted"]
                 or not m["current_exists"]
-                or (m["device"], m["inode"])
-                != (m["current_device"], m["current_inode"])
+                or (m["device"], m["inode"]) != (m["current_device"], m["current_inode"])
                 for m in mappings
             )
             return {"status": "complete", "data": data}

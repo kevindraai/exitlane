@@ -26,7 +26,7 @@ _PACKAGE = re.compile(r"[a-z0-9][a-z0-9+.-]*")
 _ARCH = re.compile(r"[a-z0-9][a-z0-9-]*")
 _VERSION = re.compile(r"[A-Za-z0-9.+:~_-]+")
 _INDEX = re.compile(
-    r"(?:deb\.debian\.org_debian|security\.debian\.org_debian-security|"
+    r"(?:deb\.debian\.org_debian|security\.debian\.org|security\.debian\.org_debian-security|"
     r"deb\.debian\.org_debian-security)_dists_"
     r"trixie(?:-updates|-security)?_(?:InRelease|Release(?:\.gpg)?|"
     r"(?:main|contrib|non-free|non-free-firmware)_binary-(?:amd64|all)_Packages"
@@ -75,7 +75,17 @@ def _inputs(root):
     if folder.is_symlink() or not folder.is_dir():
         _fail("apt_cache_missing")
     files = [root / "var/lib/dpkg/status"]
-    files.extend(sorted(p for p in folder.iterdir() if _INDEX.fullmatch(p.name)))
+    files.extend(
+        sorted(
+            p
+            for p in folder.iterdir()
+            if _INDEX.fullmatch(p.name)
+            and (
+                not p.name.startswith("security.debian.org_dists_")
+                or p.name.startswith("security.debian.org_dists_trixie-security_")
+            )
+        )
+    )
     if len(files) > 128:
         _fail("apt_snapshot_too_many_files")
     if not any("_Packages" in p.name for p in files):
@@ -91,10 +101,7 @@ def _snapshot(root, reader=None):
     captured = {}
     for path in files:
         actual = path
-        if (
-            path == root / "usr/share/keyrings/debian-archive-keyring.gpg"
-            and path.is_symlink()
-        ):
+        if path == root / "usr/share/keyrings/debian-archive-keyring.gpg" and path.is_symlink():
             actual = path.resolve(strict=True)
             if actual != root / "usr/share/keyrings/debian-archive-keyring.pgp":
                 _fail("apt_snapshot_input_invalid")
@@ -104,8 +111,7 @@ def _snapshot(root, reader=None):
     if sum(len(v) for v in captured.values()) > _MAX_BYTES:
         _fail("apt_snapshot_too_large")
     identities = {
-        str(p.relative_to(root)): hashlib.sha256(raw).hexdigest()
-        for p, raw in captured.items()
+        str(p.relative_to(root)): hashlib.sha256(raw).hexdigest() for p, raw in captured.items()
     }
     return captured, digest_value(identities)
 
@@ -152,8 +158,7 @@ def _status(raw, inventory):
         selected = {
             k: v
             for k, v in fields.items()
-            if k in _RELATIONS
-            or k in {"Package", "Architecture", "Version", "Source", "Status"}
+            if k in _RELATIONS or k in {"Package", "Architecture", "Version", "Source", "Status"}
         }
         for value in selected.values():
             if any(ord(c) < 32 or ord(c) > 126 for c in value) or len(value) > 65536:
@@ -197,6 +202,7 @@ def _private_config(work, captured, root, inventory):
         "deb http://deb.debian.org/debian trixie main contrib non-free non-free-firmware\n"
         "deb http://deb.debian.org/debian trixie-updates main contrib non-free non-free-firmware\n"
         "deb http://security.debian.org/debian-security trixie-security main contrib non-free non-free-firmware\n"
+        "deb http://security.debian.org trixie-security main contrib non-free non-free-firmware\n"
         "deb http://deb.debian.org/debian-security trixie-security main contrib non-free non-free-firmware\n"
     )
     # APT_CONFIG is loaded before Dir::Etc main/parts. No host hooks ever load.
@@ -226,9 +232,7 @@ def _private_config(work, captured, root, inventory):
         "Acquire::Languages": "none",
     }
     cfg = work / "apt.conf"
-    if any(
-        '"' in value or "\\" in value or "\n" in value for value in settings.values()
-    ):
+    if any('"' in value or "\\" in value or "\n" in value for value in settings.values()):
         _fail("apt_private_path_invalid")
     cfg.write_text(
         "\n".join(f'{key} "{value}";' for key, value in settings.items()) + "\n"
@@ -251,9 +255,7 @@ def _authenticate(host, work, captured, env):
         if not path.name.endswith("_InRelease"):
             continue
         local = work / "lists" / path.name
-        result = host.run(
-            ["gpgv", "--keyring", str(keyring), str(local)], env=env, timeout=60
-        )
+        result = host.run(["gpgv", "--keyring", str(keyring), str(local)], env=env, timeout=60)
         entry = {
             "sha256": hashlib.sha256(raw).hexdigest(),
             "signature_verified": result.returncode == 0,
@@ -265,9 +267,7 @@ def _authenticate(host, work, captured, env):
             text = raw.decode("utf-8")
             if not text.startswith("-----BEGIN PGP SIGNED MESSAGE-----\n"):
                 continue
-            content = text.split("\n\n", 1)[1].split(
-                "-----BEGIN PGP SIGNATURE-----", 1
-            )[0]
+            content = text.split("\n\n", 1)[1].split("-----BEGIN PGP SIGNATURE-----", 1)[0]
             fields = {}
             hashes = {}
             in_hashes = False
@@ -299,14 +299,8 @@ def _authenticate(host, work, captured, env):
                                 _fail("apt_release_metadata_duplicate")
                             fields[key] = value
             codename = fields.get("Codename")
-            suite_match = re.search(
-                r"_dists_(trixie(?:-updates|-security)?)_InRelease$", path.name
-            )
-            if (
-                fields.get("Origin") != "Debian"
-                or not suite_match
-                or codename != suite_match[1]
-            ):
+            suite_match = re.search(r"_dists_(trixie(?:-updates|-security)?)_InRelease$", path.name)
+            if fields.get("Origin") != "Debian" or not suite_match or codename != suite_match[1]:
                 continue
             date = parsedate_to_datetime(fields["Date"])
             if date.tzinfo is None or date > datetime.now(timezone.utc):
@@ -323,11 +317,16 @@ def _authenticate(host, work, captured, env):
                 keyring_sha256=hashlib.sha256(captured[keyring_path]).hexdigest(),
             )
             prefix = path.name.removesuffix("InRelease")
+            if prefix.startswith("security.debian.org_dists_"):
+                source_uri = "http://security.debian.org"
+            elif prefix.startswith("security.debian.org_debian-security_dists_"):
+                source_uri = "http://security.debian.org/debian-security"
+            elif prefix.startswith("deb.debian.org_debian-security_dists_"):
+                source_uri = "http://deb.debian.org/debian-security"
+            else:
+                source_uri = "http://deb.debian.org/debian"
             for index_path in captured:
-                if (
-                    not index_path.name.startswith(prefix)
-                    or "_Packages" not in index_path.name
-                ):
+                if not index_path.name.startswith(prefix) or "_Packages" not in index_path.name:
                     continue
                 suffix = index_path.name[len(prefix) :].split("_Packages", 1)[0]
                 match = re.fullmatch(
@@ -364,7 +363,7 @@ def _authenticate(host, work, captured, env):
                             package["source_name"],
                             package["source_version"],
                         )
-                        indexes.setdefault(identity, set()).add(codename)
+                        indexes.setdefault(identity, set()).add((codename, source_uri))
         except (UnicodeError, ValueError, KeyError, IndexError, OverflowError):
             continue
     return indexes, {
@@ -391,11 +390,14 @@ def _eligible(sources, architecture):
         in {
             "http://deb.debian.org/debian",
             "http://security.debian.org/debian-security",
+            "http://security.debian.org",
             "http://deb.debian.org/debian-security",
         }
         and source["suite"] in {"trixie", "trixie-updates", "trixie-security"}
+        and (source["uri"] != "http://security.debian.org" or source["suite"] == "trixie-security")
         and source["component"] in {"main", "contrib", "non-free", "non-free-firmware"}
-        and source["architecture"] in {architecture, "all"}
+        and source["architecture"]
+        in ({"amd64", "all"} if architecture == "all" else {architecture, "all"})
         for source in sources
     )
 
@@ -435,7 +437,7 @@ def _bind_simulation(host, result, candidates, authenticated, env):
                     source_name,
                     source_version,
                 )
-                suites = (
+                source_pairs = (
                     authenticated.get(identity, set())
                     if candidate["sources_authenticated"]
                     else set()
@@ -470,7 +472,7 @@ def _bind_simulation(host, result, candidates, authenticated, env):
                     source_name,
                     source_version,
                 )
-                suites = authenticated.get(identity, set())
+                source_pairs = authenticated.get(identity, set())
                 policy = parse_apt_policy(
                     _run(host, ["apt-cache", "policy", f"{name}:{architecture}"], env)
                 )
@@ -481,16 +483,16 @@ def _bind_simulation(host, result, candidates, authenticated, env):
                     for source in row["sources"]
                 ]
                 if not _eligible(selected_sources, architecture) or not all(
-                    source["suite"] in suites for source in selected_sources
+                    (source["suite"], source["uri"]) in source_pairs for source in selected_sources
                 ):
-                    suites = set()
+                    source_pairs = set()
             change.update(
                 source_name=source_name,
                 source_version=source_version,
-                sources_authenticated=bool(suites),
-                authenticated_suites=sorted(suites),
+                sources_authenticated=bool(source_pairs),
+                authenticated_suites=sorted({suite for suite, _ in source_pairs}),
             )
-            if not suites:
+            if not source_pairs:
                 bound = False
         except (EvidenceError, OSError, UnicodeError, KeyError, TypeError, ValueError):
             bound = False
@@ -551,10 +553,7 @@ def collect_apt(
                 if policy["installed"] != package["version"]:
                     _fail("apt_inventory_changed")
                 sources = [
-                    s
-                    for v in policy["versions"]
-                    if v["version"] == version
-                    for s in v["sources"]
+                    s for v in policy["versions"] if v["version"] == version for s in v["sources"]
                 ]
                 candidate = {
                     "candidate_version": version,
@@ -601,9 +600,9 @@ def collect_apt(
                         shown["source_name"],
                         shown["source_version"],
                     )
-                    verified_suites = authenticated.get(identity, set())
-                    candidate["sources_authenticated"] = bool(sources) and all(
-                        source["suite"] in verified_suites for source in sources
+                    verified_sources = authenticated.get(identity, set())
+                    candidate["sources_authenticated"] = _eligible(sources, architecture) and all(
+                        (source["suite"], source["uri"]) in verified_sources for source in sources
                     )
                 data["candidates"][key] = candidate
                 if name in exclusions:
@@ -640,10 +639,7 @@ def collect_apt(
                     }
                 )
                 touched = {
-                    p["name"]
-                    for p in result["upgrades"]
-                    + result["additions"]
-                    + result["removals"]
+                    p["name"] for p in result["upgrades"] + result["additions"] + result["removals"]
                 }
                 held_touched = sorted(touched & {p.split(":", 1)[0] for p in held})
                 result["held_touched"] = held_touched

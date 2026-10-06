@@ -1,8 +1,10 @@
 """Synthetic offline APT snapshots; no package, service or network mutation."""
 
+import hashlib
 import shutil
 import subprocess
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -107,6 +109,103 @@ def test_candidates_preserve_source_version_without_false_archive_trust(tmp_path
     assert all(call[0] == "apt-cache" for call in host.calls)
     assert result["data"]["snapshot"]["consistent"] is True
     assert not list(host.work.iterdir())
+
+
+@pytest.mark.parametrize(
+    "fault,architecture",
+    [
+        (None, "amd64"),
+        (None, "all"),
+        ("legacy", "amd64"),
+        ("payload", "amd64"),
+        ("signature", "amd64"),
+        ("codename", "amd64"),
+        ("expiry", "amd64"),
+        ("foreign_uri", "amd64"),
+        ("same_suite_other_uri", "amd64"),
+        ("wrong_suite", "amd64"),
+        ("missing", "amd64"),
+    ],
+)
+def test_empty_path_security_endpoint_needs_full_signed_chain(tmp_path, fault, architecture):
+    host = Host(tmp_path)
+    inventory = {"packages": [dict(INVENTORY["packages"][0], architecture=architecture)]}
+    host_status = STATUS.replace("Architecture: amd64", f"Architecture: {architecture}")
+    (host.root / "var/lib/dpkg/status").write_text(host_status)
+    host.policy = POLICY.replace(
+        "http://deb.debian.org/debian trixie/main",
+        "http://security.debian.org trixie-security/main",
+    )
+    if fault == "legacy":
+        host.policy = host.policy.replace(
+            "http://security.debian.org", "http://security.debian.org/debian-security"
+        )
+    elif fault == "foreign_uri":
+        host.policy = host.policy.replace("http://security.debian.org", "http://foreign.invalid")
+    elif fault == "same_suite_other_uri":
+        host.policy = host.policy.replace(
+            "http://security.debian.org", "http://security.debian.org/debian-security"
+        )
+    elif fault == "wrong_suite":
+        host.policy = host.policy.replace("trixie-security/main", "trixie/main")
+    shown = SHOW.replace("Architecture: amd64", f"Architecture: {architecture}")
+    index = (
+        shown
+        + "Filename: pool/main/s/sample/sample_1.0-2+b1_amd64.deb\n"
+        + "Size: 123\nSHA256: "
+        + "0" * 64
+        + "\n\n"
+    ).encode()
+    lists = host.root / "var/lib/apt/lists"
+    prefix = "security.debian.org_debian-security" if fault == "legacy" else "security.debian.org"
+    filename = f"{prefix}_dists_trixie-security_main_binary-amd64_Packages"
+    (lists / filename).write_bytes(index if fault != "payload" else index + b"\n")
+    keyring = host.root / "usr/share/keyrings/debian-archive-keyring.gpg"
+    keyring.parent.mkdir(parents=True)
+    keyring.write_bytes(b"synthetic public keyring")
+    now = datetime.now(UTC)
+    date = (now - timedelta(days=1)).strftime("%a, %d %b %Y %H:%M:%S %z")
+    expiry = (now + timedelta(days=7 if fault != "expiry" else -1)).strftime(
+        "%a, %d %b %Y %H:%M:%S %z"
+    )
+    release = (
+        "-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\n"
+        "Origin: Debian\nCodename: "
+        + ("bookworm-security" if fault == "codename" else "trixie-security")
+        + f"\nDate: {date}\nValid-Until: {expiry}\nSHA256:\n"
+        + f" {hashlib.sha256(index).hexdigest()} {len(index)} main/binary-amd64/Packages\n"
+        + "-----BEGIN PGP SIGNATURE-----\nsynthetic\n"
+    )
+    if fault != "missing":
+        (lists / f"{prefix}_dists_trixie-security_InRelease").write_text(release)
+    original = host.run
+
+    def run(argv, **kwargs):
+        if argv[0] == "gpgv":
+            return SimpleNamespace(returncode=1 if fault == "signature" else 0, stdout=b"")
+        if argv[:2] == ["/usr/lib/apt/apt-helper", "cat-file"]:
+            return SimpleNamespace(returncode=0, stdout=(lists / filename).read_bytes())
+        if argv[:2] == ["apt-cache", "show"]:
+            result = original(argv, **kwargs)
+            result.stdout = shown.encode()
+            return result
+        return original(argv, **kwargs)
+
+    host.run = run
+    simulate = fault in {None, "legacy"} and architecture == "amd64"
+    result = collect_apt(host, inventory, simulate=simulate)
+    candidate = result["data"]["candidates"][f"sample:{architecture}"]
+    if fault in {None, "legacy"}:
+        assert result["status"] == "complete"
+        assert candidate["sources_authenticated"] is True
+        assert candidate["eligible"] is True
+        assert result["data"]["snapshot"]["file_count"] == 5
+        if simulate:
+            assert result["data"]["simulation"]["status"] == "complete"
+            assert result["data"]["simulation"]["sources_authenticated"] is True
+    else:
+        assert result["status"] == "incomplete"
+        assert candidate["sources_authenticated"] is False or candidate["eligible"] is False
 
 
 def test_optional_simulation_exact_versions_and_indirect_provider_exclusion(tmp_path):

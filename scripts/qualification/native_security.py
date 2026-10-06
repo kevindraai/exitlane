@@ -88,9 +88,7 @@ class OutputDirectory:
                 try:
                     os.mkdir(self.path.name, 0o700, dir_fd=current)
                 except FileExistsError:
-                    raise EvidenceError(
-                        "output_must_be_new_absolute_directory"
-                    ) from None
+                    raise EvidenceError("output_must_be_new_absolute_directory") from None
             try:
                 self.fd = os.open(
                     self.path.name,
@@ -123,9 +121,7 @@ class OutputDirectory:
 
     def create_work(self):
         os.mkdir("work", 0o700, dir_fd=self.fd)
-        fd = os.open(
-            "work", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=self.fd
-        )
+        fd = os.open("work", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=self.fd)
         self._fds.append(fd)
         self._verify(fd)
         return Path(f"/proc/{os.getpid()}/fd/{fd}")
@@ -223,10 +219,20 @@ def bundled_packages(manifests):
     for manifest in manifests:
         if (
             not isinstance(manifest, dict)
-            or set(manifest) != {"parent", "sha256", "manifest"}
+            or not {"parent", "sha256", "manifest"} <= set(manifest)
+            or set(manifest) - {"parent", "sha256", "manifest"}
+            not in (set(), {"kind", "parent_record_sha256", "unverified_cache_count"})
             or not PACKAGE_NAME.fullmatch(manifest["parent"])
             or not re.fullmatch("[0-9a-f]{64}", manifest["sha256"])
             or not isinstance(manifest["manifest"], str)
+        ):
+            raise EvidenceError("bundled_manifest_invalid")
+        if "kind" in manifest and (
+            manifest["kind"] != "verified_dist_info_record"
+            or not re.fullmatch("[0-9a-f]{64}", manifest["parent_record_sha256"])
+            or type(manifest["unverified_cache_count"]) is not int
+            or manifest["unverified_cache_count"] < 0
+            or hashlib.sha256(manifest["manifest"].encode()).hexdigest() != manifest["sha256"]
         ):
             raise EvidenceError("bundled_manifest_invalid")
         for line in manifest["manifest"].splitlines():
@@ -317,16 +323,13 @@ def package_source_manifest(host, source):
     }
     source = Path(source)
     # The existing build hook bundles these exact public guides and licenses.
-    catalog = ast.parse(
-        host.read_public(source / "backend/exitlane/documentation.py").decode()
-    )
+    catalog = ast.parse(host.read_public(source / "backend/exitlane/documentation.py").decode())
     definitions = next(
         node.value
         for node in catalog.body
         if isinstance(node, ast.Assign)
         and any(
-            isinstance(target, ast.Name) and target.id == "DOCUMENTS"
-            for target in node.targets
+            isinstance(target, ast.Name) and target.id == "DOCUMENTS" for target in node.targets
         )
     )
     for name in [
@@ -394,9 +397,7 @@ def application_identity(host, source, observed, prefix):
         raise EvidenceError("installed_package_version_mismatch")
     return {
         "version": observed["version"],
-        "package_metadata_sha256": hashlib.sha256(
-            host.read_public(metadata)
-        ).hexdigest(),
+        "package_metadata_sha256": hashlib.sha256(host.read_public(metadata)).hexdigest(),
         "package_record_sha256": hashlib.sha256(host.read_public(record)).hexdigest(),
         "content_sha256": digest_value(actual),
         "source": identity,
@@ -415,10 +416,7 @@ def collector_identity(host, source):
     running = Path(__file__).resolve().parent
     for name in COLLECTOR_FILES:
         relative = "scripts/qualification/" + name
-        if (
-            hashlib.sha256(host.read_public(running / name)).hexdigest()
-            != entries[relative]
-        ):
+        if hashlib.sha256(host.read_public(running / name)).hexdigest() != entries[relative]:
             raise EvidenceError("collector_source_content_mismatch")
     return {"version": "1", **identity, "module_sha256": entries}
 
@@ -542,9 +540,7 @@ def _collect(options, host, output_dir):
 
     def observe_dpkg():
         nonlocal inventory
-        result = host.run(
-            ["/usr/bin/dpkg-query", "--show", "--showformat", DPKG_FORMAT]
-        )
+        result = host.run(["/usr/bin/dpkg-query", "--show", "--showformat", DPKG_FORMAT])
         if result.returncode != 0:
             raise EvidenceError("native_package_query_failed")
         inventory = parse_dpkg_inventory(result.stdout.decode())
@@ -583,13 +579,46 @@ def _collect(options, host, output_dir):
                 "binary_sha256",
             }:
                 raise EvidenceError("python_observation_schema_invalid")
-            data["distributions"] = public_packages(data["distributions"])
+            metadata = {}
+            for item in data["distributions"]:
+                if set(item) not in (
+                    {"name", "version"},
+                    {"name", "version", "metadata_path", "metadata_sha256"},
+                ):
+                    raise EvidenceError("python_distribution_metadata_invalid")
+                if "metadata_path" not in item:
+                    continue
+                if not isinstance(item["metadata_path"], str) or not isinstance(
+                    item["metadata_sha256"], str
+                ):
+                    raise EvidenceError("python_distribution_metadata_invalid")
+                path = Path(item["metadata_path"])
+                if (
+                    not path.is_absolute()
+                    or not (
+                        path.name in {"METADATA", "PKG-INFO"} or path.name.endswith(".egg-info")
+                    )
+                    or not re.fullmatch("[0-9a-f]{64}", item["metadata_sha256"])
+                ):
+                    raise EvidenceError("python_distribution_metadata_invalid")
+                key = (re.sub(r"[-_.]+", "-", item["name"]).lower(), item["version"])
+                if key in metadata:
+                    raise EvidenceError("python_distribution_metadata_invalid")
+                metadata[key] = {
+                    "path": path,
+                    "sha256": item["metadata_sha256"],
+                }
+            data["distribution_metadata"] = metadata
+            data["distributions"] = public_packages(
+                [
+                    {"name": item["name"], "version": item["version"]}
+                    for item in data["distributions"]
+                ]
+            )
             if (
                 not PACKAGE_VERSION.fullmatch(data["interpreter"]["version"])
                 or data["interpreter"]["implementation"] != "cpython"
-                or not re.fullmatch(
-                    "[0-9a-f]{64}", data["interpreter"]["binary_sha256"]
-                )
+                or not re.fullmatch("[0-9a-f]{64}", data["interpreter"]["binary_sha256"])
                 or any(
                     not isinstance(data["interpreter"][key], str)
                     or not Path(data["interpreter"][key]).is_absolute()
@@ -642,9 +671,7 @@ def _collect(options, host, output_dir):
             "ensurepip_present": data["ensurepip_present"],
             "historical_execution": "unresolved_no_contemporaneous_evidence",
         }
-        status = (
-            "incomplete" if data["ensurepip_present"] and not packages else "complete"
-        )
+        status = "incomplete" if data["ensurepip_present"] and not packages else "complete"
         return {"status": status, "data": value}
 
     capture("python_bootstrap", bootstrap)
@@ -671,6 +698,16 @@ def _collect(options, host, output_dir):
                     "layer": layer,
                     "parent": manifest["parent"],
                     "manifest_sha256": manifest["sha256"],
+                    **(
+                        {
+                            "manifest_kind": manifest["kind"],
+                            "parent_record_sha256": manifest["parent_record_sha256"],
+                            "unverified_cache_count": manifest["unverified_cache_count"],
+                            "cache_limitation": "source_associated_bytecode_not_authenticated_or_executed",
+                        }
+                        if "kind" in manifest
+                        else {}
+                    ),
                     "packages": bundled_packages([manifest]),
                 }
                 for layer, manifest in manifests
@@ -729,15 +766,11 @@ def _collect(options, host, output_dir):
                     "status": status,
                     "data": {"groups": observations, "findings": result_findings},
                 }
-            packages = source["data"].get(
-                "distributions", source["data"].get("packages", [])
-            )
+            packages = source["data"].get("distributions", source["data"].get("packages", []))
             value, raw = host.audit(
                 options.pip_audit,
                 packages,
-                allowed_skips={
-                    "exitlane": "local_application_source_qualified_separately"
-                },
+                allowed_skips={"exitlane": "local_application_source_qualified_separately"},
                 allow_network=options.allow_network,
                 layer=layer,
             )
@@ -758,15 +791,11 @@ def _collect(options, host, output_dir):
         identity = cells["os"]["data"]
         os_release = b'ID=debian\nNAME="Debian GNU/Linux"\nVERSION_ID=13\nVERSION_CODENAME=trixie\n'
         (projection / "etc/os-release").write_bytes(os_release)
-        (projection / "etc/debian_version").write_text(
-            identity["debian_version"] + "\n"
-        )
+        (projection / "etc/debian_version").write_text(identity["debian_version"] + "\n")
         (projection / "var/lib/dpkg/status").write_bytes(status)
         retain("dpkg-public-status.txt", status)
         retain("native-os-identity.json", canonical_bytes(identity))
-        value, raw = host.trivy(
-            options.trivy, options.trivy_cache, projection, inventory, identity
-        )
+        value, raw = host.trivy(options.trivy, options.trivy_cache, projection, inventory, identity)
         if raw is not None:
             retain("trivy-native.json", raw)
         value["data"]["projection_sha256"] = hashlib.sha256(
@@ -777,9 +806,7 @@ def _collect(options, host, output_dir):
 
     capture("trivy", scan)
     if inventory:
-        capture(
-            "apt", lambda: collect_apt(host, inventory, simulate=options.simulate_apt)
-        )
+        capture("apt", lambda: collect_apt(host, inventory, simulate=options.simulate_apt))
     else:
         cells["apt"] = cell_error("native_inventory_unavailable")
     tracker = None
@@ -792,30 +819,201 @@ def _collect(options, host, output_dir):
                 "reason": "primary_advisory_snapshot_not_supplied",
                 "data": {},
             }
-        raw = host.read_public(options.debian_tracker, 64 * 1024 * 1024)
-        tracker = json.loads(raw)
+        raw = host.read_public(options.debian_tracker, 128 * 1024 * 1024)
+        input_sha256 = hashlib.sha256(raw).hexdigest()
+        wanted = {}
+        if inventory and receipt["findings"]["native"] is not None:
+            installed = {
+                (package["name"], package["version"]): package["source_name"]
+                for package in inventory["packages"]
+                if package["state"] == "installed"
+            }
+            for finding in receipt["findings"]["native"]:
+                source = installed.get((finding["PkgName"], finding["InstalledVersion"]))
+                if source:
+                    wanted.setdefault(source, set()).add(finding["VulnerabilityID"])
+        requested = canonical_bytes(
+            {source: sorted(identifiers) for source, identifiers in wanted.items()}
+        )
+        staged = host.work / "debian-tracker-input.json"
+        fd = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        try:
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(raw)
+            result = host.run(
+                [
+                    "/usr/bin/python3",
+                    "-I",
+                    "-S",
+                    "-B",
+                    str(Path(__file__).with_name("native_security_evidence.py")),
+                    "--tracker-worker",
+                    str(staged),
+                    input_sha256,
+                    str(len(raw)),
+                    requested.decode("ascii"),
+                ],
+                timeout=30,
+                limit=8 * 1024 * 1024,
+            )
+        finally:
+            staged.unlink()
+        if result.returncode != 0:
+            raise EvidenceError("primary_advisory_worker_failed")
+        try:
+            tracker = json.loads(result.stdout)
+        except (ValueError, UnicodeError, RecursionError):
+            raise EvidenceError("primary_advisory_worker_failed") from None
         if not isinstance(tracker, dict):
-            raise EvidenceError("primary_advisory_snapshot_invalid")
+            raise EvidenceError("primary_advisory_worker_failed")
         # Do not export the full tracker or arbitrary descriptions/URLs.
         return {
             "source": "Debian security tracker operator-supplied snapshot",
-            "sha256": hashlib.sha256(raw).hexdigest(),
+            "sha256": input_sha256,
+            "size": len(raw),
             "trust": "operator_supplied_not_fetched_or_authenticated",
             "captured_at": receipt["observed_at"],
         }
 
     capture("primary_advisories", primary)
+
+    def distro_python_coverage():
+        """Separate Debian backend proof for three OS-only PyPI skip identities."""
+        audit = cells["audit_os"]
+        if audit["status"] == "complete":
+            return {"status": "skipped", "reason": "pypi_os_invocation_complete", "data": {}}
+        coverage = audit.get("data", {}).get("coverage", {})
+        skips = coverage.get("skips")
+        trivy = cells["trivy"]
+        native_coverage = trivy.get("data", {}).get("coverage", {})
+        findings = receipt["findings"]["native"]
+        if (
+            audit["status"] != "incomplete"
+            or audit.get("data", {}).get("returncode") not in (0, 1)
+            or not isinstance(audit.get("data", {}).get("findings"), list)
+            or not isinstance(skips, list)
+            or not skips
+            or any(coverage.get(key) for key in ("missing", "unknown", "duplicates"))
+            or coverage.get("expected_count") != coverage.get("observed_count")
+            or trivy["status"] != "complete"
+            or not isinstance(findings, list)
+            or any(
+                native_coverage.get(key)
+                for key in ("missing", "unknown", "duplicates", "unbound_findings")
+            )
+            or cells["python_os"]["status"] != "complete"
+        ):
+            return {
+                "status": "incomplete",
+                "reason": "os_python_debian_coverage_unverified",
+                "data": {},
+            }
+        reviewed = {
+            "apt-listchanges": ("apt-listchanges", "apt-listchanges"),
+            "python-apt": ("python3-apt", "python-apt"),
+            "reportbug": ("python3-reportbug", "reportbug"),
+        }
+        records = []
+        metadata = probes["python_os"].get("distribution_metadata", {})
+        for skip in skips:
+            name, version = skip.get("name"), skip.get("version")
+            if (
+                name not in reviewed
+                or skip.get("intentional") is not False
+                or not PACKAGE_VERSION.fullmatch(version or "")
+                or skip.get("reason")
+                != (f"Dependency not found on PyPI and could not be audited: {name} ({version})")
+            ):
+                return {
+                    "status": "incomplete",
+                    "reason": "os_python_skip_unproved",
+                    "data": {"records": records},
+                }
+            identity = metadata.get((name, version))
+            if identity is None:
+                return {
+                    "status": "incomplete",
+                    "reason": "os_python_metadata_unavailable",
+                    "data": {"records": records},
+                }
+            path = identity["path"]
+            if (
+                ".." in path.parts
+                or not path.is_relative_to(host.root / "usr/lib/python3/dist-packages")
+                or hashlib.sha256(host.read_public(path, 1024 * 1024)).hexdigest()
+                != identity["sha256"]
+            ):
+                return {
+                    "status": "incomplete",
+                    "reason": "os_python_metadata_unverified",
+                    "data": {"records": records},
+                }
+            owner = host.run(["/usr/bin/dpkg-query", "--search", str(path)], limit=4096)
+            expected_binary, expected_source = reviewed[name]
+            if owner.returncode != 0 or owner.stdout != (f"{expected_binary}: {path}\n".encode()):
+                return {
+                    "status": "incomplete",
+                    "reason": "os_python_owner_unverified",
+                    "data": {"records": records},
+                }
+            packages = [
+                package
+                for package in inventory["packages"]
+                if package["name"] == expected_binary
+                and package["version"] == version
+                and package["source_name"] == expected_source
+                and package["source_version"] == version
+                and package["state"] == "installed"
+            ]
+            if len(packages) != 1:
+                return {
+                    "status": "incomplete",
+                    "reason": "os_python_dpkg_identity_unverified",
+                    "data": {"records": records},
+                }
+            package = packages[0]
+            indices = [
+                index
+                for index, finding in enumerate(findings)
+                if finding["PkgName"] == package["name"]
+                and finding["InstalledVersion"] == package["version"]
+            ]
+            records.append(
+                {
+                    "distribution": name,
+                    "distribution_version": version,
+                    "metadata_path": str(path),
+                    "metadata_sha256": identity["sha256"],
+                    "owner": expected_binary,
+                    "architecture": package["architecture"],
+                    "source_name": expected_source,
+                    "source_version": package["source_version"],
+                    "backend": "debian_trivy_native_tuple_not_pypi",
+                    "native_finding_indices": indices,
+                    "native_finding_count": len(indices),
+                    "trivy_report_sha256": trivy["data"]["raw_sha256"],
+                    "trivy_database_sha256": trivy["data"]["database"]["sha256"],
+                }
+            )
+        return {
+            "status": "complete",
+            "data": {
+                "records": records,
+                "pypi_invocation_status": audit["status"],
+                "pypi_skip_count": len(skips),
+                "native_backend_finding_count": sum(r["native_finding_count"] for r in records),
+                "interpretation": "current_debian_tuple_advisory_coverage_not_pypi_or_code_integrity",
+            },
+        }
+
+    capture("audit_os_distro", distro_python_coverage)
     if receipt["findings"]["native"] is not None and inventory:
         candidates = cells["apt"].get("data", {}).get("candidates", {})
 
         def compare(left, operator, right):
-            if not PACKAGE_VERSION.fullmatch(left) or not PACKAGE_VERSION.fullmatch(
-                right
-            ):
+            if not PACKAGE_VERSION.fullmatch(left) or not PACKAGE_VERSION.fullmatch(right):
                 raise ValueError("version_invalid")
-            result = host.run(
-                ["/usr/bin/dpkg", "--compare-versions", left, operator, right]
-            )
+            result = host.run(["/usr/bin/dpkg", "--compare-versions", left, operator, right])
             if result.returncode not in (0, 1):
                 raise ValueError("comparison_failed")
             return result.returncode == 0
@@ -852,9 +1050,7 @@ def _collect(options, host, output_dir):
                     previous["cells"]["application"]["data"]["content_sha256"],
                     previous["cells"]["dpkg"]["data"]["sha256"],
                 ):
-                    if not isinstance(value, str) or not re.fullmatch(
-                        "[0-9a-f]{64}", value
-                    ):
+                    if not isinstance(value, str) or not re.fullmatch("[0-9a-f]{64}", value):
                         raise EvidenceError("maintenance_public_identity_invalid")
                 if (
                     type(old["start_ticks"]) is not int
@@ -878,9 +1074,9 @@ def _collect(options, host, output_dir):
                     "stale_mappings_cleared": restarted
                     and old["restart_required"] is True
                     and new["restart_required"] is False,
-                    "previous_application_content_sha256": previous["cells"][
-                        "application"
-                    ]["data"]["content_sha256"],
+                    "previous_application_content_sha256": previous["cells"]["application"]["data"][
+                        "content_sha256"
+                    ],
                     "previous_dpkg_sha256": previous["cells"]["dpkg"]["data"]["sha256"],
                 }
             except (
@@ -902,9 +1098,7 @@ def _collect(options, host, output_dir):
     def consistency():
         if initial_inventory_hash is None:
             return cell_error("initial_inventory_unavailable")
-        result = host.run(
-            ["/usr/bin/dpkg-query", "--show", "--showformat", DPKG_FORMAT]
-        )
+        result = host.run(["/usr/bin/dpkg-query", "--show", "--showformat", DPKG_FORMAT])
         if result.returncode != 0:
             raise EvidenceError("final_native_package_query_failed")
         final_hash = digest_value(parse_dpkg_inventory(result.stdout.decode()))
@@ -926,6 +1120,12 @@ def _collect(options, host, output_dir):
         "native_findings": None
         if receipt["findings"]["native"] is None
         else len(receipt["findings"]["native"]),
+        "os_pypi_findings_observed": None
+        if receipt["findings"]["python"].get("os") is None
+        else len(receipt["findings"]["python"]["os"]),
+        "os_distro_native_findings": cells.get("audit_os_distro", {})
+        .get("data", {})
+        .get("native_backend_finding_count"),
         "applicability_categories": dict(
             Counter(item["category"] for item in receipt["applicability"])
         ),
@@ -946,8 +1146,18 @@ def aggregate(cells, libraries_requested=False):
         return "error"
     if any(cell.get("status") == "error" for cell in cells.values()):
         return "error"
-    if any(cells[name].get("status") != "complete" for name in required) or any(
-        cell.get("status") == "incomplete" for cell in cells.values()
+    composed_os = (
+        cells["audit_os"].get("status") == "incomplete"
+        and cells.get("audit_os_distro", {}).get("status") == "complete"
+    )
+    if (
+        any(cells[name].get("status") != "complete" for name in required if name != "audit_os")
+        or (cells["audit_os"].get("status") != "complete" and not composed_os)
+        or any(
+            cell.get("status") == "incomplete"
+            for name, cell in cells.items()
+            if name != "audit_os" or not composed_os
+        )
     ):
         return "incomplete"
     return "complete"
