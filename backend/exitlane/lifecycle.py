@@ -590,6 +590,15 @@ def _validate_restored_wireguard(directory: Path) -> None:
         _validated_wireguard_hooks(path)
 
 
+def _validate_restored_peers(database: Path, directory: Path) -> None:
+    from exitlane.services.wireguard_peers import PeerError, validate_staged_state
+
+    try:
+        validate_staged_state(database, directory)
+    except PeerError as error:
+        raise LifecycleError(error.code) from error
+
+
 def restore_backup(
     source: Path,
     passphrase: str,
@@ -636,6 +645,7 @@ def restore_backup(
                     raise LifecycleError("invalid_manifest")
                 os.replace(staging / entry["name"], restored_wireguard / name)
         _validate_restored_wireguard(restored_wireguard)
+        _validate_restored_peers(database, restored_wireguard)
         # Quiesce both generations before stopping the only application writer.
         # No restored or recovered service is exposed until its own guards exist.
         if forwarding_guard:
@@ -748,6 +758,7 @@ def prepare_restore(source: Path, passphrase: str, staging: Path) -> PreparedRes
                 raise LifecycleError("invalid_manifest")
             os.replace(staging / entry["name"], wireguard / name)
     _validate_restored_wireguard(wireguard)
+    _validate_restored_peers(database, wireguard)
     return PreparedRestore(manifest, database, master_key, wireguard)
 
 

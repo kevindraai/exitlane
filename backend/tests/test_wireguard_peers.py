@@ -25,6 +25,11 @@ def migrated(tmp_path, monkeypatch):
         assert await wireguard_peers.migrate_legacy("wg0", "UniFi-Gateway")
         assert not await wireguard_peers.migrate_legacy("wg0", "UniFi-Gateway")
         assert before == {path.name: path.read_bytes() for path in core.WG_DIR.iterdir()}
+        core.set_settings({
+            "wireguard_configured": True,
+            "wireguard_interface": "wg0",
+            "wireguard_client_name": "UniFi-Gateway",
+        })
         return before
 
     return asyncio.run(prepare())
@@ -122,6 +127,24 @@ def test_sync_failure_restores_database_files_and_kernel_callback(migrated):
     assert sorted(path.name for path in core.WG_DIR.iterdir()) == ["UniFi-Gateway.conf", "wg0.conf"]
 
 
+def test_cancelled_sync_restores_database_files_and_runtime(migrated):
+    server = core.WG_DIR.joinpath("wg0.conf").read_bytes()
+    rows = wireguard_peers.list_peers()
+    calls = []
+
+    async def sync(_interface):
+        calls.append(core.WG_DIR.joinpath("wg0.conf").read_bytes())
+        if len(calls) == 1:
+            raise asyncio.CancelledError
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(wireguard_peers.create("wg0", "Cancelled", "", sync))
+    assert len(calls) == 2
+    assert core.WG_DIR.joinpath("wg0.conf").read_bytes() == server
+    assert wireguard_peers.list_peers() == rows
+    assert sorted(path.name for path in core.WG_DIR.iterdir()) == ["UniFi-Gateway.conf", "wg0.conf"]
+
+
 def test_malformed_state_blocks_mutations_without_repair(migrated):
     server_path = core.WG_DIR / "wg0.conf"
     original = server_path.read_bytes()
@@ -175,6 +198,47 @@ def test_encrypted_backup_restore_preserves_two_peers_and_revocation(
     assert {path.name: path.read_bytes() for path in core.WG_DIR.iterdir()} == original_files
     assert wireguard_peers.get_peer(revoked["peer"]["peer_id"])["status"] == "revoked"
     assert wireguard_peers.get_peer(active["peer"]["peer_id"])["status"] == "active"
+
+
+def test_restore_rejects_backup_with_revoked_peer_still_on_server(migrated, tmp_path, monkeypatch):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir(mode=0o700)
+    secret = config_dir / "secret.key"
+    secret.write_bytes(b"k" * 32)
+    secret.chmod(0o600)
+    monkeypatch.setattr(lifecycle, "CONFIG_DIR", config_dir)
+
+    async def sync(_interface):
+        return None
+
+    async def prepare():
+        peer = await wireguard_peers.create("wg0", "Revoked", "", sync)
+        await wireguard_peers.revoke("wg0", peer["peer"]["peer_id"], sync)
+        return peer["peer"]
+
+    revoked = asyncio.run(prepare())
+    server_path = core.WG_DIR / "wg0.conf"
+    valid_server = server_path.read_bytes()
+    server_path.write_bytes(valid_server + (
+        f"\n[Peer]\nPublicKey = {revoked['public_key']}\n"
+        f"AllowedIPs = {revoked['tunnel_ip']}/32\nPersistentKeepalive = 25\n"
+    ).encode())
+    server_path.chmod(0o600)
+    backup = tmp_path / "invalid-multipeer.elb"
+    lifecycle.create_backup(
+        backup, "correct horse battery staple", effective_user_id=0,
+        lock_path=tmp_path / "lifecycle.lock",
+    )
+    server_path.write_bytes(valid_server)
+    server_path.chmod(0o600)
+    rows = wireguard_peers.list_peers()
+    with pytest.raises(lifecycle.LifecycleError, match="wireguard_configuration_invalid"):
+        lifecycle.restore_backup(
+            backup, "correct horse battery staple", confirmation="RESTORE EXITLANE",
+            effective_user_id=0, lock_path=tmp_path / "lifecycle.lock",
+        )
+    assert server_path.read_bytes() == valid_server
+    assert wireguard_peers.list_peers() == rows
 
 
 def test_backup_lock_rejects_concurrent_peer_change(migrated):

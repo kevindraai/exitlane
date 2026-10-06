@@ -4052,6 +4052,11 @@ async def _current_wireguard_configuration() -> dict | None:
     interface = setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE)
     client = setting("wireguard_client_name", DEFAULT_WIREGUARD_CLIENT)
     peers = wireguard_peers.list_peers()
+    if not peers and setting("wireguard_configured", False):
+        await wireguard_peers.migrate_legacy(interface, client)
+        peers = wireguard_peers.list_peers()
+        if not peers:
+            return None
     if peers:
         default = next((peer for peer in peers if peer["is_default"]), None)
         if default is None or default["status"] != "active":
@@ -4066,7 +4071,7 @@ async def _current_wireguard_configuration() -> dict | None:
 async def current_wireguard_configuration() -> JSONResponse:
     try:
         configuration = await _current_wireguard_configuration()
-    except wireguard_service.WireGuardConfigurationError as error:
+    except (wireguard_service.WireGuardConfigurationError, wireguard_peers.PeerError) as error:
         return _private_response({"error": error.code}, status_code=409)
     if configuration is None:
         return _private_response({"available": False, "configuration": None})
@@ -4084,7 +4089,7 @@ async def current_wireguard_configuration() -> JSONResponse:
 async def download_wireguard_configuration() -> Response:
     try:
         configuration = await _current_wireguard_configuration()
-    except wireguard_service.WireGuardConfigurationError as error:
+    except (wireguard_service.WireGuardConfigurationError, wireguard_peers.PeerError) as error:
         return _private_response({"error": error.code}, status_code=409)
     if configuration is None:
         return _private_response({"error": "wireguard_configuration_missing"}, status_code=404)
@@ -4100,7 +4105,7 @@ async def download_wireguard_configuration() -> Response:
 async def wireguard_configuration_qr() -> Response:
     try:
         configuration = await _current_wireguard_configuration()
-    except wireguard_service.WireGuardConfigurationError as error:
+    except (wireguard_service.WireGuardConfigurationError, wireguard_peers.PeerError) as error:
         return _private_response({"error": error.code}, status_code=409)
     if configuration is None:
         return _private_response({"error": "wireguard_configuration_missing"}, status_code=404)
@@ -4130,6 +4135,14 @@ async def regenerate_wireguard_configuration(request: Request) -> JSONResponse:
     interface = setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE)
     client = setting("wireguard_client_name", DEFAULT_WIREGUARD_CLIENT)
     peers = wireguard_peers.list_peers()
+    if not peers and setting("wireguard_configured", False):
+        try:
+            await wireguard_peers.migrate_legacy(interface, client)
+        except wireguard_peers.PeerError as error:
+            return _peer_error_response(error)
+        peers = wireguard_peers.list_peers()
+        if not peers:
+            return _private_response({"error": "wireguard_configuration_missing"}, status_code=404)
     if peers:
         default = next((peer for peer in peers if peer["is_default"]), None)
         if default is None:
@@ -4205,6 +4218,15 @@ async def wireguard_client_config(name: str) -> FileResponse:
     path = WG_DIR / f"{name}.conf"
 
     peers = wireguard_peers.list_peers()
+    if not peers and setting("wireguard_configured", False):
+        try:
+            await wireguard_peers.migrate_legacy(
+                setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE),
+                setting("wireguard_client_name", DEFAULT_WIREGUARD_CLIENT),
+            )
+        except wireguard_peers.PeerError as error:
+            raise HTTPException(status_code=409, detail=error.code) from error
+        peers = wireguard_peers.list_peers()
     if peers and not any(
         peer["is_default"] and peer["status"] == "active" and peer["config_name"] == name
         for peer in peers

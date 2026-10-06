@@ -196,3 +196,21 @@ def test_runtime_status_maps_stale_never_and_revoked_by_public_key(client, monke
     assert peers[third["peer_id"]]["runtime_status"] == "revoked"
     assert response.json()["recent_peers"] == 0
     assert client.get("/api/ingress/wireguard/status").json()["connected"] is False
+
+
+def test_failed_legacy_migration_cannot_regenerate_or_download_invalid_state(client):
+    with sqlite3.connect(core.DB) as connection:
+        connection.execute("DELETE FROM wireguard_peers")
+        connection.execute("DELETE FROM wireguard_ingress_profile")
+    server = core.WG_DIR.joinpath("wg0.conf").read_bytes()
+    client_path = core.WG_DIR / "UniFi-Gateway.conf"
+    client_path.write_bytes(client_path.read_bytes().replace(b"10.98.240.2/32", b"10.98.240.3/32"))
+    client_path.chmod(0o600)
+    response = client.post("/api/ingress/wireguard/config/regenerate")
+    assert response.status_code == 409
+    assert response.json() == {"error": "wireguard_configuration_invalid"}
+    assert client.get("/api/ingress/wireguard/config").status_code == 409
+    assert client.get("/api/ingress/wireguard/client/UniFi-Gateway").status_code == 409
+    assert core.WG_DIR.joinpath("wg0.conf").read_bytes() == server
+    with sqlite3.connect(core.DB) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM wireguard_peers").fetchone()[0] == 0

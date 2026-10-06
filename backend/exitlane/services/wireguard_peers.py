@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import fcntl
 import ipaddress
+import json
 import os
 import re
 import sqlite3
@@ -14,6 +17,9 @@ from collections.abc import Awaitable, Callable
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 
 from exitlane import core
 from exitlane.services import wireguard
@@ -149,6 +155,95 @@ def _assignable(server: ipaddress.IPv4Interface, candidate: ipaddress.IPv4Addres
             }))
 
 
+def _public_key_local(private: str) -> str:
+    try:
+        raw = base64.b64decode(private, validate=True)
+        if len(raw) != 32:
+            raise ValueError
+        public = X25519PrivateKey.from_private_bytes(raw).public_key().public_bytes(
+            encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw
+        )
+        return base64.b64encode(public).decode()
+    except (ValueError, TypeError) as error:
+        raise PeerError("wireguard_configuration_invalid") from error
+
+
+def validate_staged_state(database: Path, directory: Path) -> None:
+    """Reject backup state whose claimed peer lifecycle differs from server keys."""
+    try:
+        with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
+            settings = {key: json.loads(value) for key, value in connection.execute(
+                "SELECT key,value FROM settings WHERE key IN "
+                "('wireguard_configured','wireguard_interface','wireguard_client_name')"
+            )}
+            tables = {row[0] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )}
+            if not settings.get("wireguard_configured", False):
+                if "wireguard_peers" in tables and connection.execute(
+                    "SELECT COUNT(*) FROM wireguard_peers"
+                ).fetchone()[0]:
+                    raise PeerError("wireguard_configuration_invalid")
+                return
+            interface = settings.get("wireguard_interface", "wg0")
+            client_name = settings.get("wireguard_client_name", "router")
+            if (not isinstance(interface, str) or not isinstance(client_name, str)
+                or re.fullmatch(r"[A-Za-z0-9-]{1,15}", interface) is None
+                or re.fullmatch(r"[A-Za-z0-9_-]{1,64}", client_name) is None):
+                raise PeerError("wireguard_configuration_invalid")
+            server = _read(directory / f"{interface}.conf")
+            _, server_peers, server_address, server_private = _server(server)
+            server_public = _public_key_local(server_private)
+            has_profile = "wireguard_ingress_profile" in tables and _profile(connection) is not None
+            rows = _rows(connection) if "wireguard_peers" in tables else []
+            if has_profile and "wireguard_peers" not in tables:
+                raise PeerError("wireguard_configuration_invalid")
+            if has_profile:
+                profile = _validate_profile(_profile(connection))
+                if profile["server_public_key"] != server_public:
+                    raise PeerError("wireguard_configuration_invalid")
+                if {peer["PublicKey"]: peer["AllowedIPs"] for peer in server_peers} != {
+                    row["public_key"]: f"{row['tunnel_ip']}/32" for row in rows
+                    if row["status"] == "active"
+                }:
+                    raise PeerError("wireguard_configuration_invalid")
+            elif rows or len(server_peers) != 1:
+                raise PeerError("wireguard_configuration_invalid")
+            else:
+                peer = server_peers[0]
+                client = _read(directory / f"{client_name}.conf")
+                private = wireguard._value(client, "PrivateKey", section="Interface")
+                remote = wireguard._value(client, "PublicKey", section="Peer")
+                address = wireguard._value(client, "Address", section="Interface")
+                tunnel = ipaddress.IPv4Interface(address or "")
+                if (tunnel.network.prefixlen != 32
+                    or not _assignable(server_address, tunnel.ip)
+                    or peer["AllowedIPs"] != f"{tunnel.ip}/32"
+                    or not private or _public_key_local(private) != peer["PublicKey"]
+                    or remote != server_public):
+                    raise PeerError("wireguard_configuration_invalid")
+                return
+            for row in rows:
+                if row["status"] not in {"active", "revoked"}:
+                    raise PeerError("wireguard_configuration_invalid")
+                name = row["config_name"]
+                if not isinstance(name, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,64}", name) is None:
+                    raise PeerError("wireguard_configuration_invalid")
+                client = _read(directory / f"{name}.conf")
+                private = wireguard._value(client, "PrivateKey", section="Interface")
+                remote = wireguard._value(client, "PublicKey", section="Peer")
+                address = wireguard._value(client, "Address", section="Interface")
+                tunnel = ipaddress.IPv4Interface(address or "")
+                if (tunnel.network.prefixlen != 32
+                    or str(tunnel.ip) != row["tunnel_ip"]
+                    or not _assignable(server_address, tunnel.ip)
+                    or not private or _public_key_local(private) != row["public_key"]
+                    or remote != server_public):
+                    raise PeerError("wireguard_configuration_invalid")
+    except (OSError, sqlite3.DatabaseError, ValueError, TypeError, KeyError, json.JSONDecodeError) as error:
+        raise PeerError("wireguard_configuration_invalid") from error
+
+
 def _render(prefix: str, peers: list[dict[str, str]]) -> str:
     result = prefix.rstrip() + "\n"
     for peer in peers:
@@ -245,7 +340,9 @@ async def _validate_state(connection: sqlite3.Connection, interface: str) -> tup
         tunnel = wireguard._value(client, "Address", section="Interface")
         try:
             client_ip = ipaddress.IPv4Interface(tunnel or "")
-            if client_ip.ip != ipaddress.IPv4Address(row["tunnel_ip"]) or client_ip.network.prefixlen != 32:
+            if (client_ip.ip != ipaddress.IPv4Address(row["tunnel_ip"])
+                or client_ip.network.prefixlen != 32
+                or not _assignable(address, client_ip.ip)):
                 raise ValueError
         except ValueError as error:
             raise PeerError("wireguard_configuration_invalid") from error
@@ -366,19 +463,32 @@ async def _change(interface: str, sync: Sync, operation) -> dict:
             if _path(interface) in new_files:
                 await sync(interface)
             connection.commit()
-        except Exception as error:
+        except BaseException as error:
             connection.rollback()
             if written or new_files:
-                try:
+                async def restore_previous():
                     for path, content in old_files.items():
                         wireguard._restore(path, content)
                     if _path(interface) in new_files:
                         await sync(interface)
+
+                task = asyncio.create_task(restore_previous())
+                try:
+                    while not task.done():
+                        try:
+                            await asyncio.shield(task)
+                        except asyncio.CancelledError:
+                            continue
+                    await task
                 except Exception as rollback_error:
                     raise PeerError("wireguard_rollback_failed") from rollback_error
+            if isinstance(error, asyncio.CancelledError):
+                raise
             if isinstance(error, PeerError):
                 raise
-            raise PeerError("wireguard_peer_mutation_failed") from error
+            if isinstance(error, Exception):
+                raise PeerError("wireguard_peer_mutation_failed") from error
+            raise
         return changes
 
 
