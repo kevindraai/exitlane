@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import tempfile
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -260,11 +261,17 @@ class NativeSystemdRuntime:
         rc, stripped, _ = await runner("wg-quick", "strip", str(path), timeout=10)
         if rc != 0 or not stripped:
             raise RuntimeError("wireguard_sync_failed")
-        rc, _, _ = await runner(
-            "wg", "syncconf", interface, "/dev/stdin", input_text=stripped + "\n", timeout=10
-        )
-        if rc != 0:
-            raise RuntimeError("wireguard_sync_failed")
+        # wg opens its argument as a path. Under uvloop, subprocess stdin can be
+        # a socketpair, for which fopen("/dev/stdin") fails with ENXIO.
+        descriptor, staged = tempfile.mkstemp(prefix=".sync-", suffix=".conf", dir=source_directory)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+                output.write(stripped + "\n")
+            rc, _, _ = await runner("wg", "syncconf", interface, staged, timeout=10)
+            if rc != 0:
+                raise RuntimeError("wireguard_sync_failed")
+        finally:
+            os.unlink(staged)
 
     def restore_ingress(self, *, start: bool, core, lifecycle, killswitch) -> None:
         self.capabilities.require("restore")
