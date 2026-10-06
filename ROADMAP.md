@@ -1,9 +1,11 @@
 # Roadmap
 
-The roadmap describes direction rather than a release commitment. Priorities may change as the
-release candidates are tested in real networks.
+The roadmap describes direction rather than a release commitment. Priorities may change as
+operators use the stable release in different networks.
 
-The [canonical v1 readiness matrix](docs/release-checklist.md#canonical-v1-readiness-matrix) owns blockers, dependencies, evidence and authorization boundaries.
+The [v1 release record](docs/release-notes/1.0.0.md) holds the completed release evidence;
+the [readiness matrix](docs/release-checklist.md#canonical-v1-readiness-matrix) retains its
+historical planning and qualification trail.
 
 ## Historical scope: 0.3.0-rc.4
 

@@ -2,13 +2,12 @@
 
 ## Supported versions
 
-Security fixes target the current published stable release. This policy accompanies `v1.0.0`
-and takes effect on publication.
+Security fixes target the current published stable release, `v1.0.0`.
 
 | Version | Supported |
 | --- | --- |
-| v1.0.0 | Yes, upon publication |
-| v1.0.0-rc.1 and earlier | Superseded upon publication of v1.0.0 |
+| v1.0.0 | Yes |
+| v1.0.0-rc.1 and earlier | Superseded by v1.0.0 |
 | v0.2.0 | No |
 | Earlier prereleases and v0.1.x | No |
 

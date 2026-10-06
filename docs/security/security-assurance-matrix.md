@@ -5,7 +5,9 @@ reassessment and its test counts remain dated historical evidence. Final exact-s
 checks, scans and native/container receipts are linked by the
 [published v1.0.0 release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0).
 This matrix separates automated, synthetic-provider, native-appliance and internal assisted
-evidence; it is not an independent penetration test.
+evidence; it is not an independent penetration test. Rows that describe pending rc.4 or pre-v1
+qualification retain their dated assessment status. The published v1 receipts supersede those
+pending-release statements for the current support contract.
 
 | ID | STRIDE / ASVS | Asset, actor, entry point and attack path | Impact | Measure and code | Positive / negative evidence | Manual validation | Residual risk | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |

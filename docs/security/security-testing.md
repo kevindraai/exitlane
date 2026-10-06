@@ -23,6 +23,10 @@ and existing security headers remain unchanged on the help routes.
 
 Every PR runs backend/frontend regressions, Ruff, Bandit, pip-audit, secret scanning, dependency review, CodeQL and a passive ZAP baseline. Scheduled runs repeat CodeQL, dependency/secret audits and ZAP. Release/manual work adds disposable-target authenticated/active scanning, package inspection, test-LXC validation and systemd review.
 
+For current publication decisions, use the [v1 security policy](../../SECURITY.md#v1-release-vulnerability-decisions).
+It distinguishes actionable application and fixable package findings from exact reviewed
+unfixed Debian OS risks.
+
 ## Daybreak Blue-assisted internal defensive assessment
 
 The 2026-09-30 Track D assessment followed a private attack-hypothesis ledger rather than using

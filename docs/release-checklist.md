@@ -1,14 +1,16 @@
 # Release checklist
 
-This checklist is evidence-driven. An incomplete required pre-publication gate blocks tagging
-and publishing the release. The narrowly defined rc.4 public-launcher stage below
-is the only explicitly authorized post-publication gate. Evidence may be recorded in the release task, a
-release pull request, or linked GitHub evidence.
+The checklist below remains the release gate for future versions: incomplete required checks
+block tagging and publication. Record evidence in the release task, pull request or linked
+receipts. The [v1 readiness matrix](#canonical-v1-readiness-matrix) records the completed
+v1.0.0 outcome; the rc.4 public-launcher sequencing and older readiness records are historical.
 
 Do not claim that a check is complete unless its evidence is included or linked.
 Screenshots are optional when equivalent machine-verifiable appliance evidence
 is available, such as command output, test logs, redacted journal output, API
 responses, or a recorded verification checklist.
+Public product images have a separate capture workflow; synthetic presentation
+images cannot serve as runtime or security evidence.
 
 ## Release identity and source
 
@@ -139,6 +141,9 @@ not merge a release pull request unless explicitly instructed.
 
 ## rc.4 public Proxmox stage (explicit Product Owner sequencing exception)
 
+This completed exception applies only to the rc.4 release. It does not change the standing
+pre-publication gates above for future releases.
+
 All normal final-main, native lifecycle, security, package and candidate gates must pass before
 tagging. The moving public launcher cannot resolve rc.4 until the actual GitHub release exists.
 The work order therefore authorizes a two-stage sequence, solely for this public-resolution gate:
@@ -181,7 +186,7 @@ actual delivery results; dated receipts and prior sequencing below retain their 
 | rc.4/public Proxmox (#87) | Published exact rc.4, fresh moving-main public path and lifecycle | Completed and #87 closed: published rc.4 resolution, helper/tag/source integrity, fresh guest install/access/health and lifecycle receipts retained. |
 | v1 RC | Bounded Astra High challenge, exact candidate checks and upgrade from qualified rc.4 | v1.0.0-rc.1 qualified and published; exact source/artifacts and install/upgrade evidence retained. |
 | Stable release | Exact-source checks, independent review, native installation/upgrades, verified tag/artifacts/checksums, stable/latest | v1.0.0 published as stable/latest; source/tag/artifacts/checksums and native paths verified. |
-| Official Docker (#90/#97) | Versioned image, immutable digest, provenance/SBOM, public anonymous pull and Compose qualification | `ghcr.io/kevindraai/exitlane:v1.0.0` published at `sha256:5bb6b96673ef255e070bc2ff47a39642c9db009493a7809569dfe7abd5d57fe5`; fresh anonymous tag/digest pulls, metadata binding, SPDX/SBOM and actual Compose/state/backup/restore/no-provider packet checks passed. Digest-bound signed provenance/SBOM verification is required before #90/#97 close; its source-bound result is recorded in the published release. No Docker latest alias. |
+| Official Docker (#90/#97) | Versioned image, immutable digest, provenance/SBOM, public anonymous pull and Compose qualification | `ghcr.io/kevindraai/exitlane:v1.0.0` published at `sha256:5bb6b96673ef255e070bc2ff47a39642c9db009493a7809569dfe7abd5d57fe5`; fresh anonymous tag/digest pulls, metadata binding, SPDX/SBOM and actual Compose/state/backup/restore/no-provider packet checks passed. Digest-bound signed provenance and SBOM verification passed; the source-bound result is recorded in the [published v1.0.0 release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0). No Docker latest alias. |
 | Operator documentation | Complete versioned Docker Quick Start, lifecycle and accurate native/Docker Help | [Quick Start](docker-deployment.md#quick-start) qualified through the unchanged published Compose/preflight path, with explicit LAN binds, durable state and backup/export/verify/restore. |
 | Repository/CI | One PR at a time, exact-head review/checks and fresh-main reconciliation | Applicable required CI/security, independent exact-head reviews and fresh-main reconciliation remain mandatory after each merge; the separately identified final-main SHA and hosted results are recorded in the published release. |
 
@@ -193,15 +198,11 @@ remain useful. Post-v1 features stay outside this wave.
 
 ## Historical readiness receipts and prior sequencing
 
-The executive order supersedes historical blocker classifications below: live PIA/Proton
-credentials are claim-specific (#72), reviewed supported-unfixed Debian findings are residual
-platform risks, and Docker publication is part of v1 delivery. This section records the prior
-readiness matrix; current source-bound completion receipts must reconcile every row. The preceding checklist remains the qualification
-contract; the roadmap links here rather than maintaining a second acceptance matrix. Source-bound
-receipts, hashes and hosted run results belong in linked issue/release records. A historical receipt
-is not a fresh candidate result. Reconcile this matrix after each accepted merge and before RC
-preparation. Independent Astra review is engineering evidence, not release authorization or an
-external penetration test.
+This section preserves the earlier planning matrix. Its "Current state," blocker and next-action
+columns describe the pre-release date when they were written. The completed v1 matrix above and
+the [published release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0) now govern
+release-status claims. The old records remain useful for tracing decisions, including the
+claim-specific PIA/Proton limitation and reviewed unfixed Debian residual risks.
 
 The authorized release ladder is **complete/reconcile 0.3.0-rc.4 → qualify v1.0.0-rc.1 → prepare
 v1.0.0**. Native Debian 13 amd64 remains the reference runtime. Docker support/publication and the

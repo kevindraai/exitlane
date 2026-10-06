@@ -8,7 +8,7 @@ Use the supported [Debian 13 `amd64` appliance](deployment.md). Native installat
 VM or supported privileged Proxmox LXC is required; the Docker development environment cannot
 install or manage the NordVPN client.
 
-NordVPN is also unavailable in the experimental Docker appliance. The
+NordVPN is also unavailable in the supported Docker appliance. The
 [container research decision](nordvpn-container-research.md) found the current official client
 incompatible with its qualified runtime contract: stock client 5.4.0 still writes the IPv6 sysctl
 against retained read-only kernel paths. Native NordVPN behavior is unchanged.

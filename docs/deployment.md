@@ -38,7 +38,7 @@ That is the native appliance target for 1.0.0; other Debian releases and archite
 supported release targets. The installer creates an isolated Python environment, installs the
 systemd unit, and prepares configuration, data, and log locations.
 
-The supported deployment method remains native Debian in the gateway VM or privileged LXC.
+The native deployment runs on Debian in a dedicated VM or privileged LXC.
 NordVPN uses `nordvpn`/`nordvpnd`; Mullvad, PIA and imported Proton profiles use ExitLane-owned
 direct WireGuard interfaces. Mullvad must not have an active app daemon or provider firewall table.
 
@@ -68,8 +68,7 @@ It creates a new privileged Debian 13 LXC with default or advanced settings and 
 confirmation, then reuses the same Debian installer at the resolved published tag.
 See the linked guide for release selection, trust and inspect-first operation.
 
-Use the published release tag. The following command becomes available when `v1.0.0` is
-published; do not substitute an unreviewed development branch for an appliance deployment:
+Install the published `v1.0.0` tag on a native Debian host or manually created LXC:
 
 ```bash
 git clone --branch v1.0.0 --depth 1 https://github.com/kevindraai/exitlane.git
@@ -81,9 +80,8 @@ After installation, open `http://<host>:8787` from the trusted management networ
 wizard. The router imports the generated WireGuard client configuration and owns the policy that
 selects which traffic uses Exitlane. See [Router integrations](router-integrations.md).
 
-Exact stable native installation, upgrades from qualified rc.4/v1 RC and recovery must have
-source-bound receipts in the [stable release notes](release-notes/1.0.0.md). Prior receipts
-remain historical evidence rather than being relabelled as final-source results.
+The [stable release notes](release-notes/1.0.0.md) record installation, upgrade and recovery
+qualification for the published source.
 
 ## First-run checklist
 
