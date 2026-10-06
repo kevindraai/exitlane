@@ -3403,12 +3403,24 @@ pre {
   vertical-align: top;
 }
 .wireguard-peer-table th { color: var(--text-muted); font-weight: 600; }
-.wireguard-peer-table td:first-child { min-width: 10rem; max-width: 19rem; overflow-wrap: anywhere; }
-.wireguard-peer-table td .technical-value { max-width: 13rem; }
-.wireguard-peer-description, .wireguard-peer-audit { display: block; margin-top: 0.35rem; color: var(--text-muted); }
-.wireguard-peer-table td:nth-child(6) span { display: block; white-space: nowrap; }
-.wireguard-peer-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; min-width: 10rem; }
-.wireguard-peer-actions .button { font-size: 0.8rem; padding: 0.4rem 0.6rem; }
+.wireguard-peer-table td { vertical-align: middle; white-space: nowrap; }
+.wireguard-peer-table td:first-child strong { display: block; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; }
+.wireguard-peer-table td .technical-value { max-width: none; white-space: nowrap; }
+.wireguard-peer-table td .technical-value wbr { display: none; }
+.wireguard-peer-table td:nth-child(6) div { display: flex; gap: 0.6rem; }
+.wireguard-peer-table td:last-child { width: 1%; text-align: right; }
+.wireguard-peer-menu-trigger { width: 2.25rem; height: 2.25rem; padding: 0.45rem; }
+.wireguard-peer-menu {
+  position: fixed; inset: auto; margin: 0; padding: 0.5rem;
+  min-width: 12rem; max-width: min(20rem, calc(100vw - 1rem));
+  max-height: calc(100vh - 1rem); overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 0.5rem;
+  background: var(--panel); color: var(--text);
+  box-shadow: 0 4px 16px var(--dialog-backdrop);
+}
+.wireguard-peer-menu .button { display: block; width: 100%; text-align: left; margin-top: 0.3rem; font-size: 0.85rem; }
+.wireguard-peer-menu-details { padding: 0.4rem; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.wireguard-peer-menu-details small { display: block; margin-top: 0.25rem; color: var(--text-muted); }
 #wireguard-peer-editor-dialog,
 #wireguard-peer-mutation-dialog,
 #wireguard-config-dialog {
@@ -3437,6 +3449,6 @@ pre {
   .wireguard-peer-table td::before { content: attr(data-label); color: var(--text-muted); font-weight: 600; }
   .wireguard-peer-table td:first-child { max-width: none; }
   .wireguard-peer-table td .technical-value { max-width: 100%; }
-  .wireguard-peer-table td:last-child { display: block; }
+  .wireguard-peer-table td:last-child { display: block; width: 100%; text-align: left; }
   .wireguard-peer-table td:last-child::before { display: block; margin-bottom: 0.5rem; }
 }

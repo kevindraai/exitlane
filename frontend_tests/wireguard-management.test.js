@@ -5,7 +5,7 @@ import {
   clearManagedConfiguration, configurationViewState, confirmPeerMutation,
   copyManagedConfiguration, handshakeLabel, initialiseWireGuardManagement,
   loadManagedPeers, openConfigurationQr, openPeerConfiguration, openPeerEditor,
-  openPeerMutation, peerActions, peerPath, peerStatusView, renderPeerList,
+  closePeerActions, openPeerActions, openPeerMutation, peerActions, peerPath, peerStatusView, renderPeerList,
   savePeerEditor, toggleManagedConfiguration,
 } from "../backend/exitlane/static/js/wireguard-management.js";
 import { getSlice, resetAuthenticatedState, updateSlice } from "../backend/exitlane/static/js/state.js";
@@ -35,8 +35,11 @@ class Element {
   getAttribute(name) { return this.attributes[name] ?? null; }
   removeAttribute(name) { delete this.attributes[name]; }
   addEventListener(name, callback) { if (!this.listeners.has(name)) this.listeners.set(name, []); this.listeners.get(name).push(callback); }
-  dispatch(name) { for (const callback of this.listeners.get(name) || []) callback({ currentTarget: this, preventDefault() {} }); }
+  dispatch(name, values = {}) { for (const callback of this.listeners.get(name) || []) callback({ currentTarget: this, preventDefault() {}, ...values }); }
   showModal() { this.open = true; }
+  showPopover() { this.open = true; }
+  hidePopover() { this.open = false; }
+  getBoundingClientRect() { return {top:100,bottom:140,right:1000,width:220,height:260}; }
   close() { if (this.open) { this.open = false; this.dispatch("close"); } }
   reportValidity() { return false; }
   remove() { if (this.parent) this.parent.children = this.parent.children.filter((item) => item !== this); this.isConnected = false; }
@@ -62,7 +65,7 @@ globalThis.document = {
   activeElement: null,
 };
 const windowEvents = new Map();
-globalThis.window = { addEventListener: (name, cb) => { windowEvents.set(name, cb); }, setTimeout() {}, dispatchEvent() {} };
+globalThis.window = { innerWidth:1440, innerHeight:900, addEventListener: (name, cb) => { windowEvents.set(name, cb); }, setTimeout() {}, dispatchEvent() {} };
 let copied = null;
 Object.defineProperty(globalThis, "navigator", { configurable: true, value: { clipboard: { writeText: async (value) => { copied = value; } } } });
 let requests = [];
@@ -80,7 +83,7 @@ const list = (peers = [router, deluge]) => ({ peers, total_peers: peers.length, 
 const config = { available: true, configuration: "PrivateKey = synthetic-private-B", filename: "exitlane-deluge-synology.conf" };
 
 function reset() {
-  clearManagedConfiguration(); requests = []; copied = null;
+  closePeerActions(); clearManagedConfiguration(); requests = []; copied = null;
   responseFor = (path) => path.endsWith("/config") ? config : list();
   for (const id of ["wireguard-config-dialog", "wireguard-qr-dialog", "wireguard-peer-editor-dialog", "wireguard-peer-mutation-dialog"]) element(id).close();
 }
@@ -303,4 +306,61 @@ test("accessible dialogs and complete English/Dutch labels cover all device flow
     for (const action of ["created", "updated", "regenerated", "revoked", "deleted"]) assert.match(locale.events.wireguard[`peer_${action}`], /\{name\}/);
     for (const action of ["regenerate", "revoke", "delete"]) assert.match(locale.wireguard_management[`${action}_title`], /\{name\}/);
   }
+});
+
+
+test("each row has one menu trigger; opening actions is private to the selected peer", () => {
+  reset(); renderPeerList(list());
+  const rows = element("wireguard-peer-list").children;
+  assert.equal(rows[0].querySelectorAll("button").length, 1);
+  const trigger = rows[1].querySelector("button");
+  assert.equal(trigger.getAttribute("aria-expanded"), "false");
+  openPeerActions(deluge, trigger);
+  const menu = element("wireguard-peer-actions-popover");
+  assert.equal(menu.open, true);
+  assert.equal(trigger.getAttribute("aria-expanded"), "true");
+  assert.match(menu.textContent, /Deluge - Synology.*Router.*Created/);
+  assert.deepEqual(menu.querySelectorAll("button").map(b => b.dataset.peerAction), peerActions(deluge));
+  assert.equal(requests.length, 0);
+  menu.querySelectorAll("button")[1].dispatch("click");
+  assert.equal(menu.open, false);
+  assert.equal(element("wireguard-peer-name").value, deluge.name);
+});
+
+test("open actions survive telemetry refresh and close when peer access changes", () => {
+  reset(); renderPeerList(list());
+  openPeerActions(deluge, element("wireguard-peer-list").children[1].querySelector("button"));
+  renderPeerList(list());
+  assert.equal(element("wireguard-peer-actions-popover").open, true);
+  assert.equal(element("wireguard-peer-list").children[1].querySelector("button").getAttribute("aria-expanded"), "true");
+  renderPeerList(list([router, {...deluge, status:"revoked"}]));
+  assert.equal(element("wireguard-peer-actions-popover").open, false);
+  openPeerActions({...deluge, status:"revoked"}, element("wireguard-peer-list").children[1].querySelector("button"));
+  assert.deepEqual(element("wireguard-peer-actions-popover").querySelectorAll("button").map(b => b.dataset.peerAction), ["edit", "regenerate", "delete"]);
+  windowEvents.get("pagehide")();
+  assert.equal(element("wireguard-peer-actions-popover").open, false);
+});
+
+test("new device uses a neutral translated name placeholder", async () => {
+  assert.match(markup, /placeholder="Name"/);
+  for (const [language, value] of [["en", "Name"], ["nl", "Naam"]]) {
+    const locale = JSON.parse(await readFile(new URL(`../backend/exitlane/static/locales/${language}.json`, import.meta.url), "utf8"));
+    assert.equal(locale.wireguard_management.name_placeholder, value);
+    assert.match(locale.wireguard_management.actions_for, /\{name\}/);
+  }
+});
+
+test("Escape returns focus to the trigger and light dismissal clears expanded state", () => {
+  reset(); renderPeerList(list());
+  const trigger = element("wireguard-peer-list").children[1].querySelector("button");
+  const menu = element("wireguard-peer-actions-popover");
+  assert.equal(trigger.getAttribute("popovertarget"), "wireguard-peer-actions-popover");
+  trigger.dispatch("click");
+  menu.dispatch("keydown", { key: "Escape" });
+  assert.equal(menu.open, false);
+  assert.equal(document.activeElement, trigger);
+  assert.equal(trigger.getAttribute("aria-expanded"), "false");
+  trigger.dispatch("click");
+  menu.dispatch("beforetoggle", { newState: "closed" });
+  assert.equal(trigger.getAttribute("aria-expanded"), "false");
 });
