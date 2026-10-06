@@ -87,6 +87,12 @@ Public Internet exposure, untrusted shared hosting and permanent active-scan tar
 unsupported. See `security-assurance-matrix.md` for test traceability and the published v1 release
 for final appliance qualification receipts.
 
+The [2026-10-06 Daybreak Blue-assisted assessment](daybreak-blue-assessment-2026-10-06.md)
+challenged the multi-device ingress transition and root-run evidence collector. The initial
+peer-adoption consistency and collector output-confinement findings were fixed and
+deterministically retested in PRs #143 and #144. Its assessed-source outcome remains
+historical; final release and appliance qualification require separate evidence.
+
 The [2026-09-30 Daybreak Blue-assisted assessment](daybreak-blue-assessment-2026-09-30.md)
 challenged these boundaries as an internal defensive exercise. It found and remediated two
 High-impact issues with substantial prerequisites plus bounded availability and parser findings.

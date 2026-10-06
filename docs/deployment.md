@@ -34,7 +34,7 @@ The reset requires explicit confirmation and revokes every browser session. Envi
 overrides retain precedence and must be corrected in the service configuration.
 
 Exitlane is currently designed as a single service on a dedicated Debian 13 `amd64` host or LXC.
-That is the native appliance target for 1.0.0; other Debian releases and architectures are not
+That is the native appliance target for 1.0.1; other Debian releases and architectures are not
 supported release targets. The installer creates an isolated Python environment, installs the
 systemd unit, and prepares configuration, data, and log locations.
 
@@ -46,7 +46,7 @@ The appliance Docker v1 contract is rootful Linux Docker Engine >=28, Compose v2
 It supports Mullvad, PIA and imported Proton WireGuard, with permanent provider-or-block
 protection. NordVPN remains native-only. Follow the [operator Quick Start](docker-deployment.md)
 for the versioned image, explicit LAN bindings, minimum privileges and durable state.
-Verify stable publication and exact final-image acceptance in the [v1 release receipts](release-notes/1.0.0.md#release-and-image-receipts).
+Verify publication and exact final-image acceptance in the [v1.0.1 release evidence](release-notes/1.0.1.md#release-evidence).
 The original development Compose surface is not this appliance path.
 
 The systemd service gives provider tooling a private writable home under `/var/lib/exitlane` while
@@ -68,10 +68,10 @@ It creates a new privileged Debian 13 LXC with default or advanced settings and 
 confirmation, then reuses the same Debian installer at the resolved published tag.
 See the linked guide for release selection, trust and inspect-first operation.
 
-Install the published `v1.0.0` tag on a native Debian host or manually created LXC:
+Once published, install the `v1.0.1` tag on a native Debian host or manually created LXC:
 
 ```bash
-git clone --branch v1.0.0 --depth 1 https://github.com/kevindraai/exitlane.git
+git clone --branch v1.0.1 --depth 1 https://github.com/kevindraai/exitlane.git
 cd exitlane
 sudo ./installer/install-debian.sh
 ```
@@ -80,8 +80,8 @@ After installation, open `http://<host>:8787` from the trusted management networ
 wizard. The router imports the generated WireGuard client configuration and owns the policy that
 selects which traffic uses Exitlane. See [Router integrations](router-integrations.md).
 
-The [stable release notes](release-notes/1.0.0.md) record installation, upgrade and recovery
-qualification for the published source.
+The [v1.0.1 release notes](release-notes/1.0.1.md) describe the upgrade path and
+separate required qualification evidence.
 
 ## First-run checklist
 

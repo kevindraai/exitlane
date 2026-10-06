@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.0.1] - 2026-10-06
 
 ### Added
 
@@ -14,6 +14,18 @@
 - Give the dashboard a compact operational overview and move each peer's actions into its own
   menu.
 - Record management-routing lock failures in Activity.
+
+### Fixed
+
+- Recover safely from failed initial WireGuard device adoption, preserving a retryable
+  appliance state across native and Docker runtimes.
+- Confine root-run native qualification evidence writes to pinned private directories.
+
+### Security
+
+- Publish the [2026-10-06 internal defensive assessment](docs/security/daybreak-blue-assessment-2026-10-06.md)
+  with its original Medium and Low findings, deterministic fix rechecks and scope limits.
+  Final release scans and appliance qualification remain separate gates.
 
 ## [1.0.0] - 2026-10-04
 
