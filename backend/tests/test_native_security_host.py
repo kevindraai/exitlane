@@ -147,7 +147,14 @@ def test_python_probe_isolated_without_site_hooks(host, monkeypatch):
     package.mkdir()
     (package / "METADATA").write_text("Metadata-Version: 2.1\nName: sample\nVersion: 1.0\n")
     result = host.python(sys.executable, "venv", str(prefix))
-    assert result["distributions"] == [{"name": "sample", "version": "1.0"}]
+    assert result["distributions"] == [
+        {
+            "name": "sample",
+            "version": "1.0",
+            "metadata_path": str(package / "METADATA"),
+            "metadata_sha256": hashlib.sha256((package / "METADATA").read_bytes()).hexdigest(),
+        }
+    ]
     assert result["interpreter"]["stdlib"] == sysconfig.get_path("stdlib")
     assert not marker.exists()
     assert not list(host.work.glob("__pycache__/*"))
@@ -541,6 +548,138 @@ def test_bootstrap_wheel_with_bundled_payload_without_manifest_records_gap(
     ]
 
 
+@pytest.mark.parametrize(
+    "fault",
+    [
+        None,
+        "modified_metadata",
+        "duplicate_header",
+        "missing_file",
+        "unhashed_source",
+        "foreign_cache",
+        "symlink",
+        "hardlink",
+        "fifo",
+    ],
+)
+def test_setuptools_installed_vendor_record_is_exact_and_cache_limited(tmp_path, fault):
+    import base64
+    import csv
+    import io
+
+    from native_security_host import PYTHON_PROBE
+
+    scope = {}
+    exec(PYTHON_PROBE.split("mode=sys.argv[1]", 1)[0], scope)  # noqa: S102 - owned probe helpers
+    site = tmp_path / "site-packages"
+    vendor = site / "setuptools/_vendor"
+    source = vendor / "dep/__init__.py"
+    metadata = vendor / "dep-1.0.dist-info/METADATA"
+    cache = vendor / "dep/__pycache__" / f"__init__.{sys.implementation.cache_tag}.pyc"
+    for path in (source, metadata, cache):
+        path.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(b"# public synthetic source\n")
+    metadata.write_bytes(b"Name: dep\nVersion: 1.0\n")
+    if fault == "duplicate_header":
+        metadata.write_bytes(b"Name: dep\nName: other\nVersion: 1.0\n")
+    cache.write_bytes(b"synthetic unverified cache")
+    parent = site / "setuptools-84.0.0.dist-info"
+    parent.mkdir()
+    rows = []
+    for path in (source, metadata, cache):
+        name = str(path.relative_to(site))
+        digest = (
+            "sha256="
+            + base64.urlsafe_b64encode(hashlib.sha256(path.read_bytes()).digest())
+            .rstrip(b"=")
+            .decode()
+        )
+        rows.append((name, digest, str(path.stat().st_size)))
+    if fault == "unhashed_source":
+        rows[0] = (rows[0][0], "", "")
+    rows[2] = (rows[2][0], "", "")
+    output = io.StringIO()
+    csv.writer(output).writerows(rows)
+    (parent / "RECORD").write_text(output.getvalue())
+    if fault == "modified_metadata":
+        metadata.write_text("Name: dep\nVersion: 2.0\n")
+    elif fault == "missing_file":
+        (vendor / "extra.py").write_text("# unlisted\n")
+    elif fault == "foreign_cache":
+        cache.rename(cache.with_name("__init__.cpython-999.pyc"))
+    elif fault == "symlink":
+        source.unlink()
+        source.symlink_to(metadata)
+    elif fault == "hardlink":
+        os.link(source, vendor / "copy.py")
+    elif fault == "fifo":
+        os.mkfifo(vendor / "object.fifo")
+    distribution = type("Distribution", (), {"_path": parent})()
+    if fault is None:
+        result = scope["installed_vendor"](distribution, vendor)
+        assert result["manifest"] == "dep==1.0\n"
+        assert result["unverified_cache_count"] == 1
+        assert result["kind"] == "verified_dist_info_record"
+    else:
+        with pytest.raises(ValueError):
+            scope["installed_vendor"](distribution, vendor)
+
+
+@pytest.mark.parametrize(
+    "fault", [None, "hash", "unlisted", "unhashed", "duplicate", "traversal", "duplicate_header"]
+)
+def test_setuptools_wheel_vendor_requires_complete_hashed_record(fault):
+    import base64
+    import csv
+    import io
+    import zipfile
+
+    from native_security_host import PYTHON_PROBE
+
+    scope = {}
+    exec(PYTHON_PROBE.split("mode=sys.argv[1]", 1)[0], scope)  # noqa: S102 - owned probe helpers
+    files = {
+        "setuptools/_vendor/dep/__init__.py": b"# synthetic source\n",
+        "setuptools/_vendor/dep-1.0.dist-info/METADATA": b"Name: dep\nVersion: 1.0\n",
+    }
+    if fault == "duplicate_header":
+        files["setuptools/_vendor/dep-1.0.dist-info/METADATA"] = (
+            b"Name: dep\nName: other\nVersion: 1.0\n"
+        )
+    parent_record = "setuptools-78.1.1.dist-info/RECORD"
+    rows = []
+    for name, raw in files.items():
+        digest = (
+            "sha256=" + base64.urlsafe_b64encode(hashlib.sha256(raw).digest()).rstrip(b"=").decode()
+        )
+        rows.append((name, digest, str(len(raw))))
+    if fault == "hash":
+        rows[0] = (rows[0][0], "sha256=" + "a" * 43, rows[0][2])
+    elif fault == "unlisted":
+        files["setuptools/_vendor/extra.py"] = b"extra"
+    elif fault == "unhashed":
+        rows[0] = (rows[0][0], "", "")
+    output = io.StringIO()
+    csv.writer(output).writerows(rows)
+    files[parent_record] = output.getvalue().encode()
+    if fault == "traversal":
+        files["../escape"] = b"unsafe"
+    memory = io.BytesIO()
+    with zipfile.ZipFile(memory, "w") as archive:
+        for name, raw in files.items():
+            archive.writestr(name, raw)
+        if fault == "duplicate":
+            archive.writestr("setuptools/_vendor/dep/__init__.py", b"duplicate")
+    with zipfile.ZipFile(io.BytesIO(memory.getvalue())) as archive:
+        if fault is None:
+            result = scope["wheel_vendor"](archive, archive.namelist(), parent_record)
+            assert result["manifest"] == "dep==1.0\n"
+            assert result["unverified_cache_count"] == 0
+        else:
+            with pytest.raises(ValueError):
+                scope["wheel_vendor"](archive, archive.namelist(), parent_record)
+
+
 def test_database_streaming_copy_hash_mode_and_bounded_chunks(host, monkeypatch):
     source = host.work / "synthetic-database"
     data = b"0123456789abcdef" * (200_000)
@@ -668,11 +807,15 @@ def test_isolated_python_probe_covers_distinfo_directory_and_single_file_egginfo
     monkeypatch.setattr(host, "run", run)
     result = host.python(sys.executable, "venv", str(prefix))
     assert calls[0][1:4] == ["-I", "-S", "-B"]
-    assert sorted(result["distributions"], key=lambda package: package["name"]) == [
+    distributions = sorted(result["distributions"], key=lambda package: package["name"])
+    assert [{"name": p["name"], "version": p["version"]} for p in distributions] == [
         {"name": "debian-directory", "version": "2.0"},
         {"name": "debian-single", "version": "3.0"},
         {"name": "modern", "version": "1.0"},
     ]
+    for package in distributions:
+        metadata = Path(package["metadata_path"])
+        assert package["metadata_sha256"] == hashlib.sha256(metadata.read_bytes()).hexdigest()
 
 
 @pytest.mark.parametrize("kind", ["directory_pkg_info", "single_file"])
