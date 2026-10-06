@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { chromium } from "playwright";
@@ -8,12 +8,15 @@ import { fixtureTime, sourceVersion } from "./synthetic-fixture.mjs";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const requestedOutput = process.env.EXITLANE_SCREENSHOT_QA_OUTPUT;
-const qaOutput = requestedOutput
+const qaPrefix = requestedOutput
   ? path.resolve(requestedOutput === "1" ? "/tmp/exitlane-visual-qa" : requestedOutput)
   : null;
-if (qaOutput && !qaOutput.startsWith("/tmp/")) {
-  throw new Error("EXITLANE_SCREENSHOT_QA_OUTPUT must be a directory under /tmp");
+if (qaPrefix && (path.dirname(qaPrefix) !== "/tmp" || !/^[a-zA-Z0-9._-]+$/.test(path.basename(qaPrefix)))) {
+  throw new Error("EXITLANE_SCREENSHOT_QA_OUTPUT must be a simple prefix directly under /tmp");
 }
+const qaOutput = qaPrefix ? await mkdtemp(`${qaPrefix}-`) : null;
+if (qaOutput) await chmod(qaOutput, 0o700);
+const writeQaFile = (name, contents) => writeFile(path.join(qaOutput, name), contents, { flag: "wx", mode: 0o600 });
 const git = (args) => {
   const result = spawnSync("git", args, { cwd: root, encoding: "utf8" });
   if (result.status !== 0) throw new Error(`git ${args[0]} failed: ${result.stderr || result.error?.message}`);
@@ -24,7 +27,6 @@ const source = qaOutput ? {
   tree: git(["rev-parse", "HEAD^{tree}"]),
   worktree_dirty_at_start: Boolean(git(["status", "--porcelain", "--untracked-files=normal"])),
 } : null;
-if (qaOutput) await mkdir(qaOutput, { recursive: true });
 
 const viewports = [
   { name: "desktop", width: 1440, height: 1000 },
@@ -45,7 +47,10 @@ const browser = await chromium.launch({ headless: true });
 const findings = [];
 const screenshots = [];
 const coverage = { authenticated_views: 0, initial_states: 0, overflows: 0, console_errors: 0 };
-const selected = new Set(["desktop/dark/en", "tablet/light/nl", "mobile/dark/en", "narrow/light/nl"]);
+const selected = new Set([
+  "desktop/dark/en", "tablet/light/nl",
+  "mobile/dark/en", "mobile/light/nl", "narrow/dark/en", "narrow/light/nl",
+]);
 let fatalError = null;
 try {
   for (const viewport of viewports) for (const color of ["light", "dark"]) for (const language of ["en", "nl"]) {
@@ -88,10 +93,73 @@ try {
       if (qaOutput && selected.has(`${viewport.name}/${color}/${language}`) && ["Dashboard", "VPN", "WireGuard"].includes(name)) {
         const file = `${viewport.name}-${color}-${language}-${name.toLowerCase()}.png`;
         await page.evaluate(() => scrollTo(0, 0));
-        await page.screenshot({ path: path.join(qaOutput, file), fullPage: true, animations: "disabled" });
+        await writeQaFile(file, await page.screenshot({ fullPage: true, animations: "disabled" }));
         screenshots.push(file);
       }
       if (panel === "wireguard") {
+        if (viewport.width <= 480) {
+          const cardFindings = await page.evaluate(() => {
+            const issues = [];
+            const within = (inner, outer) => inner.left >= outer.left - 1 && inner.right <= outer.right + 1
+              && inner.top >= outer.top - 1 && inner.bottom <= outer.bottom + 1;
+            const rows = [...document.querySelectorAll("#wireguard-peer-list tr")];
+            if (rows.length !== 3) issues.push(`expected three device cards, found ${rows.length}`);
+            for (const [rowIndex, row] of rows.entries()) {
+              const cells = [...row.querySelectorAll(":scope > td")];
+              if (cells.length !== 7) issues.push(`card ${rowIndex + 1}: expected seven fields, found ${cells.length}`);
+              for (const [cellIndex, cell] of cells.entries()) {
+                const field = cell.dataset.label || `field ${cellIndex + 1}`;
+                const style = getComputedStyle(cell);
+                const labelStyle = getComputedStyle(cell, "::before");
+                const value = cell.firstElementChild;
+                const cellRect = cell.getBoundingClientRect();
+                const valueRect = value?.getBoundingClientRect();
+                if (!cell.dataset.label || labelStyle.content === "none" || labelStyle.content === "normal") {
+                  issues.push(`card ${rowIndex + 1} ${field}: missing visible label`);
+                }
+                if (style.whiteSpace !== "normal" || labelStyle.whiteSpace !== "normal") {
+                  issues.push(`card ${rowIndex + 1} ${field}: label or field cannot wrap`);
+                }
+                if (!valueRect || !within(valueRect, cellRect)) {
+                  issues.push(`card ${rowIndex + 1} ${field}: value escapes its field`);
+                  continue;
+                }
+                const contentTop = cellRect.top + parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop);
+                let labelBottom;
+                if (style.display === "grid") {
+                  const columns = style.gridTemplateColumns.trim().split(/\s+/);
+                  const labelRowHeight = parseFloat(style.gridTemplateRows);
+                  if (columns.length !== 1 || !Number.isFinite(labelRowHeight) || labelRowHeight <= 0) {
+                    issues.push(`card ${rowIndex + 1} ${field}: label and value are not in separate grid rows`);
+                    continue;
+                  }
+                  labelBottom = contentTop + labelRowHeight;
+                } else if (cellIndex === cells.length - 1 && style.display === "block" && labelStyle.display === "block") {
+                  const lineHeight = parseFloat(labelStyle.lineHeight) || parseFloat(labelStyle.fontSize) * 1.2;
+                  labelBottom = contentTop + lineHeight;
+                } else {
+                  issues.push(`card ${rowIndex + 1} ${field}: unexpected field layout ${style.display}`);
+                  continue;
+                }
+                if (valueRect.top < labelBottom - 1) issues.push(`card ${rowIndex + 1} ${field}: value overlaps label`);
+                for (const child of value.querySelectorAll("*")) {
+                  if (child.matches("svg, path, use, wbr")) continue;
+                  if (!within(child.getBoundingClientRect(), cellRect)) {
+                    issues.push(`card ${rowIndex + 1} ${field}: nested value escapes its field`);
+                  }
+                }
+                if (value.matches(".technical-value") && value.scrollWidth > value.clientWidth + 1) {
+                  const valueStyle = getComputedStyle(value);
+                  if (valueStyle.overflow !== "hidden" || valueStyle.textOverflow !== "ellipsis" || value.title !== value.textContent) {
+                    issues.push(`card ${rowIndex + 1} ${field}: truncated technical value lacks a readable title`);
+                  }
+                }
+              }
+            }
+            return issues;
+          });
+          findings.push(...cardFindings.map((finding) => `${viewport.name}/${color}/${language}: WireGuard ${finding}`));
+        }
         if (viewport.width >= 900) {
           const actionsVisible = await page.evaluate(() => {
             const wrapper = document.querySelector("#wireguard-peers-content").getBoundingClientRect();
@@ -154,7 +222,7 @@ try {
     }
     if (qaOutput && viewport.name === "desktop" && color === "dark" && language === "en") {
       const file = `desktop-dark-en-${scenario}.png`;
-      await page.screenshot({ path: path.join(qaOutput, file), fullPage: true, animations: "disabled" });
+      await writeQaFile(file, await page.screenshot({ fullPage: true, animations: "disabled" }));
       screenshots.push(file);
     }
     findings.push(...intercepted.failures.map((value) => `${label}: ${value}`), ...errors.map((value) => `${label}: console ${value}`));
@@ -166,7 +234,7 @@ try {
   findings.push(`browser run: ${error.message}`);
 } finally {
   await browser.close();
-  if (qaOutput) await writeFile(path.join(qaOutput, "run-result.json"), `${JSON.stringify({
+  if (qaOutput) await writeQaFile("run-result.json", `${JSON.stringify({
     generated_at: new Date().toISOString(), mode: "synthetic-visual-qa", source,
     fixture_time: fixtureTime, matrix: {
       viewports, appearances: ["light", "dark"], languages: ["en", "nl"],
@@ -174,6 +242,7 @@ try {
     }, coverage, screenshots, findings,
   }, null, 2)}\n`);
 }
+if (qaOutput) console.log(`Private QA output: ${qaOutput}`);
 if (fatalError) throw fatalError;
 if (findings.length) throw new Error(findings.join("\n"));
 console.log("Visual QA passed: desktop/tablet/mobile/narrow, light/dark, EN/NL, seven views and safe initial states.");

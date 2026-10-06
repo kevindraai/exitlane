@@ -36,11 +36,13 @@ npm run visual:qa
 It covers desktop, tablet, mobile, and narrow layouts in light and dark mode,
 English and Dutch, across Dashboard, VPN, Diagnostics, WireGuard, Settings,
 Activity, and Help, plus the initial login and wizard screens. It checks page
-overflow, browser errors, popover boundaries and dismissal, and the killswitch
-information control. For a manual responsive review, set
-`EXITLANE_SCREENSHOT_QA_OUTPUT=/tmp/exitlane-visual-qa` before this command.
-That writes selected full-page Dashboard, VPN, WireGuard, login, and wizard
-browser images plus `run-result.json` with the source commit/tree, input worktree
+overflow, browser errors, popover boundaries and dismissal, the killswitch
+information control, and mobile WireGuard card layout. For a manual responsive
+review, set `EXITLANE_SCREENSHOT_QA_OUTPUT=/tmp/exitlane-visual-qa` before this
+command. This is a prefix: each run creates a new private directory and prints
+its path. Selected full-page Dashboard, VPN, WireGuard, login, and wizard images
+and `run-result.json` are created exclusively with `0600` permissions inside
+the `0700` directory. The result records source commit/tree, input worktree
 state, matrix coverage, and findings. QA output is local and is never a public
 capture or runtime qualification result.
 
