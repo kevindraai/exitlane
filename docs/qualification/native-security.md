@@ -17,7 +17,7 @@ The default command prints the intended observations without reading target
 metadata, invoking tools or creating an output directory:
 
 ```bash
-python3 /root/exitlane-candidate/scripts/qualification/native_security.py \
+python3 -I -S -B /root/exitlane-candidate/scripts/qualification/native_security.py \
   --application-source /root/exitlane-candidate \
   --output /root/native-security-2026-10-06
 ```
@@ -26,7 +26,7 @@ Add `--execute` to perform that read-only plan. Select pre-existing tools and a
 pre-populated Trivy database when they are outside the defaults:
 
 ```bash
-python3 /root/exitlane-candidate/scripts/qualification/native_security.py \
+python3 -I -S -B /root/exitlane-candidate/scripts/qualification/native_security.py \
   --application-source /root/exitlane-candidate \
   --output /root/native-security-2026-10-06 \
   --trivy /root/qualification-tools/trivy \
