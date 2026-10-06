@@ -17,7 +17,7 @@ class Element {
   constructor(tag = "div") {
     this.tagName = tag.toUpperCase(); this.children = []; this.dataset = {}; this.attributes = {};
     this.hidden = false; this.disabled = false; this.open = false; this.value = ""; this.listeners = new Map();
-    this.classList = { add() {}, toggle() {} };
+    this.classList = { add() {}, toggle() {} }; this.style = {}; this.isConnected = true;
   }
   set textContent(value) { this.children = []; this.text = String(value); }
   get textContent() { return this.children.length ? this.children.map((child) => child.textContent).join("") : this.text || ""; }
@@ -28,8 +28,8 @@ class Element {
   get href() { return this.getAttribute("href"); }
   set download(value) { this.setAttribute("download", value); }
   get download() { return this.getAttribute("download"); }
-  append(...items) { this.children.push(...items); }
-  appendChild(item) { this.append(item); item.isConnected = true; }
+  append(...items) { for (const item of items) { item.parent = this; item.isConnected = true; this.children.push(item); } }
+  appendChild(item) { this.append(item); }
   replaceChildren(...items) { this.text = ""; this.children = items; }
   setAttribute(name, value) { this.attributes[name] = String(value); }
   getAttribute(name) { return this.attributes[name] ?? null; }
@@ -39,7 +39,9 @@ class Element {
   showModal() { this.open = true; }
   close() { if (this.open) { this.open = false; this.dispatch("close"); } }
   reportValidity() { return false; }
-  remove() {}
+  remove() { if (this.parent) this.parent.children = this.parent.children.filter((item) => item !== this); this.isConnected = false; }
+  focus() { document.activeElement = this; }
+  select() { this.selected = true; }
   querySelectorAll(selector) {
     const matches = [];
     for (const child of this.children) { if (child.tagName?.toLowerCase() === selector) matches.push(child); matches.push(...(child.querySelectorAll?.(selector) || [])); }
@@ -57,6 +59,7 @@ globalThis.document = {
   querySelector: (selector) => elements.get(selector) || null,
   createElement: (tag) => new Element(tag), createElementNS: (_, tag) => new Element(tag),
   createTextNode: (text) => { const node = new Element(); node.textContent = text; return node; },
+  activeElement: null,
 };
 const windowEvents = new Map();
 globalThis.window = { addEventListener: (name, cb) => { windowEvents.set(name, cb); }, setTimeout() {}, dispatchEvent() {} };
@@ -145,6 +148,35 @@ test("configuration modal copy/download/QR target selected device and clear secr
   assert.equal(element("management-wireguard-config").textContent, "");
   assert.equal(element("wireguard-config-download").href, null);
   assert.equal(openConfigurationQr(), false);
+});
+
+test("copy works on trusted LAN HTTP without Clipboard API and clears temporary secret", async () => {
+  reset();
+  await openPeerConfiguration(deluge);
+  const previous = element("wireguard-config-copy");
+  previous.focus();
+  const originalNavigator = globalThis.navigator;
+  let temporary;
+  let copiedText;
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: {} });
+  document.execCommand = (action) => {
+    assert.equal(action, "copy");
+    temporary = document.activeElement;
+    assert.equal(temporary.selected, true);
+    copiedText = temporary.value;
+    return true;
+  };
+  try {
+    await copyManagedConfiguration();
+    assert.equal(copiedText, config.configuration);
+    assert.equal(temporary.value, "");
+    assert.equal(temporary.isConnected, false);
+    assert.equal(document.activeElement, previous);
+  } finally {
+    Object.defineProperty(globalThis, "navigator", { configurable: true, value: originalNavigator });
+    delete document.execCommand;
+    element("wireguard-config-dialog").close();
+  }
 });
 
 test("closing modal or losing authentication rejects a delayed secret response", async () => {

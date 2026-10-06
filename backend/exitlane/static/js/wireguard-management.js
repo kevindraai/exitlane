@@ -254,10 +254,37 @@ export function toggleManagedConfiguration() {
 export async function copyManagedConfiguration() {
   if (!currentConfiguration) return;
   try {
-    await navigator.clipboard.writeText(currentConfiguration);
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(currentConfiguration);
+      } catch {
+        copyWithTemporarySelection(currentConfiguration);
+      }
+    } else {
+      copyWithTemporarySelection(currentConfiguration);
+    }
     showMessage(t("wireguard_management.copied", {}, "Configuration copied."), "success");
   } catch {
     showMessage(t("wireguard_management.errors.copy_failed", {}, "Copying failed. Show and select the configuration manually."), "error");
+  }
+}
+
+function copyWithTemporarySelection(configuration) {
+  const input = document.createElement("textarea");
+  const previousFocus = document.activeElement;
+  input.value = configuration;
+  input.setAttribute("readonly", "");
+  input.style.position = "fixed";
+  input.style.opacity = "0";
+  select("#wireguard-config-dialog").appendChild(input);
+  try {
+    input.focus({ preventScroll: true });
+    input.select();
+    if (!document.execCommand?.("copy")) throw new Error("copy_failed");
+  } finally {
+    input.value = "";
+    input.remove();
+    if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
   }
 }
 
