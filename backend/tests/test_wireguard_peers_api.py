@@ -153,11 +153,22 @@ def test_peer_routes_require_auth_and_same_origin(client):
     assert len(client.get("/api/ingress/wireguard/peers").json()["peers"]) == 1
 
 
-@pytest.mark.parametrize("name", ["../device", "bad\nname", "bad\u202ename"])
+@pytest.mark.parametrize("name", [
+    "../device", "bad\nname", "bad\u202ename", "\nName", "Name\t", "\u0085Name",
+])
 def test_peer_api_rejects_unsafe_names(client, name):
     response = client.post("/api/ingress/wireguard/peers", json={"name": name})
     assert response.status_code == 400
     assert response.json() == {"error": "wireguard_peer_invalid_name"}
+
+
+@pytest.mark.parametrize("description", ["hello\r", "\tdevice", "note\u202e"])
+def test_peer_api_rejects_unsafe_descriptions(client, description):
+    response = client.post("/api/ingress/wireguard/peers", json={
+        "name": "Safe device", "description": description,
+    })
+    assert response.status_code == 400
+    assert response.json() == {"error": "wireguard_peer_invalid_description"}
 
 
 def test_old_named_download_cannot_expose_revoked_default(client):

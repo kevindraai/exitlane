@@ -61,11 +61,13 @@ def validate_name(value: str, *, description: bool = False) -> str:
     limit = 240 if description else 80
     if not isinstance(value, str) or len(value) > limit:
         raise PeerError("wireguard_peer_invalid_description" if description else "wireguard_peer_invalid_name")
-    value = value.strip()
-    if (not description and not value) or any(
+    if any(
         unicodedata.category(char).startswith("C") or char in "\\/" for char in value
     ):
         raise PeerError("wireguard_peer_invalid_description" if description else "wireguard_peer_invalid_name")
+    value = value.strip()
+    if not description and not value:
+        raise PeerError("wireguard_peer_invalid_name")
     if not description and value in {".", ".."}:
         raise PeerError("wireguard_peer_invalid_name")
     return value
