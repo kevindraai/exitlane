@@ -1,5 +1,10 @@
 # Disposable native lifecycle qualification
 
+For current post-v1 **read-only package/advisory evidence**, use the
+[native security collector](native-security.md). It does not invoke the mutating
+lifecycle stages described below or read their private snapshots. The historical
+release-specific lifecycle contract below remains separate.
+
 This is executable preparation for the [rc.4 qualification contract](0.3.0-rc.4.md),
 not a receipt claiming that a native release passed. The scripts live in
 `scripts/qualification/`; they are not installed into the product or exposed by its API.
