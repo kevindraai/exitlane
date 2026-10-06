@@ -52,7 +52,14 @@ def snapshot(module, *, source=False, restored=False):
             tables[name]["rows"] = tables[name]["complete_rows"] = ["synthetic-state"]
     return {
         "format": 1,
-        "database": {"metadata": {"mode": 0o600}, "tables": tables},
+        "database": {
+            "metadata": {"mode": 0o600},
+            "tables": tables,
+            "objects": {
+                f"table:{name}": {"table": name, "sql": f"CREATE TABLE {name}(id TEXT)"}
+                for name in tables
+            },
+        },
         "state_files": {
             "etc/exitlane/secret.key": {
                 "sha256": "source-key" if source or restored else "target-key"
@@ -251,7 +258,19 @@ def test_disaster_preconditions_fail_before_cli_and_started_marker(
     assert not (target.directory / "disaster.started").exists()
 
 
-@pytest.mark.parametrize("failure", ["cli", "defaults", "session", "staging", "api"])
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "cli",
+        "defaults",
+        "session",
+        "staging",
+        "api",
+        "schema-missing",
+        "schema-added",
+        "schema-altered",
+    ],
+)
 def test_failed_restore_retains_evidence_and_cannot_be_retried(
     disaster, prepared, monkeypatch, failure
 ):
@@ -269,6 +288,15 @@ def test_failed_restore_retains_evidence_and_cannot_be_retried(
         after = copy.deepcopy(snapshot(disaster, restored=True))
         if failure == "defaults":
             after["state_files"]["etc/default/exitlane"]["sha256"] = "changed"
+        elif failure == "schema-missing":
+            after["database"].pop("objects")
+        elif failure == "schema-added":
+            after["database"]["objects"]["index:unexpected"] = {
+                "table": "users",
+                "sql": "CREATE INDEX unexpected ON users(id)",
+            }
+        elif failure == "schema-altered":
+            after["database"]["objects"]["table:users"]["sql"] = "CREATE TABLE users(id BLOB)"
         else:
             after["database"]["tables"]["sessions"]["complete_rows"] = ["unrevoked"]
         observations = iter([snapshot(disaster), after])
