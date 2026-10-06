@@ -104,9 +104,13 @@ def test_native_ingress_sync_uses_private_temporary_file_and_cleans_up(tmp_path)
         )
         return 0, "", ""
 
-    asyncio.run(NativeSystemdRuntime().sync_ingress(
-        "wg0", source_directory=tmp_path, runner=launch,
-    ))
+    asyncio.run(
+        NativeSystemdRuntime().sync_ingress(
+            "wg0",
+            source_directory=tmp_path,
+            runner=launch,
+        )
+    )
     assert calls[1][:3] == ("wg", "syncconf", "wg0")
     assert list(tmp_path.iterdir()) == []
 

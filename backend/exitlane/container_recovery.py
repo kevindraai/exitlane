@@ -523,7 +523,9 @@ class ContainerRecoveryCoordinator:
                     for index, source in enumerate(sources):
                         copy = staging / f"wireguard-{index:03d}.conf"
                         _copy_file(source, copy)
-                        entry = lifecycle._inventory_entry("wireguard_config", copy.name, copy, 0o600)
+                        entry = lifecycle._inventory_entry(
+                            "wireguard_config", copy.name, copy, 0o600
+                        )
                         entry["original_name"] = source.name
                         files.append(entry)
             except PeerError as error:

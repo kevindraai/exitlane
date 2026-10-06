@@ -44,8 +44,10 @@ def synthetic_wireguard_keys(monkeypatch):
 
     async def public_key(private):
         raw = base64.b64decode(private, validate=True)
-        public = X25519PrivateKey.from_private_bytes(raw).public_key().public_bytes(
-            serialization.Encoding.Raw, serialization.PublicFormat.Raw
+        public = (
+            X25519PrivateKey.from_private_bytes(raw)
+            .public_key()
+            .public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
         )
         return base64.b64encode(public).decode()
 

@@ -21,15 +21,25 @@ def client(tmp_path, monkeypatch, synthetic_wireguard_keys):
     monkeypatch.setattr(main, "WG_DIR", core.WG_DIR)
     monkeypatch.setattr(main, "_wireguard_generation_lock", None)
     core.init()
-    asyncio.run(wireguard.create(
-        endpoint="192.0.2.5", subnet="10.98.240.0/29", dns="1.1.1.1",
-        interface="wg0", client="UniFi-Gateway",
-    ))
-    core.set_settings({
-        "wireguard_configured": True, "wireguard_interface": "wg0",
-        "wireguard_client_name": "UniFi-Gateway", "wireguard_subnet": "10.98.240.0/29",
-        "wireguard_endpoint": "192.0.2.5", "wireguard_port": 51820,
-    })
+    asyncio.run(
+        wireguard.create(
+            endpoint="192.0.2.5",
+            subnet="10.98.240.0/29",
+            dns="1.1.1.1",
+            interface="wg0",
+            client="UniFi-Gateway",
+        )
+    )
+    core.set_settings(
+        {
+            "wireguard_configured": True,
+            "wireguard_interface": "wg0",
+            "wireguard_client_name": "UniFi-Gateway",
+            "wireguard_subnet": "10.98.240.0/29",
+            "wireguard_endpoint": "192.0.2.5",
+            "wireguard_port": 51820,
+        }
+    )
 
     async def sync(_interface):
         return None
@@ -60,9 +70,13 @@ def client(tmp_path, monkeypatch, synthetic_wireguard_keys):
                 "INSERT INTO users(username,password_hash,salt) VALUES(?,?,?)",
                 ("admin", digest, salt),
             )
-        response = test_client.post("/api/auth/login", json={
-            "username": "admin", "password": "correct horse battery staple",
-        })
+        response = test_client.post(
+            "/api/auth/login",
+            json={
+                "username": "admin",
+                "password": "correct horse battery staple",
+            },
+        )
         assert response.status_code == 200
         yield test_client
 
@@ -82,9 +96,13 @@ def test_peer_api_full_lifecycle_and_private_config(client):
     assert listing.json()["peers"][0]["received_bytes"] == 123
     assert listing.json()["peers"][0]["endpoint"] == "198.51.100.7:51820"
 
-    response = client.post("/api/ingress/wireguard/peers", json={
-        "name": "Deluge - Synology", "description": "NAS container",
-    })
+    response = client.post(
+        "/api/ingress/wireguard/peers",
+        json={
+            "name": "Deluge - Synology",
+            "description": "NAS container",
+        },
+    )
     assert response.status_code == 201
     payload = response.json()
     peer_id = payload["peer"]["peer_id"]
@@ -93,7 +111,9 @@ def test_peer_api_full_lifecycle_and_private_config(client):
     assert payload["peer"]["tunnel_ip"] == "10.98.240.3"
     assert payload["configuration"] != original
     assert "PrivateKey" not in client.get("/api/ingress/wireguard/peers").text
-    assert client.get(f"/api/ingress/wireguard/peers/{peer_id}").json()["name"] == "Deluge - Synology"
+    assert (
+        client.get(f"/api/ingress/wireguard/peers/{peer_id}").json()["name"] == "Deluge - Synology"
+    )
 
     config_path = f"/api/ingress/wireguard/peers/{peer_id}/config"
     reveal = client.get(config_path)
@@ -106,9 +126,13 @@ def test_peer_api_full_lifecycle_and_private_config(client):
         assert item.headers["cache-control"] == "no-store, private"
         assert item.headers["pragma"] == "no-cache"
 
-    renamed = client.patch(f"/api/ingress/wireguard/peers/{peer_id}", json={
-        "name": "Deluge NAS", "description": "renamed",
-    })
+    renamed = client.patch(
+        f"/api/ingress/wireguard/peers/{peer_id}",
+        json={
+            "name": "Deluge NAS",
+            "description": "renamed",
+        },
+    )
     assert renamed.status_code == 200
     assert renamed.json()["public_key"] == old_key
     assert renamed.json()["tunnel_ip"] == "10.98.240.3"
@@ -125,13 +149,18 @@ def test_peer_api_full_lifecycle_and_private_config(client):
     assert client.get(config_path).status_code == 409
     assert client.get(config_path + "/download").status_code == 409
     assert client.get(config_path + "/qr").status_code == 409
-    assert client.get(f"/api/ingress/wireguard/peers/{peer_id}").json()["runtime_status"] == "revoked"
+    assert (
+        client.get(f"/api/ingress/wireguard/peers/{peer_id}").json()["runtime_status"] == "revoked"
+    )
     assert client.delete(f"/api/ingress/wireguard/peers/{peer_id}").status_code == 200
     assert client.get(f"/api/ingress/wireguard/peers/{peer_id}").status_code == 404
     with sqlite3.connect(core.DB) as connection:
-        events = [json.loads(row[0]) for row in connection.execute(
-            "SELECT metadata_json FROM events WHERE code LIKE 'wireguard.peer_%'"
-        )]
+        events = [
+            json.loads(row[0])
+            for row in connection.execute(
+                "SELECT metadata_json FROM events WHERE code LIKE 'wireguard.peer_%'"
+            )
+        ]
     assert len(events) == 5
     assert all(set(item) == {"peer_id", "name"} for item in events)
     assert "PrivateKey" not in str(events)
@@ -142,20 +171,36 @@ def test_peer_routes_require_auth_and_same_origin(client):
     for path in ("/api/ingress/wireguard/peers", "/api/ingress/wireguard/peers/abc/config"):
         assert client.get(path).status_code == 401
     assert client.post("/api/ingress/wireguard/peers", json={"name": "No auth"}).status_code == 401
-    assert client.post("/api/auth/login", json={
-        "username": "admin", "password": "correct horse battery staple",
-    }).status_code == 200
+    assert (
+        client.post(
+            "/api/auth/login",
+            json={
+                "username": "admin",
+                "password": "correct horse battery staple",
+            },
+        ).status_code
+        == 200
+    )
     response = client.post(
-        "/api/ingress/wireguard/peers", json={"name": "Cross origin"},
+        "/api/ingress/wireguard/peers",
+        json={"name": "Cross origin"},
         headers={"Origin": "https://evil.example"},
     )
     assert response.status_code == 403
     assert len(client.get("/api/ingress/wireguard/peers").json()["peers"]) == 1
 
 
-@pytest.mark.parametrize("name", [
-    "../device", "bad\nname", "bad\u202ename", "\nName", "Name\t", "\u0085Name",
-])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "../device",
+        "bad\nname",
+        "bad\u202ename",
+        "\nName",
+        "Name\t",
+        "\u0085Name",
+    ],
+)
 def test_peer_api_rejects_unsafe_names(client, name):
     response = client.post("/api/ingress/wireguard/peers", json={"name": name})
     assert response.status_code == 400
@@ -164,9 +209,13 @@ def test_peer_api_rejects_unsafe_names(client, name):
 
 @pytest.mark.parametrize("description", ["hello\r", "\tdevice", "note\u202e"])
 def test_peer_api_rejects_unsafe_descriptions(client, description):
-    response = client.post("/api/ingress/wireguard/peers", json={
-        "name": "Safe device", "description": description,
-    })
+    response = client.post(
+        "/api/ingress/wireguard/peers",
+        json={
+            "name": "Safe device",
+            "description": description,
+        },
+    )
     assert response.status_code == 400
     assert response.json() == {"error": "wireguard_peer_invalid_description"}
 
@@ -188,11 +237,15 @@ def test_runtime_status_maps_stale_never_and_revoked_by_public_key(client, monke
 
     async def dump(*args, **_kwargs):
         if args[:3] == ("wg", "show", "wg0"):
-            return 0, (
-                "server\tpublic\t51820\toff\n"
-                f"{first['public_key']}\t(none)\t203.0.113.9:12345\t0\t{old}\t7\t8\t25\n"
-                f"{second['public_key']}\t(none)\t(none)\t0\t0\t0\t0\t25\n"
-            ), ""
+            return (
+                0,
+                (
+                    "server\tpublic\t51820\toff\n"
+                    f"{first['public_key']}\t(none)\t203.0.113.9:12345\t0\t{old}\t7\t8\t25\n"
+                    f"{second['public_key']}\t(none)\t(none)\t0\t0\t0\t0\t25\n"
+                ),
+                "",
+            )
         return 1, "", ""
 
     monkeypatch.setattr(main, "command", dump)

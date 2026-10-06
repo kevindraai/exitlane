@@ -75,11 +75,13 @@ def _now() -> str:
 def validate_name(value: str, *, description: bool = False) -> str:
     limit = 240 if description else 80
     if not isinstance(value, str) or len(value) > limit:
-        raise PeerError("wireguard_peer_invalid_description" if description else "wireguard_peer_invalid_name")
-    if any(
-        unicodedata.category(char).startswith("C") or char in "\\/" for char in value
-    ):
-        raise PeerError("wireguard_peer_invalid_description" if description else "wireguard_peer_invalid_name")
+        raise PeerError(
+            "wireguard_peer_invalid_description" if description else "wireguard_peer_invalid_name"
+        )
+    if any(unicodedata.category(char).startswith("C") or char in "\\/" for char in value):
+        raise PeerError(
+            "wireguard_peer_invalid_description" if description else "wireguard_peer_invalid_name"
+        )
     value = value.strip()
     if not description and not value:
         raise PeerError("wireguard_peer_invalid_name")
@@ -99,9 +101,13 @@ def _read(path: Path) -> str:
     try:
         descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         facts = os.fstat(descriptor)
-        if (not stat.S_ISREG(facts.st_mode) or facts.st_nlink != 1
-            or facts.st_uid != os.geteuid() or facts.st_mode & 0o077
-            or facts.st_size > 65536):
+        if (
+            not stat.S_ISREG(facts.st_mode)
+            or facts.st_nlink != 1
+            or facts.st_uid != os.geteuid()
+            or facts.st_mode & 0o077
+            or facts.st_size > 65536
+        ):
             raise PeerError("wireguard_configuration_invalid")
         with os.fdopen(descriptor, "r", encoding="utf-8", closefd=False) as source:
             return source.read(65537)
@@ -118,10 +124,12 @@ def _sections(content: str) -> tuple[str, list[dict[str, str]]]:
         if "[Interface]" not in content:
             raise PeerError("wireguard_configuration_invalid")
         return content, []
-    prefix = content[:matches[0].start()]
+    prefix = content[: matches[0].start()]
     peers = []
     for index, match in enumerate(matches):
-        block = content[match.end(): matches[index + 1].start() if index + 1 < len(matches) else None]
+        block = content[
+            match.end() : matches[index + 1].start() if index + 1 < len(matches) else None
+        ]
         values: dict[str, str] = {}
         for raw in block.splitlines():
             line = raw.strip()
@@ -150,10 +158,16 @@ def _server(content: str) -> tuple[str, list[dict[str, str]], ipaddress.IPv4Inte
         if interface.network.prefixlen > 31:
             raise ValueError
         addresses = [ipaddress.IPv4Network(p["AllowedIPs"], strict=True) for p in peers]
-        if any(item.prefixlen != 32 or item.network_address not in interface.network
-               or not _assignable(interface, item.network_address) for item in addresses):
+        if any(
+            item.prefixlen != 32
+            or item.network_address not in interface.network
+            or not _assignable(interface, item.network_address)
+            for item in addresses
+        ):
             raise ValueError
-        if len(set(addresses)) != len(addresses) or len({p["PublicKey"] for p in peers}) != len(peers):
+        if len(set(addresses)) != len(addresses) or len({p["PublicKey"] for p in peers}) != len(
+            peers
+        ):
             raise ValueError
     except ValueError as error:
         raise PeerError("wireguard_configuration_invalid") from error
@@ -162,10 +176,18 @@ def _server(content: str) -> tuple[str, list[dict[str, str]], ipaddress.IPv4Inte
 
 def _assignable(server: ipaddress.IPv4Interface, candidate: ipaddress.IPv4Address) -> bool:
     network = server.network
-    return (candidate in network and candidate != server.ip and
-            (network.prefixlen >= 31 or candidate not in {
-                network.network_address, network.broadcast_address,
-            }))
+    return (
+        candidate in network
+        and candidate != server.ip
+        and (
+            network.prefixlen >= 31
+            or candidate
+            not in {
+                network.network_address,
+                network.broadcast_address,
+            }
+        )
+    )
 
 
 def _public_key_local(private: str) -> str:
@@ -173,8 +195,12 @@ def _public_key_local(private: str) -> str:
         raw = base64.b64decode(private, validate=True)
         if len(raw) != 32:
             raise ValueError
-        public = X25519PrivateKey.from_private_bytes(raw).public_key().public_bytes(
-            encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw
+        public = (
+            X25519PrivateKey.from_private_bytes(raw)
+            .public_key()
+            .public_bytes(
+                encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw
+            )
         )
         return base64.b64encode(public).decode()
     except (ValueError, TypeError) as error:
@@ -196,25 +222,32 @@ def validate_staged_state(database: Path, directory: Path) -> None:
     """Reject backup state whose claimed peer lifecycle differs from server keys."""
     try:
         with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
-            settings = {key: json.loads(value) for key, value in connection.execute(
-                "SELECT key,value FROM settings WHERE key IN "
-                "('wireguard_configured','wireguard_interface','wireguard_client_name')"
-            )}
+            settings = {
+                key: json.loads(value)
+                for key, value in connection.execute(
+                    "SELECT key,value FROM settings WHERE key IN "
+                    "('wireguard_configured','wireguard_interface','wireguard_client_name')"
+                )
+            }
             peer_table = _ordinary_table_present(connection, "wireguard_peers")
             profile_table = _ordinary_table_present(connection, "wireguard_ingress_profile")
             if not settings.get("wireguard_configured", False):
-                if peer_table and connection.execute(
-                    "SELECT COUNT(*) FROM wireguard_peers"
-                ).fetchone()[0]:
+                if (
+                    peer_table
+                    and connection.execute("SELECT COUNT(*) FROM wireguard_peers").fetchone()[0]
+                ):
                     raise PeerError("wireguard_configuration_invalid")
                 if profile_table and _profile(connection) is not None:
                     raise PeerError("wireguard_configuration_invalid")
                 return
             interface = settings.get("wireguard_interface", "wg0")
             client_name = settings.get("wireguard_client_name", "router")
-            if (not isinstance(interface, str) or not isinstance(client_name, str)
+            if (
+                not isinstance(interface, str)
+                or not isinstance(client_name, str)
                 or re.fullmatch(r"[A-Za-z0-9-]{1,15}", interface) is None
-                or re.fullmatch(r"[A-Za-z0-9_-]{1,64}", client_name) is None):
+                or re.fullmatch(r"[A-Za-z0-9_-]{1,64}", client_name) is None
+            ):
                 raise PeerError("wireguard_configuration_invalid")
             server = _read(directory / f"{interface}.conf")
             _, server_peers, server_address, server_private = _server(server)
@@ -228,7 +261,8 @@ def validate_staged_state(database: Path, directory: Path) -> None:
                 if profile["server_public_key"] != server_public:
                     raise PeerError("wireguard_configuration_invalid")
                 if {peer["PublicKey"]: peer["AllowedIPs"] for peer in server_peers} != {
-                    row["public_key"]: f"{row['tunnel_ip']}/32" for row in rows
+                    row["public_key"]: f"{row['tunnel_ip']}/32"
+                    for row in rows
                     if row["status"] == "active"
                 }:
                     raise PeerError("wireguard_configuration_invalid")
@@ -241,11 +275,14 @@ def validate_staged_state(database: Path, directory: Path) -> None:
                 remote = wireguard._value(client, "PublicKey", section="Peer")
                 address = wireguard._value(client, "Address", section="Interface")
                 tunnel = ipaddress.IPv4Interface(address or "")
-                if (tunnel.network.prefixlen != 32
+                if (
+                    tunnel.network.prefixlen != 32
                     or not _assignable(server_address, tunnel.ip)
                     or peer["AllowedIPs"] != f"{tunnel.ip}/32"
-                    or not private or _public_key_local(private) != peer["PublicKey"]
-                    or remote != server_public):
+                    or not private
+                    or _public_key_local(private) != peer["PublicKey"]
+                    or remote != server_public
+                ):
                     raise PeerError("wireguard_configuration_invalid")
                 return
             for row in rows:
@@ -259,13 +296,23 @@ def validate_staged_state(database: Path, directory: Path) -> None:
                 remote = wireguard._value(client, "PublicKey", section="Peer")
                 address = wireguard._value(client, "Address", section="Interface")
                 tunnel = ipaddress.IPv4Interface(address or "")
-                if (tunnel.network.prefixlen != 32
+                if (
+                    tunnel.network.prefixlen != 32
                     or str(tunnel.ip) != row["tunnel_ip"]
                     or not _assignable(server_address, tunnel.ip)
-                    or not private or _public_key_local(private) != row["public_key"]
-                    or remote != server_public):
+                    or not private
+                    or _public_key_local(private) != row["public_key"]
+                    or remote != server_public
+                ):
                     raise PeerError("wireguard_configuration_invalid")
-    except (OSError, sqlite3.DatabaseError, ValueError, TypeError, KeyError, json.JSONDecodeError) as error:
+    except (
+        OSError,
+        sqlite3.DatabaseError,
+        ValueError,
+        TypeError,
+        KeyError,
+        json.JSONDecodeError,
+    ) as error:
         raise PeerError("wireguard_configuration_invalid") from error
 
 
@@ -283,11 +330,14 @@ def _render(prefix: str, peers: list[dict[str, str]]) -> str:
 
 def _rows(connection: sqlite3.Connection) -> list[dict]:
     connection.row_factory = sqlite3.Row
-    return [dict(row) for row in connection.execute(
-        "SELECT peer_id, name, description, public_key, tunnel_ip, config_name, "
-        "status, is_default, created_at, updated_at, revoked_at "
-        "FROM wireguard_peers ORDER BY created_at, peer_id"
-    )]
+    return [
+        dict(row)
+        for row in connection.execute(
+            "SELECT peer_id, name, description, public_key, tunnel_ip, config_name, "
+            "status, is_default, created_at, updated_at, revoked_at "
+            "FROM wireguard_peers ORDER BY created_at, peer_id"
+        )
+    ]
 
 
 def _profile(connection: sqlite3.Connection) -> dict | None:
@@ -339,13 +389,25 @@ def _get(connection: sqlite3.Connection, peer_id: str) -> dict:
 
 
 def public_peer(row: dict) -> dict:
-    return {key: row[key] for key in (
-        "peer_id", "name", "description", "public_key", "tunnel_ip", "status",
-        "created_at", "updated_at", "revoked_at",
-    )}
+    return {
+        key: row[key]
+        for key in (
+            "peer_id",
+            "name",
+            "description",
+            "public_key",
+            "tunnel_ip",
+            "status",
+            "created_at",
+            "updated_at",
+            "revoked_at",
+        )
+    }
 
 
-async def _validate_state(connection: sqlite3.Connection, interface: str) -> tuple[str, list[dict[str, str]], ipaddress.IPv4Interface, list[dict]]:
+async def _validate_state(
+    connection: sqlite3.Connection, interface: str
+) -> tuple[str, list[dict[str, str]], ipaddress.IPv4Interface, list[dict]]:
     server_content = _read(_path(interface))
     prefix, server_peers, address, server_private = _server(server_content)
     rows = _rows(connection)
@@ -367,13 +429,19 @@ async def _validate_state(connection: sqlite3.Connection, interface: str) -> tup
         tunnel = wireguard._value(client, "Address", section="Interface")
         try:
             client_ip = ipaddress.IPv4Interface(tunnel or "")
-            if (client_ip.ip != ipaddress.IPv4Address(row["tunnel_ip"])
+            if (
+                client_ip.ip != ipaddress.IPv4Address(row["tunnel_ip"])
                 or client_ip.network.prefixlen != 32
-                or not _assignable(address, client_ip.ip)):
+                or not _assignable(address, client_ip.ip)
+            ):
                 raise ValueError
         except ValueError as error:
             raise PeerError("wireguard_configuration_invalid") from error
-        if not private or await wireguard._public_key(private) != row["public_key"] or remote_public != server_public:
+        if (
+            not private
+            or await wireguard._public_key(private) != row["public_key"]
+            or remote_public != server_public
+        ):
             raise PeerError("wireguard_configuration_invalid")
     return prefix, server_peers, address, rows
 
@@ -400,14 +468,23 @@ async def migrate_legacy(interface: str, client: str) -> bool:
         client_address = wireguard._value(client_content, "Address", section="Interface")
         try:
             tunnel = ipaddress.IPv4Interface(client_address or "")
-            if (tunnel.network.prefixlen != 32 or tunnel.ip not in server_address.network
-                or not _assignable(server_address, tunnel.ip)):
+            if (
+                tunnel.network.prefixlen != 32
+                or tunnel.ip not in server_address.network
+                or not _assignable(server_address, tunnel.ip)
+            ):
                 raise ValueError
-            if ipaddress.IPv4Network(peer["AllowedIPs"], strict=True) != ipaddress.IPv4Network(f"{tunnel.ip}/32"):
+            if ipaddress.IPv4Network(peer["AllowedIPs"], strict=True) != ipaddress.IPv4Network(
+                f"{tunnel.ip}/32"
+            ):
                 raise ValueError
         except ValueError as error:
             raise PeerError("wireguard_configuration_invalid") from error
-        if not client_private or await wireguard._public_key(client_private) != peer["PublicKey"] or remote_public != await wireguard._public_key(server_private):
+        if (
+            not client_private
+            or await wireguard._public_key(client_private) != peer["PublicKey"]
+            or remote_public != await wireguard._public_key(server_private)
+        ):
             raise PeerError("wireguard_configuration_invalid")
         endpoint = wireguard._value(client_content, "Endpoint", section="Peer")
         dns = wireguard._value(client_content, "DNS", section="Interface")
@@ -423,23 +500,42 @@ async def migrate_legacy(interface: str, client: str) -> bool:
         except ValueError as error:
             raise PeerError("wireguard_configuration_invalid") from error
         timestamp = _now()
-        profile = _validate_profile({
-            "endpoint": endpoint, "dns": dns, "allowed_ips": allowed,
-            "client_keepalive": keepalive, "server_keepalive": server_keepalive,
-            "server_public_key": await wireguard._public_key(server_private),
-        })
+        profile = _validate_profile(
+            {
+                "endpoint": endpoint,
+                "dns": dns,
+                "allowed_ips": allowed,
+                "client_keepalive": keepalive,
+                "server_keepalive": server_keepalive,
+                "server_public_key": await wireguard._public_key(server_private),
+            }
+        )
         connection.execute(
             """INSERT INTO wireguard_ingress_profile(singleton,endpoint,dns,allowed_ips,
                client_keepalive,server_keepalive,server_public_key) VALUES(1,?,?,?,?,?,?)""",
-            (profile["endpoint"], profile["dns"], profile["allowed_ips"],
-             profile["client_keepalive"], profile["server_keepalive"],
-             profile["server_public_key"]),
+            (
+                profile["endpoint"],
+                profile["dns"],
+                profile["allowed_ips"],
+                profile["client_keepalive"],
+                profile["server_keepalive"],
+                profile["server_public_key"],
+            ),
         )
         connection.execute(
             """INSERT INTO wireguard_peers(peer_id,name,description,public_key,tunnel_ip,
                config_name,status,is_default,created_at,updated_at,revoked_at)
                VALUES(?,?,?,?,?,?,'active',1,?,?,NULL)""",
-            (uuid.uuid4().hex, validate_name(client), "", peer["PublicKey"], str(tunnel.ip), client, timestamp, timestamp),
+            (
+                uuid.uuid4().hex,
+                validate_name(client),
+                "",
+                peer["PublicKey"],
+                str(tunnel.ip),
+                client,
+                timestamp,
+                timestamp,
+            ),
         )
         return True
 
@@ -455,8 +551,11 @@ def _allocate(address: ipaddress.IPv4Interface, rows: list[dict]) -> str:
 
 def _new_client(profile: dict, private_key: str, tunnel_ip: str) -> str:
     dns, remote = profile["dns"], profile["server_public_key"]
-    endpoint, allowed, keepalive = (profile["endpoint"], profile["allowed_ips"],
-                                    profile["client_keepalive"])
+    endpoint, allowed, keepalive = (
+        profile["endpoint"],
+        profile["allowed_ips"],
+        profile["client_keepalive"],
+    )
     if not all((dns, remote, endpoint, allowed)):
         raise PeerError("wireguard_configuration_invalid")
     return (
@@ -493,6 +592,7 @@ async def _change(interface: str, sync: Sync, operation) -> dict:
         except BaseException as error:
             connection.rollback()
             if written or new_files:
+
                 async def restore_previous():
                     for path, content in old_files.items():
                         wireguard._restore(path, content)
@@ -545,10 +645,19 @@ async def create(interface: str, name: str, description: str, sync: Sync) -> dic
         )
         server_path, client_path = _path(interface), _path(config_name)
         keepalive = str(profile["server_keepalive"])
-        next_peers = [*server_peers, {"PublicKey": public, "AllowedIPs": f"{tunnel_ip}/32", "PersistentKeepalive": keepalive}]
+        next_peers = [
+            *server_peers,
+            {
+                "PublicKey": public,
+                "AllowedIPs": f"{tunnel_ip}/32",
+                "PersistentKeepalive": keepalive,
+            },
+        ]
         return {
-            "peer": public_peer(_get(connection, peer_id)), "configuration": config,
-            "filename": filename(name), "available": True,
+            "peer": public_peer(_get(connection, peer_id)),
+            "configuration": config,
+            "filename": filename(name),
+            "available": True,
             "_old_files": {server_path: _read(server_path), client_path: None},
             "_new_files": {server_path: _render(prefix, next_peers), client_path: config},
         }
@@ -578,10 +687,18 @@ async def regenerate(interface: str, peer_id: str, sync: Sync) -> dict:
         client_path, server_path = _path(row["config_name"]), _path(interface)
         profile = _profile(connection)
         config = _new_client(profile, private, row["tunnel_ip"])
-        old_peer = next((peer for peer in server_peers if peer["PublicKey"] == row["public_key"]), None)
+        old_peer = next(
+            (peer for peer in server_peers if peer["PublicKey"] == row["public_key"]), None
+        )
         keepalive = (old_peer or {}).get("PersistentKeepalive", str(profile["server_keepalive"]))
-        replacement = {"PublicKey": public, "AllowedIPs": f"{row['tunnel_ip']}/32", "PersistentKeepalive": keepalive}
-        next_peers = [replacement if peer["PublicKey"] == row["public_key"] else peer for peer in server_peers]
+        replacement = {
+            "PublicKey": public,
+            "AllowedIPs": f"{row['tunnel_ip']}/32",
+            "PersistentKeepalive": keepalive,
+        }
+        next_peers = [
+            replacement if peer["PublicKey"] == row["public_key"] else peer for peer in server_peers
+        ]
         if row["status"] == "revoked":
             next_peers.append(replacement)
         connection.execute(
@@ -589,8 +706,10 @@ async def regenerate(interface: str, peer_id: str, sync: Sync) -> dict:
             (public, _now(), peer_id),
         )
         return {
-            "peer": public_peer(_get(connection, peer_id)), "configuration": config,
-            "filename": filename(row["name"]), "available": True,
+            "peer": public_peer(_get(connection, peer_id)),
+            "configuration": config,
+            "filename": filename(row["name"]),
+            "available": True,
             "_old_files": {server_path: _read(server_path), client_path: _read(client_path)},
             "_new_files": {server_path: _render(prefix, next_peers), client_path: config},
         }
@@ -648,6 +767,8 @@ async def configuration(interface: str, peer_id: str) -> dict:
         if row["status"] != "active":
             raise PeerError("wireguard_peer_revoked")
         return {
-            "available": True, "configuration": _read(_path(row["config_name"])),
-            "filename": filename(row["name"]), "peer": public_peer(row),
+            "available": True,
+            "configuration": _read(_path(row["config_name"])),
+            "filename": filename(row["name"]),
+            "peer": public_peer(row),
         }

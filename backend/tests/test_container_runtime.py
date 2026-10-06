@@ -141,13 +141,12 @@ def test_container_parser_accepts_multiple_peers_and_empty_revoked_server(tmp_pa
         "wg-office", "10.88.0.0/29", None
     )
     prefix = (
-        f"[Interface]\nAddress = 10.88.0.1/29\nPrivateKey = {KEY}\n"
-        f"ListenPort = 51821\n{hooks}\n"
+        f"[Interface]\nAddress = 10.88.0.1/29\nPrivateKey = {KEY}\nListenPort = 51821\n{hooks}\n"
     )
     path.write_text(
-        prefix +
-        f"\n[Peer]\nPublicKey = {KEY}\nAllowedIPs = 10.88.0.2/32\n" +
-        f"\n[Peer]\nPublicKey = {OTHER_KEY}\nAllowedIPs = 10.88.0.3/32\n",
+        prefix
+        + f"\n[Peer]\nPublicKey = {KEY}\nAllowedIPs = 10.88.0.2/32\n"
+        + f"\n[Peer]\nPublicKey = {OTHER_KEY}\nAllowedIPs = 10.88.0.3/32\n",
         encoding="ascii",
     )
     path.chmod(0o600)
@@ -932,13 +931,21 @@ def test_rolled_back_initial_guard_rebinds_identity_without_replacing_provider_b
     original_runner = ns.run
 
     async def runner(*args, **kwargs):
-        if (args[:3] in (("ip", "-4", "-j"), ("ip", "-6", "-j"))
+        if (
+            args[:3] in (("ip", "-4", "-j"), ("ip", "-6", "-j"))
             and "rule" in args
-            and ("guard", "wg-office", interface) in ns.commands):
-            return 0, json.dumps([
-                {"iif": "wg-office", "table": 51820, "priority": 20000},
-                {"iif": interface, "table": 51820, "priority": 20000},
-            ]), ""
+            and ("guard", "wg-office", interface) in ns.commands
+        ):
+            return (
+                0,
+                json.dumps(
+                    [
+                        {"iif": "wg-office", "table": 51820, "priority": 20000},
+                        {"iif": interface, "table": 51820, "priority": 20000},
+                    ]
+                ),
+                "",
+            )
         return await original_runner(*args, **kwargs)
 
     network.runner = runner

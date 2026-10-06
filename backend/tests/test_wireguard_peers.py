@@ -18,18 +18,23 @@ def migrated(tmp_path, monkeypatch, synthetic_wireguard_keys):
 
     async def prepare():
         await wireguard.create(
-            endpoint="192.0.2.5", subnet="10.98.240.0/29", dns="1.1.1.1",
-            interface="wg0", client="UniFi-Gateway",
+            endpoint="192.0.2.5",
+            subnet="10.98.240.0/29",
+            dns="1.1.1.1",
+            interface="wg0",
+            client="UniFi-Gateway",
         )
         before = {path.name: path.read_bytes() for path in core.WG_DIR.iterdir()}
         assert await wireguard_peers.migrate_legacy("wg0", "UniFi-Gateway")
         assert not await wireguard_peers.migrate_legacy("wg0", "UniFi-Gateway")
         assert before == {path.name: path.read_bytes() for path in core.WG_DIR.iterdir()}
-        core.set_settings({
-            "wireguard_configured": True,
-            "wireguard_interface": "wg0",
-            "wireguard_client_name": "UniFi-Gateway",
-        })
+        core.set_settings(
+            {
+                "wireguard_configured": True,
+                "wireguard_interface": "wg0",
+                "wireguard_client_name": "UniFi-Gateway",
+            }
+        )
         return before
 
     return asyncio.run(prepare())
@@ -62,7 +67,9 @@ def test_create_edit_regenerate_revoke_delete_and_empty_pool_recovery(migrated):
         assert a["filename"] == "exitlane-deluge-synology.conf"
         assert len(wireguard_peers._server(core.WG_DIR.joinpath("wg0.conf").read_text())[1]) == 3
         assert core.WG_DIR.joinpath("UniFi-Gateway.conf").read_bytes() == original_client
-        assert wireguard._value(original_server, "PrivateKey", section="Interface") == wireguard._value(
+        assert wireguard._value(
+            original_server, "PrivateKey", section="Interface"
+        ) == wireguard._value(
             core.WG_DIR.joinpath("wg0.conf").read_text(), "PrivateKey", section="Interface"
         )
         edited = await wireguard_peers.update("wg0", a["peer"]["peer_id"], "Deluge NAS", "changed")
@@ -71,7 +78,9 @@ def test_create_edit_regenerate_revoke_delete_and_empty_pool_recovery(migrated):
         rotated = await wireguard_peers.regenerate("wg0", a["peer"]["peer_id"], sync)
         assert rotated["peer"]["public_key"] != a["peer"]["public_key"]
         assert rotated["peer"]["tunnel_ip"] == a["peer"]["tunnel_ip"]
-        assert wireguard_peers.get_peer(b["peer"]["peer_id"])["public_key"] == b["peer"]["public_key"]
+        assert (
+            wireguard_peers.get_peer(b["peer"]["peer_id"])["public_key"] == b["peer"]["public_key"]
+        )
         await wireguard_peers.revoke("wg0", a["peer"]["peer_id"], sync)
         with pytest.raises(wireguard_peers.PeerError, match="wireguard_peer_revoked"):
             await wireguard_peers.configuration("wg0", a["peer"]["peer_id"])
@@ -98,7 +107,10 @@ def test_exhaustion_and_revoked_ip_stays_reserved(migrated):
     async def scenario():
         created = [await wireguard_peers.create("wg0", str(index), "", sync) for index in range(4)]
         assert {item["peer"]["tunnel_ip"] for item in created} == {
-            "10.98.240.3", "10.98.240.4", "10.98.240.5", "10.98.240.6"
+            "10.98.240.3",
+            "10.98.240.4",
+            "10.98.240.5",
+            "10.98.240.6",
         }
         with pytest.raises(wireguard_peers.PeerError, match="wireguard_address_pool_exhausted"):
             await wireguard_peers.create("wg0", "Overflow", "", sync)
@@ -185,14 +197,19 @@ def test_encrypted_backup_restore_preserves_two_peers_and_revocation(
     original_files = {path.name: path.read_bytes() for path in core.WG_DIR.iterdir()}
     backup = tmp_path / "multipeer.elb"
     lifecycle.create_backup(
-        backup, "correct horse battery staple", effective_user_id=0,
+        backup,
+        "correct horse battery staple",
+        effective_user_id=0,
         lock_path=tmp_path / "lifecycle.lock",
     )
     assert b"PrivateKey" not in backup.read_bytes()
     asyncio.run(wireguard_peers.update("wg0", active["peer"]["peer_id"], "Mutated", ""))
     lifecycle.restore_backup(
-        backup, "correct horse battery staple", confirmation="RESTORE EXITLANE",
-        effective_user_id=0, lock_path=tmp_path / "lifecycle.lock",
+        backup,
+        "correct horse battery staple",
+        confirmation="RESTORE EXITLANE",
+        effective_user_id=0,
+        lock_path=tmp_path / "lifecycle.lock",
     )
     assert wireguard_peers.list_peers() == original_rows
     assert {path.name: path.read_bytes() for path in core.WG_DIR.iterdir()} == original_files
@@ -222,24 +239,29 @@ def test_restore_rejects_backup_with_revoked_peer_still_on_server(
     revoked = asyncio.run(prepare())
     server_path = core.WG_DIR / "wg0.conf"
     valid_server = server_path.read_bytes()
-    server_path.write_bytes(valid_server + (
-        f"\n[Peer]\nPublicKey = {revoked['public_key']}\n"
-        f"AllowedIPs = {revoked['tunnel_ip']}/32\nPersistentKeepalive = 25\n"
-    ).encode())
+    server_path.write_bytes(
+        valid_server
+        + (
+            f"\n[Peer]\nPublicKey = {revoked['public_key']}\n"
+            f"AllowedIPs = {revoked['tunnel_ip']}/32\nPersistentKeepalive = 25\n"
+        ).encode()
+    )
     server_path.chmod(0o600)
     if uppercase_tables:
         with sqlite3.connect(core.DB) as connection:
-            connection.execute('ALTER TABLE wireguard_peers RENAME TO intermediate_peers')
+            connection.execute("ALTER TABLE wireguard_peers RENAME TO intermediate_peers")
             connection.execute('ALTER TABLE intermediate_peers RENAME TO "WIREGUARD_PEERS"')
             connection.execute(
-                'ALTER TABLE wireguard_ingress_profile RENAME TO intermediate_profile'
+                "ALTER TABLE wireguard_ingress_profile RENAME TO intermediate_profile"
             )
             connection.execute(
                 'ALTER TABLE intermediate_profile RENAME TO "WIREGUARD_INGRESS_PROFILE"'
             )
     backup = tmp_path / "invalid-multipeer.elb"
     lifecycle.create_backup(
-        backup, "correct horse battery staple", effective_user_id=0,
+        backup,
+        "correct horse battery staple",
+        effective_user_id=0,
         lock_path=tmp_path / "lifecycle.lock",
     )
     server_path.write_bytes(valid_server)
@@ -247,18 +269,21 @@ def test_restore_rejects_backup_with_revoked_peer_still_on_server(
     if uppercase_tables:
         with sqlite3.connect(core.DB) as connection:
             connection.execute('ALTER TABLE "WIREGUARD_PEERS" RENAME TO intermediate_peers')
-            connection.execute('ALTER TABLE intermediate_peers RENAME TO wireguard_peers')
+            connection.execute("ALTER TABLE intermediate_peers RENAME TO wireguard_peers")
             connection.execute(
                 'ALTER TABLE "WIREGUARD_INGRESS_PROFILE" RENAME TO intermediate_profile'
             )
             connection.execute(
-                'ALTER TABLE intermediate_profile RENAME TO wireguard_ingress_profile'
+                "ALTER TABLE intermediate_profile RENAME TO wireguard_ingress_profile"
             )
     rows = wireguard_peers.list_peers()
     with pytest.raises(lifecycle.LifecycleError, match="wireguard_configuration_invalid"):
         lifecycle.restore_backup(
-            backup, "correct horse battery staple", confirmation="RESTORE EXITLANE",
-            effective_user_id=0, lock_path=tmp_path / "lifecycle.lock",
+            backup,
+            "correct horse battery staple",
+            confirmation="RESTORE EXITLANE",
+            effective_user_id=0,
+            lock_path=tmp_path / "lifecycle.lock",
         )
     assert server_path.read_bytes() == valid_server
     assert wireguard_peers.list_peers() == rows

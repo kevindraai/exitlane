@@ -368,12 +368,15 @@ def test_dashboard_peer_projection_preserves_named_runtime_traffic_without_priva
                     "description": "description-sentinel",
                     "tunnel_ip": "10.0.0.2",
                 }
-                for index, (name, state) in enumerate([
-                    ("router", "active_recently"),
-                    ("Synology", "inactive"),
-                    ("Laptop", "never_connected"),
-                    ("Old device", "revoked"),
-                ], 1)
+                for index, (name, state) in enumerate(
+                    [
+                        ("router", "active_recently"),
+                        ("Synology", "inactive"),
+                        ("Laptop", "never_connected"),
+                        ("Old device", "revoked"),
+                    ],
+                    1,
+                )
             ],
         }
 
@@ -385,13 +388,21 @@ def test_dashboard_peer_projection_preserves_named_runtime_traffic_without_priva
     assert result.wireguard.peer_count == 4
     assert [peer["name"] for peer in peers] == ["router", "Synology", "Laptop", "Old device"]
     assert [peer["runtime_status"] for peer in peers] == [
-        "active_recently", "inactive", "never_connected", "revoked",
+        "active_recently",
+        "inactive",
+        "never_connected",
+        "revoked",
     ]
     assert peers[1]["received_bytes"] == 2048
     assert peers[1]["sent_bytes"] == 4096
     assert peers[-1]["status"] == "revoked"
     assert set(peers[0]) == {
-        "peer_id", "name", "status", "runtime_status", "received_bytes", "sent_bytes",
+        "peer_id",
+        "name",
+        "status",
+        "runtime_status",
+        "received_bytes",
+        "sent_bytes",
     }
     assert "sentinel" not in json.dumps(result.model_dump(mode="json"))
 
