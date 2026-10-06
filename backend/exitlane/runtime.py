@@ -253,6 +253,19 @@ class NativeSystemdRuntime:
         if active_rc != 0:
             raise RuntimeError(active_error or "De WireGuard-service is niet actief geworden.")
 
+    async def sync_ingress(self, interface: str, *, source_directory, runner) -> None:
+        """Update only WireGuard peer state; preserve the live interface and sessions."""
+        self.capabilities.require("ingress")
+        path = source_directory / f"{interface}.conf"
+        rc, stripped, _ = await runner("wg-quick", "strip", str(path), timeout=10)
+        if rc != 0 or not stripped:
+            raise RuntimeError("wireguard_sync_failed")
+        rc, _, _ = await runner(
+            "wg", "syncconf", interface, "/dev/stdin", input_text=stripped + "\n", timeout=10
+        )
+        if rc != 0:
+            raise RuntimeError("wireguard_sync_failed")
+
     def restore_ingress(self, *, start: bool, core, lifecycle, killswitch) -> None:
         self.capabilities.require("restore")
         if not core.setting("wireguard_configured", False):
@@ -384,6 +397,9 @@ class ContainerRuntime:
         await self.client.request("ingress", {"action": "activate", "interface": _interface})
         await self.configure_providers(_interface)
         await self.client.request("ingress", {"action": "observe", "interface": _interface})
+
+    async def sync_ingress(self, interface: str, **_kwargs):
+        await self.client.request("ingress", {"action": "sync", "interface": interface})
 
     async def configure_providers(self, interface_override=None):
         from exitlane import core

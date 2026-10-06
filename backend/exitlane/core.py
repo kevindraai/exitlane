@@ -139,6 +139,30 @@ def init_database(path):
                 encrypted_payload BLOB NOT NULL,
                 updated_at INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS wireguard_peers(
+                peer_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                public_key TEXT NOT NULL UNIQUE,
+                tunnel_ip TEXT NOT NULL UNIQUE,
+                config_name TEXT NOT NULL UNIQUE,
+                status TEXT NOT NULL CHECK(status IN ('active', 'revoked')),
+                is_default INTEGER NOT NULL DEFAULT 0 CHECK(is_default IN (0, 1)),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                revoked_at TEXT
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS wireguard_default_peer_idx
+                ON wireguard_peers(is_default) WHERE is_default = 1;
+            CREATE TABLE IF NOT EXISTS wireguard_ingress_profile(
+                singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                endpoint TEXT NOT NULL,
+                dns TEXT NOT NULL,
+                allowed_ips TEXT NOT NULL,
+                client_keepalive INTEGER NOT NULL,
+                server_keepalive INTEGER NOT NULL,
+                server_public_key TEXT NOT NULL
+            );
             """
         )
         user_columns = {row[1] for row in c.execute("PRAGMA table_info(users)")}

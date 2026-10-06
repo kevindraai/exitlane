@@ -212,7 +212,7 @@ class ContainerController:
             raise EntrypointError("container_ingress_lease_revoked")
         if (
             set(payload) != {"action", "interface"}
-            or payload["action"] not in {"activate", "observe"}
+            or payload["action"] not in {"activate", "observe", "sync"}
             or not isinstance(payload["interface"], str)
             or INTERFACE.fullmatch(payload["interface"]) is None
         ):
@@ -222,6 +222,12 @@ class ContainerController:
         )
         if self.network and self.network.config.interface != config.interface:
             raise EntrypointError("container_ingress_config_invalid")
+        if payload["action"] == "sync":
+            if not self.network:
+                raise EntrypointError("container_interface_ownership_unproven")
+            await self.observe_policy(config=self.network.config)
+            await self.network.sync_owned_ingress(config)
+            return {"active": True}
         if payload["action"] == "activate":
             previous = self.network
             await self.arm_maintenance((self.identity(config),))

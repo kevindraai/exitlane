@@ -87,6 +87,7 @@ from exitlane.services import (
     provider_secrets,
     speedtest_installation,
     vpn_operations,
+    wireguard_peers,
 )
 from exitlane.services import wireguard as wireguard_service
 from exitlane.services.credentials import CredentialError, change_password
@@ -334,6 +335,16 @@ class WireGuard(BaseModel):
     )
 
 
+class WireGuardPeerCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=240)
+
+
+class WireGuardPeerUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=240)
+
+
 class Webhook(BaseModel):
     name: str = Field(
         min_length=1,
@@ -399,6 +410,14 @@ async def _initialize_runtime_state() -> None:
                 logger.info("Migrated WireGuard forwarding to provider-neutral egress")
         except wireguard_service.WireGuardConfigurationError as error:
             logger.error("WireGuard egress migration failed safely: %s", error.code)
+    if setting("wireguard_configured", False):
+        try:
+            await wireguard_peers.migrate_legacy(
+                setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE),
+                setting("wireguard_client_name", DEFAULT_WIREGUARD_CLIENT),
+            )
+        except (wireguard_peers.PeerError, wireguard_service.WireGuardConfigurationError) as error:
+            logger.error("WireGuard peer migration failed safely: %s", error.code)
     try:
         await management_routing.reconcile()
     except management_routing.ManagementRoutingError as error:
@@ -731,7 +750,8 @@ def apply_security_headers(headers, request):
     headers["Cross-Origin-Opener-Policy"] = "same-origin"
     headers["Cross-Origin-Resource-Policy"] = "same-origin"
     headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
-    headers["Cache-Control"] = SENSITIVE_CACHE_CONTROL
+    if "Cache-Control" not in headers or "no-store" not in headers["Cache-Control"]:
+        headers["Cache-Control"] = SENSITIVE_CACHE_CONTROL
     if "server" in headers:
         del headers["server"]
     if request_security(request).scheme == "https":
@@ -3907,6 +3927,10 @@ async def activate_wireguard_interface(interface: str) -> None:
     )
 
 
+async def sync_wireguard_interface(interface: str) -> None:
+    await runtime.sync_ingress(interface, source_directory=WG_DIR, runner=command)
+
+
 async def wireguard_egress_interface() -> None:
     """Use the kernel-selected default route for direct or active-provider egress."""
 
@@ -3930,6 +3954,12 @@ async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
         async with generation_lock, AsyncExitStack() as provider_locks:
             for item in provider_registry.direct_egress_providers():
                 await provider_locks.enter_async_context(item._operation_lock)
+            if setting("wireguard_configured", False) and (
+                wireguard_peers.list_peers() or (WG_DIR / f"{req.interface}.conf").exists()
+            ):
+                return JSONResponse(
+                    status_code=409, content={"error": "wireguard_ingress_already_configured"}
+                )
             if req.interface != setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE):
                 if setting("wireguard_configured", False):
                     return JSONResponse(
@@ -3969,6 +3999,8 @@ async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
                     "setup_current_step": 5,
                 }
             )
+            if (WG_DIR / f"{req.interface}.conf").exists():
+                await wireguard_peers.migrate_legacy(req.interface, req.client)
     except provider_secrets.ProviderSecretError as error:
         raise HTTPException(status_code=503, detail="provider_state_unavailable") from error
     except ValueError as error:
@@ -3981,6 +4013,8 @@ async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
             status_code=500,
             detail=error.code,
         ) from error
+    except wireguard_peers.PeerError as error:
+        raise HTTPException(status_code=500, detail=error.code) from error
 
     await _reconcile_management_routes_or_503(request_actor(request))
 
@@ -4017,6 +4051,14 @@ def wireguard_generation_lock() -> asyncio.Lock:
 async def _current_wireguard_configuration() -> dict | None:
     interface = setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE)
     client = setting("wireguard_client_name", DEFAULT_WIREGUARD_CLIENT)
+    peers = wireguard_peers.list_peers()
+    if peers:
+        default = next((peer for peer in peers if peer["is_default"]), None)
+        if default is None or default["status"] != "active":
+            return None
+        result = await wireguard_peers.configuration(interface, default["peer_id"])
+        return {"client_name": client, "filename": "exitlane-wireguard.conf",
+                "client_config": result["configuration"]}
     return await wireguard_service.read_current(interface, client)
 
 
@@ -4046,12 +4088,9 @@ async def download_wireguard_configuration() -> Response:
         return _private_response({"error": error.code}, status_code=409)
     if configuration is None:
         return _private_response({"error": "wireguard_configuration_missing"}, status_code=404)
-    client = setting("wireguard_client_name", DEFAULT_WIREGUARD_CLIENT)
-    response = FileResponse(
-        path=WG_DIR / f"{client}.conf",
-        media_type="application/x-wireguard-profile",
-        filename="exitlane-wireguard.conf",
-    )
+    response = Response(content=configuration["client_config"],
+                        media_type="application/x-wireguard-profile",
+                        headers={"Content-Disposition": 'attachment; filename="exitlane-wireguard.conf"'})
     response.headers["Cache-Control"] = "no-store, private"
     response.headers["Pragma"] = "no-cache"
     return response
@@ -4090,6 +4129,25 @@ async def regenerate_wireguard_configuration(request: Request) -> JSONResponse:
         return _private_response({"error": "wireguard_generation_in_progress"}, status_code=409)
     interface = setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE)
     client = setting("wireguard_client_name", DEFAULT_WIREGUARD_CLIENT)
+    peers = wireguard_peers.list_peers()
+    if peers:
+        default = next((peer for peer in peers if peer["is_default"]), None)
+        if default is None:
+            return _private_response({"error": "wireguard_configuration_missing"}, status_code=404)
+        try:
+            async with generation_lock:
+                result = await wireguard_peers.regenerate(
+                    interface, default["peer_id"], sync_wireguard_interface
+                )
+        except wireguard_peers.PeerError as error:
+            return _peer_error_response(error)
+        record_event("wireguard.configuration_regenerated", actor=request_actor(request),
+                     metadata={"client_name": client})
+        record_event("wireguard.peer_regenerated", actor=request_actor(request),
+                     metadata={"peer_id": default["peer_id"], "name": default["name"]})
+        return _private_response({"ok": True, "available": True, "client_name": client,
+                                  "filename": "exitlane-wireguard.conf",
+                                  "configuration": result["configuration"]})
     try:
         if await wireguard_service.read_current(interface, client) is None:
             raise wireguard_service.WireGuardConfigurationError("wireguard_configuration_missing")
@@ -4146,6 +4204,13 @@ async def wireguard_client_config(name: str) -> FileResponse:
 
     path = WG_DIR / f"{name}.conf"
 
+    peers = wireguard_peers.list_peers()
+    if peers and not any(
+        peer["is_default"] and peer["status"] == "active" and peer["config_name"] == name
+        for peer in peers
+    ):
+        raise HTTPException(status_code=404, detail="WireGuard client configuration not found")
+
     if not path.exists():
         raise HTTPException(
             status_code=404,
@@ -4158,6 +4223,189 @@ async def wireguard_client_config(name: str) -> FileResponse:
         filename=f"exitlane-{name}.conf",
         headers={"Cache-Control": "no-store, private", "Pragma": "no-cache"},
     )
+
+
+WIREGUARD_RECENT_SECONDS = 180  # Six missed 25-second keepalives plus scheduling margin.
+
+
+def _peer_error_response(error: wireguard_peers.PeerError) -> JSONResponse:
+    code = error.code
+    status = (404 if code == "wireguard_peer_not_found" else
+              400 if code.startswith("wireguard_peer_invalid_") else
+              500 if code in {"wireguard_peer_mutation_failed", "wireguard_rollback_failed"} else 409)
+    return _private_response({"error": code}, status_code=status)
+
+
+def _runtime_peers(rows: list[dict], kernel_peers: list[dict], *, active: bool) -> list[dict]:
+    by_key = {peer["public_key"]: peer for peer in kernel_peers}
+    now = int(time.time())
+    output = []
+    for row in rows:
+        peer = by_key.get(row["public_key"], {}) if row["status"] == "active" else {}
+        handshake = peer.get("latest_handshake", 0)
+        age = max(0, now - handshake) if handshake else None
+        if row["status"] == "revoked":
+            runtime_status = "revoked"
+        elif not handshake:
+            runtime_status = "never_connected" if active else "inactive"
+        elif active and age is not None and age <= WIREGUARD_RECENT_SECONDS:
+            runtime_status = "active_recently"
+        else:
+            runtime_status = "inactive"
+        output.append({
+            **wireguard_peers.public_peer(row), "runtime_status": runtime_status,
+            "latest_handshake": handshake, "handshake_age": age,
+            "endpoint": peer.get("endpoint") if peer.get("endpoint") not in {"(none)", ""} else None,
+            "received_bytes": peer.get("received_bytes", 0),
+            "sent_bytes": peer.get("sent_bytes", 0),
+        })
+    return output
+
+
+@app.get("/api/ingress/wireguard/peers")
+async def list_wireguard_peers() -> JSONResponse:
+    try:
+        status = await wireguard_status()
+        rows = wireguard_peers.list_peers()
+    except wireguard_peers.PeerError as error:
+        return _peer_error_response(error)
+    peers = _runtime_peers(rows, status.get("peers", []), active=status["active"])
+    return _private_response({
+        "peers": peers, "total_peers": len(peers),
+        "recent_peers": sum(peer["runtime_status"] == "active_recently" for peer in peers),
+        "interface": status["interface"],
+        "subnet": setting("wireguard_subnet", DEFAULT_WIREGUARD_SUBNET),
+        "listen_port": setting("wireguard_port", DEFAULT_WIREGUARD_PORT),
+        "endpoint": setting("wireguard_endpoint"), "active": status["active"],
+    })
+
+
+@app.post("/api/ingress/wireguard/peers")
+async def create_wireguard_peer(req: WireGuardPeerCreate, request: Request) -> JSONResponse:
+    runtime.capabilities.require("ingress")
+    lock = wireguard_generation_lock()
+    if lock.locked():
+        return _private_response({"error": "wireguard_generation_in_progress"}, status_code=409)
+    if not setting("wireguard_configured", False):
+        return _private_response({"error": "wireguard_configuration_missing"}, status_code=409)
+    try:
+        async with lock:
+            result = await wireguard_peers.create(
+                setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE),
+                req.name, req.description, sync_wireguard_interface,
+            )
+    except wireguard_peers.PeerError as error:
+        return _peer_error_response(error)
+    record_event("wireguard.peer_created", actor=request_actor(request),
+                 metadata={"peer_id": result["peer"]["peer_id"], "name": result["peer"]["name"]})
+    return _private_response(result, status_code=201)
+
+
+@app.get("/api/ingress/wireguard/peers/{peer_id}")
+async def get_wireguard_peer(peer_id: str) -> JSONResponse:
+    try:
+        row = wireguard_peers.get_peer(peer_id)
+        status = await wireguard_status()
+    except wireguard_peers.PeerError as error:
+        return _peer_error_response(error)
+    return _private_response(_runtime_peers([row], status.get("peers", []), active=status["active"])[0])
+
+
+@app.patch("/api/ingress/wireguard/peers/{peer_id}")
+async def update_wireguard_peer(peer_id: str, req: WireGuardPeerUpdate, request: Request) -> JSONResponse:
+    lock = wireguard_generation_lock()
+    if lock.locked():
+        return _private_response({"error": "wireguard_generation_in_progress"}, status_code=409)
+    try:
+        async with lock:
+            peer = await wireguard_peers.update(
+                setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE),
+                peer_id, req.name, req.description,
+            )
+    except wireguard_peers.PeerError as error:
+        return _peer_error_response(error)
+    record_event("wireguard.peer_updated", actor=request_actor(request),
+                 metadata={"peer_id": peer_id, "name": peer["name"]})
+    return _private_response(peer)
+
+
+@app.get("/api/ingress/wireguard/peers/{peer_id}/config")
+async def wireguard_peer_configuration(peer_id: str) -> JSONResponse:
+    try:
+        config = await wireguard_peers.configuration(
+            setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE), peer_id
+        )
+    except wireguard_peers.PeerError as error:
+        return _peer_error_response(error)
+    return _private_response(config)
+
+
+@app.get("/api/ingress/wireguard/peers/{peer_id}/config/download")
+async def download_wireguard_peer_configuration(peer_id: str) -> Response:
+    try:
+        config = await wireguard_peers.configuration(
+            setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE), peer_id
+        )
+    except wireguard_peers.PeerError as error:
+        return _peer_error_response(error)
+    return Response(
+        content=config["configuration"], media_type="application/x-wireguard-profile",
+        headers={"Content-Disposition": f'attachment; filename="{config["filename"]}"',
+                 "Cache-Control": "no-store, private", "Pragma": "no-cache"},
+    )
+
+
+@app.get("/api/ingress/wireguard/peers/{peer_id}/config/qr")
+async def wireguard_peer_configuration_qr(peer_id: str) -> Response:
+    try:
+        config = await wireguard_peers.configuration(
+            setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE), peer_id
+        )
+    except wireguard_peers.PeerError as error:
+        return _peer_error_response(error)
+    output = BytesIO()
+    segno.make_qr(config["configuration"], error="m").save(
+        output, kind="svg", scale=5, xmldecl=False,
+        svgclass="wireguard-qr-svg", lineclass="wireguard-qr-modules",
+    )
+    return Response(content=output.getvalue(), media_type="image/svg+xml",
+                    headers={"Cache-Control": "no-store, private", "Pragma": "no-cache"})
+
+
+@app.post("/api/ingress/wireguard/peers/{peer_id}/regenerate")
+async def regenerate_wireguard_peer(peer_id: str, request: Request) -> JSONResponse:
+    return await _mutate_wireguard_peer("regenerated", peer_id, request)
+
+
+@app.post("/api/ingress/wireguard/peers/{peer_id}/revoke")
+async def revoke_wireguard_peer(peer_id: str, request: Request) -> JSONResponse:
+    return await _mutate_wireguard_peer("revoked", peer_id, request)
+
+
+@app.delete("/api/ingress/wireguard/peers/{peer_id}")
+async def delete_wireguard_peer(peer_id: str, request: Request) -> JSONResponse:
+    return await _mutate_wireguard_peer("deleted", peer_id, request)
+
+
+async def _mutate_wireguard_peer(action: str, peer_id: str, request: Request) -> JSONResponse:
+    runtime.capabilities.require("ingress")
+    lock = wireguard_generation_lock()
+    if lock.locked():
+        return _private_response({"error": "wireguard_generation_in_progress"}, status_code=409)
+    interface = setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE)
+    try:
+        async with lock:
+            if action == "regenerated":
+                result = await wireguard_peers.regenerate(interface, peer_id, sync_wireguard_interface)
+            elif action == "revoked":
+                result = await wireguard_peers.revoke(interface, peer_id, sync_wireguard_interface)
+            else:
+                result = {"peer": await wireguard_peers.delete(interface, peer_id)}
+    except wireguard_peers.PeerError as error:
+        return _peer_error_response(error)
+    record_event(f"wireguard.peer_{action}", actor=request_actor(request),
+                 metadata={"peer_id": peer_id, "name": result["peer"]["name"]})
+    return _private_response(result)
 
 
 @app.get("/api/ingress/wireguard/status")
@@ -4173,7 +4421,7 @@ async def wireguard_status() -> dict:
 
     service_active = await runtime.observe_ingress(interface, runner=command)
 
-    rc, out, err = await command(
+    rc, out, _err = await command(
         "wg",
         "show",
         interface,
@@ -4196,7 +4444,8 @@ async def wireguard_status() -> dict:
             "connected": False,
             "interface": interface,
             "client": client_name,
-            "message": (err or "De WireGuard-interface is niet actief."),
+            "message": "De WireGuard-interface is niet actief.",
+            "peers": _runtime_peers(wireguard_peers.list_peers(), [], active=False),
         }
 
     lines = [line for line in out.splitlines() if line.strip()]
@@ -4211,9 +4460,12 @@ async def wireguard_status() -> dict:
 
         public_key = columns[0]
         endpoint = columns[2]
-        latest_handshake = int(columns[4] or 0)
-        received_bytes = int(columns[5] or 0)
-        sent_bytes = int(columns[6] or 0)
+        try:
+            latest_handshake = int(columns[4] or 0)
+            received_bytes = int(columns[5] or 0)
+            sent_bytes = int(columns[6] or 0)
+        except ValueError:
+            continue
 
         peers.append(
             {
@@ -4225,15 +4477,18 @@ async def wireguard_status() -> dict:
             }
         )
 
+    raw_peers = peers
+    peers = _runtime_peers(wireguard_peers.list_peers(), raw_peers, active=True)
     latest_handshake = max(
         (peer["latest_handshake"] for peer in peers),
         default=0,
     )
+    recent = any(peer["runtime_status"] == "active_recently" for peer in peers)
     configured = bool(setting("wireguard_configured", False))
     observe_wireguard_state(
         configured=configured,
         active=True,
-        handshake=latest_handshake > 0,
+        handshake=recent,
         interface=interface,
         client=client_name,
     )
@@ -4242,7 +4497,7 @@ async def wireguard_status() -> dict:
         "configured": configured,
         "active": True,
         "service_active": service_active,
-        "connected": latest_handshake > 0,
+        "connected": recent,
         "interface": interface,
         "client": client_name,
         "latest_handshake": latest_handshake,

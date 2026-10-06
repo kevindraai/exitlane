@@ -59,9 +59,8 @@ def appliance(tmp_path, monkeypatch):
 
     async def provision(**kwargs):
         # Only this kernel-facing part is mocked, not wizard/MFA/provider persistence.
-        core.WG_DIR.mkdir(parents=True, exist_ok=True)
-        (core.WG_DIR / "wg-qa.conf").write_text("fixture ingress")
-        return {"ok": True}
+        kwargs.pop("activate")
+        return await main.wireguard_service.create(**kwargs)
 
     monkeypatch.setattr(main.runtime, "diagnostics", diagnostics)
     monkeypatch.setattr(main, "command", command)

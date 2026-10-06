@@ -20,7 +20,8 @@ The encrypted backup contains:
 - encrypted Mullvad account, registered-device and WireGuard key state stored in SQLite;
 - encrypted PIA username, password and active WireGuard generation state stored in SQLite;
 - encrypted Proton imported profile keys and active WireGuard generation state stored in SQLite;
-- regular WireGuard configuration files owned by ExitLane;
+- named ingress-peer metadata in SQLite, including IDs, public keys, addresses and revocation;
+- regular root-only WireGuard server and per-peer client configuration files owned by ExitLane;
 - a versioned manifest with logical file types, sizes, modes, and SHA-256
   checksums.
 
@@ -108,6 +109,21 @@ Backups contain highly sensitive appliance data even though they are encrypted.
 Use a strong unique passphrase, keep multiple offline copies, restrict access,
 and test restore regularly.
 
+## WireGuard ingress identities
+
+Backup captures the shared server configuration, each peer's root-only client configuration and
+its SQLite metadata together. Restore preserves server/client keys, peer IDs and tunnel IPs;
+revoked peers remain revoked and are excluded from the active server. Restore does not generate
+new keys to repair inconsistent peer state. The additive peer table retains database schema
+version 1 and encrypted backup format version 1; peers are appliance state, not a new backup type.
+Install a compatible application that understands multi-peer state before restoring such a backup;
+the unchanged envelope version is not permission to downgrade to the v1 single-peer application.
+
+After restore, compare the device list and addresses with the source, confirm every expected
+active configuration remains usable and a revoked configuration remains unavailable. Test traffic
+from at least two consumers and verify separate handshake/endpoint attribution. Keep the original
+appliance isolated before bringing a restored copy online: they share a server identity.
+
 ## Mullvad identity and appliance migration
 
 For direct Mullvad egress, the encrypted database and master key preserve the registered device and
@@ -131,7 +147,7 @@ For recovery onto another appliance:
    the original key from the authenticated backup.
 5. Sign in again with the restored administrator account and complete MFA. Previous browser
    sessions and pending MFA challenges/enrollments are revoked.
-6. Confirm the expected ingress interface and client profile, the provider's signed-in state and
+6. Confirm the expected ingress interface, device list and per-peer identities, the provider's signed-in state and
    killswitch policy. Reconnect Mullvad explicitly; check internet access, DNS and the public exit
    from an actual routed client before redirecting production traffic.
 7. Confirm management access from its trusted network and retain the encrypted backup until the

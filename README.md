@@ -2,7 +2,7 @@
 
 **Smart egress for every network.**
 
-ExitLane is a self-hosted egress appliance for routers, VLANs, and selected devices. Your router maintains one permanent WireGuard tunnel to ExitLane, while ExitLane manages outbound connection through NordVPN, Mullvad, PIA, or imported Proton VPN profiles.
+ExitLane is a self-hosted egress appliance for routers, VLANs, and selected devices. Each router, device or container uses its own named WireGuard peer on one shared ingress interface, while ExitLane manages outbound connection through NordVPN, Mullvad, PIA, or imported Proton VPN profiles.
 
 ExitLane **1.0.0** provides the v1 appliance contract: native Debian 13 amd64 supports
 NordVPN, Mullvad, PIA and imported Proton WireGuard; the Docker appliance supports the three
@@ -108,9 +108,11 @@ DNS, external-IP, and bandwidth-aware Speedtest actions remain explicit administ
 
 ![ExitLane connection diagnostics](docs/images/exitlane-diagnostics.png)
 
-### WireGuard router tunnel
+### WireGuard ingress devices
 
-View the connected router peer and manage the current client configuration. The configuration can be viewed, copied, downloaded, shown as a QR code, or regenerated.
+Manage multiple named devices on one WireGuard ingress interface. Give each consumer its own keypair and tunnel IP; view its last handshake, endpoint and traffic, then rename, regenerate or revoke it independently. Reveal, copy, download or show each active device configuration as a QR code.
+
+Use a separate peer for each consumer, for example `UniFi Gateway` and `Deluge - Synology`. Do not copy one profile to multiple devices: separate identities provide correct traffic attribution, independent revocation and avoid WireGuard endpoint flapping. See [WireGuard configuration management](docs/wireguard-configuration.md).
 
 ![ExitLane WireGuard configuration management](docs/images/exitlane-wireguard.png)
 
@@ -135,9 +137,11 @@ the relevant operational screen.
 
 ### WireGuard ingress
 
-- Generate a WireGuard ingress interface and router client configuration.
-- Monitor the connected router tunnel and transferred traffic.
-- View, copy, download, display as QR code, or regenerate the current configuration.
+- Manage multiple named devices with independent keys and unique tunnel IPs on one ingress interface.
+- Attribute last handshake, remote endpoint and RX/TX to each device.
+- Add, rename, reveal, copy, download, display as QR code, regenerate, revoke and delete devices independently.
+- Preserve the existing v1 router identity automatically during migration.
+- Send all ingress peers through the same active egress provider and shared protection rules.
 
 ### Authentication and security
 

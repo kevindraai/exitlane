@@ -39,11 +39,18 @@ route. Conflicting direct-provider intents fail closed. Pending recovery generat
 same guard, and every systemd-managed `wg-quick`
 ingress requires successful completion of this unit before it can start.
 
+The WireGuard service also imports valid legacy single-client state into a first named peer
+without generating keys or changing the existing client profile. The migration is idempotent and
+rejects inconsistent state safely. Restart reconstructs active peers on the same ingress interface;
+revoked peers are never silently reactivated. SQLite peer metadata and root-only configuration
+files belong to the same persistent appliance state in native and container runtimes.
+
 ## Wizard
 
 An incomplete setup selects wizard mode. Only setup data and public configuration needed for the
 guided flow are loaded. The wizard owns the progression through system checks, administrator
-creation, provider choice, WireGuard setup, and completion. Provider choice is an independent
+creation, provider choice, WireGuard setup, and completion. WireGuard setup creates the first
+named peer; additional consumers are created in the authenticated WireGuard management page. Provider choice is an independent
 multi-select: none, NordVPN, Mullvad VPN, or both. Selected providers can be installed,
 authenticated, or individually skipped. One ready provider becomes active automatically; multiple
 ready providers require an explicit active choice. Deferred mode keeps the normal host route as

@@ -17,6 +17,7 @@ from exitlane.container_runtime import (
 from exitlane.services.wireguard import _forwarding_rules
 
 KEY = base64.b64encode(bytes(range(32))).decode()
+OTHER_KEY = base64.b64encode(bytes(reversed(range(32)))).decode()
 
 
 def config():
@@ -132,6 +133,30 @@ def test_native_generated_hooks_validated_but_not_executed(tmp_path):
     assert "PostUp" not in parsed.wireguard_payload()
     assert "iptables" not in parsed.wireguard_payload()
     assert KEY not in repr(parsed)
+
+
+def test_container_parser_accepts_multiple_peers_and_empty_revoked_server(tmp_path):
+    path = tmp_path / "wg-office.conf"
+    hooks = "PostUp = sysctl -w net.ipv4.ip_forward=1\n" + _forwarding_rules(
+        "wg-office", "10.88.0.0/29", None
+    )
+    prefix = (
+        f"[Interface]\nAddress = 10.88.0.1/29\nPrivateKey = {KEY}\n"
+        f"ListenPort = 51821\n{hooks}\n"
+    )
+    path.write_text(
+        prefix +
+        f"\n[Peer]\nPublicKey = {KEY}\nAllowedIPs = 10.88.0.2/32\n" +
+        f"\n[Peer]\nPublicKey = {OTHER_KEY}\nAllowedIPs = 10.88.0.3/32\n",
+        encoding="ascii",
+    )
+    path.chmod(0o600)
+    parsed = IngressConfig.from_file(path)
+    assert parsed.extra_peers == ((OTHER_KEY, "10.88.0.3/32", 25),)
+    assert parsed.wireguard_payload().count("[Peer]") == 2
+    path.write_text(prefix, encoding="ascii")
+    path.chmod(0o600)
+    assert IngressConfig.from_file(path).wireguard_payload().count("[Peer]") == 0
 
 
 @pytest.mark.parametrize(

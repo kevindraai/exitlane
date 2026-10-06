@@ -207,7 +207,13 @@ def create_backup(
     ):
         staging = Path(temporary)
         os.chmod(staging, 0o700)
-        files = _collect_components(staging)
+        from exitlane.services.wireguard_peers import PeerError, state_lock
+
+        try:
+            with state_lock():
+                files = _collect_components(staging)
+        except PeerError as error:
+            raise LifecycleError(error.code) from error
         created_at = datetime.now(UTC).isoformat()
         backup_id = str(uuid.uuid4())
         manifest: dict[str, object] = {

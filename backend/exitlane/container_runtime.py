@@ -55,6 +55,7 @@ class IngressConfig:
     allowed_ips: str
     listen_port: int
     keepalive: int = 25
+    extra_peers: tuple[tuple[str, str, int], ...] = ()
 
     def validated(self) -> IngressConfig:
         require(
@@ -73,11 +74,19 @@ class IngressConfig:
         require(self.interface not in {"eth0", "lo", "wg-mullvad", "wg-pia", "wg-proton"})
         try:
             address = ipaddress.IPv4Interface(self.address)
-            allowed = ipaddress.IPv4Network(self.allowed_ips, strict=True)
-            require(address.network.prefixlen <= 31 and allowed.prefixlen == 32)
-            require(
-                allowed.network_address in address.network and allowed.network_address != address.ip
-            )
+            require(address.network.prefixlen <= 31)
+            peers = (() if not self.public_key and not self.allowed_ips else
+                     ((self.public_key, self.allowed_ips, self.keepalive),)) + self.extra_peers
+            require(len({peer[0] for peer in peers}) == len(peers))
+            addresses = []
+            for public, tunnel, keepalive in peers:
+                allowed = ipaddress.IPv4Network(tunnel, strict=True)
+                require(allowed.prefixlen == 32)
+                require(allowed.network_address in address.network and allowed.network_address != address.ip)
+                require(type(keepalive) is int and 0 <= keepalive <= 65535)
+                key(public)
+                addresses.append(allowed)
+            require(len(set(addresses)) == len(addresses))
             require(
                 not address.ip.is_loopback
                 and not address.ip.is_multicast
@@ -86,18 +95,19 @@ class IngressConfig:
         except (ValueError, TypeError):
             raise ContainerLifecycleError("container_ingress_config_invalid") from None
         key(self.private_key)
-        key(self.public_key)
         require(type(self.listen_port) is int and 1 <= self.listen_port <= 65535)
         require(type(self.keepalive) is int and 0 <= self.keepalive <= 65535)
         return self
 
     def wireguard_payload(self) -> str:
         self.validated()
-        return (
-            f"[Interface]\nPrivateKey = {self.private_key}\nListenPort = {self.listen_port}\n"
-            f"[Peer]\nPublicKey = {self.public_key}\nAllowedIPs = {self.allowed_ips}\n"
-            f"PersistentKeepalive = {self.keepalive}\n"
-        )
+        payload = f"[Interface]\nPrivateKey = {self.private_key}\nListenPort = {self.listen_port}\n"
+        peers = (() if not self.public_key else
+                 ((self.public_key, self.allowed_ips, self.keepalive),)) + self.extra_peers
+        for public, allowed, keepalive in peers:
+            payload += (f"[Peer]\nPublicKey = {public}\nAllowedIPs = {allowed}\n"
+                        f"PersistentKeepalive = {keepalive}\n")
+        return payload
 
     @classmethod
     def from_file(cls, path: Path) -> IngressConfig:
@@ -119,21 +129,26 @@ class IngressConfig:
                     return content
 
             lifecycle._validated_wireguard_hooks(Snapshot())
-            values: dict[str, dict[str, str]] = {"Interface": {}, "Peer": {}}
+            values: dict[str, str] = {}
+            interface_values: dict[str, str] = {}
+            peer_values: list[dict[str, str]] = []
             section = ""
-            seen_sections = set()
-            peer_count = 0
+            seen_interface = False
             for raw in content.decode("ascii").splitlines():
                 line = raw.strip()
                 if not line or line.startswith("#"):
                     continue
                 if line in ("[Interface]", "[Peer]"):
+                    if section == "Peer":
+                        peer_values.append(values)
+                    if line == "[Interface]":
+                        require(not seen_interface and not peer_values)
+                        seen_interface = True
+                    else:
+                        require(seen_interface)
                     section = line[1:-1]
-                    require(section not in seen_sections)
-                    require(section == "Interface" or "Interface" in seen_sections)
-                    seen_sections.add(section)
-                    peer_count += int(section == "Peer")
-                    require(peer_count <= 1)
+                    if section == "Peer":
+                        values = {}
                     continue
                 require(bool(section) and "=" in line)
                 name, value = (item.strip() for item in line.split("=", 1))
@@ -147,17 +162,26 @@ class IngressConfig:
                     if section == "Interface"
                     else {"PublicKey", "AllowedIPs", "PersistentKeepalive"}
                 )
-                require(name in allowed and name not in values[section])
-                values[section][name] = value
-            i, p = values["Interface"], values["Peer"]
+                require(name in allowed and name not in values)
+                values[name] = value
+                if section == "Interface":
+                    # Keep interface values separately when the first peer begins.
+                    interface_values = values
+            if section == "Peer":
+                peer_values.append(values)
+            i = interface_values
+            peers = [(p["PublicKey"], p["AllowedIPs"], int(p.get("PersistentKeepalive", "25")))
+                     for p in peer_values]
+            first = peers[0] if peers else ("", "", 25)
             return cls(
                 path.stem,
                 i["Address"],
                 i["PrivateKey"],
-                p["PublicKey"],
-                p["AllowedIPs"],
+                first[0],
+                first[1],
                 int(i["ListenPort"]),
-                int(p.get("PersistentKeepalive", "25")),
+                first[2],
+                tuple(peers[1:]),
             ).validated()
         except (OSError, UnicodeError, ValueError, KeyError, lifecycle.LifecycleError):
             raise ContainerLifecycleError("container_ingress_config_invalid") from None
@@ -663,6 +687,16 @@ class ContainerWireGuardLifecycle:
             "container_interface_ownership_changed",
         )
         return True
+
+    async def sync_owned_ingress(self, config: IngressConfig) -> None:
+        """Apply peer changes on our proven live interface without replacing the guard."""
+        require(await self.observe_owned_ingress(), "container_interface_ownership_unproven")
+        require(config.interface == self.config.interface and config.address == self.config.address
+                and config.private_key == self.config.private_key and config.listen_port == self.config.listen_port,
+                "container_ingress_config_invalid")
+        await self.checked("wg", "syncconf", config.interface, "/dev/stdin",
+                           input_text=config.wireguard_payload())
+        self.config = config
 
     async def observe(self) -> bool:
         await self.observe_guard()

@@ -51,6 +51,32 @@ appliance master key; database-only theft does not reveal those encrypted values
 permits offline verification/decryption. Local root compromise
 defeats the application key, CLI and filesystem boundaries.
 
+## WireGuard peer lifecycle boundary
+
+One ingress interface accepts multiple named consumer identities. Every active peer has its own
+keypair and exact tunnel `/32`; all peers use the existing shared subnet routing and killswitch
+policy. This adds no per-device provider selector or independent firewall policy.
+
+The durable peer ID selects resources. Bounded names/descriptions reject control characters and
+unsafe path components, and names never select configuration paths. SQLite holds public metadata;
+client private keys remain in root-only configuration files. Authenticated list/status responses
+map kernel public keys to device names without exposing private material. Reveal/download/QR use
+explicit private no-store endpoints. Activity records only allowlisted peer IDs and names.
+
+Create/edit/regenerate/revoke/delete share a mutation lock and transactional configuration/runtime
+rollback. Regeneration removes the selected old public key; revocation removes the peer from the
+live server, prevents ordinary configuration download and retains metadata. Deletion requires
+revocation. Other peers and the shared server key remain unchanged. A revoked IP remains reserved
+until deletion. Legacy migration validates existing state and preserves both server/client keys;
+it never repairs ambiguity by creating a replacement identity.
+
+Restore must validate the server, per-peer configurations and metadata as one state unit and must
+retain revocation. Filesystem, runtime or database errors must not silently commit divergent
+truths. Relevant regression evidence includes concurrent mutation, malformed persisted state,
+rollback, private-response redaction, legacy key preservation, encrypted backup/restore and a
+real two-peer namespace dataplane with provider-loss blocking. Root compromise still defeats the
+local boundary; copied client configurations remain credentials wherever the operator stores them.
+
 ## Operational assumptions and boundaries
 
 Exitlane is single-administrator, single-appliance software on a firewalled management VLAN.

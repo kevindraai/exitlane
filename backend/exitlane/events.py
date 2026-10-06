@@ -97,6 +97,11 @@ EVENT_DEFINITIONS = {
     "wireguard.interface_active": ("wireguard", "info", {"interface"}),
     "wireguard.interface_inactive": ("wireguard", "warning", {"interface"}),
     "wireguard.handshake_received": ("wireguard", "info", {"client_name"}),
+    "wireguard.peer_created": ("wireguard", "info", {"peer_id", "name"}),
+    "wireguard.peer_updated": ("wireguard", "info", {"peer_id", "name"}),
+    "wireguard.peer_regenerated": ("wireguard", "warning", {"peer_id", "name"}),
+    "wireguard.peer_revoked": ("wireguard", "warning", {"peer_id", "name"}),
+    "wireguard.peer_deleted": ("wireguard", "warning", {"peer_id", "name"}),
     "notifications.webhook_added": ("notifications", "info", {"name"}),
 }
 FILTER_CATEGORIES = frozenset(value[0] for value in EVENT_DEFINITIONS.values())

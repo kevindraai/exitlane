@@ -390,7 +390,7 @@ class UnixControlServer:
                     or owner.label != "acquire"
                     or not isinstance(payload, dict)
                     or set(payload) != {"action", "interface"}
-                    or payload["action"] not in {"activate", "deactivate", "observe"}
+                    or payload["action"] not in {"activate", "deactivate", "observe", "sync"}
                     or not isinstance(payload["interface"], str)
                     or not payload["interface"].isascii()
                     or not 1 <= len(payload["interface"]) <= 15
