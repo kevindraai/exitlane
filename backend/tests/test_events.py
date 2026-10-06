@@ -2,6 +2,8 @@ import json
 import sqlite3
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from exitlane import core, events, main
 
 
@@ -115,3 +117,37 @@ def test_wireguard_polling_records_only_transitions(monkeypatch):
         "wireguard.handshake_received",
         "wireguard.interface_inactive",
     ]
+
+
+@pytest.mark.parametrize("reason", ["management_lock_unavailable", "management_lock_timeout"])
+def test_management_lock_reasons_validate_and_record_safe_activity(tmp_path, monkeypatch, reason):
+    database(tmp_path, monkeypatch)
+    metadata = {"reason": reason}
+    assert events.validate_metadata("network.management_routing_error", metadata) == metadata
+    assert events.record_event("network.management_routing_error", metadata=metadata)
+    item = events.list_events().items[0]
+    assert (item.code, item.category, item.level) == (
+        "network.management_routing_error",
+        "network",
+        "error",
+    )
+    assert item.metadata == metadata
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"reason": "management_lock_timeout_extra"},
+        {"reason": "PrivateKey = secret-canary"},
+        {"reason": "management_lock_timeout", "provider_response": "secret-canary"},
+    ],
+)
+def test_management_lock_allowlist_remains_closed_and_private(
+    tmp_path, monkeypatch, caplog, metadata
+):
+    database(tmp_path, monkeypatch)
+    with pytest.raises(ValueError):
+        events.validate_metadata("network.management_routing_error", metadata)
+    assert not events.record_event("network.management_routing_error", metadata=metadata)
+    assert events.list_events().items == []
+    assert "secret-canary" not in caplog.text
