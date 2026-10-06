@@ -54,6 +54,10 @@ not merge a release pull request unless explicitly instructed.
   separately against the exact candidate. The Docker policy gate must pass and its decision
   report must reference the complete scan hash; reviewed OS residuals never excuse an
   application advisory or a newly available fix. See [security policy](../SECURITY.md).
+- [ ] For native package/advisory evidence, retain the source-bound JSON receipt,
+  worksheet and raw report hashes from the [read-only native collector](qualification/native-security.md).
+  Resolve incomplete/error sections and make the separate applicability decision;
+  collection completion and an APT simulation do not authorize release or maintenance.
 - [ ] Commands, counts, results, and links for final validation are recorded as
   release evidence.
 

@@ -97,3 +97,12 @@ Python coverage fail closed. Review new scanner findings through a normal indepe
 PR, rather than adding ignores. Runtime/security qualification remains mandatory independently
 of scanner disposition. Maintainers monitor Debian updates and consume supported fixes in the
 next applicable release; operators keep their Docker host and native appliance maintained.
+
+Post-v1 native inventory/advisory evidence is reproducible with the
+[read-only native collector](docs/qualification/native-security.md). It binds the actual
+native target and public installed content, separates OS/bootstrap/bundled/final-venv
+Python evidence, retains complete public scanner findings and exposes incomplete/error
+states. Its controlled APT projection never applies maintenance; selected library
+observations never inspect process arguments, environment or memory. Collection
+completion is not a vulnerability waiver, exploitability decision or release approval.
+Docker qualification and immutable v1.0.0 evidence remain separate.
