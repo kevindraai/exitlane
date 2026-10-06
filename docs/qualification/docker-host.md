@@ -1,8 +1,8 @@
 # Disposable Docker-host qualification (D6)
 
-D6 qualifies the D5 experimental appliance on a disposable full Debian 13 amd64
-Docker host. It does not publish an image or establish support from a management
-health check. The complete acceptance contract remains the failure matrix in
+D6 originally qualified the D5 experimental appliance on a disposable full Debian 13 amd64
+Docker host. That historical qualification did not publish an image or establish support
+from a management health check. The complete acceptance contract remains the failure matrix in
 [Docker runtime architecture](../docker-runtime-architecture.md#failure-matrix).
 Native Debian/LXC remains the reference implementation.
 
@@ -285,9 +285,10 @@ inventory retained with that evidence. It includes the required provider, packet
 daemon-mode and host-reboot components. Failed and inconclusive attempts described above remain
 retained; a connected baseline or one successful component alone never completes the matrix.
 
-The later D7 implementation supplies gated release infrastructure, not publication. Docker remains
-experimental/unsupported and no official production image has been published. Historical D6
-acceptance does not automatically qualify the rc.4 source or a rebuilt image; exact candidate
-checks and refreshed scans remain release gates in the
-[rc.4 release notes](../release-notes/0.3.0-rc.4.md). First GHCR publication and any support decision
-remain separately authorized.
+The later D7 implementation supplied gated release infrastructure. The official
+[v1.0.0 release](../release-notes/1.0.0.md#release-and-image-receipts) subsequently
+published and qualified the supported Docker appliance with its own exact source/image
+and operator receipts. Historical D6 acceptance does not automatically qualify a
+rebuilt image or v1.0.1. The [v1.0.1 release evidence](../release-notes/1.0.1.md#release-evidence)
+must bind fresh candidate scans, image identity and applicable host/runtime
+qualification before that version is published or called qualified.

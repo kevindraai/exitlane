@@ -2,7 +2,7 @@
 
 ## Status and provenance
 
-This internal defensive assessment examined source commit
+This Daybreak Blue-assisted internal defensive assessment examined source commit
 `f640a180932852ed89299789f2e70e5117e7da9b` (tree
 `cc5870504279ec65e9b5e9add9dd2d45d5ff0137`) from
 2026-10-06 14:21:38–14:56:59 UTC. The assessed `main` matched `origin/main`, and its
