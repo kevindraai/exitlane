@@ -762,12 +762,12 @@ def parse_apt_simulation(text, installed, excluded):
     for line in text.splitlines():
         if line.startswith("Inst "):
             m = re.fullmatch(
-                r"Inst ([a-z0-9+.-]+)(?::([a-z0-9-]+))?(?: \[([^\]]+)\])? \((\S+) .*?\[([a-z0-9-]+)\]\)",
+                r"Inst ([a-z0-9+.-]+)(?::([a-z0-9-]+))?(?: \[([^\]]+)\])? \((\S+) .*?\[([a-z0-9-]+)\]\)(?: \[([^\]]*)\])?",
                 line,
             )
             if not m:
                 _fail("apt_simulation_invalid")
-            name, explicit_arch, old, version, arch = m.groups()
+            name, explicit_arch, old, version, arch, intermediate = m.groups()
             if explicit_arch and explicit_arch != arch:
                 _fail("apt_simulation_invalid")
             prior = known.get((name, arch))
@@ -779,6 +779,11 @@ def parse_apt_simulation(text, installed, excluded):
             }
             if old and (prior is None or old != prior["version"]):
                 _fail("apt_simulation_inventory_mismatch")
+            if intermediate is not None:
+                item["intermediate_dependency_checks"] = [
+                    _token(package, r"[a-z0-9+.-]+(?::[a-z0-9-]+)?")
+                    for package in intermediate.split()
+                ]
             (upgrades if prior else additions).append(item)
         elif line.startswith("Remv "):
             m = re.fullmatch(

@@ -794,3 +794,24 @@ def test_worksheet_lists_bounded_fix_identities_without_replacing_full_findings(
     assert "Additional identities: 2" in text
     assert "primary fixed source: 1\\.1" in text
     assert len(receipt["applicability"]) == 12
+
+
+def test_apt_simulation_preserves_ordinary_intermediate_dependency_annotations():
+    installed = inventory()["packages"]
+    result = evidence.parse_apt_simulation(
+        "Inst libc6 [2.41-1+b1] (2.41-2 Debian:13.7/stable [amd64]) [libc6-dev:amd64 ]\n"
+        "Inst newlib (1.0 Debian:13.7/stable [amd64]) []\n",
+        installed,
+        [],
+    )
+    assert result["upgrades"][0]["intermediate_dependency_checks"] == ["libc6-dev:amd64"]
+    assert result["additions"][0]["intermediate_dependency_checks"] == []
+    assert (
+        result["eligible"] is True
+    )  # Resolver success is separately checked; no maintenance approval.
+    with pytest.raises(evidence.EvidenceError):
+        evidence.parse_apt_simulation(
+            "Inst newlib (1.0 Debian:13.7/stable [amd64]) [https://user:pass@example.com]",
+            installed,
+            [],
+        )
