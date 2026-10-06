@@ -337,7 +337,7 @@ def test_wizard_and_management_share_provisioning_service(client, monkeypatch):
     )
     assert response.status_code == 200
     assert len(calls) == 1
-    assert calls[0]["activate"] is main.activate_wireguard_interface
+    assert callable(calls[0]["activate"])
     assert response.json()["client_config"].endswith("synthetic-wizard-secret\n")
     assert reconciled == [(True, "10.90.0.0/24", "wg0")]
 
@@ -520,8 +520,9 @@ def test_wireguard_creation_reports_only_sanitized_protected_route_failure(clien
     assert response.status_code == 503
     assert response.json() == {"detail": "management_routing_failed"}
     assert "protected_destination_route_unavailable" not in response.text
-    assert core.setting("wireguard_configured") is True
-    assert core.setting("wireguard_subnet") == "10.77.0.0/24"
+    assert core.setting("wireguard_configured") is None
+    assert not main._initial_wireguard_journal().exists()
+    assert core.setting("wireguard_subnet") is None
 
 
 def test_deferred_provider_uses_provider_neutral_default_route(client, monkeypatch):

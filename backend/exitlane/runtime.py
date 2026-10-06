@@ -335,6 +335,7 @@ class ContainerRuntime:
         from exitlane.runtime_mutation import ContainerMutationBoundary
 
         self.paths = RuntimePaths.container()
+        self._initial_ingress_rolled_back = False
         for name, expected in (
             ("EXITLANE_DATA_DIR", self.paths.application_data),
             ("EXITLANE_CONFIG_DIR", self.paths.config),
@@ -405,6 +406,14 @@ class ContainerRuntime:
         await self.configure_providers(_interface)
         await self.client.request("ingress", {"action": "observe", "interface": _interface})
 
+    async def deactivate_initial_ingress(self, interface: str) -> None:
+        result = await self.client.request(
+            "ingress", {"action": "deactivate", "interface": interface}
+        )
+        if result.get("active") is not False:
+            raise RuntimeError("container_ingress_deactivation_unproven")
+        self._initial_ingress_rolled_back = True
+
     async def sync_ingress(self, interface: str, **_kwargs):
         await self.client.request("ingress", {"action": "sync", "interface": interface})
 
@@ -424,15 +433,23 @@ class ContainerRuntime:
                 self.network.config.interface != config.interface
                 or self.network.config.address != config.address
             ):
-                raise RuntimeError("container_ingress_identity_change_unsupported")
+                if not self._initial_ingress_rolled_back or core.setting(
+                    "wireguard_configured", False
+                ):
+                    raise RuntimeError("container_ingress_identity_change_unsupported")
+                await self.network.rebind_initial_ingress(config)
+                self._initial_ingress_rolled_back = False
+                return
             self.network.config = config
             await self.network.observe_guard()
+            self._initial_ingress_rolled_back = False
             return
         self.network = ContainerWireGuardLifecycle(config)
         await self.network.arm_guard()
         await self.network.observe_guard()
         for provider in catalog.provider_registry.direct_egress_providers():
             provider.wireguard = ContainerWireGuardEgress(self.network)
+        self._initial_ingress_rolled_back = False
 
     async def resume_provider(self):
         from exitlane import core

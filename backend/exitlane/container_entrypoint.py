@@ -112,6 +112,8 @@ class ContainerController:
         self.runner = runner or core.command
         self.network = None
         self.operation_valid = operation_valid
+        self.initial_rollback_ready = False
+        self.initial_guard_config = None
 
     def identity(self, config):
         from exitlane.container_recovery import IngressIdentity
@@ -206,21 +208,75 @@ class ContainerController:
         await self.observe_policy()
 
     async def ingress(self, payload):
-        from exitlane.container_runtime import INTERFACE, ContainerWireGuardLifecycle, IngressConfig
+        from exitlane.container_runtime import (
+            INTERFACE,
+            TABLE,
+            ContainerLifecycleError,
+            ContainerWireGuardLifecycle,
+            IngressConfig,
+        )
 
         if not self.operation_valid():
             raise EntrypointError("container_ingress_lease_revoked")
         if (
             set(payload) != {"action", "interface"}
-            or payload["action"] not in {"activate", "observe", "sync"}
+            or payload["action"] not in {"activate", "deactivate", "observe", "sync"}
             or not isinstance(payload["interface"], str)
             or INTERFACE.fullmatch(payload["interface"]) is None
         ):
             raise EntrypointError("container_ingress_config_invalid")
+        if payload["action"] == "deactivate":
+            if self.network is None:
+                return {"active": False}
+            if self.network.config.interface != payload["interface"]:
+                raise EntrypointError("container_ingress_config_invalid")
+            identities = (self.identity(self.network.config),)
+            if self.initial_guard_config is not None:
+                identities += (self.identity(self.initial_guard_config),)
+            await self.arm_maintenance(identities)
+            await self.deactivate()
+            for guard_config in (self.network.config, self.initial_guard_config):
+                if guard_config is None:
+                    continue
+                try:
+                    await self.observe_policy(config=guard_config)
+                except (EntrypointError, ContainerLifecycleError):
+                    continue
+                self.initial_guard_config = guard_config
+                break
+            else:
+                if self.network.active or self.network.uncertain_creation:
+                    raise EntrypointError("container_guard_unproven")
+                try:
+                    tables = json.loads(await self.checked("nft", "-j", "list", "tables"))
+                    entries = tables["nftables"]
+                    if not isinstance(entries, list) or any(
+                        not isinstance(item, dict) for item in entries
+                    ):
+                        raise ValueError
+                    existing = any(
+                        item.get("table", {}).get("family") == "inet"
+                        and item.get("table", {}).get("name") == TABLE
+                        for item in entries
+                    )
+                except (ValueError, TypeError, KeyError, AttributeError):
+                    raise EntrypointError("container_guard_unproven") from None
+                if existing:
+                    raise EntrypointError("container_guard_unproven")
+                self.network = None
+                self.initial_guard_config = None
+            self.initial_rollback_ready = True
+            if not self.operation_valid():
+                raise EntrypointError("container_ingress_lease_revoked")
+            return {"active": False}
         config = IngressConfig.from_file(
             self.state.layout.wireguard / f"{payload['interface']}.conf"
         )
-        if self.network and self.network.config.interface != config.interface:
+        if (
+            self.network
+            and self.network.config.interface != config.interface
+            and (not self.initial_rollback_ready or self.network.active)
+        ):
             raise EntrypointError("container_ingress_config_invalid")
         if payload["action"] == "sync":
             if not self.network:
@@ -230,7 +286,10 @@ class ContainerController:
             return {"active": True}
         if payload["action"] == "activate":
             previous = self.network
-            await self.arm_maintenance((self.identity(config),))
+            identities = (self.identity(config),)
+            if self.initial_guard_config is not None:
+                identities += (self.identity(self.initial_guard_config),)
+            await self.arm_maintenance(identities)
             await self.deactivate()
             if not self.operation_valid():
                 raise EntrypointError("container_ingress_lease_revoked")
@@ -240,7 +299,7 @@ class ContainerController:
             else:
                 # Existing exact guard covers iif across a possible subnet change.
                 await self.network.activate_already_guarded(
-                    lambda: self.observe_policy(config=previous.config)
+                    lambda: self.observe_policy(config=self.initial_guard_config or previous.config)
                 )
             if not self.operation_valid():
                 raise EntrypointError("container_ingress_lease_revoked")
@@ -252,6 +311,8 @@ class ContainerController:
             raise EntrypointError("container_ingress_lease_revoked")
         if self.maintenance.active:
             await self.maintenance.release()
+        self.initial_rollback_ready = False
+        self.initial_guard_config = None
         return {"active": True}
 
 

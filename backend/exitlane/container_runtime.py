@@ -607,6 +607,54 @@ class ContainerWireGuardLifecycle:
             self.policy_epoch += 1
             await self.observe_guard()
 
+    async def rebind_initial_ingress(self, config: IngressConfig) -> None:
+        """Replace only a proved blocked first-setup guard after rollback."""
+        config = config.validated()
+        async with self.policy_lock:
+            await self.observe_guard()
+            old_config = self.config
+            old_interface = old_config.interface
+            await self.provider_guard.arm((old_interface, config.interface))
+            candidate = ContainerWireGuardLifecycle(
+                config, runner=self.runner, provider_guard=self.provider_guard
+            )
+            candidate.source_addresses = self.source_addresses
+            payload = candidate.guard_payload(None)
+            # The recovery target is blocked even if a provider had previously
+            # been active. Never restore an old forwarding verdict on failure.
+            old_payload = self.guard_payload(None, probe_interface=None)
+            await self.checked("nft", "-c", "-f", "/dev/stdin", input_text=payload)
+            self.policy_candidate = self.policy_proof = self.policy_committed = None
+            self.policy_epoch += 1
+            # A timed-out or cancelled nft call may already have published the
+            # new table. Keep the old identity until publication is observed,
+            # and restore its blocked policy before allowing a retry.
+            try:
+                await self.checked("nft", "-f", "/dev/stdin", input_text=payload)
+                self.config = config
+                self.policy_interface = None
+                self.probe_interface = None
+                self.policy_candidate = self.policy_proof = self.policy_committed = None
+                self.policy_epoch += 1
+                await self.observe_guard()
+            except BaseException:
+
+                async def recover_block():
+                    await self.checked("nft", "-f", "/dev/stdin", input_text=old_payload)
+                    self.config = old_config
+                    self.policy_interface = None
+                    self.probe_interface = None
+                    self.policy_candidate = self.policy_proof = self.policy_committed = None
+                    self.policy_epoch += 1
+                    await self.observe_guard()
+
+                cleanup = asyncio.create_task(recover_block())
+                try:
+                    await asyncio.shield(cleanup)
+                except asyncio.CancelledError:
+                    await cleanup
+                raise
+
     async def activate(self) -> None:
         await self._activate(self.arm_guard, self.observe_guard)
 

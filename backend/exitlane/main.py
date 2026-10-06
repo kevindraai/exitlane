@@ -4,7 +4,9 @@ import asyncio
 import base64
 import hashlib
 import ipaddress
+import json
 import logging
+import os
 import re
 import sqlite3
 import time
@@ -380,6 +382,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 async def _initialize_runtime_state() -> None:
     validate_config()
     init()
+    await _recover_initial_wireguard_setup()
     auth_security.ensure_master_key()
     try:
         timezone_change = await reconcile_timezone()
@@ -3935,6 +3938,137 @@ async def wireguard_egress_interface() -> None:
     """Use the kernel-selected default route for direct or active-provider egress."""
 
 
+_INITIAL_WG_SETTINGS = (
+    "wireguard_configured",
+    "wireguard_client_name",
+    "wireguard_interface",
+    "wireguard_endpoint",
+    "wireguard_subnet",
+    "wireguard_dns",
+    "wireguard_port",
+    "setup_current_step",
+)
+
+
+def _initial_wireguard_journal() -> Path:
+    return DB.parent / ".wireguard-initial-setup.json"
+
+
+def _write_initial_wireguard_journal(value: dict) -> None:
+    wireguard_service._atomic_write(_initial_wireguard_journal(), json.dumps(value))
+    descriptor = os.open(DB.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _clear_initial_wireguard_journal() -> None:
+    _initial_wireguard_journal().unlink()
+    descriptor = os.open(DB.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+async def _deactivate_initial_wireguard_runtime(journal: dict) -> None:
+    if not journal["activation_attempted"]:
+        return
+    interface = journal["interface"]
+    if runtime.capabilities.runtime_name == "native":
+        rc, _, _ = await command(
+            "systemctl", "disable", "--now", f"wg-quick@{interface}.service"
+        )
+        if rc != 0:
+            raise wireguard_service.WireGuardConfigurationError("wireguard_rollback_failed")
+        link_rc, _, _ = await command("ip", "link", "show", "dev", interface)
+        if link_rc == 0:
+            down_rc, _, _ = await command(
+                "wg-quick", "down", str(WG_DIR / f"{interface}.conf")
+            )
+            if down_rc != 0:
+                raise wireguard_service.WireGuardConfigurationError("wireguard_rollback_failed")
+            link_rc, _, _ = await command("ip", "link", "show", "dev", interface)
+        if link_rc != 1:
+            raise wireguard_service.WireGuardConfigurationError("wireguard_rollback_failed")
+        system_path = SYSTEM_WIREGUARD_DIR / f"{interface}.conf"
+        if (
+            system_path.is_symlink()
+            and system_path.resolve() == (WG_DIR / f"{interface}.conf").resolve()
+        ):
+            system_path.unlink()
+    else:
+        await runtime.deactivate_initial_ingress(interface)
+    journal["activation_attempted"] = False
+    _write_initial_wireguard_journal(journal)
+
+
+async def _rollback_initial_wireguard_setup(journal: dict) -> None:
+    """Undo a first ingress that never reached its durable settings boundary."""
+    interface, client = journal["interface"], journal["client"]
+    await _deactivate_initial_wireguard_runtime(journal)
+    for name in (interface, client):
+        (WG_DIR / f"{name}.conf").unlink(missing_ok=True)
+    descriptor = os.open(WG_DIR, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    with sqlite3.connect(DB, timeout=5) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("DELETE FROM wireguard_peers")
+        connection.execute("DELETE FROM wireguard_ingress_profile")
+        connection.executemany(
+            "DELETE FROM settings WHERE key=?", ((key,) for key in _INITIAL_WG_SETTINGS)
+        )
+        connection.executemany(
+            "INSERT INTO settings(key,value) VALUES(?,?)",
+            ((key, json.dumps(value)) for key, value in journal["settings"].items()),
+        )
+    _clear_initial_wireguard_journal()
+
+
+async def _recover_initial_wireguard_setup() -> None:
+    path = _initial_wireguard_journal()
+    if not path.exists():
+        return
+    with wireguard_peers.state_lock():
+        try:
+            journal = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(journal, dict) or set(journal) != {
+                "interface",
+                "client",
+                "activation_attempted",
+                "settings",
+            }:
+                raise ValueError
+            wireguard_service._validate_ingress_interface(journal["interface"])
+            wireguard_peers._path(journal["client"])
+            if (
+                not isinstance(journal["activation_attempted"], bool)
+                or not isinstance(journal["settings"], dict)
+                or not journal["settings"].keys() <= set(_INITIAL_WG_SETTINGS)
+            ):
+                raise TypeError
+        except (OSError, ValueError, TypeError, wireguard_peers.PeerError) as error:
+            raise wireguard_service.WireGuardConfigurationError(
+                "wireguard_recovery_failed"
+            ) from error
+        if setting("wireguard_configured", False):
+            try:
+                await wireguard_peers.migrate_legacy(journal["interface"], journal["client"])
+                await management_routing.reconcile()
+            except wireguard_peers.PeerError:
+                pass
+            except management_routing.ManagementRoutingError:
+                pass
+            else:
+                _clear_initial_wireguard_journal()
+                return
+        await _rollback_initial_wireguard_setup(journal)
+
+
 @app.post("/api/ingress/wireguard")
 async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
     runtime.capabilities.require("ingress")
@@ -3954,70 +4088,22 @@ async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
         async with generation_lock, AsyncExitStack() as provider_locks:
             for item in provider_registry.direct_egress_providers():
                 await provider_locks.enter_async_context(item._operation_lock)
-            if setting("wireguard_configured", False) and (
-                wireguard_peers.list_peers() or (WG_DIR / f"{req.interface}.conf").exists()
-            ):
-                return JSONResponse(
-                    status_code=409, content={"error": "wireguard_ingress_already_configured"}
-                )
-            if req.interface != setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE):
-                if setting("wireguard_configured", False):
-                    return JSONResponse(
-                        status_code=409,
-                        content={"error": "wireguard_interface_change_unsupported"},
-                    )
-                if any(
-                    any(
-                        key in (provider_secrets.load(item.id) or {})
-                        for key in ("active", "pending")
-                    )
-                    for item in provider_registry.direct_egress_providers()
-                ):
-                    return JSONResponse(
-                        status_code=409,
-                        content={"error": "wireguard_interface_change_requires_disconnect"},
-                    )
-            result = await wireguard_service.provision(
-                activate=activate_wireguard_interface,
-                endpoint=req.endpoint,
-                subnet=req.subnet,
-                dns=req.dns,
-                port=req.port,
-                interface=req.interface,
-                client=req.client,
-                vpn_interface=await wireguard_egress_interface(),
-            )
-            set_settings(
-                {
-                    "wireguard_configured": True,
-                    "wireguard_client_name": req.client,
-                    "wireguard_interface": req.interface,
-                    "wireguard_endpoint": req.endpoint,
-                    "wireguard_subnet": req.subnet,
-                    "wireguard_dns": req.dns,
-                    "wireguard_port": req.port,
-                    "setup_current_step": 5,
-                }
-            )
-            if (WG_DIR / f"{req.interface}.conf").exists():
-                await wireguard_peers.migrate_legacy(req.interface, req.client)
+            with wireguard_peers.state_lock():
+                await _recover_initial_wireguard_setup()
+                result = await _create_initial_wireguard_setup(req, request)
     except provider_secrets.ProviderSecretError as error:
         raise HTTPException(status_code=503, detail="provider_state_unavailable") from error
     except ValueError as error:
-        raise HTTPException(
-            status_code=400,
-            detail=str(error),
-        ) from error
+        raise HTTPException(status_code=400, detail=str(error)) from error
     except wireguard_service.WireGuardConfigurationError as error:
-        raise HTTPException(
-            status_code=500,
-            detail=error.code,
-        ) from error
+        raise HTTPException(status_code=500, detail=error.code) from error
     except wireguard_peers.PeerError as error:
         raise HTTPException(status_code=500, detail=error.code) from error
+    except (SettingsStorageError, sqlite3.DatabaseError) as error:
+        raise HTTPException(status_code=503, detail="wireguard_storage_unavailable") from error
 
-    await _reconcile_management_routes_or_503(request_actor(request))
-
+    if isinstance(result, Response):
+        return result
     record_event(
         "wireguard.configuration_generated",
         actor=request_actor(request),
@@ -4029,7 +4115,113 @@ async def create_wireguard_ingress(req: WireGuard, request: Request) -> dict:
         metadata={"interface": req.interface},
     )
     _wireguard_observed_state = (True, False)
+    return result
 
+
+async def _create_initial_wireguard_setup(req: WireGuard, request: Request) -> dict:
+    # Caller owns both the process-local generation lock and the cross-process peer lock.
+    if setting("wireguard_configured", False):
+        if req.interface != setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE):
+            return JSONResponse(
+                status_code=409,
+                content={"error": "wireguard_interface_change_unsupported"},
+            )
+        return JSONResponse(
+            status_code=409, content={"error": "wireguard_ingress_already_configured"}
+        )
+    if req.interface != setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE) and any(
+        any(key in (provider_secrets.load(item.id) or {}) for key in ("active", "pending"))
+        for item in provider_registry.direct_egress_providers()
+    ):
+        return JSONResponse(
+            status_code=409,
+            content={"error": "wireguard_interface_change_requires_disconnect"},
+        )
+    # A first setup may not overwrite old key material or an orphaned peer state.
+    if any((WG_DIR / f"{name}.conf").exists() for name in (req.interface, req.client)):
+        raise wireguard_peers.PeerError("wireguard_configuration_invalid")
+    if (
+        runtime.capabilities.runtime_name == "native"
+        and WG_DIR == runtime.paths.application_data / "wireguard"
+    ):
+        system_path = SYSTEM_WIREGUARD_DIR / f"{req.interface}.conf"
+        if system_path.exists() or system_path.is_symlink():
+            raise wireguard_peers.PeerError("wireguard_configuration_invalid")
+        unit = f"wg-quick@{req.interface}.service"
+        for args, absent_codes in (
+            (("systemctl", "is-active", "--quiet", unit), {3, 4}),
+            (("systemctl", "is-enabled", "--quiet", unit), {1}),
+            (("ip", "link", "show", "dev", req.interface), {1}),
+        ):
+            rc, _, _ = await command(*args)
+            if rc not in absent_codes:
+                raise wireguard_peers.PeerError("wireguard_configuration_invalid")
+    with sqlite3.connect(DB) as connection:
+        if (
+            connection.execute("SELECT COUNT(*) FROM wireguard_peers").fetchone()[0]
+            or connection.execute("SELECT COUNT(*) FROM wireguard_ingress_profile").fetchone()[0]
+        ):
+            raise wireguard_peers.PeerError("wireguard_configuration_invalid")
+    journal = {
+        "interface": req.interface,
+        "client": req.client,
+        "activation_attempted": False,
+        "settings": stored_settings(_INITIAL_WG_SETTINGS),
+    }
+    _write_initial_wireguard_journal(journal)
+
+    async def activate(interface: str) -> None:
+        journal["activation_attempted"] = True
+        _write_initial_wireguard_journal(journal)
+        await activate_wireguard_interface(interface)
+
+    try:
+        result = await wireguard_service.provision(
+            activate=activate,
+            rollback_runtime=lambda: _deactivate_initial_wireguard_runtime(journal),
+            endpoint=req.endpoint,
+            subnet=req.subnet,
+            dns=req.dns,
+            port=req.port,
+            interface=req.interface,
+            client=req.client,
+            vpn_interface=await wireguard_egress_interface(),
+        )
+        descriptor = os.open(WG_DIR, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        if (WG_DIR / f"{req.interface}.conf").exists():
+            await wireguard_peers.migrate_legacy(req.interface, req.client)
+        set_settings(
+            {
+                "wireguard_configured": True,
+                "wireguard_client_name": req.client,
+                "wireguard_interface": req.interface,
+                "wireguard_endpoint": req.endpoint,
+                "wireguard_subnet": req.subnet,
+                "wireguard_dns": req.dns,
+                "wireguard_port": req.port,
+                "setup_current_step": 5,
+            }
+        )
+        await _reconcile_management_routes_or_503(request_actor(request))
+    except BaseException:
+        task = asyncio.create_task(_rollback_initial_wireguard_setup(journal))
+        try:
+            while not task.done():
+                try:
+                    await asyncio.shield(task)
+                except asyncio.CancelledError:
+                    continue
+            await task
+        except Exception as error:
+            raise wireguard_service.WireGuardConfigurationError(
+                "wireguard_rollback_failed"
+            ) from error
+        raise
+    _clear_initial_wireguard_journal()
     return result
 
 

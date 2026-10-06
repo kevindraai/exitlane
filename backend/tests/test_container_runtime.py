@@ -924,6 +924,85 @@ def test_prepare_state_precedes_ingress_and_worker():
     assert sequence == ["state-validated", "worker"]
 
 
+@pytest.mark.parametrize("interface", ["wg-office", "wg-retry"])
+def test_rolled_back_initial_guard_rebinds_identity_without_replacing_provider_binding(interface):
+    ns = Namespace()
+    network = ns.network
+    asyncio.run(network.arm_guard())
+    original_runner = ns.run
+
+    async def runner(*args, **kwargs):
+        if (args[:3] in (("ip", "-4", "-j"), ("ip", "-6", "-j"))
+            and "rule" in args
+            and ("guard", "wg-office", interface) in ns.commands):
+            return 0, json.dumps([
+                {"iif": "wg-office", "table": 51820, "priority": 20000},
+                {"iif": interface, "table": 51820, "priority": 20000},
+            ]), ""
+        return await original_runner(*args, **kwargs)
+
+    network.runner = runner
+    network.policy_candidate = object()
+    network.policy_proof = object()
+    network.policy_committed = object()
+    old_guard = network.provider_guard
+    new_config = IngressConfig(interface, "10.99.0.1/24", KEY, KEY, "10.99.0.2/32", 51821)
+    asyncio.run(network.rebind_initial_ingress(new_config))
+    assert ns.network is network
+    assert network.provider_guard is old_guard
+    assert network.config.interface == interface
+    assert network.policy_candidate is network.policy_proof is network.policy_committed is None
+    assert ("guard", "wg-office", interface) in ns.commands
+    assert interface in ns.inputs[-1][1]
+
+
+@pytest.mark.parametrize("failure", ["applied_error", "applied_cancel", "observe_error"])
+def test_rolled_back_initial_rebind_restores_blocked_old_policy_before_retry(failure):
+    ns = Namespace()
+    network = ns.network
+    asyncio.run(network.arm_guard())
+    old_config = network.config
+    original_runner = ns.run
+    original_observer = network.observe_guard
+    new_config = IngressConfig("wg-office", "10.99.0.1/24", KEY, KEY, "10.99.0.2/32", 51821)
+    failed = False
+
+    async def runner(*args, **kwargs):
+        nonlocal failed
+        result = await original_runner(*args, **kwargs)
+        if (
+            not failed
+            and failure != "observe_error"
+            and args[:3] == ("nft", "-f", "/dev/stdin")
+            and "10.99.0.0/24" in kwargs.get("input_text", "")
+        ):
+            failed = True
+            if failure == "applied_cancel":
+                raise asyncio.CancelledError
+            raise ContainerLifecycleError("container_network_command_failed")
+        return result
+
+    async def observer():
+        nonlocal failed
+        await original_observer()
+        if failure == "observe_error" and not failed and network.config is new_config:
+            failed = True
+            raise ContainerLifecycleError("container_guard_unproven")
+
+    network.runner = runner
+    network.observe_guard = observer
+    expected = asyncio.CancelledError if failure == "applied_cancel" else ContainerLifecycleError
+    with pytest.raises(expected):
+        asyncio.run(network.rebind_initial_ingress(new_config))
+    assert failed
+    assert network.config is old_config
+    assert "10.88.0.0/24" in ns.inputs[-1][1]
+    assert "10.99.0.0/24" not in ns.inputs[-1][1]
+    assert 'oifname "wg-proton" accept' not in ns.inputs[-1][1]
+    asyncio.run(network.rebind_initial_ingress(new_config))
+    assert network.config is new_config
+
+
 def test_invalid_state_never_activates_ingress_or_starts_worker():
     ns = Namespace()
 
