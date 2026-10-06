@@ -36,9 +36,9 @@ class PeerError(RuntimeError):
 
 
 @contextmanager
-def state_lock():
+def state_lock(directory: Path | None = None):
     """Serialize cross-process peer writes and a backup's DB+file snapshot."""
-    path = core.DATA / ".wireguard-peers.lock"
+    path = (directory or core.DB.parent) / ".wireguard-peers.lock"
     descriptor = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     try:
         facts = os.fstat(descriptor)

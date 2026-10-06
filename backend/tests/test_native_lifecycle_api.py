@@ -32,7 +32,7 @@ class Adapter:
 
 
 @pytest.fixture
-def appliance(tmp_path, monkeypatch):
+def appliance(tmp_path, monkeypatch, synthetic_wireguard_keys):
     data = tmp_path / "data"
     monkeypatch.setattr(core, "DATA", data)
     monkeypatch.setattr(core, "DB", data / "exitlane.db")

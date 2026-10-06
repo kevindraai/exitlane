@@ -11,7 +11,7 @@ from exitlane.services import wireguard, wireguard_peers
 
 
 @pytest.fixture
-def client(tmp_path, monkeypatch):
+def client(tmp_path, monkeypatch, synthetic_wireguard_keys):
     data = tmp_path / "data"
     monkeypatch.setattr(core, "DATA", data)
     monkeypatch.setattr(core, "DB", data / "exitlane.db")

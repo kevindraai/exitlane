@@ -496,7 +496,7 @@ class ContainerRecoveryCoordinator:
             from exitlane.services.wireguard_peers import PeerError, state_lock
 
             try:
-                with state_lock():
+                with state_lock(self.layout.state):
                     database = staging / "database.sqlite3"
                     lifecycle._database_snapshot(self.layout.database, database)
                     key = staging / "master-key"
