@@ -340,3 +340,81 @@ def test_wireguard_internal_error_message_is_replaced_with_stable_code():
     response = asyncio.run(build_dashboard(provider, wireguard, "1", fake_system))
     assert response.wireguard.error == "wireguard_inactive"
     assert "/secret" not in response.model_dump_json()
+
+
+def test_dashboard_peer_projection_preserves_named_runtime_traffic_without_private_state():
+    import asyncio
+    import json
+
+    async def provider():
+        return {"connected": True}
+
+    async def wireguard():
+        return {
+            "configured": True,
+            "active": True,
+            "connected": True,
+            "peers": [
+                {
+                    "peer_id": str(index),
+                    "name": name,
+                    "status": "revoked" if state == "revoked" else "active",
+                    "runtime_status": state,
+                    "received_bytes": index * 1024,
+                    "sent_bytes": index * 2048,
+                    "public_key": "public-sentinel",
+                    "private_key": "private-sentinel",
+                    "configuration": "configuration-sentinel",
+                    "description": "description-sentinel",
+                    "tunnel_ip": "10.0.0.2",
+                }
+                for index, (name, state) in enumerate([
+                    ("router", "active_recently"),
+                    ("Synology", "inactive"),
+                    ("Laptop", "never_connected"),
+                    ("Old device", "revoked"),
+                ], 1)
+            ],
+        }
+
+    async def fake_system():
+        return system()
+
+    result = asyncio.run(build_dashboard(provider, wireguard, "1", fake_system))
+    peers = [peer.model_dump() for peer in result.wireguard.peers]
+    assert result.wireguard.peer_count == 4
+    assert [peer["name"] for peer in peers] == ["router", "Synology", "Laptop", "Old device"]
+    assert [peer["runtime_status"] for peer in peers] == [
+        "active_recently", "inactive", "never_connected", "revoked",
+    ]
+    assert peers[1]["received_bytes"] == 2048
+    assert peers[1]["sent_bytes"] == 4096
+    assert peers[-1]["status"] == "revoked"
+    assert set(peers[0]) == {
+        "peer_id", "name", "status", "runtime_status", "received_bytes", "sent_bytes",
+    }
+    assert "sentinel" not in json.dumps(result.model_dump(mode="json"))
+
+
+def test_dashboard_empty_peer_projection_and_source_failure_are_distinct():
+    import asyncio
+
+    async def provider():
+        return {"connected": False}
+
+    async def empty():
+        return {"active": False, "configured": False, "peers": []}
+
+    async def failed():
+        raise RuntimeError("private-sentinel")
+
+    async def fake_system():
+        return system()
+
+    result = asyncio.run(build_dashboard(provider, empty, "1", fake_system))
+    assert result.wireguard.available is True
+    assert result.wireguard.peers == []
+    failed_result = asyncio.run(build_dashboard(provider, failed, "1", fake_system))
+    assert failed_result.wireguard.available is False
+    assert failed_result.wireguard.peers == []
+    assert "private-sentinel" not in failed_result.model_dump_json()

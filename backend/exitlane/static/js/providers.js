@@ -38,10 +38,22 @@ function yesNo(value) {
   return t(value ? "common.yes" : "common.no", {}, value ? "Yes" : "No");
 }
 
+export function projectDashboardKillswitch(status) {
+  const dashboard = getSlice("dashboard");
+  // A failed status request must retain the last backend-confirmed observation.
+  if (!status || !dashboard.data) return;
+  const state = status.state || "unknown";
+  const known = KNOWN_KILLSWITCH_STATES.has(state);
+  updateSlice("dashboard", {
+    data: { ...dashboard.data, killswitch: {
+      available: known, configured: known ? Boolean(status.configured) : null, state,
+    } },
+  });
+}
+
 function renderKillswitchStatus(status) {
   const state = status?.state || "unknown";
   const known = KNOWN_KILLSWITCH_STATES.has(state);
-  const configured = known ? Boolean(status.configured) : null;
   if (status) {
     select("#killswitch-state").textContent = t(`killswitch.states.${state}`, {}, state);
     select("#killswitch-configured").textContent = known ? yesNo(status.configured) : "—";
@@ -60,32 +72,10 @@ function renderKillswitchStatus(status) {
     renderIcon(select("#killswitch-badge-icon"), state === "enabled_protected" ? "circle-check" : state === "disabled" ? "circle-minus" : "triangle-alert");
     clearInlineError("#killswitch-error");
   }
-  const dashboardTone = state === "enabled_protected" ? "success" : "neutral";
-  const dashboardState = configured === true
-    ? t("dashboard.killswitch_active", {}, "Active")
-    : configured === false
-      ? t("dashboard.killswitch_disabled", {}, "Disabled")
-      : t("dashboard.killswitch_unknown", {}, "Status unknown");
-  setStatusPill(select("#dashboard-killswitch-pill"), dashboardState, dashboardTone);
-  renderIcon(
-    select("#dashboard-killswitch-icon"),
-    state === "enabled_protected"
-      ? "shield-check"
-      : configured === false ? "shield" : "shield-alert",
-  );
-  select("#dashboard-killswitch-description").textContent = configured === true
-    ? t(
-      "dashboard.killswitch_active_description",
-      {},
-      "Traffic is blocked when the VPN connection is lost.",
-    )
-    : configured === false
-      ? t(
-        "dashboard.killswitch_disabled_description",
-        {},
-        "Traffic can continue without an active VPN connection.",
-      )
-      : t("dashboard.killswitch_unknown", {}, "Status unknown");
+  // Confirmed VPN-page observations update the shared dashboard projection.
+  // The dashboard owns its rendering and retains the last successful refresh time.
+  projectDashboardKillswitch(status);
+
 }
 
 async function loadKillswitch() {

@@ -83,3 +83,17 @@ text/focus. The existing semantic success, warning, danger and info colors remai
 Browser review must cover desktop and narrow layouts in light and dark mode, with login, wizard,
 provider, dashboard, diagnostics, WireGuard, settings, activity and Help states checked on the
 test appliance before merge. Automated frontend contrast and i18n checks remain release gates.
+
+## Dashboard information design
+
+Dashboard panels are the visual containers. VPN and System use semantic key/value facts without
+nested metric boxes; the existing metric component on other pages is unchanged. VPN and System
+sit side by side above a full-width, bounded WireGuard device summary on desktop. Grid items keep
+content-driven heights and stack below the existing 900px breakpoint. Narrow facts may stack their
+labels above values; peer traffic can occupy two lines without horizontal page scrolling.
+
+Killswitch is a compact VPN fact. Its info button exposes a native top-layer popover on hover,
+keyboard focus and click/tap; Escape or an outside click dismisses it. Opening the explanation
+does not shift layout or mutate protection. Peer indicators combine icons with accessible text,
+and names/technical values retain full-value disclosure. Existing light/dark semantic tokens,
+main panel boundaries, typography, status pills and navigation remain in place.

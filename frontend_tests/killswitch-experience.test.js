@@ -45,10 +45,13 @@ test("dialog traps focus, Escape cancels, and closing restores trigger focus", (
   assert.match(providers, /requestAnimationFrame\(\(\) => select\("#killswitch-cancel"\)\.focus\(\)\)/);
 });
 
-test("dashboard permanently renders explicit killswitch text and icon", () => {
+test("dashboard renders explicit killswitch text and icon with accessible explanatory popover", () => {
   assert.match(dashboardMarkup, /id="dashboard-killswitch-state"/);
   assert.match(dashboardMarkup, /id="dashboard-killswitch-icon"/);
   assert.match(dashboardMarkup, /id="dashboard-killswitch-description"/);
+  assert.match(dashboardMarkup, /aria-describedby="dashboard-killswitch-description"/);
+  assert.match(dashboardMarkup, /popover="auto" role="tooltip"/);
+  assert.doesNotMatch(dashboardMarkup, /dashboard-killswitch-card/);
   assert.match(dashboard, /data\.killswitch\?\.available/);
   assert.match(dashboard, /dashboard\.killswitch_active_description/);
   assert.match(dashboard, /dashboard\.killswitch_disabled_description/);

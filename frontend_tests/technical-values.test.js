@@ -24,17 +24,14 @@ test("dashboard sizing does not apply arbitrary wrapping to normal technical val
     read("../backend/exitlane/static/js/wireguard-management.js"),
     read("../backend/exitlane/static/js/provider.js"),
   ]);
-  const dashboardRule = css.match(/\.dashboard-card \.metric strong\s*\{([^}]+)\}/)?.[1] || "";
+  const dashboardRule = css.match(/\.technical-value\s*\{([^}]+)\}/)?.[1] || "";
   assert.match(dashboardRule, /overflow-wrap:\s*normal/);
   assert.match(dashboardRule, /word-break:\s*normal/);
   assert.doesNotMatch(dashboardRule, /anywhere|break-all/);
-  assert.match(css, /\.dashboard-metrics\s*\{[\s\S]*?minmax\(min\(100%, 10rem\), 1fr\)/);
-  assert.match(css, /\.metric-technical-wide\s*\{[\s\S]*?grid-column:\s*span 2/);
+  assert.match(css, /\.dashboard-fact\s*\{[\s\S]*?minmax\(0, 1fr\)/);
   assert.match(css, /\.metric strong\.technical-value\s*\{[\s\S]*?overflow-wrap:\s*normal;[\s\S]*?word-break:\s*normal;/);
-  assert.match(dashboardHtml, /metric metric-technical-wide[^>]*>[\s\S]*?dashboard-vpn-server/);
-  assert.match(dashboardHtml, /metric metric-technical-wide[^>]*>[\s\S]*?dashboard-wg-endpoint/);
+  assert.match(dashboardHtml, /<dd id="dashboard-vpn-server"/);
   assert.match(dashboard, /setTechnicalValue\(select\("#dashboard-vpn-server"\)/);
-  assert.match(dashboard, /setTechnicalValue\(select\("#dashboard-wg-endpoint"\)/);
   assert.match(wireguard, /setTechnicalValue\(select\("#management-wireguard-endpoint"\)/);
   assert.match(provider, /setTechnicalValue\(select\("#metric-server"\)/);
 });

@@ -206,7 +206,6 @@ async function initialise() {
       deactivateAuthenticatedProviderData();
     });
     select("#dashboard-refresh").addEventListener("click", () => lifecycle.dashboard.refresh().catch(() => {}));
-    select("#dashboard-wg-refresh").addEventListener("click", () => lifecycle.wireguard.refresh().catch(() => {}));
 
     await refreshApplication();
   } catch (error) {
