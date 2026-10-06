@@ -25,10 +25,6 @@ from exitlane import core
 from exitlane.services import wireguard
 
 Sync = Callable[[str], Awaitable[None]]
-PEER_COLUMNS = (
-    "peer_id", "name", "description", "public_key", "tunnel_ip", "config_name",
-    "status", "is_default", "created_at", "updated_at", "revoked_at",
-)
 PEER_SECTION = re.compile(r"(?m)^\[Peer\]\s*$")
 IDENTIFIER = re.compile(r"[0-9a-f]{32}\Z")
 
@@ -259,7 +255,9 @@ def _render(prefix: str, peers: list[dict[str, str]]) -> str:
 def _rows(connection: sqlite3.Connection) -> list[dict]:
     connection.row_factory = sqlite3.Row
     return [dict(row) for row in connection.execute(
-        f"SELECT {', '.join(PEER_COLUMNS)} FROM wireguard_peers ORDER BY created_at, peer_id"
+        "SELECT peer_id, name, description, public_key, tunnel_ip, config_name, "
+        "status, is_default, created_at, updated_at, revoked_at "
+        "FROM wireguard_peers ORDER BY created_at, peer_id"
     )]
 
 
