@@ -199,6 +199,79 @@ def test_pending_two_address_ingress_recovers_under_supported_subnet_boundary(re
     assert_original(state)
 
 
+@pytest.mark.parametrize("foreign", [False, True])
+def test_parent_recovers_owned_selector_left_before_first_nft_table(recovery, foreign):
+    """A crash after RPDB arm but before nft publication remains retriable."""
+    state, _hooks, _coordinator, _entry = recovery
+    wireguard_initial.write(
+        state.layout.database,
+        {
+            "interface": "wg-office",
+            "client": "router",
+            "subnet": "10.88.0.0/24",
+            "activation_attempted": False,
+            "settings": {},
+            "phase": "pending",
+        },
+    )
+    ns = ActiveResetNamespace(detached=False)
+    ns.guard_exists = False
+    ns.live = False
+    ns.routes[4] = [row for row in ns.routes[4] if row.get("dev") is None]
+    ns.rules[4] = [row for row in ns.rules[4] if row.get("oif") is None]
+    if foreign:
+        next(row for row in ns.rules[4] if row.get("iif") == "wg-office")["protocol"] = 999
+    sources = tuple(ns.network.source_addresses)
+    maintenance = Maintenance()
+    controller = ContainerController(state, maintenance, runner=ns.run)
+    entry = ContainerEntrypoint.__new__(ContainerEntrypoint)
+    entry.state = state
+    entry.controller = controller
+    entry.maintenance = maintenance
+    entry.ready = False
+
+    async def stopped():
+        return None
+
+    async def healthy():
+        return True
+
+    entry.supervisor = SimpleNamespace(stop_worker=stopped, maintenance=False)
+    coordinator = ContainerRecoveryCoordinator(
+        state,
+        RecoveryHooks(
+            entry.guard,
+            entry.quiesce,
+            stopped,
+            controller.reconcile,
+            healthy,
+            stopped,
+            entry.recover_initial_setup,
+            entry.finish_initial_setup,
+        ),
+        require_exclusive=lambda: True,
+    )
+    entry.coordinator = coordinator
+    if foreign:
+        with pytest.raises(ContainerRecoveryError, match="recovery_required"):
+            asyncio.run(coordinator.startup())
+        assert wireguard_initial.path(state.layout.database).exists()
+        assert all(
+            any(row.get("iif") == "wg-office" for row in ns.rules[family]) for family in (4, 6)
+        )
+        assert maintenance.active
+        return
+    asyncio.run(coordinator.startup())
+    assert_original(state)
+    assert controller.recovered_initial_policy is None
+    assert not ns.guard_exists
+    assert all(
+        not any(row.get("iif") == "wg-office" for row in ns.rules[family]) for family in (4, 6)
+    )
+    assert all(any(row.get("src") == source for row in ns.rules[4]) for source in sources)
+    assert maintenance.active
+
+
 @pytest.mark.parametrize("stage", ["reset", "reconcile"])
 def test_pending_journal_remains_until_provider_reset_and_reconcile_succeed(recovery, stage):
     state, hooks, _coordinator, entry = recovery

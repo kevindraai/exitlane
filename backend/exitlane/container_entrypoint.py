@@ -198,21 +198,20 @@ class ContainerController:
         if not exists:
             if self.recovered_initial_policy is not None:
                 raise EntrypointError("container_guard_unproven")
-            from exitlane.services.provider_wireguard import RULE_PRIORITY, TABLE_ID
+            from exitlane.services.provider_wireguard import ProviderWireGuard
 
-            for family in (4, 6):
-                rules = json.loads(await self.checked("ip", f"-{family}", "-j", "rule", "show"))
-                if (
-                    not isinstance(rules, list)
-                    or any(not isinstance(item, dict) for item in rules)
-                    or any(
-                        item.get("iif") in {identity.interface for identity in identities}
-                        and str(item.get("priority")) == str(RULE_PRIORITY)
-                        and str(item.get("table")) == str(TABLE_ID)
-                        for item in rules
-                    )
-                ):
-                    raise EntrypointError("container_guard_unproven")
+            # ProviderWireGuard.arm can publish its exact RPDB selector before
+            # nft -c rejects first-table publication. No ingress link or D3
+            # table exists yet; retire only selectors tied to the journal or
+            # already-cached first-setup identities. Foreign rules fail closed.
+            guard = ProviderWireGuard(self.runner)
+            for identity in identities:
+                rc, _, _ = await self.runner(
+                    "ip", "link", "show", "dev", identity.interface, timeout=5
+                )
+                if rc != 1:
+                    raise EntrypointError("container_interface_ownership_unproven")
+                await self.retire_recovered_selector(guard, identity.interface)
             return
         data = json.loads(await self.checked("nft", "-j", "list", "table", "inet", TABLE))
         matches = []
@@ -234,9 +233,32 @@ class ContainerController:
 
     async def retire_recovered_selector(self, observer, interface):
         """Remove only the old owned route selector and prove it is gone."""
-        from exitlane.services.provider_wireguard import RULE_PRIORITY, TABLE_ID
+        from exitlane.services.provider_wireguard import (
+            RULE_PRIORITY,
+            TABLE_ID,
+            ProviderWireGuard,
+        )
 
-        await observer.provider_guard.disarm((interface,))
+        guard = getattr(observer, "provider_guard", observer)
+        # Validate both families before any deletion so a foreign variant in
+        # one cannot leave the other family half-retired.
+        for family in (4, 6):
+            rules = json.loads(await self.checked("ip", f"-{family}", "-j", "rule", "show"))
+            if not isinstance(rules, list) or any(not isinstance(item, dict) for item in rules):
+                raise EntrypointError("container_guard_unproven")
+            for rule in rules:
+                if (
+                    rule.get("iif") != interface
+                    or str(rule.get("priority")) != str(RULE_PRIORITY)
+                    or str(rule.get("table")) != str(TABLE_ID)
+                ):
+                    continue
+                candidate = dict(rule)
+                if candidate.get("iif_detached") is True:
+                    candidate.pop("iif_detached")
+                if not ProviderWireGuard._owned_rule(candidate, (RULE_PRIORITY, "iif", interface)):
+                    raise EntrypointError("container_guard_unproven")
+        await guard.disarm((interface,))
         for family in (4, 6):
             rules = json.loads(await self.checked("ip", f"-{family}", "-j", "rule", "show"))
             if (
@@ -354,6 +376,12 @@ class ContainerController:
                     raise EntrypointError("container_guard_unproven") from None
                 if existing:
                     raise EntrypointError("container_guard_unproven")
+                rc, _, _ = await self.runner(
+                    "ip", "link", "show", "dev", self.network.config.interface, timeout=5
+                )
+                if rc != 1:
+                    raise EntrypointError("container_interface_ownership_unproven")
+                await self.retire_recovered_selector(self.network, self.network.config.interface)
                 self.network = None
                 self.initial_guard_config = None
             self.initial_rollback_ready = True
