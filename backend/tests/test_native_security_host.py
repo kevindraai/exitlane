@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts/qualification"))
-from native_security_evidence import EvidenceError
 import native_security_host as host_module
+from native_security_evidence import EvidenceError
 from native_security_host import CommandResult, ReadOnlyHost
 from test_native_security_evidence import inventory, os_identity, trivy
 

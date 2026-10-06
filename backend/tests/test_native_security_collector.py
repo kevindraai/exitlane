@@ -516,9 +516,8 @@ def test_artifact_publish_failure_cleans_temp_and_fresh_retry_succeeds(
         raise OSError("synthetic publish failure")
 
     monkeypatch.setattr(collector.os, "link", deny_link)
-    with collector.OutputDirectory(output, create=True) as directory:
-        with pytest.raises(OSError):
-            directory.write("receipt.json", b"public")
+    with collector.OutputDirectory(output, create=True) as directory, pytest.raises(OSError):
+        directory.write("receipt.json", b"public")
     assert not list(output.iterdir())
     monkeypatch.setattr(collector.os, "link", original_link)
     with collector.OutputDirectory(safe_output_parent / "retry", create=True) as directory:
