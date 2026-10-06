@@ -943,12 +943,13 @@ class Run:
                         ["bash", source + "/installer/install-debian.sh"], stage
                     )
                 )
-            # The first successful upgrade snapshot must precede every peer/config API
-            # probe, since those endpoints may perform a lazy legacy migration.
-            after = self.snapshot(stage + "-after") if stage == "upgrade" else None
-            finished = time.time() if stage == "upgrade" else None
+            # systemd Type=simple may return before ASGI startup runs the migration.
+            # /api/health only observes readiness; it never adopts legacy peer state.
             healthy()
             if stage == "upgrade":
+                # Snapshot after startup, before peer/config APIs that may repair lazily.
+                after = self.snapshot(stage + "-after")
+                finished = time.time()
                 if state.compare_v1_upgrade(
                     before, after, certificate, started, finished
                 ):
