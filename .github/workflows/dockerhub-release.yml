@@ -1,0 +1,184 @@
+name: Docker Hub release mirror
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published and qualified release tag (for example v1.0.1)
+        required: true
+        type: string
+      source_sha:
+        description: Exact application commit from the published release
+        required: true
+        type: string
+      digest:
+        description: Qualified GHCR sha256 digest from the published release
+        required: true
+        type: string
+      confirmation:
+        description: MIRROR EXITLANE <tag> <source_sha> <digest> TO tunedpixel/exitlane
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dockerhub-${{ vars.DOCKERHUB_NAMESPACE || 'tunedpixel' }}-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag }}
+  RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
+  RELEASE_DIGEST: ${{ inputs.digest }}
+  RELEASE_CONFIRMATION: ${{ inputs.confirmation }}
+  DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE || 'tunedpixel' }}
+
+jobs:
+  validate:
+    if: ${{ github.ref == 'refs/heads/main' && github.repository == 'kevindraai/exitlane' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout trusted workflow and full ancestry
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate source, digest, release receipt and protected environment
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/dockerhub_release.py prepare
+
+      - name: Verify upstream signed provenance and SPDX SBOM
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          subject="oci://ghcr.io/kevindraai/exitlane@$RELEASE_DIGEST"
+          gh attestation verify "$subject" --repo kevindraai/exitlane \
+            --signer-workflow kevindraai/exitlane/.github/workflows/docker-release.yml \
+            --source-ref refs/heads/main --deny-self-hosted-runners \
+            --predicate-type https://slsa.dev/provenance/v1 --format json \
+            > source-provenance-verification.json
+          gh attestation verify "$subject" --repo kevindraai/exitlane \
+            --signer-workflow kevindraai/exitlane/.github/workflows/docker-release.yml \
+            --source-ref refs/heads/main --deny-self-hosted-runners \
+            --predicate-type https://spdx.dev/Document/v2.3 --format json \
+            > source-sbom-verification.json
+          python3 scripts/dockerhub_release.py evidence
+
+      - name: Retain verified source evidence for this run
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dockerhub-verified-source
+          path: |
+            source-provenance-verification.json
+            source-sbom-verification.json
+            source-qualification.md
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    needs: validate
+    if: ${{ github.ref == 'refs/heads/main' && needs.validate.result == 'success' }}
+    environment: dockerhub-production
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      attestations: write
+      id-token: write
+    steps:
+      - name: Checkout exact trusted workflow
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download verified evidence from the current workflow run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dockerhub-verified-source
+
+      - name: Revalidate after approval and construct mirror evidence
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/dockerhub_release.py prepare
+          python3 scripts/dockerhub_release.py evidence
+
+      - name: Sign in to Docker Hub after approval
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PAT: ${{ secrets.DOCKER_PAT }}
+        run: |
+          test -n "$DOCKER_USERNAME" && test -n "$DOCKER_PAT"
+          printf '%s' "$DOCKER_PAT" | docker login --username "$DOCKER_USERNAME" --password-stdin
+
+      - name: Copy the qualified image without rebuilding or replacing a tag
+        run: python3 scripts/dockerhub_release.py mirror
+
+      - name: Attest the Docker Hub mirror operation
+        id: provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: docker.io/${{ env.DOCKERHUB_NAMESPACE }}/exitlane
+          subject-digest: ${{ inputs.digest }}
+          predicate-type: https://github.com/kevindraai/exitlane/attestations/registry-mirror/v1
+          predicate-path: mirror-predicate.json
+          push-to-registry: true
+
+      - name: Attest the original verified SPDX SBOM under the Hub image name
+        id: sbom
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: docker.io/${{ env.DOCKERHUB_NAMESPACE }}/exitlane
+          subject-digest: ${{ inputs.digest }}
+          sbom-path: mirror.spdx.json
+          push-to-registry: true
+
+      - name: Verify Hub signatures, exact predicates and anonymous pulls
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          docker logout
+          export DOCKER_CONFIG
+          DOCKER_CONFIG=$(mktemp -d)
+          trap 'rm -rf -- "$DOCKER_CONFIG"' EXIT
+          subject="oci://docker.io/$DOCKERHUB_NAMESPACE/exitlane@$RELEASE_DIGEST"
+          gh attestation verify "$subject" --repo kevindraai/exitlane \
+            --signer-workflow kevindraai/exitlane/.github/workflows/dockerhub-release.yml \
+            --source-ref refs/heads/main --source-digest "$GITHUB_SHA" \
+            --deny-self-hosted-runners \
+            --predicate-type https://github.com/kevindraai/exitlane/attestations/registry-mirror/v1 \
+            --format json > destination-provenance-verification.json
+          gh attestation verify "$subject" --repo kevindraai/exitlane \
+            --signer-workflow kevindraai/exitlane/.github/workflows/dockerhub-release.yml \
+            --source-ref refs/heads/main --source-digest "$GITHUB_SHA" \
+            --deny-self-hosted-runners --predicate-type https://spdx.dev/Document/v2.3 \
+            --format json > destination-sbom-verification.json
+          python3 scripts/dockerhub_release.py verify
+
+      - name: Retain mirror, signatures and verification evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dockerhub-mirror-evidence
+          path: |
+            mirror-result.json
+            mirror-predicate.json
+            mirror.spdx.json
+            source-*-verification.json
+            source-qualification.md
+            destination-*-verification.json
+            ${{ steps.provenance.outputs.bundle-path }}
+            ${{ steps.sbom.outputs.bundle-path }}
+          if-no-files-found: warn
+          retention-days: 90
