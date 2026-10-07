@@ -3976,16 +3976,12 @@ async def _deactivate_initial_wireguard_runtime(journal: dict) -> None:
         return
     interface = journal["interface"]
     if runtime.capabilities.runtime_name == "native":
-        rc, _, _ = await command(
-            "systemctl", "disable", "--now", f"wg-quick@{interface}.service"
-        )
+        rc, _, _ = await command("systemctl", "disable", "--now", f"wg-quick@{interface}.service")
         if rc != 0:
             raise wireguard_service.WireGuardConfigurationError("wireguard_rollback_failed")
         link_rc, _, _ = await command("ip", "link", "show", "dev", interface)
         if link_rc == 0:
-            down_rc, _, _ = await command(
-                "wg-quick", "down", str(WG_DIR / f"{interface}.conf")
-            )
+            down_rc, _, _ = await command("wg-quick", "down", str(WG_DIR / f"{interface}.conf"))
             if down_rc != 0:
                 raise wireguard_service.WireGuardConfigurationError("wireguard_rollback_failed")
             link_rc, _, _ = await command("ip", "link", "show", "dev", interface)
@@ -4032,9 +4028,12 @@ async def _recover_initial_wireguard_setup() -> None:
                     raise wireguard_initial.InitialSetupError("wireguard_recovery_failed")
                 wireguard_peers.validate_staged_state(DB, WG_DIR)
                 with sqlite3.connect(DB) as connection:
-                    if connection.execute(
-                        "SELECT COUNT(*) FROM wireguard_peers WHERE is_default=1"
-                    ).fetchone()[0] != 1:
+                    if (
+                        connection.execute(
+                            "SELECT COUNT(*) FROM wireguard_peers WHERE is_default=1"
+                        ).fetchone()[0]
+                        != 1
+                    ):
                         raise wireguard_initial.InitialSetupError("wireguard_recovery_failed")
                 await management_routing.reconcile()
             except (
@@ -4230,9 +4229,7 @@ async def _create_initial_wireguard_setup(req: WireGuard, request: Request) -> d
             ) from error
         if setting("wireguard_configured", False) is True:
             return result
-        raise wireguard_service.WireGuardConfigurationError(
-            "wireguard_recovery_failed"
-        ) from error
+        raise wireguard_service.WireGuardConfigurationError("wireguard_recovery_failed") from error
     _clear_initial_wireguard_journal()
     return result
 
@@ -4266,8 +4263,11 @@ async def _current_wireguard_configuration() -> dict | None:
         if default is None or default["status"] != "active":
             return None
         result = await wireguard_peers.configuration(interface, default["peer_id"])
-        return {"client_name": client, "filename": "exitlane-wireguard.conf",
-                "client_config": result["configuration"]}
+        return {
+            "client_name": client,
+            "filename": "exitlane-wireguard.conf",
+            "client_config": result["configuration"],
+        }
     return await wireguard_service.read_current(interface, client)
 
 
@@ -4297,9 +4297,11 @@ async def download_wireguard_configuration() -> Response:
         return _private_response({"error": error.code}, status_code=409)
     if configuration is None:
         return _private_response({"error": "wireguard_configuration_missing"}, status_code=404)
-    response = Response(content=configuration["client_config"],
-                        media_type="application/x-wireguard-profile",
-                        headers={"Content-Disposition": 'attachment; filename="exitlane-wireguard.conf"'})
+    response = Response(
+        content=configuration["client_config"],
+        media_type="application/x-wireguard-profile",
+        headers={"Content-Disposition": 'attachment; filename="exitlane-wireguard.conf"'},
+    )
     response.headers["Cache-Control"] = "no-store, private"
     response.headers["Pragma"] = "no-cache"
     return response
@@ -4358,13 +4360,25 @@ async def regenerate_wireguard_configuration(request: Request) -> JSONResponse:
                 )
         except wireguard_peers.PeerError as error:
             return _peer_error_response(error)
-        record_event("wireguard.configuration_regenerated", actor=request_actor(request),
-                     metadata={"client_name": client})
-        record_event("wireguard.peer_regenerated", actor=request_actor(request),
-                     metadata={"peer_id": default["peer_id"], "name": default["name"]})
-        return _private_response({"ok": True, "available": True, "client_name": client,
-                                  "filename": "exitlane-wireguard.conf",
-                                  "configuration": result["configuration"]})
+        record_event(
+            "wireguard.configuration_regenerated",
+            actor=request_actor(request),
+            metadata={"client_name": client},
+        )
+        record_event(
+            "wireguard.peer_regenerated",
+            actor=request_actor(request),
+            metadata={"peer_id": default["peer_id"], "name": default["name"]},
+        )
+        return _private_response(
+            {
+                "ok": True,
+                "available": True,
+                "client_name": client,
+                "filename": "exitlane-wireguard.conf",
+                "configuration": result["configuration"],
+            }
+        )
     try:
         if await wireguard_service.read_current(interface, client) is None:
             raise wireguard_service.WireGuardConfigurationError("wireguard_configuration_missing")
@@ -4456,9 +4470,15 @@ WIREGUARD_RECENT_SECONDS = 180  # Six missed 25-second keepalives plus schedulin
 
 def _peer_error_response(error: wireguard_peers.PeerError) -> JSONResponse:
     code = error.code
-    status = (404 if code == "wireguard_peer_not_found" else
-              400 if code.startswith("wireguard_peer_invalid_") else
-              500 if code in {"wireguard_peer_mutation_failed", "wireguard_rollback_failed"} else 409)
+    status = (
+        404
+        if code == "wireguard_peer_not_found"
+        else 400
+        if code.startswith("wireguard_peer_invalid_")
+        else 500
+        if code in {"wireguard_peer_mutation_failed", "wireguard_rollback_failed"}
+        else 409
+    )
     return _private_response({"error": code}, status_code=status)
 
 
@@ -4478,13 +4498,19 @@ def _runtime_peers(rows: list[dict], kernel_peers: list[dict], *, active: bool) 
             runtime_status = "active_recently"
         else:
             runtime_status = "inactive"
-        output.append({
-            **wireguard_peers.public_peer(row), "runtime_status": runtime_status,
-            "latest_handshake": handshake, "handshake_age": age,
-            "endpoint": peer.get("endpoint") if peer.get("endpoint") not in {"(none)", ""} else None,
-            "received_bytes": peer.get("received_bytes", 0),
-            "sent_bytes": peer.get("sent_bytes", 0),
-        })
+        output.append(
+            {
+                **wireguard_peers.public_peer(row),
+                "runtime_status": runtime_status,
+                "latest_handshake": handshake,
+                "handshake_age": age,
+                "endpoint": peer.get("endpoint")
+                if peer.get("endpoint") not in {"(none)", ""}
+                else None,
+                "received_bytes": peer.get("received_bytes", 0),
+                "sent_bytes": peer.get("sent_bytes", 0),
+            }
+        )
     return output
 
 
@@ -4496,14 +4522,18 @@ async def list_wireguard_peers() -> JSONResponse:
     except wireguard_peers.PeerError as error:
         return _peer_error_response(error)
     peers = _runtime_peers(rows, status.get("peers", []), active=status["active"])
-    return _private_response({
-        "peers": peers, "total_peers": len(peers),
-        "recent_peers": sum(peer["runtime_status"] == "active_recently" for peer in peers),
-        "interface": status["interface"],
-        "subnet": setting("wireguard_subnet", DEFAULT_WIREGUARD_SUBNET),
-        "listen_port": setting("wireguard_port", DEFAULT_WIREGUARD_PORT),
-        "endpoint": setting("wireguard_endpoint"), "active": status["active"],
-    })
+    return _private_response(
+        {
+            "peers": peers,
+            "total_peers": len(peers),
+            "recent_peers": sum(peer["runtime_status"] == "active_recently" for peer in peers),
+            "interface": status["interface"],
+            "subnet": setting("wireguard_subnet", DEFAULT_WIREGUARD_SUBNET),
+            "listen_port": setting("wireguard_port", DEFAULT_WIREGUARD_PORT),
+            "endpoint": setting("wireguard_endpoint"),
+            "active": status["active"],
+        }
+    )
 
 
 @app.post("/api/ingress/wireguard/peers")
@@ -4518,12 +4548,17 @@ async def create_wireguard_peer(req: WireGuardPeerCreate, request: Request) -> J
         async with lock:
             result = await wireguard_peers.create(
                 setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE),
-                req.name, req.description, sync_wireguard_interface,
+                req.name,
+                req.description,
+                sync_wireguard_interface,
             )
     except wireguard_peers.PeerError as error:
         return _peer_error_response(error)
-    record_event("wireguard.peer_created", actor=request_actor(request),
-                 metadata={"peer_id": result["peer"]["peer_id"], "name": result["peer"]["name"]})
+    record_event(
+        "wireguard.peer_created",
+        actor=request_actor(request),
+        metadata={"peer_id": result["peer"]["peer_id"], "name": result["peer"]["name"]},
+    )
     return _private_response(result, status_code=201)
 
 
@@ -4534,11 +4569,15 @@ async def get_wireguard_peer(peer_id: str) -> JSONResponse:
         status = await wireguard_status()
     except wireguard_peers.PeerError as error:
         return _peer_error_response(error)
-    return _private_response(_runtime_peers([row], status.get("peers", []), active=status["active"])[0])
+    return _private_response(
+        _runtime_peers([row], status.get("peers", []), active=status["active"])[0]
+    )
 
 
 @app.patch("/api/ingress/wireguard/peers/{peer_id}")
-async def update_wireguard_peer(peer_id: str, req: WireGuardPeerUpdate, request: Request) -> JSONResponse:
+async def update_wireguard_peer(
+    peer_id: str, req: WireGuardPeerUpdate, request: Request
+) -> JSONResponse:
     lock = wireguard_generation_lock()
     if lock.locked():
         return _private_response({"error": "wireguard_generation_in_progress"}, status_code=409)
@@ -4546,12 +4585,17 @@ async def update_wireguard_peer(peer_id: str, req: WireGuardPeerUpdate, request:
         async with lock:
             peer = await wireguard_peers.update(
                 setting("wireguard_interface", DEFAULT_WIREGUARD_INTERFACE),
-                peer_id, req.name, req.description,
+                peer_id,
+                req.name,
+                req.description,
             )
     except wireguard_peers.PeerError as error:
         return _peer_error_response(error)
-    record_event("wireguard.peer_updated", actor=request_actor(request),
-                 metadata={"peer_id": peer_id, "name": peer["name"]})
+    record_event(
+        "wireguard.peer_updated",
+        actor=request_actor(request),
+        metadata={"peer_id": peer_id, "name": peer["name"]},
+    )
     return _private_response(peer)
 
 
@@ -4575,9 +4619,13 @@ async def download_wireguard_peer_configuration(peer_id: str) -> Response:
     except wireguard_peers.PeerError as error:
         return _peer_error_response(error)
     return Response(
-        content=config["configuration"], media_type="application/x-wireguard-profile",
-        headers={"Content-Disposition": f'attachment; filename="{config["filename"]}"',
-                 "Cache-Control": "no-store, private", "Pragma": "no-cache"},
+        content=config["configuration"],
+        media_type="application/x-wireguard-profile",
+        headers={
+            "Content-Disposition": f'attachment; filename="{config["filename"]}"',
+            "Cache-Control": "no-store, private",
+            "Pragma": "no-cache",
+        },
     )
 
 
@@ -4591,11 +4639,18 @@ async def wireguard_peer_configuration_qr(peer_id: str) -> Response:
         return _peer_error_response(error)
     output = BytesIO()
     segno.make_qr(config["configuration"], error="m").save(
-        output, kind="svg", scale=5, xmldecl=False,
-        svgclass="wireguard-qr-svg", lineclass="wireguard-qr-modules",
+        output,
+        kind="svg",
+        scale=5,
+        xmldecl=False,
+        svgclass="wireguard-qr-svg",
+        lineclass="wireguard-qr-modules",
     )
-    return Response(content=output.getvalue(), media_type="image/svg+xml",
-                    headers={"Cache-Control": "no-store, private", "Pragma": "no-cache"})
+    return Response(
+        content=output.getvalue(),
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "no-store, private", "Pragma": "no-cache"},
+    )
 
 
 @app.post("/api/ingress/wireguard/peers/{peer_id}/regenerate")
@@ -4622,15 +4677,20 @@ async def _mutate_wireguard_peer(action: str, peer_id: str, request: Request) ->
     try:
         async with lock:
             if action == "regenerated":
-                result = await wireguard_peers.regenerate(interface, peer_id, sync_wireguard_interface)
+                result = await wireguard_peers.regenerate(
+                    interface, peer_id, sync_wireguard_interface
+                )
             elif action == "revoked":
                 result = await wireguard_peers.revoke(interface, peer_id, sync_wireguard_interface)
             else:
                 result = {"peer": await wireguard_peers.delete(interface, peer_id)}
     except wireguard_peers.PeerError as error:
         return _peer_error_response(error)
-    record_event(f"wireguard.peer_{action}", actor=request_actor(request),
-                 metadata={"peer_id": peer_id, "name": result["peer"]["name"]})
+    record_event(
+        f"wireguard.peer_{action}",
+        actor=request_actor(request),
+        metadata={"peer_id": peer_id, "name": result["peer"]["name"]},
+    )
     return _private_response(result)
 
 

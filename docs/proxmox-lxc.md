@@ -1,6 +1,6 @@
 # Proxmox LXC
 
-The native Proxmox target for ExitLane v1.0.0 is **Debian 13, `amd64`, privileged LXC**.
+The native Proxmox target for ExitLane v1.0.1 is **Debian 13, `amd64`, privileged LXC**.
 Unprivileged containers, other Debian releases and other architectures are not supported release
 targets. ExitLane runs natively inside the container and needs systemd, WireGuard, nftables and
 permission to administer its network namespace.
@@ -93,10 +93,11 @@ rc.1–rc.3 used RC tags with `prerelease=false`; that setting is release-policy
 guarantee for future releases. A future stable-only policy requires an explicit reviewed resolver change. Drafts and arbitrary
 refs are never accepted. API/network/validation failures stop the invocation.
 
-An explicit published release can be selected without changing the script. To select v1.0.0:
+An explicit published release can be selected without changing the script. Once v1.0.1
+is published, select it with:
 
 ```bash
-EXITLANE_VERSION=v1.0.0 \
+EXITLANE_VERSION=v1.0.1 \
   bash -c "$(curl -fsSL https://raw.githubusercontent.com/kevindraai/exitlane/main/installer/proxmox.sh)"
 ```
 
@@ -135,11 +136,11 @@ Release API semantics are documented by [GitHub](https://docs.github.com/en/rest
 
 ### Automation and diagnosis
 
-The Python helper can also be run from a reviewed v1.0.0 checkout:
+The Python helper can also be run from a reviewed v1.0.1 checkout after publication:
 
 ```bash
-python3 installer/create-proxmox-lxc.py --ref v1.0.0 --dry-run
-python3 installer/create-proxmox-lxc.py --ref v1.0.0 --yes
+python3 installer/create-proxmox-lxc.py --ref v1.0.1 --dry-run
+python3 installer/create-proxmox-lxc.py --ref v1.0.1 --yes
 ```
 
 Use `--help` for the advanced flags described above. The Bash launcher deliberately requires a
@@ -159,8 +160,9 @@ changed resources require a fresh plan rather than silently changing the approve
 
 The first rc.4 public creation attempt exposed a root-DNS/APT-readiness false positive.
 The [rc.4 release notes](release-notes/0.3.0-rc.4.md) preserve that investigation and its
-subsequent public-path qualification. The [v1.0.0 release notes](release-notes/1.0.0.md) record
-the stable installation evidence.
+subsequent public-path qualification. The [v1.0.0 release notes](release-notes/1.0.0.md) retain
+its stable installation evidence; [v1.0.1 release evidence](release-notes/1.0.1.md#release-evidence)
+must record the new public path separately.
 The helper uses supported [PVE container commands](https://pve.proxmox.com/pve-docs/pct.1.html)
 and [storage commands](https://pve.proxmox.com/pve-docs/pvesm.1.html).
 

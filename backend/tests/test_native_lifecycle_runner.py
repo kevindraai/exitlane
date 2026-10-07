@@ -81,6 +81,106 @@ def seeded_receipts(run, runner):
     receipt(run, runner, "seed", {"fixture.json", "seed.snapshot", "api-seed.log"})
 
 
+def test_v1_upgrade_gate_pins_tag_and_both_versions(runner, monkeypatch):
+    details = config()
+    details["role"] = "upgrade"
+    details["baseline_sha"] = runner.V1_TAG_SHA
+    versions = {
+        "baseline": b'[project]\nversion = "1.0.0"\n',
+        "candidate": b'[project]\nversion = "1.0.1"\n',
+    }
+    monkeypatch.setattr(
+        runner,
+        "checked_read",
+        lambda path: versions["baseline" if "baseline" in str(path) else "candidate"],
+    )
+    runner.release_upgrade_gate(details)
+    details["baseline_sha"] = "d" * 40
+    with pytest.raises(runner.QualificationError, match="baseline_identity_mismatch"):
+        runner.release_upgrade_gate(details)
+    details["baseline_sha"] = runner.V1_TAG_SHA
+    versions["baseline"] = b'[project]\nversion = "0.3.0rc4"\n'
+    with pytest.raises(runner.QualificationError, match="release_version_mismatch"):
+        runner.release_upgrade_gate(details)
+    versions["baseline"] = b'[project]\nversion = "1.0.0"\n'
+    versions["candidate"] = b'[project]\nversion = "1.0.2"\n'
+    with pytest.raises(runner.QualificationError, match="release_version_mismatch"):
+        runner.release_upgrade_gate(details)
+
+
+@pytest.mark.parametrize("startup_succeeds", [True, False])
+def test_upgrade_snapshots_only_after_stable_startup_before_verify(
+    runner, monkeypatch, startup_succeeds
+):
+    details = config()
+    details["role"] = "upgrade"
+    details["baseline_sha"] = runner.V1_TAG_SHA
+    upgrade = runner.Run(details)
+    upgrade.open()
+    receipt(upgrade, runner, "baseline-install", {"baseline-install.log"})
+    receipt(upgrade, runner, "seed", {"fixture.json", "seed.snapshot", "api-seed.log"})
+    runner.private_write(upgrade.directory / "rollback-after.snapshot", {"phase": "old"})
+    receipt(
+        upgrade,
+        runner,
+        "rollback",
+        {
+            "rollback-before.snapshot",
+            "rollback-after.snapshot",
+            "fault-marker",
+            "rollback.log",
+            "rollback-verify.log",
+            "fixture.json",
+        },
+    )
+    order = []
+    ready = False
+    monkeypatch.setattr(runner, "installed", lambda *_: None)
+    monkeypatch.setattr(runner.state, "compare", lambda *_: [])
+    monkeypatch.setattr(runner.state, "legacy_certificate", lambda *_: {"bound": "pre-upgrade"})
+
+    def capture(_root):
+        phase = "after" if "installer" in order else "before"
+        if phase == "after":
+            assert ready, "post-upgrade snapshot preceded ASGI readiness"
+        order.append(phase)
+        return {"phase": "new" if phase == "after" else "old"}
+
+    def health():
+        nonlocal ready
+        order.append("health")
+        if not startup_succeeds:
+            raise runner.QualificationError("qualification_health_failed")
+        ready = True
+
+    def command(_argv, label, **_kwargs):
+        order.append("installer" if label == "upgrade" else "verify")
+        path = upgrade.directory / (label + ".log")
+        runner.private_bytes(path, b"synthetic operation")
+        return path
+
+    def compare_v1(before, after, certificate, started, finished):
+        order.append("compare")
+        assert before == {"phase": "old"}
+        assert after == {"phase": "new"}
+        assert certificate == {"bound": "pre-upgrade"}
+        assert started <= finished
+        return []
+
+    monkeypatch.setattr(runner.state, "capture", capture)
+    monkeypatch.setattr(runner.state, "compare_v1_upgrade", compare_v1)
+    monkeypatch.setattr(runner, "healthy", health)
+    monkeypatch.setattr(upgrade, "command", command)
+    if startup_succeeds:
+        assert upgrade.execute("upgrade")["result"] == "PASS"
+        assert order == ["before", "installer", "health", "after", "compare", "verify"]
+    else:
+        with pytest.raises(runner.QualificationError, match="health_failed"):
+            upgrade.execute("upgrade")
+        assert order == ["before", "installer", "health"]
+        assert not (upgrade.directory / "upgrade-after.snapshot").exists()
+
+
 @pytest.mark.parametrize("kind", ["symlink", "hardlink", "fifo", "wide", "oversize"])
 def test_private_read_rejects_unsafe_files(runner, tmp_path, kind):
     path = tmp_path / "secret"

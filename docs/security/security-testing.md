@@ -29,6 +29,14 @@ unfixed Debian OS risks.
 
 ## Daybreak Blue-assisted internal defensive assessment
 
+The [2026-10-06 assessment](daybreak-blue-assessment-2026-10-06.md) examined the
+post-v1 multi-device ingress, dashboard and native evidence collector alongside
+existing trust boundaries. It found one Medium and one Low issue on assessed source
+`f640a180`; both have since been fixed in separate PRs #143 and #144 and passed
+deterministic rechecks. The report records the original blocking outcome, fix evidence
+and dynamic-scope limits. Final v1.0.1 scans and appliance qualification remain
+release-specific checks.
+
 The 2026-09-30 Track D assessment followed a private attack-hypothesis ledger rather than using
 the existing scanner list as its conclusion. It challenged state transitions and trust boundaries
 for setup/auth/session/MFA, CSRF and proxies, DOM rendering, subprocesses, provider parsers,

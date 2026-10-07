@@ -5,9 +5,11 @@ reference runtime. Docker v1 supports Mullvad, PIA and imported Proton WireGuard
 additionally supports NordVPN. NordVPN is unavailable inside Docker. Live commercial PIA/Proton
 interoperability remains unqualified; synthetic qualification is not a live-provider claim.
 
-Use the published [v1.0.0 release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0)
-and its [source/image qualification receipts](release-notes/1.0.0.md#release-and-image-receipts)
-to verify availability, immutable digest and acceptance before running deployment commands.
+Use the [v1.0.1 release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.1)
+and its [source/image qualification receipts](release-notes/1.0.1.md#release-evidence)
+to verify publication, immutable digest and acceptance before running deployment commands.
+Until v1.0.1 is published, the [v1.0.0 release](release-notes/1.0.0.md) remains the
+published operator path.
 
 
 ## Prerequisites
@@ -31,7 +33,7 @@ container's nftables/routing; Docker owns host bridge/NAT. Preserve this Compose
 Obtain the matching versioned deployment files and preflight from the stable source:
 
 ```bash
-git clone --branch v1.0.0 --depth 1 https://github.com/kevindraai/exitlane.git exitlane-v1
+git clone --branch v1.0.1 --depth 1 https://github.com/kevindraai/exitlane.git exitlane-v1
 cd exitlane-v1
 ```
 
@@ -39,8 +41,8 @@ Pull the official versioned image and resolve its immutable registry identity. C
 identity with the published release's digest receipt before proceeding:
 
 ```bash
-docker pull ghcr.io/kevindraai/exitlane:v1.0.0
-image_digest=$(docker image inspect ghcr.io/kevindraai/exitlane:v1.0.0 \
+docker pull ghcr.io/kevindraai/exitlane:v1.0.1
+image_digest=$(docker image inspect ghcr.io/kevindraai/exitlane:v1.0.1 \
   --format '{{index .RepoDigests 0}}')
 printf '%s\n' "$image_digest"
 ```
@@ -69,7 +71,7 @@ docker compose -f docker/compose.appliance.yml up -d
 
 Continue only if preflight reports `PASS`. Keep the project name and `.env` consistent for all
 lifecycle commands: they select the same persistent volume. The official versioned image is
-`ghcr.io/kevindraai/exitlane:v1.0.0`; the saved digest pins precisely the bytes you reviewed.
+`ghcr.io/kevindraai/exitlane:v1.0.1`; the saved digest pins precisely the bytes you reviewed.
 No `latest` alias is part of this deployment path.
 
 | Variable | Meaning |

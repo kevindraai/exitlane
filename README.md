@@ -29,11 +29,11 @@ which traffic uses the gateway.
 
 ## Installation
 
-This README follows the current `main` branch. **v1.0.0** is the latest published release;
-features added since that tag are on `main` and will ship in a later release. Install the tag
-for a released appliance. Native support is Debian 13 `amd64`; the Docker appliance runs on
-rootful Linux `amd64`. The [release page](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0)
-has the published files and image details.
+This README describes v1.0.1 source. Install only after the
+[v1.0.1 release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.1) is published;
+until then, use the [published releases](https://github.com/kevindraai/exitlane/releases).
+Native support is Debian 13 `amd64`; the Docker appliance runs on rootful Linux `amd64`.
+The release page provides exact source, artifact and image identities once available.
 
 Keep the management interface on a trusted network; see the
 [hardening guide](docs/security/hardening-guide.md) for firewall and reverse-proxy settings.
@@ -52,7 +52,7 @@ published release and uses its tag for both the helper and guest installation. T
 For a native Debian host or manually created LXC, install the published release tag:
 
 ```bash
-git clone --branch v1.0.0 --depth 1 https://github.com/kevindraai/exitlane.git
+git clone --branch v1.0.1 --depth 1 https://github.com/kevindraai/exitlane.git
 cd exitlane
 sudo ./installer/install-debian.sh
 ```
@@ -146,6 +146,8 @@ and [Diagnostics](docs/diagnostics.md) for the design details.
 Keep the optional native killswitch enabled if routed clients must remain blocked after an
 explicit VPN disconnect. Docker always blocks protected clients without an active provider.
 See the [security policy](SECURITY.md) and [hardening guide](docs/security/hardening-guide.md).
+The [2026-10-06 internal assessment](docs/security/daybreak-blue-assessment-2026-10-06.md)
+records the recent multi-device and evidence-collector findings, fixes and assurance limits.
 
 ## Docker appliance
 

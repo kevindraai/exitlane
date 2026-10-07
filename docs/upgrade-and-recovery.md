@@ -5,9 +5,9 @@
 Stable v1 provides the native in-place upgrade path on Debian 13 amd64, including upgrades
 from qualified rc.4 and v1 RC appliances. Existing supported historical upgrade paths remain
 regression obligations. The historical `v0.2.0` tag reports runtime `0.2.0-rc.1` and package
-`0.2.0rc1`; this is expected metadata. Stable target runtime and Python package versions are `1.0.0`.
-Final installation/upgrade/preservation/recovery receipts are linked by the
-[published v1.0.0 release](https://github.com/kevindraai/exitlane/releases/tag/v1.0.0).
+`0.2.0rc1`; this is expected metadata. The v1.0.1 target runtime and Python package
+versions are `1.0.1`. Check the [v1.0.1 release evidence](release-notes/1.0.1.md#release-evidence)
+for actual installation, upgrade, preservation and recovery receipts before using that tag.
 
 This guide covers the native Debian installer. Docker uses the separate
 [image upgrade/rollback operator path](docker-deployment.md#upgrade-and-rollback), retaining
@@ -20,16 +20,16 @@ client-traffic interruption. Record any custom `/etc/default/exitlane`, systemd,
 router settings separately. Do not change settings in the browser during the upgrade.
 
 ```bash
-sudo exitlane-cli backup create /var/lib/exitlane/backups/pre-1.0.0.elb
-sudo exitlane-cli backup verify /var/lib/exitlane/backups/pre-1.0.0.elb
+sudo exitlane-cli backup create /var/lib/exitlane/backups/pre-1.0.1.elb
+sudo exitlane-cli backup verify /var/lib/exitlane/backups/pre-1.0.1.elb
 ```
 
 Keep a protected copy outside the appliance. Once the target tag is published, use a separate
 release checkout so the installer source is never the live `/opt/exitlane` directory:
 
 ```bash
-git clone --branch v1.0.0 --depth 1 https://github.com/kevindraai/exitlane.git exitlane-1.0.0
-cd exitlane-1.0.0
+git clone --branch v1.0.1 --depth 1 https://github.com/kevindraai/exitlane.git exitlane-1.0.1
+cd exitlane-1.0.1
 sudo ./installer/install-debian.sh
 ```
 

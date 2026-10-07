@@ -165,7 +165,7 @@ def test_installer_has_locked_upgrade_snapshot_and_rollback_contract():
     assert "snapshot_recovery_path" in installer
     assert 'rm -rf -- "${destination}"' in installer
     assert "commit_upgrade" in installer
-    assert 'readonly PACKAGE_VERSION="1.0.0"' in installer
+    assert 'readonly PACKAGE_VERSION="1.0.1"' in installer
     assert 'dpkg --compare-versions "${current_order}" le "${target_order}"' in installer
     assert installer.index("prepare_upgrade_recovery") < installer.index("stop_existing_service")
     assert installer.index("stop_existing_service") < installer.index("copy_application")
@@ -480,10 +480,10 @@ def test_actual_installation_mode_guard_orders_project_releases(tmp_path, curren
     fixture.write_text(
         INSTALLER.read_text()
         .replace(
-            'readonly INSTALLER_VERSION="1.0.0"',
+            'readonly INSTALLER_VERSION="1.0.1"',
             f'readonly INSTALLER_VERSION="{target}"',
         )
-        .replace('readonly PACKAGE_VERSION="1.0.0"', f'readonly PACKAGE_VERSION="{target}"')
+        .replace('readonly PACKAGE_VERSION="1.0.1"', f'readonly PACKAGE_VERSION="{target}"')
     )
     appliance = tmp_path / "appliance"
     data = tmp_path / "data"

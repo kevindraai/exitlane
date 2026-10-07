@@ -75,14 +75,20 @@ class IngressConfig:
         try:
             address = ipaddress.IPv4Interface(self.address)
             require(address.network.prefixlen <= 31)
-            peers = (() if not self.public_key and not self.allowed_ips else
-                     ((self.public_key, self.allowed_ips, self.keepalive),)) + self.extra_peers
+            peers = (
+                ()
+                if not self.public_key and not self.allowed_ips
+                else ((self.public_key, self.allowed_ips, self.keepalive),)
+            ) + self.extra_peers
             require(len({peer[0] for peer in peers}) == len(peers))
             addresses = []
             for public, tunnel, keepalive in peers:
                 allowed = ipaddress.IPv4Network(tunnel, strict=True)
                 require(allowed.prefixlen == 32)
-                require(allowed.network_address in address.network and allowed.network_address != address.ip)
+                require(
+                    allowed.network_address in address.network
+                    and allowed.network_address != address.ip
+                )
                 require(type(keepalive) is int and 0 <= keepalive <= 65535)
                 key(public)
                 addresses.append(allowed)
@@ -102,11 +108,14 @@ class IngressConfig:
     def wireguard_payload(self) -> str:
         self.validated()
         payload = f"[Interface]\nPrivateKey = {self.private_key}\nListenPort = {self.listen_port}\n"
-        peers = (() if not self.public_key else
-                 ((self.public_key, self.allowed_ips, self.keepalive),)) + self.extra_peers
+        peers = (
+            () if not self.public_key else ((self.public_key, self.allowed_ips, self.keepalive),)
+        ) + self.extra_peers
         for public, allowed, keepalive in peers:
-            payload += (f"[Peer]\nPublicKey = {public}\nAllowedIPs = {allowed}\n"
-                        f"PersistentKeepalive = {keepalive}\n")
+            payload += (
+                f"[Peer]\nPublicKey = {public}\nAllowedIPs = {allowed}\n"
+                f"PersistentKeepalive = {keepalive}\n"
+            )
         return payload
 
     @classmethod
@@ -170,8 +179,10 @@ class IngressConfig:
             if section == "Peer":
                 peer_values.append(values)
             i = interface_values
-            peers = [(p["PublicKey"], p["AllowedIPs"], int(p.get("PersistentKeepalive", "25")))
-                     for p in peer_values]
+            peers = [
+                (p["PublicKey"], p["AllowedIPs"], int(p.get("PersistentKeepalive", "25")))
+                for p in peer_values
+            ]
             first = peers[0] if peers else ("", "", 25)
             return cls(
                 path.stem,
@@ -759,11 +770,16 @@ class ContainerWireGuardLifecycle:
     async def sync_owned_ingress(self, config: IngressConfig) -> None:
         """Apply peer changes on our proven live interface without replacing the guard."""
         require(await self.observe_owned_ingress(), "container_interface_ownership_unproven")
-        require(config.interface == self.config.interface and config.address == self.config.address
-                and config.private_key == self.config.private_key and config.listen_port == self.config.listen_port,
-                "container_ingress_config_invalid")
-        await self.checked("wg", "syncconf", config.interface, "/dev/stdin",
-                           input_text=config.wireguard_payload())
+        require(
+            config.interface == self.config.interface
+            and config.address == self.config.address
+            and config.private_key == self.config.private_key
+            and config.listen_port == self.config.listen_port,
+            "container_ingress_config_invalid",
+        )
+        await self.checked(
+            "wg", "syncconf", config.interface, "/dev/stdin", input_text=config.wireguard_payload()
+        )
         self.config = config
 
     async def observe(self) -> bool:

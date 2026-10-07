@@ -132,7 +132,7 @@ def test_default_selection_and_command_generation(pve):
     assert create[create.index("--net0") + 1] == "name=eth0,bridge=vmbr0,ip=dhcp"
     assert create[create.index("--onboot") + 1] == "1"
     assert commands[-1][-1] == "/root/exitlane-source/installer/install-debian.sh"
-    assert commands[-2][commands[-2].index("--branch") + 1] == "v1.0.0"
+    assert commands[-2][commands[-2].index("--branch") + 1] == "v1.0.1"
     assert not any(command[:2] == ("pct", "destroy") for command in state["commands"])
 
 

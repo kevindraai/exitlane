@@ -4,7 +4,9 @@ import copy
 import importlib
 import json
 import os
+import shutil
 import sqlite3
+import subprocess
 import sys
 from pathlib import Path
 
@@ -52,7 +54,14 @@ def snapshot(module, *, source=False, restored=False):
             tables[name]["rows"] = tables[name]["complete_rows"] = ["synthetic-state"]
     return {
         "format": 1,
-        "database": {"metadata": {"mode": 0o600}, "tables": tables},
+        "database": {
+            "metadata": {"mode": 0o600},
+            "tables": tables,
+            "objects": {
+                f"table:{name}": {"table": name, "sql": f"CREATE TABLE {name}(id TEXT)"}
+                for name in tables
+            },
+        },
         "state_files": {
             "etc/exitlane/secret.key": {
                 "sha256": "source-key" if source or restored else "target-key"
@@ -251,7 +260,19 @@ def test_disaster_preconditions_fail_before_cli_and_started_marker(
     assert not (target.directory / "disaster.started").exists()
 
 
-@pytest.mark.parametrize("failure", ["cli", "defaults", "session", "staging", "api"])
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "cli",
+        "defaults",
+        "session",
+        "staging",
+        "api",
+        "schema-missing",
+        "schema-added",
+        "schema-altered",
+    ],
+)
 def test_failed_restore_retains_evidence_and_cannot_be_retried(
     disaster, prepared, monkeypatch, failure
 ):
@@ -269,6 +290,15 @@ def test_failed_restore_retains_evidence_and_cannot_be_retried(
         after = copy.deepcopy(snapshot(disaster, restored=True))
         if failure == "defaults":
             after["state_files"]["etc/default/exitlane"]["sha256"] = "changed"
+        elif failure == "schema-missing":
+            after["database"].pop("objects")
+        elif failure == "schema-added":
+            after["database"]["objects"]["index:unexpected"] = {
+                "table": "users",
+                "sql": "CREATE INDEX unexpected ON users(id)",
+            }
+        elif failure == "schema-altered":
+            after["database"]["objects"]["table:users"]["sql"] = "CREATE TABLE users(id BLOB)"
         else:
             after["database"]["tables"]["sessions"]["complete_rows"] = ["unrevoked"]
         observations = iter([snapshot(disaster), after])
@@ -308,3 +338,49 @@ def test_default_plan_has_no_preflight_or_bundle_or_host_mutation(
     assert json.loads(capsys.readouterr().out)["executed"] is False
     assert not bundle.exists()
     assert not disaster.native.RUNS.exists()
+
+
+@pytest.mark.parametrize("mode", ["help", "plan", "execute-rejection"])
+def test_direct_invocation_never_creates_bytecode_before_preflight(tmp_path, mode):
+    source = Path(__file__).resolve().parents[2] / "scripts/qualification"
+    copied = tmp_path / "harness"
+    copied.mkdir(mode=0o700)
+    for name in ("native_disaster.py", "native_lifecycle.py", "native_lifecycle_state.py"):
+        shutil.copyfile(source / name, copied / name)
+    # Model fixture ownership in the synthetic copy for non-root CI workers.
+    # Actual execution preflight still rejects the non-Git/unsupported target.
+    lifecycle = copied / "native_lifecycle.py"
+    lifecycle.write_text(lifecycle.read_text().replace("ROOT_UID = 0", "ROOT_UID = os.getuid()"))
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(config(2)))
+    config_path.chmod(0o600)
+    before = {path.name: path.read_bytes() for path in copied.iterdir()}
+    arguments = [sys.executable, "-E", "-S", str(copied / "native_disaster.py")]
+    if mode == "help":
+        arguments.append("--help")
+    else:
+        arguments.extend(
+            [
+                "--config",
+                str(config_path),
+                "--action",
+                "export",
+                "--bundle",
+                str(tmp_path / "bundle"),
+            ]
+        )
+        if mode == "execute-rejection":
+            arguments.append("--execute")
+    result = subprocess.run(
+        arguments,
+        env={"PATH": os.defpath, "LANG": "C.UTF-8"},
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
+    assert result.returncode == (1 if mode == "execute-rejection" else 0)
+    if mode == "plan":
+        assert json.loads(result.stdout)["executed"] is False
+    assert {path.name: path.read_bytes() for path in copied.iterdir()} == before
+    assert not (tmp_path / "bundle").exists()

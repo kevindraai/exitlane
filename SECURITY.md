@@ -2,11 +2,14 @@
 
 ## Supported versions
 
-Security fixes target the current published stable release, `v1.0.0`.
+Security fixes target the current published stable release. This source prepares `v1.0.1`;
+confirm publication on the [releases page](https://github.com/kevindraai/exitlane/releases)
+before installing it. The prior published stable release is `v1.0.0`.
 
 | Version | Supported |
 | --- | --- |
-| v1.0.0 | Yes |
+| v1.0.1 | Supported once published |
+| v1.0.0 | Published prior stable; update to v1.0.1 after publication |
 | v1.0.0-rc.1 and earlier | Superseded by v1.0.0 |
 | v0.2.0 | No |
 | Earlier prereleases and v0.1.x | No |
@@ -105,3 +108,9 @@ states. Its controlled APT projection never applies maintenance; selected librar
 observations never inspect process arguments, environment or memory. Collection
 completion is not a vulnerability waiver, exploitability decision or release approval.
 Docker qualification and immutable v1.0.0 evidence remain separate.
+
+The [2026-10-06 internal defensive assessment](docs/security/daybreak-blue-assessment-2026-10-06.md)
+found one Medium initial WireGuard adoption issue and one Low native evidence output
+issue on its assessed source. Both were fixed and deterministically retested in
+PRs #143 and #144. Final v1.0.1 source, scan and appliance qualification remains
+separate from those remediation receipts.
