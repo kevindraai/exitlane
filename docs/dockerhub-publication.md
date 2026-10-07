@@ -40,15 +40,17 @@ publication job after the environment gate. Registry manifests and final pulls u
 The `dockerhub-production` GitHub environment requires:
 
 - reviewer `kevindraai`;
-- prevention of self-review;
+- self-review permitted for the sole maintainer;
 - no administrator bypass;
 - deployments from protected branches.
 
 The workflow independently restricts execution to `main` in `kevindraai/exitlane`. Before scheduling
 publication, and again after approval, it checks the environment through the GitHub API. A missing
 or weakened environment fails validation; the workflow cannot silently create an unprotected one.
-An approvable run must be initiated by an authorized identity other than the required reviewer.
-The workflow does not change approval rules to accommodate its trigger identity.
+The sole maintainer `kevindraai` may initiate and manually approve the same publication run.
+The workflow checks that self-review prevention is disabled while retaining the required reviewer,
+branch restrictions and no-administrator-bypass setting. Independent code review and automated
+checks remain separate from the product owner's publication approval.
 
 ## Source and evidence
 

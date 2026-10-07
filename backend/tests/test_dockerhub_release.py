@@ -267,7 +267,7 @@ def test_copy_errors_do_not_leak_subprocess_output(monkeypatch):
         hub.command(["docker", "push"])
 
 
-def test_hub_environment_requires_independent_approval():
+def test_hub_environment_allows_owner_approval_and_retains_protection():
     environment = {
         "name": hub.ENVIRONMENT,
         "can_admins_bypass": False,
@@ -275,19 +275,35 @@ def test_hub_environment_requires_independent_approval():
         "protection_rules": [
             {
                 "type": "required_reviewers",
-                "prevent_self_review": True,
+                "prevent_self_review": False,
                 "reviewers": [{"type": "User", "reviewer": {"login": "kevindraai"}}],
             }
         ],
     }
     release.validate_publication_environment(
-        environment, name=hub.ENVIRONMENT, prevent_self_review=True
+        environment, name=hub.ENVIRONMENT, prevent_self_review=False
     )
-    environment["protection_rules"][0]["prevent_self_review"] = False
-    with pytest.raises(release.ReleaseValidationError, match="self_review_forbidden"):
+    environment["protection_rules"][0]["prevent_self_review"] = True
+    with pytest.raises(release.ReleaseValidationError, match="self_review_policy_mismatch"):
         release.validate_publication_environment(
-            environment, name=hub.ENVIRONMENT, prevent_self_review=True
+            environment, name=hub.ENVIRONMENT, prevent_self_review=False
         )
+
+
+def test_hub_prepare_requests_owner_approval_policy(monkeypatch, facts):
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    calls = []
+
+    def check(repository, token, **policy):
+        calls.append((repository, policy))
+        raise release.ReleaseValidationError("stop_before_git_or_network")
+
+    monkeypatch.setattr(release, "_fetch_publication_environment", check)
+    with pytest.raises(release.ReleaseValidationError, match="stop_before_git_or_network"):
+        hub.prepare(facts)
+    assert calls == [
+        ("kevindraai/exitlane", {"name": hub.ENVIRONMENT, "prevent_self_review": False})
+    ]
 
 
 def test_workflow_exposes_credentials_only_in_protected_publication_job():

@@ -211,7 +211,7 @@ def prepare(facts):
     if not token:
         fail("github_token_missing")
     release._fetch_publication_environment(
-        REPOSITORY, token, name=ENVIRONMENT, prevent_self_review=True
+        REPOSITORY, token, name=ENVIRONMENT, prevent_self_review=False
     )
     command(
         [
