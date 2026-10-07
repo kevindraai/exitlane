@@ -11,6 +11,61 @@ to verify publication, immutable digest and acceptance before running deployment
 Until v1.0.1 is published, the [v1.0.0 release](release-notes/1.0.0.md) remains the
 published operator path.
 
+## Quick test with `docker run`
+
+For a quick evaluation on a host that meets the prerequisites above. This is not the supported
+deployment path: it uses a mutable tag, skips the host preflight and does not pin an immutable
+digest. Use [Quick Start](#quick-start) for anything beyond a test.
+
+Set the LAN IPv4 address of your Docker host once. The command stops with an error if it is empty,
+so management is never bound to all interfaces by accident:
+
+```bash
+HOST_IP=192.168.10.20   # replace with your Docker host's LAN IPv4 address
+
+docker run -d --name exitlane \
+  --init \
+  --platform linux/amd64 \
+  --cap-drop ALL --cap-add NET_ADMIN \
+  --device /dev/net/tun:/dev/net/tun \
+  --security-opt no-new-privileges:true \
+  --read-only \
+  --tmpfs /run:rw,nosuid,nodev,noexec,size=32m,mode=0700 \
+  --tmpfs /tmp:rw,nosuid,nodev,noexec,size=64m,mode=0700 \
+  --sysctl net.ipv4.ip_forward=1 \
+  --sysctl net.ipv6.conf.all.forwarding=0 \
+  --sysctl "net.ipv4.ping_group_range=0 0" \
+  -e EXITLANE_RUNTIME=container \
+  -e EXITLANE_CONFIG_DIR=/data/config \
+  -e EXITLANE_DATA_DIR=/data/state \
+  -e EXITLANE_PUBLIC_URL="http://${HOST_IP:?set HOST_IP first}:8787" \
+  -p "${HOST_IP:?set HOST_IP first}:8787:8787/tcp" \
+  -p "${HOST_IP:?set HOST_IP first}:51820:51820/udp" \
+  -v exitlane_exitlane-state:/data \
+  --restart unless-stopped \
+  --stop-timeout 30 \
+  ghcr.io/kevindraai/exitlane:v1.0.1
+```
+
+Verify, then open `http://<HOST_IP>:8787` and complete first-run administrator setup and MFA:
+
+```bash
+docker logs --tail=100 exitlane
+curl --fail --silent --show-error "http://$HOST_IP:8787/api/health"
+docker exec exitlane python -m exitlane.container_entrypoint health
+```
+
+Notes:
+
+- The flags mirror the [Compose contract](#prerequisites): `NET_ADMIN`, TUN, read-only root
+  filesystem, one volume, no privileged mode, host network or Docker socket. Do not drop them.
+- The volume name matches the Compose path (project `exitlane`), so state carries over if you
+  later move to Compose. Run only one of the two at a time: they share the volume and the ports.
+- Resource limits, log rotation and the dedicated bridge network from `compose.appliance.yml`
+  are omitted here.
+- `cannot assign requested address` means `HOST_IP` is not an address on this host.
+- Clean up a test with `docker rm -f exitlane`. This keeps the volume. `docker volume rm
+  exitlane_exitlane-state` destroys the state, including the secret key and database.
 
 ## Prerequisites
 
