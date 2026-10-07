@@ -28,6 +28,10 @@ python3 scripts/check_i18n.py
 CI repeats these checks, validates source and data-file syntax, checks installer shell scripts,
 and builds the Python distribution. A pull request is not ready to merge until required CI passes.
 
+Maintainers can prepare a second image distribution path with the protected
+[Docker Hub release mirror](dockerhub-publication.md). It copies a qualified published GHCR digest;
+registry setup and workflow implementation do not themselves publish an image.
+
 ## Test appliance
 
 Runtime changes must also be exercised on the test LXC. `scripts/deploy_worktree_to_test.sh`
