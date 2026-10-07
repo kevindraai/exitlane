@@ -139,7 +139,7 @@ def validate_publication_environment(
     environment: Any,
     *,
     name: str = PUBLICATION_ENVIRONMENT,
-    prevent_self_review: bool = False,
+    prevent_self_review: bool | None = None,
 ) -> None:
     """Fail before scheduling a job that could auto-create an unprotected environment."""
     if not isinstance(environment, dict) or environment.get("name") != name:
@@ -158,8 +158,11 @@ def validate_publication_environment(
         or reviewers[0]["reviewer"].get("login") != PRODUCT_OWNER
     ):
         raise ReleaseValidationError("docker_release_product_owner_approval_required")
-    if prevent_self_review and approval[0].get("prevent_self_review") is not True:
-        raise ReleaseValidationError("docker_release_self_review_forbidden")
+    if (
+        prevent_self_review is not None
+        and approval[0].get("prevent_self_review") is not prevent_self_review
+    ):
+        raise ReleaseValidationError("docker_release_self_review_policy_mismatch")
     if environment.get("can_admins_bypass") is not False:
         raise ReleaseValidationError("docker_release_approval_bypass_forbidden")
     policy = environment.get("deployment_branch_policy")
@@ -175,7 +178,7 @@ def _fetch_publication_environment(
     token: str,
     *,
     name: str = PUBLICATION_ENVIRONMENT,
-    prevent_self_review: bool = False,
+    prevent_self_review: bool | None = None,
 ) -> dict[str, Any]:
     if REPOSITORY.fullmatch(repository) is None:
         raise ReleaseValidationError("docker_release_repository_invalid")
