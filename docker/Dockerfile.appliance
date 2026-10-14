@@ -1,5 +1,5 @@
 # V1 appliance image. Stable publication and exact-image qualification remain required.
-FROM python:3.13-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b AS wheel
+FROM python:3.14-slim-trixie@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS wheel
 WORKDIR /build
 COPY backend/pyproject.toml backend/hatch_build.py ./
 COPY LICENSE THIRD_PARTY_NOTICES.md /
@@ -7,7 +7,7 @@ COPY docs /docs
 COPY backend/exitlane ./exitlane
 RUN python -m pip wheel --no-cache-dir --no-deps --wheel-dir /wheel .
 
-FROM python:3.13-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b
+FROM python:3.14-slim-trixie@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170
 ARG EXITLANE_VERSION
 ARG EXITLANE_REVISION
 LABEL org.opencontainers.image.title="ExitLane" \
