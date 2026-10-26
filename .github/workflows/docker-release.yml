@@ -198,7 +198,7 @@ jobs:
 
       - name: Retain release TLS evidence even when qualification fails
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: docker-release-provider-tls
           path: docker-release-provider-tls.json
@@ -228,7 +228,7 @@ jobs:
 
       - name: Retain complete release scan evidence even when publication is blocked
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: exitlane-release-trivy-report
           path: |
@@ -299,7 +299,7 @@ jobs:
 
       - name: Retain pulled-image TLS evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: docker-pulled-provider-tls
           path: docker-pulled-provider-tls.json
@@ -391,7 +391,7 @@ jobs:
 
       - name: Retain complete publication and recovery evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: docker-release-supply-chain-evidence
           path: |
